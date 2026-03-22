@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { generateMsmeId } from "@/lib/data/ndmii";
 
 async function reviewAction(formData: FormData) {
@@ -10,6 +11,8 @@ async function reviewAction(formData: FormData) {
   const action = String(formData.get("action"));
   const note = String(formData.get("note") ?? "");
 
+  const supabase = await createServerSupabaseClient();
+  const { profile } = await getCurrentUserContext();
   const { data: msme } = await supabase.from("msmes").select("state,msme_id").eq("id", id).single();
   const update: Record<string, unknown> = {
     reviewer_notes: note,
@@ -21,6 +24,7 @@ async function reviewAction(formData: FormData) {
     update.issued_at = new Date().toISOString();
     update.msme_id = msme?.msme_id?.startsWith("NDMII-") ? msme.msme_id : generateMsmeId(msme?.state ?? "LAG");
     await supabase.from("compliance_profiles").update({ overall_status: "verified", admin_override_status: "verified" }).eq("msme_id", id);
+    await supabase.from("tax_profiles").upsert({ msme_id: id, tax_category: "SME_STANDARD", vat_applicable: true, estimated_monthly_obligation: 125000, outstanding_amount: 0, compliance_status: "compliant" }, { onConflict: "msme_id" });
   }
   if (action === "reject") {
     update.verification_status = "rejected";
@@ -31,6 +35,7 @@ async function reviewAction(formData: FormData) {
 
   await supabase.from("msmes").update(update).eq("id", id);
   await supabase.from("activity_logs").insert({
+    actor_user_id: profile?.id,
     action: `review_${action}`,
     entity_type: "msme",
     entity_id: id,
@@ -46,6 +51,7 @@ export default async function ReviewsPage({
   searchParams: Promise<{ state?: string; sector?: string; status?: string; done?: string }>;
 }) {
   const params = await searchParams;
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("msmes")
     .select("id,msme_id,business_name,state,sector,verification_status,created_at")

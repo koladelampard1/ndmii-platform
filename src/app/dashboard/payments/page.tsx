@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function simulatePayment(formData: FormData) {
   "use server";
+  const supabase = await createServerSupabaseClient();
+  const { profile } = await getCurrentUserContext();
   const msmeId = String(formData.get("msme_id"));
   const amount = Number(formData.get("amount") ?? 0);
   const receiptRef = `RCP-${Date.now()}`;
@@ -17,20 +20,21 @@ async function simulatePayment(formData: FormData) {
   });
 
   await supabase.from("tax_profiles").update({ outstanding_amount: 0, compliance_status: "compliant" }).eq("msme_id", msmeId);
-  await supabase.from("activity_logs").insert({ action: "payment_simulated", entity_type: "payment", metadata: { msmeId, amount, receiptRef } });
+  await supabase.from("activity_logs").insert({ actor_user_id: profile?.id, action: "payment_simulated", entity_type: "payment", metadata: { msmeId, amount, receiptRef } });
 
   redirect(`/dashboard/payments?receipt=${receiptRef}`);
 }
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ receipt?: string }> }) {
   const params = await searchParams;
-  const [{ data: profiles }, { data: history }] = await Promise.all([
-    supabase
-      .from("tax_profiles")
-      .select("msme_id,tax_category,vat_applicable,estimated_monthly_obligation,outstanding_amount,compliance_status,msmes(msme_id,business_name)")
-      .order("created_at", { ascending: false }),
-    supabase.from("payments").select("id,amount,status,tax_type,payment_date,receipt_reference,msmes(msme_id,business_name)").order("created_at", { ascending: false }),
+  const supabase = await createServerSupabaseClient();
+  const [{ data: profiles }, { data: history }, { data: msmes }] = await Promise.all([
+    supabase.from("tax_profiles").select("msme_id,tax_category,vat_applicable,estimated_monthly_obligation,outstanding_amount,compliance_status").order("created_at", { ascending: false }),
+    supabase.from("payments").select("id,msme_id,amount,status,tax_type,payment_date,receipt_reference").order("created_at", { ascending: false }),
+    supabase.from("msmes").select("id,msme_id,business_name"),
   ]);
+
+  const msmeMap = new Map((msmes ?? []).map((row) => [row.id, row]));
 
   return (
     <section className="space-y-6">
@@ -38,24 +42,27 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       {params.receipt && <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Payment successful. Receipt reference: {params.receipt}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {(profiles ?? []).map((profile) => (
-          <article key={profile.msme_id} className="rounded-xl border bg-white p-4">
-            <h2 className="text-lg font-semibold">{profile.msmes?.business_name}</h2>
-            <p className="text-xs text-slate-500">{profile.msmes?.msme_id}</p>
-            <div className="mt-3 space-y-1 text-sm">
-              <p>Tax Category: {profile.tax_category}</p>
-              <p>VAT Applicable: {profile.vat_applicable ? "Yes" : "No"}</p>
-              <p>Estimated Monthly Obligation: ₦{Number(profile.estimated_monthly_obligation).toLocaleString()}</p>
-              <p>Outstanding Amount: ₦{Number(profile.outstanding_amount).toLocaleString()}</p>
-              <p>Compliance Status: {profile.compliance_status}</p>
-            </div>
-            <form action={simulatePayment} className="mt-3 flex gap-2">
-              <input type="hidden" name="msme_id" value={profile.msme_id} />
-              <input name="amount" className="w-full rounded border px-3 py-2" defaultValue={profile.outstanding_amount} />
-              <Button>Pay now</Button>
-            </form>
-          </article>
-        ))}
+        {(profiles ?? []).map((profile) => {
+          const msme = msmeMap.get(profile.msme_id);
+          return (
+            <article key={profile.msme_id} className="rounded-xl border bg-white p-4">
+              <h2 className="text-lg font-semibold">{msme?.business_name ?? "Unlinked MSME"}</h2>
+              <p className="text-xs text-slate-500">{msme?.msme_id ?? profile.msme_id}</p>
+              <div className="mt-3 space-y-1 text-sm">
+                <p>Tax Category: {profile.tax_category}</p>
+                <p>VAT Applicable: {profile.vat_applicable ? "Yes" : "No"}</p>
+                <p>Estimated Monthly Obligation: ₦{Number(profile.estimated_monthly_obligation).toLocaleString()}</p>
+                <p>Outstanding Amount: ₦{Number(profile.outstanding_amount).toLocaleString()}</p>
+                <p>Compliance Status: {profile.compliance_status}</p>
+              </div>
+              <form action={simulatePayment} className="mt-3 flex gap-2">
+                <input type="hidden" name="msme_id" value={profile.msme_id} />
+                <input name="amount" className="w-full rounded border px-3 py-2" defaultValue={profile.outstanding_amount} />
+                <Button>Pay now</Button>
+              </form>
+            </article>
+          );
+        })}
         {(profiles ?? []).length === 0 && <p className="rounded-lg border bg-white p-6 text-slate-500">No tax profiles available.</p>}
       </div>
 
@@ -65,7 +72,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           <tbody>
             {(history ?? []).map((row) => (
               <tr key={row.id} className="border-t">
-                <td className="px-3 py-2">{row.msmes?.business_name}</td>
+                <td className="px-3 py-2">{msmeMap.get(row.msme_id)?.business_name ?? row.msme_id}</td>
                 <td className="px-3 py-2">₦{Number(row.amount).toLocaleString()}</td>
                 <td className="px-3 py-2">{row.tax_type}</td>
                 <td className="px-3 py-2">{row.status}</td>
