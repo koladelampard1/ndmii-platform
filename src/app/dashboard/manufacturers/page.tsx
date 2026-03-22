@@ -13,8 +13,8 @@ export default async function ManufacturersPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {(manufacturers ?? []).map((manufacturer) => (
           <article key={manufacturer.id} className="rounded-xl border bg-white p-4 shadow-sm">
-            <h2 className="font-semibold">{manufacturer.msmes?.business_name}</h2>
-            <p className="text-xs text-slate-500">{manufacturer.msmes?.msme_id} • {manufacturer.msmes?.state}</p>
+            <h2 className="font-semibold">{(manufacturer.msmes as any)?.business_name}</h2>
+            <p className="text-xs text-slate-500">{(manufacturer.msmes as any)?.msme_id} • {(manufacturer.msmes as any)?.state}</p>
             <p className="mt-2 text-sm">Category: {manufacturer.product_category}</p>
             <p className="text-sm">Compliance badge: {manufacturer.compliance_badge}</p>
             <p className="text-sm">Inspection: {manufacturer.inspection_status} • Counterfeit risk: {manufacturer.counterfeit_risk_flag ? "Alert" : "Clear"}</p>

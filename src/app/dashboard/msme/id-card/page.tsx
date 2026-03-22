@@ -1,29 +1,31 @@
 import Link from "next/link";
 import QRCode from "qrcode";
+import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { PrintButton } from "@/components/msme/print-button";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 export default async function IdCardPage({ searchParams }: { searchParams: Promise<{ msmeId?: string }> }) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: msme } = await supabase
-    .from("msmes")
-    .select("msme_id,business_name,owner_name,state,sector,verification_status")
-    .eq("msme_id", params.msmeId ?? "")
-    .maybeSingle();
+  const ctx = await getCurrentUserContext();
 
-  const fallback = !msme
-    ? await supabase
-        .from("msmes")
-        .select("msme_id,business_name,owner_name,state,sector,verification_status")
-        .eq("verification_status", "verified")
-        .limit(1)
-        .single()
-    : { data: msme };
+  const requestedPublicId = params.msmeId;
+  let query = supabase.from("msmes").select("id,msme_id,business_name,owner_name,state,sector,verification_status");
 
-  const profile = fallback.data;
+  if (ctx.role === "msme") {
+    query = query.eq("id", ctx.linkedMsmeId ?? "");
+  } else if (requestedPublicId) {
+    query = query.eq("msme_id", requestedPublicId);
+  } else {
+    query = query.eq("verification_status", "verified").limit(1);
+  }
+
+  const { data: profile } = await query.maybeSingle();
+
   if (!profile) {
+    if (ctx.role === "msme") redirect("/access-denied");
     return <p className="rounded border bg-white p-6 text-slate-500">No approved MSME found yet.</p>;
   }
 

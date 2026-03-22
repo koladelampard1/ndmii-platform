@@ -1,5 +1,7 @@
 import { PrintButton } from "@/components/msme/print-button";
+import { redirect } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 function toCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]) {
   return [headers.join(","), ...rows.map((row) => row.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","))].join("\n");
@@ -7,8 +9,10 @@ function toCsv(headers: string[], rows: (string | number | boolean | null | unde
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ state?: string; sector?: string; status?: string; from?: string; to?: string }> }) {
   const params = await searchParams;
+  const ctx = await getCurrentUserContext();
+  if (!["admin", "association_officer"].includes(ctx.role)) redirect("/access-denied");
   const [msmes, complaints, compliance, tax, associations, manufacturers] = await Promise.all([
-    supabase.from("msmes").select("msme_id,business_name,state,sector,verification_status,created_at"),
+    supabase.from("msmes").select("msme_id,business_name,state,sector,verification_status,created_at,association_id"),
     supabase.from("complaints").select("summary,status,severity,state,sector,created_at"),
     supabase.from("compliance_profiles").select("overall_status,score,risk_level,last_reviewed_at"),
     supabase.from("tax_profiles").select("tax_category,vat_applicable,outstanding_amount,compliance_status,arrears_status"),
@@ -17,7 +21,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   ]);
 
   const filterMsme = (m: any) => (!params.state || m.state === params.state) && (!params.sector || m.sector === params.sector) && (!params.status || m.verification_status === params.status);
-  const registryRows = (msmes.data ?? []).filter(filterMsme);
+  const scopedMsmes = ctx.role === "association_officer"
+    ? (msmes.data ?? []).filter((m: any) => m.association_id === ctx.linkedAssociationId)
+    : (msmes.data ?? []);
+  const registryRows = scopedMsmes.filter(filterMsme);
 
   const reports = [
     { name: "MSME registry report", csv: toCsv(["MSME ID", "Business", "State", "Sector", "Status", "Created"], registryRows.map((m: any) => [m.msme_id, m.business_name, m.state, m.sector, m.verification_status, m.created_at])) },

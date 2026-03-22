@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/data/authorization-scope";
 import { supabase } from "@/lib/supabase/client";
 
 export default async function AuditTrailPage({
@@ -5,6 +6,7 @@ export default async function AuditTrailPage({
 }: {
   searchParams: Promise<{ action?: string; role?: string; entity?: string; from?: string; to?: string }>;
 }) {
+  await requireRole(["admin"]);
   const params = await searchParams;
   let query = supabase
     .from("activity_logs")
@@ -18,7 +20,7 @@ export default async function AuditTrailPage({
   if (params.to) query = query.lte("created_at", params.to);
 
   const { data: logs } = await query;
-  const filtered = (logs ?? []).filter((log) => (!params.role || log.users?.role === params.role));
+  const filtered = (logs ?? []).filter((log) => (!params.role || (log.users as any)?.role === params.role));
 
   return (
     <section className="space-y-5">
@@ -37,8 +39,8 @@ export default async function AuditTrailPage({
           <details key={log.id} className="rounded-xl border bg-white p-3">
             <summary className="cursor-pointer text-sm"><strong>{log.action}</strong> • {log.entity_type}:{log.entity_id?.slice(0, 8)} • {new Date(log.created_at).toLocaleString()}</summary>
             <div className="mt-2 text-xs text-slate-600">
-              <p>Actor: {log.users?.full_name ?? "System"}</p>
-              <p>Role: {log.users?.role ?? "n/a"}</p>
+              <p>Actor: {(log.users as any)?.full_name ?? "System"}</p>
+              <p>Role: {(log.users as any)?.role ?? "n/a"}</p>
               <p>Entity type: {log.entity_type}</p>
               <p>Entity id: {log.entity_id}</p>
               <pre className="mt-2 overflow-auto rounded bg-slate-100 p-2">{JSON.stringify(log.metadata ?? {}, null, 2)}</pre>

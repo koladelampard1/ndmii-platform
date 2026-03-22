@@ -1,18 +1,40 @@
 import { cookies } from "next/headers";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/roles";
+import type { UserContext } from "@/lib/auth/authorization";
 
-export async function getCurrentUserContext() {
+export async function getCurrentUserContext(): Promise<UserContext> {
   const cookieStore = await cookies();
   const role = (cookieStore.get("ndmii_role")?.value as UserRole | undefined) ?? "public";
   const email = cookieStore.get("ndmii_email")?.value ?? null;
-  const userId = cookieStore.get("ndmii_auth_user_id")?.value ?? null;
+  const authUserId = cookieStore.get("ndmii_auth_user_id")?.value ?? null;
   const appUserId = cookieStore.get("ndmii_app_user_id")?.value ?? null;
 
-  return {
+  const context: UserContext = {
+    authUserId,
+    appUserId,
     role,
-    user: email ? { email, id: userId } : null,
-    profile: email ? { id: appUserId, full_name: email, role } : null,
+    email,
+    fullName: email,
+    linkedMsmeId: null,
+    linkedAssociationId: null,
   };
+
+  if (!appUserId || role === "public") return context;
+
+  const supabase = await createServerSupabaseClient();
+
+  const [{ data: user }, { data: msme }, { data: association }] = await Promise.all([
+    supabase.from("users").select("full_name").eq("id", appUserId).maybeSingle(),
+    supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("associations").select("id").eq("officer_user_id", appUserId).maybeSingle(),
+  ]);
+
+  context.fullName = user?.full_name ?? context.fullName;
+  context.linkedMsmeId = msme?.id ?? null;
+  context.linkedAssociationId = association?.id ?? null;
+
+  return context;
 }
 
 export async function getCurrentRole(): Promise<UserRole> {

@@ -2,9 +2,12 @@ import { redirect } from "next/navigation";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function enforcementAction(formData: FormData) {
   "use server";
+  const ctx = await getCurrentUserContext();
+  if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const complaintId = String(formData.get("complaint_id"));
   const msmeId = String(formData.get("msme_id"));
   const kind = String(formData.get("kind"));
@@ -40,6 +43,8 @@ async function enforcementAction(formData: FormData) {
 
 export default async function ComplaintDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { id } = await params;
+  const ctx = await getCurrentUserContext();
+  if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const query = await searchParams;
 
   const { data: complaint } = await supabase
@@ -76,15 +81,15 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
 
         <article className="rounded-xl border bg-white p-4">
           <h2 className="font-semibold">Linked MSME</h2>
-          <p className="mt-2 text-sm">{complaint.msmes?.business_name}</p>
-          <p className="text-xs text-slate-500">{complaint.msmes?.msme_id}</p>
-          <p className="mt-2 text-xs">Business Status: {complaint.msmes?.verification_status}</p>
-          <p className="text-xs">Compliance tag: {complaint.msmes?.compliance_tag ?? "partially compliant"}</p>
+          <p className="mt-2 text-sm">{(complaint.msmes as any)?.business_name}</p>
+          <p className="text-xs text-slate-500">{(complaint.msmes as any)?.msme_id}</p>
+          <p className="mt-2 text-xs">Business Status: {(complaint.msmes as any)?.verification_status}</p>
+          <p className="text-xs">Compliance tag: {(complaint.msmes as any)?.compliance_tag ?? "partially compliant"}</p>
           <p className="text-xs">Tax summary: {tax ? `${tax.tax_category} • Outstanding ₦${Number(tax.outstanding_amount).toLocaleString()} • ${tax.compliance_status}` : "No tax profile"}</p>
           <p className="mt-2 text-xs">Compliance profile: {compliance ? `Score ${compliance.score}/100 • ${compliance.overall_status} • ${compliance.risk_level}` : "Not available"}</p>
           <div className="mt-3 flex gap-2">
-            {complaint.msmes?.flagged && <StatusBadge status="warning" label="Flagged" />}
-            {complaint.msmes?.suspended && <StatusBadge status="critical" label="Suspended" />}
+            {(complaint.msmes as any)?.flagged && <StatusBadge status="warning" label="Flagged" />}
+            {(complaint.msmes as any)?.suspended && <StatusBadge status="critical" label="Suspended" />}
           </div>
         </article>
       </div>

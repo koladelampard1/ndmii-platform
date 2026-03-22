@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function updateTaxAction(formData: FormData) {
   "use server";
+  const ctx = await getCurrentUserContext();
+  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const taxId = String(formData.get("tax_id"));
   const msmeId = String(formData.get("msme_id"));
   const kind = String(formData.get("kind"));
@@ -31,6 +34,8 @@ async function updateTaxAction(formData: FormData) {
 
 export default async function FirsTaxDetailPage({ params, searchParams }: { params: Promise<{ msmeId: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { msmeId } = await params;
+  const ctx = await getCurrentUserContext();
+  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const query = await searchParams;
 
   const { data: msme } = await supabase.from("msmes").select("id,msme_id,business_name,state,sector").eq("msme_id", msmeId).maybeSingle();
