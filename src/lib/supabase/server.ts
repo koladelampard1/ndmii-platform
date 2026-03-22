@@ -6,3 +6,18 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "demo-anon-
 export async function createServerSupabaseClient() {
   return createClient(supabaseUrl, supabaseAnonKey);
 }
+
+export async function createServiceRoleSupabaseClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
+    throw new Error("Server registration is unavailable because SUPABASE_SERVICE_ROLE_KEY is not configured.");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
