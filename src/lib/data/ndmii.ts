@@ -98,9 +98,10 @@ export async function getDashboardMetrics() {
 }
 
 export function generateMsmeId(state: string) {
-  const prefix = state.slice(0, 3).toUpperCase();
-  const serial = Math.floor(1000 + Math.random() * 9000);
-  return `NDMII-${prefix}-${serial}`;
+  const prefix = (state || "LAG").slice(0, 3).toUpperCase();
+  const serial = `${Date.now()}`.slice(-6);
+  const checksum = Math.floor(100 + Math.random() * 900);
+  return `NDMII-${prefix}-${serial}${checksum}`;
 }
 
 export async function runKycSimulation(payload: Record<VerificationProvider, string>) {

@@ -1,18 +1,22 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { isRouteAllowed } from "@/lib/roles/permissions";
+import { NextResponse, type NextRequest } from "next/server";
+import { isRoleAllowedPath } from "@/lib/auth/rbac";
 import type { UserRole } from "@/types/roles";
 
 export function middleware(request: NextRequest) {
-  const role = (request.cookies.get("ndmii_role")?.value ?? "public") as UserRole;
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.includes(".")) {
     return NextResponse.next();
   }
 
-  if (!isRouteAllowed(role, pathname)) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  const hasAuth = request.cookies.get("ndmii_auth")?.value === "1";
+  const role = hasAuth
+    ? ((request.cookies.get("ndmii_role")?.value as UserRole | undefined) ?? "public")
+    : "public";
+
+  if (!isRoleAllowedPath(role, pathname)) {
+    const redirectPath = pathname.startsWith("/dashboard") ? "/login" : "/";
+    return NextResponse.redirect(new URL(redirectPath, request.url));
   }
 
   return NextResponse.next();
