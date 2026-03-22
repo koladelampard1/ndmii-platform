@@ -1,9 +1,10 @@
 import QRCode from "qrcode";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 
 export default async function VerifyPage({ params }: { params: Promise<{ msmeId: string }> }) {
   const { msmeId } = await params;
+  const supabase = await createServerSupabaseClient();
   const { data: msme } = await supabase
     .from("msmes")
     .select("id,msme_id,business_name,owner_name,state,sector,verification_status,association_id,flagged,suspended,compliance_tag,enforcement_note")

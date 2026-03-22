@@ -1,11 +1,12 @@
 import Link from "next/link";
 import QRCode from "qrcode";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { PrintButton } from "@/components/msme/print-button";
 
 export default async function IdCardPage({ searchParams }: { searchParams: Promise<{ msmeId?: string }> }) {
   const params = await searchParams;
+  const supabase = await createServerSupabaseClient();
   const { data: msme } = await supabase
     .from("msmes")
     .select("msme_id,business_name,owner_name,state,sector,verification_status")

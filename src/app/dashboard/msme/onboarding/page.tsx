@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { OnboardingWizard } from "@/components/msme/onboarding-wizard";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
+import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
@@ -28,54 +29,56 @@ async function saveOnboarding(formData: FormData) {
 
   const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-  const { data, error } = await supabase
+  const basePayload = {
+    business_name: businessName,
+    owner_name: ownerName,
+    state,
+    sector,
+    contact_email: String(formData.get("contact_email") ?? user.email ?? ""),
+    contact_phone: String(formData.get("contact_phone") ?? ""),
+    lga: String(formData.get("lga") ?? ""),
+    address: String(formData.get("address") ?? ""),
+    business_type: String(formData.get("business_type") ?? ""),
+    nin: kycPayload.NIN,
+    bvn: kycPayload.BVN,
+    cac_number: kycPayload.CAC,
+    tin: kycPayload.TIN,
+    association_id: String(formData.get("association_id") || "") || null,
+    verification_status: intent === "submit" ? "pending_review" : "draft",
+    review_status: intent === "submit" ? "pending_review" : "draft",
+    created_by: profile.id,
+  };
+
+  const { data: existing } = await supabase
     .from("msmes")
-    .insert({
-      msme_id: generateMsmeId(state),
-      business_name: businessName,
-      owner_name: ownerName,
-      state,
-      sector,
-      contact_email: String(formData.get("contact_email") ?? user.email ?? ""),
-      contact_phone: String(formData.get("contact_phone") ?? ""),
-      lga: String(formData.get("lga") ?? ""),
-      address: String(formData.get("address") ?? ""),
-      business_type: String(formData.get("business_type") ?? ""),
-      nin: kycPayload.NIN,
-      bvn: kycPayload.BVN,
-      cac_number: kycPayload.CAC,
-      tin: kycPayload.TIN,
-      association_id: String(formData.get("association_id") || "") || null,
-      verification_status: intent === "submit" ? "pending_review" : "draft",
-      created_by: profile.id,
-    })
     .select("id,msme_id")
-    .single();
+    .eq("created_by", profile.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data, error } = existing?.id
+    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id").single()
+    : await supabase
+        .from("msmes")
+        .insert({ msme_id: generateMsmeId(state), ...basePayload })
+        .select("id,msme_id")
+        .single();
 
   if (error || !data) {
     redirect(`/dashboard/msme/onboarding?error=${encodeURIComponent(error?.message ?? "Unable to save onboarding form")}`);
   }
 
-  await supabase.from("compliance_profiles").upsert({
-    msme_id: data.id,
-    score: overallStatus === "verified" ? 90 : overallStatus === "pending" ? 65 : 45,
-    risk_level: overallStatus === "failed" ? "high" : "medium",
-    overall_status: overallStatus,
-    nin_status: checks.find((x) => x.provider === "NIN")?.status ?? "pending",
-    bvn_status: checks.find((x) => x.provider === "BVN")?.status ?? "pending",
-    cac_status: checks.find((x) => x.provider === "CAC")?.status ?? "pending",
-    tin_status: checks.find((x) => x.provider === "TIN")?.status ?? "pending",
-    admin_override_status: null,
-  }, { onConflict: "msme_id" });
-
-  await supabase.from("tax_profiles").upsert({
-    msme_id: data.id,
-    tax_category: "SME_STANDARD",
-    vat_applicable: true,
-    estimated_monthly_obligation: 125000,
-    outstanding_amount: 38000,
-    compliance_status: "pending",
-  }, { onConflict: "msme_id" });
+  await ensureWorkflowRecords(supabase, {
+    msmeId: data.id,
+    overallStatus,
+    checks,
+    taxDefaults: {
+      estimatedMonthlyObligation: 125000,
+      outstandingAmount: intent === "submit" ? 38000 : 50000,
+      complianceStatus: intent === "submit" ? "pending" : "draft",
+    },
+  });
 
   await supabase.from("activity_logs").insert({
     actor_user_id: profile.id,
@@ -85,6 +88,7 @@ async function saveOnboarding(formData: FormData) {
     metadata: {
       msme_id: data.msme_id,
       wizard_step: String(formData.get("currentStep") ?? "Review and Submit"),
+      source: "onboarding_wizard",
     },
   });
 
@@ -98,6 +102,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
 
   return (
     <section className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        New MSMEs should start from <strong>Register MSME</strong>. This wizard now updates the same canonical onboarding record.
+      </div>
       {params.success && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
           {params.success === "submit" ? "Submission received and sent to reviewer queue." : "Draft saved successfully."}

@@ -9,7 +9,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
     <main className="mx-auto max-w-5xl space-y-6 px-6 py-12">
       <header>
         <h1 className="text-3xl font-bold">Public MSME Verification Portal</h1>
-        <p className="mt-2 text-slate-600">Search by MSME ID or business name for regulatory verification.</p>
+        <p className="mt-2 text-slate-600">Search by MSME ID or business name for live regulatory verification status.</p>
       </header>
       <form className="flex gap-2 rounded-xl border bg-white p-4 shadow-sm">
         <input name="q" defaultValue={params.q} placeholder="e.g. NDMII-LAG-0001 or Eko Fresh" className="flex-1 rounded border px-3 py-2" />

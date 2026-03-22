@@ -1,34 +1,44 @@
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
+
+type MonthPoint = { period: string; registrations: number; kycRate: number; complaints: number; tax: number };
+
+function monthKey(value: string) {
+  const date = new Date(value);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, 1)).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+}
 
 export default async function ExecutiveDashboardPage() {
+  const supabase = await createServerSupabaseClient();
   const [
-    { count: totalMsmes },
-    { count: verifiedMsmes },
-    { count: pendingReviews },
-    { count: suspendedFlagged },
+    { data: msmes },
     { data: complaints },
     { data: payments },
     { data: kyc },
-    { data: states },
-    { data: sectors },
     { data: associations },
     { count: manufacturerCount },
     { count: riskAlerts },
   ] = await Promise.all([
-    supabase.from("msmes").select("*", { count: "exact", head: true }),
-    supabase.from("msmes").select("*", { count: "exact", head: true }).eq("verification_status", "verified"),
-    supabase.from("msmes").select("*", { count: "exact", head: true }).eq("review_status", "pending_review"),
-    supabase.from("msmes").select("*", { count: "exact", head: true }).or("suspended.eq.true,flagged.eq.true"),
-    supabase.from("complaints").select("severity"),
-    supabase.from("payments").select("amount"),
-    supabase.from("compliance_profiles").select("overall_status"),
-    supabase.from("msmes").select("state"),
-    supabase.from("msmes").select("sector"),
+    supabase.from("msmes").select("id,state,sector,verification_status,review_status,suspended,flagged,created_at"),
+    supabase.from("complaints").select("severity,created_at"),
+    supabase.from("payments").select("amount,created_at"),
+    supabase.from("compliance_profiles").select("msme_id,overall_status,created_at"),
     supabase.from("association_members").select("association_id"),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }).eq("counterfeit_risk_flag", true),
   ]);
+
+  const msmeRows = msmes ?? [];
+  const totalMsmes = msmeRows.length;
+  const verifiedMsmes = msmeRows.filter((row) => row.verification_status === "verified").length;
+  const pendingReviews = msmeRows.filter((row) => ["pending_review", "submitted", "changes_requested"].includes(normalizeReviewStatus(row.verification_status, row.review_status))).length;
+  const suspendedFlagged = msmeRows.filter((row) => row.suspended || row.flagged).length;
 
   const complaintBySeverity = Object.entries((complaints ?? []).reduce<Record<string, number>>((acc, row) => {
     const key = row.severity ?? "unknown";
@@ -36,18 +46,47 @@ export default async function ExecutiveDashboardPage() {
     return acc;
   }, {}));
 
-  const kycRate = (kyc ?? []).length ? Math.round(((kyc ?? []).filter((k) => k.overall_status === "verified").length / (kyc ?? []).length) * 100) : 0;
+  const kycRows = kyc ?? [];
+  const kycRate = kycRows.length ? Math.round((kycRows.filter((k) => k.overall_status === "verified").length / kycRows.length) * 100) : 0;
   const revenue = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
 
-  const topStates = Object.entries((states ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.state] = (acc[row.state] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
-  const topSectors = Object.entries((sectors ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.sector] = (acc[row.sector] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const topStates = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.state] = (acc[row.state] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const topSectors = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.sector] = (acc[row.sector] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const topAssociations = Object.entries((associations ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.association_id] = (acc[row.association_id] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
 
-  const trendRows = [
-    { period: "Q4 2025", registrations: 4200, kycRate: 83, complaints: 110, tax: 12500000 },
-    { period: "Q1 2026", registrations: 5810, kycRate: 88, complaints: 97, tax: 17800000 },
-    { period: "Q2 2026 (Projected)", registrations: 6630, kycRate: 91, complaints: 90, tax: 20600000 },
-  ];
+  const monthly = new Map<string, MonthPoint>();
+  for (const row of msmeRows) {
+    const key = monthKey(row.created_at);
+    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
+    point.registrations += 1;
+    monthly.set(key, point);
+  }
+  for (const row of kycRows) {
+    const key = monthKey(row.created_at);
+    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
+    if (row.overall_status === "verified") point.kycRate += 1;
+    monthly.set(key, point);
+  }
+  for (const row of complaints ?? []) {
+    const key = monthKey(row.created_at);
+    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
+    point.complaints += 1;
+    monthly.set(key, point);
+  }
+  for (const row of payments ?? []) {
+    const key = monthKey(row.created_at);
+    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
+    point.tax += Number(row.amount ?? 0);
+    monthly.set(key, point);
+  }
+
+  const trendRows = [...monthly.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-6)
+    .map(([, point]) => ({
+      ...point,
+      kycRate: point.registrations > 0 ? Math.round((point.kycRate / point.registrations) * 100) : 0,
+    }));
 
   return (
     <section className="space-y-6">
@@ -56,10 +95,10 @@ export default async function ExecutiveDashboardPage() {
         <p className="mt-2 text-sm text-slate-200">Federal-level oversight for MSME identity, compliance, tax simulation, and enforcement operations.</p>
       </header>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard title="Total Registered MSMEs" value={(totalMsmes ?? 0).toLocaleString()} status="up" />
-        <DashboardCard title="Verified Businesses" value={(verifiedMsmes ?? 0).toLocaleString()} status="up" />
-        <DashboardCard title="Pending Reviews" value={(pendingReviews ?? 0).toLocaleString()} status="down" />
-        <DashboardCard title="Suspended / Flagged" value={(suspendedFlagged ?? 0).toLocaleString()} status="down" />
+        <DashboardCard title="Total Registered MSMEs" value={totalMsmes.toLocaleString()} status="up" />
+        <DashboardCard title="Verified Businesses" value={verifiedMsmes.toLocaleString()} status="up" />
+        <DashboardCard title="Pending Reviews" value={pendingReviews.toLocaleString()} status="down" />
+        <DashboardCard title="Suspended / Flagged" value={suspendedFlagged.toLocaleString()} status="down" />
         <DashboardCard title="Simulated Tax Revenue" value={`₦${revenue.toLocaleString()}`} status="up" />
         <DashboardCard title="KYC Verification Rate" value={`${kycRate}%`} status="up" />
         <DashboardCard title="Manufacturer Count" value={(manufacturerCount ?? 0).toLocaleString()} status="up" />
@@ -71,7 +110,7 @@ export default async function ExecutiveDashboardPage() {
         <article className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Top sectors by registration</h2>{topSectors.map(([s,c]) => <p key={s} className="mt-2 text-sm">{s}: {c}</p>)}</article>
       </div>
       <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">Trend widgets (seeded demo)</h2>
+        <h2 className="font-semibold">Monthly trend widgets (database-backed)</h2>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm"><thead className="bg-slate-100"><tr><th className="px-3 py-2">Period</th><th className="px-3 py-2">Registrations</th><th className="px-3 py-2">KYC Rate</th><th className="px-3 py-2">Complaints</th><th className="px-3 py-2">Tax Simulation</th></tr></thead><tbody>{trendRows.map((row) => <tr key={row.period} className="border-t"><td className="px-3 py-2">{row.period}</td><td className="px-3 py-2">{row.registrations}</td><td className="px-3 py-2">{row.kycRate}%</td><td className="px-3 py-2">{row.complaints}</td><td className="px-3 py-2">₦{row.tax.toLocaleString()}</td></tr>)}</tbody></table>
         </div>

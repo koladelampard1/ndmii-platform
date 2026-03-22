@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isRoleAllowedPath } from "@/lib/auth/rbac";
+import { getDefaultDashboardRoute, isRoleAllowedPath } from "@/lib/auth/rbac";
 import type { UserRole } from "@/types/roles";
 
 export function middleware(request: NextRequest) {
@@ -15,7 +15,7 @@ export function middleware(request: NextRequest) {
     : "public";
 
   if (!isRoleAllowedPath(role, pathname)) {
-    const redirectPath = pathname.startsWith("/dashboard") ? "/login" : "/";
+    const redirectPath = hasAuth && role !== "public" ? `${getDefaultDashboardRoute(role)}?denied=1` : "/login";
     return NextResponse.redirect(new URL(redirectPath, request.url));
   }
 
