@@ -2,12 +2,12 @@ import { UserRole } from "@/types/roles";
 
 export const roleRouteMap: Record<UserRole, string[]> = {
   public: ["/", "/verify", "/login", "/register"],
-  msme: ["/dashboard", "/dashboard/msme", "/dashboard/complaints", "/dashboard/payments"],
-  association_officer: ["/dashboard", "/dashboard/associations", "/dashboard/msmes"],
-  reviewer: ["/dashboard", "/dashboard/reviews", "/dashboard/compliance"],
-  fccpc_officer: ["/dashboard", "/dashboard/complaints", "/dashboard/enforcement"],
-  firs_officer: ["/dashboard", "/dashboard/payments", "/dashboard/tax"],
-  admin: ["/dashboard", "/dashboard/admin", "/dashboard/settings"],
+  msme: ["/dashboard"],
+  association_officer: ["/dashboard"],
+  reviewer: ["/dashboard"],
+  fccpc_officer: ["/dashboard"],
+  firs_officer: ["/dashboard"],
+  admin: ["/dashboard"],
 };
 
 export function isRouteAllowed(role: UserRole, pathname: string) {

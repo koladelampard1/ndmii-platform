@@ -1,10 +1,6 @@
-export function DataTable() {
-  const rows = [
-    ["NDMII-LAG-0001", "Lagos", "Manufacturing", "Verified"],
-    ["NDMII-KAN-0007", "Kano", "Retail", "Pending"],
-    ["NDMII-RIV-0013", "Rivers", "Agro-processing", "Verified"],
-  ];
+import Link from "next/link";
 
+export function DataTable({ rows }: { rows: { msme_id: string; state: string; sector: string; verification_status: string }[] }) {
   return (
     <div className="overflow-hidden rounded-lg border bg-white">
       <table className="w-full text-left text-sm">
@@ -14,14 +10,20 @@ export function DataTable() {
             <th className="px-4 py-3">State</th>
             <th className="px-4 py-3">Sector</th>
             <th className="px-4 py-3">Status</th>
+            <th className="px-4 py-3">Card</th>
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && (
+            <tr><td className="px-4 py-5 text-center text-slate-500" colSpan={5}>No MSME records available.</td></tr>
+          )}
           {rows.map((row) => (
-            <tr key={row[0]} className="border-t">
-              {row.map((cell) => (
-                <td key={cell} className="px-4 py-3">{cell}</td>
-              ))}
+            <tr key={row.msme_id} className="border-t">
+              <td className="px-4 py-3">{row.msme_id}</td>
+              <td className="px-4 py-3">{row.state}</td>
+              <td className="px-4 py-3">{row.sector}</td>
+              <td className="px-4 py-3">{row.verification_status}</td>
+              <td className="px-4 py-3"><Link href={`/dashboard/msme/id-card?msmeId=${row.msme_id}`} className="text-emerald-700 hover:underline">View</Link></td>
             </tr>
           ))}
         </tbody>
