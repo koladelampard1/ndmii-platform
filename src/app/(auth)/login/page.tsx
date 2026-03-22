@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 
 const DEMO_USERS = [
   { email: "admin@ndmii.gov.ng", role: "admin" },
@@ -42,11 +43,24 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: roleRow } = await supabase.from("users").select("id,role").eq("email", email).maybeSingle();
+    let role = "public";
+    let appUserId: string | null = null;
+
+    try {
+      const profile = await resolveOrCreateUserProfile(supabase, {
+        authUserId: signInData.user.id,
+        email: signInData.user.email ?? email,
+      });
+      role = profile?.role ?? "public";
+      appUserId = profile?.id ?? null;
+    } catch (profileError) {
+      console.error("Unable to resolve user profile during login", profileError);
+    }
+
     await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: roleRow?.role ?? "public", email, userId: signInData.user.id, appUserId: roleRow?.id ?? null }),
+      body: JSON.stringify({ role, email, userId: signInData.user.id, appUserId }),
     });
 
     setLoading(false);

@@ -7,6 +7,7 @@ import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
+import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 
 export default function RegisterPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -65,20 +66,56 @@ export default function RegisterPage() {
 
     const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-    const { data: userRow, error: userError } = await supabase
+    const { data: existingUserByEmail, error: existingUserError } = await supabase
       .from("users")
-      .insert({
-        email,
-        full_name: ownerName,
-        role: "msme",
-        auth_user_id: authUserId,
-      })
-      .select("id")
-      .single();
+      .select("id,role")
+      .eq("email", email)
+      .maybeSingle();
 
-    if (userError || !userRow?.id) {
+    if (existingUserError) {
       setLoading(false);
-      setError(userError?.message || "Unable to create MSME user profile.");
+      setError(existingUserError.message || "Unable to verify existing user profile.");
+      return;
+    }
+
+    if (existingUserByEmail?.role && existingUserByEmail.role !== "msme") {
+      setLoading(false);
+      setError("This email is already linked to a non-MSME account. Please use a different email.");
+      return;
+    }
+
+    let userRow: { id: string } | null = null;
+    try {
+      const profile = await resolveOrCreateUserProfile(supabase, {
+        authUserId,
+        email,
+      });
+
+      if (profile?.id) {
+        userRow = { id: profile.id };
+      }
+
+      if (profile && (profile.full_name !== ownerName || profile.role !== "msme")) {
+        const { data: updatedProfile } = await supabase
+          .from("users")
+          .update({ full_name: ownerName, role: "msme", auth_user_id: authUserId })
+          .eq("id", profile.id)
+          .select("id")
+          .single();
+
+        if (updatedProfile?.id) {
+          userRow = { id: updatedProfile.id };
+        }
+      }
+    } catch (profileError) {
+      setLoading(false);
+      setError(profileError instanceof Error ? profileError.message : "Unable to create MSME user profile.");
+      return;
+    }
+
+    if (!userRow?.id) {
+      setLoading(false);
+      setError("Unable to create MSME user profile.");
       return;
     }
 
@@ -100,6 +137,7 @@ export default function RegisterPage() {
         cac_number: kycPayload.CAC,
         tin: kycPayload.TIN,
         verification_status: "pending_review",
+        review_status: "submitted",
         created_by: userRow.id,
       })
       .select("id")
