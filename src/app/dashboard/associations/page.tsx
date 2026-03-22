@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
 
 async function associationAction(formData: FormData) {
   "use server";
   const associationId = String(formData.get("association_id"));
+  const ctx = await getCurrentUserContext();
+  if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  if (ctx.role === "association_officer" && associationId !== ctx.linkedAssociationId) redirect("/access-denied");
   const memberId = String(formData.get("member_id") ?? "");
   const kind = String(formData.get("kind"));
 
@@ -31,22 +35,34 @@ async function associationAction(formData: FormData) {
 
 export default async function AssociationsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams;
+  const ctx = await getCurrentUserContext();
+  if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+
+  const associationQuery = supabase.from("associations").select("id,name,state,sector,lga_coverage,profile");
+  const msmeQuery = supabase.from("msmes").select("id,msme_id,business_name,association_id").limit(80);
+
   const [{ data: associations }, { data: msmes }] = await Promise.all([
-    supabase.from("associations").select("id,name,state,sector,lga_coverage,profile"),
-    supabase.from("msmes").select("id,msme_id,business_name").limit(80),
+    ctx.role === "association_officer" ? associationQuery.eq("id", ctx.linkedAssociationId ?? "") : associationQuery,
+    ctx.role === "association_officer" ? msmeQuery.eq("association_id", ctx.linkedAssociationId ?? "") : msmeQuery,
   ]);
 
   const memberMap = new Map<string, { total: number; verified: number; pending: number; flagged: number; members: any[] }>();
-  const { data: members } = await supabase
+  let membersQuery = supabase
     .from("association_members")
     .select("id,association_id,member_status,is_verified,msmes(msme_id,business_name,flagged)");
+
+  if (ctx.role === "association_officer") {
+    membersQuery = membersQuery.eq("association_id", ctx.linkedAssociationId ?? "");
+  }
+
+  const { data: members } = await membersQuery;
 
   (members ?? []).forEach((m) => {
     const prev = memberMap.get(m.association_id) ?? { total: 0, verified: 0, pending: 0, flagged: 0, members: [] };
     prev.total += 1;
     if (m.is_verified) prev.verified += 1;
     if (!m.is_verified) prev.pending += 1;
-    if (m.msmes?.flagged) prev.flagged += 1;
+    if ((m.msmes as any)?.flagged) prev.flagged += 1;
     prev.members.push(m);
     memberMap.set(m.association_id, prev);
   });
@@ -58,7 +74,7 @@ export default async function AssociationsPage({ searchParams }: { searchParams:
       {(associations ?? []).map((association) => {
         const stats = memberMap.get(association.id) ?? { total: 0, verified: 0, pending: 0, flagged: 0, members: [] };
         const csv = ["MSME ID,Business,Status,Verified"].concat(
-          stats.members.map((m) => `${m.msmes?.msme_id ?? ""},${m.msmes?.business_name ?? ""},${m.member_status},${m.is_verified}`)
+          stats.members.map((m) => `${(m.msmes as any)?.msme_id ?? ""},${(m.msmes as any)?.business_name ?? ""},${m.member_status},${m.is_verified}`)
         ).join("\n");
         const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
 
@@ -100,7 +116,7 @@ export default async function AssociationsPage({ searchParams }: { searchParams:
                   {stats.members.length === 0 && <tr><td className="px-2 py-4 text-center text-slate-500" colSpan={3}>No members linked yet.</td></tr>}
                   {stats.members.map((member) => (
                     <tr key={member.id} className="border-t">
-                      <td className="px-2 py-2">{member.msmes?.business_name} ({member.msmes?.msme_id})</td>
+                      <td className="px-2 py-2">{(member.msmes as any)?.business_name} ({(member.msmes as any)?.msme_id})</td>
                       <td className="px-2 py-2">{member.member_status} {member.is_verified ? "• verified" : "• pending"}</td>
                       <td className="px-2 py-2">
                         <form action={associationAction}>

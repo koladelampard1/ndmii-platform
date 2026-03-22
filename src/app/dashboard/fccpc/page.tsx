@@ -3,9 +3,12 @@ import { redirect } from "next/navigation";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function complaintAction(formData: FormData) {
   "use server";
+  const ctx = await getCurrentUserContext();
+  if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const complaintId = String(formData.get("complaint_id"));
   const kind = String(formData.get("kind"));
 
@@ -30,6 +33,8 @@ export default async function FccpcPage({
   searchParams: Promise<{ status?: string; state?: string; sector?: string; severity?: string; assigned?: string; saved?: string }>;
 }) {
   const params = await searchParams;
+  const ctx = await getCurrentUserContext();
+  if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const { data: officers } = await supabase.from("users").select("id,full_name").eq("role", "fccpc_officer");
 
   let query = supabase
@@ -83,7 +88,7 @@ export default async function FccpcPage({
                   <p className="font-medium">{row.summary}</p>
                   <p className="text-xs text-slate-500">{row.state} • {row.sector}</p>
                 </td>
-                <td className="px-3 py-3">{row.msmes?.business_name}<p className="text-xs text-slate-500">{row.msmes?.msme_id}</p></td>
+                <td className="px-3 py-3">{(row.msmes as any)?.business_name}<p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id}</p></td>
                 <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity} /></td>
                 <td className="px-3 py-3">{row.status}</td>
                 <td className="px-3 py-3">{officers?.find((x) => x.id === row.assigned_officer_user_id)?.full_name ?? "Unassigned"}</td>

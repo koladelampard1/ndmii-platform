@@ -46,10 +46,10 @@ export default async function ManufacturerDetailPage({ params, searchParams }: {
       <h1 className="text-2xl font-semibold">Manufacturer Detail & Product Verification</h1>
       {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Manufacturer action logged.</p>}
       <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">{manufacturer.msmes?.business_name}</h2>
-        <p className="text-xs text-slate-500">{manufacturer.msmes?.msme_id} • {manufacturer.msmes?.state} • {manufacturer.msmes?.sector}</p>
+        <h2 className="font-semibold">{(manufacturer.msmes as any)?.business_name}</h2>
+        <p className="text-xs text-slate-500">{(manufacturer.msmes as any)?.msme_id} • {(manufacturer.msmes as any)?.state} • {(manufacturer.msmes as any)?.sector}</p>
         <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-          <p><strong>Company details:</strong> {manufacturer.msmes?.owner_name}</p>
+          <p><strong>Company details:</strong> {(manufacturer.msmes as any)?.owner_name}</p>
           <p><strong>Compliance badge:</strong> {manufacturer.compliance_badge}</p>
           <p><strong>Product lines:</strong> {manufacturer.product_category}</p>
           <p><strong>Inspection status:</strong> {manufacturer.inspection_status}</p>

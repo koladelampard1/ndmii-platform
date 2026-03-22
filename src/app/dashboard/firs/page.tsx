@@ -2,9 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function firsQuickAction(formData: FormData) {
   "use server";
+  const ctx = await getCurrentUserContext();
+  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const taxId = String(formData.get("tax_id"));
   const msmeId = String(formData.get("msme_id"));
   const action = String(formData.get("action"));
@@ -24,6 +27,8 @@ async function firsQuickAction(formData: FormData) {
 
 export default async function FirsPage({ searchParams }: { searchParams: Promise<{ state?: string; sector?: string; status?: string; vat?: string; arrears?: string; saved?: string }> }) {
   const params = await searchParams;
+  const ctx = await getCurrentUserContext();
+  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   let query = supabase
     .from("tax_profiles")
@@ -35,7 +40,7 @@ export default async function FirsPage({ searchParams }: { searchParams: Promise
   if (params.arrears) query = query.eq("arrears_status", params.arrears);
 
   const { data: rows } = await query;
-  const filtered = (rows ?? []).filter((row) => (!params.state || row.msmes?.state === params.state) && (!params.sector || row.msmes?.sector === params.sector));
+  const filtered = (rows ?? []).filter((row) => (!params.state || (row.msmes as any)?.state === params.state) && (!params.sector || (row.msmes as any)?.sector === params.sector));
 
   return (
     <section className="space-y-6">
@@ -60,7 +65,7 @@ export default async function FirsPage({ searchParams }: { searchParams: Promise
             {filtered.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No tax records match your filter set.</td></tr>}
             {filtered.map((row) => (
               <tr key={row.id} className="border-t">
-                <td className="px-3 py-3">{row.msmes?.business_name}<p className="text-xs text-slate-500">{row.msmes?.msme_id} • {row.msmes?.state}</p></td>
+                <td className="px-3 py-3">{(row.msmes as any)?.business_name}<p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id} • {(row.msmes as any)?.state}</p></td>
                 <td className="px-3 py-3">{row.tax_category}</td>
                 <td className="px-3 py-3">{row.vat_applicable ? "Applicable" : "No"}</td>
                 <td className="px-3 py-3">{row.arrears_status}</td>
@@ -74,7 +79,7 @@ export default async function FirsPage({ searchParams }: { searchParams: Promise
                     <input type="hidden" name="tax_id" value={row.id} /><input type="hidden" name="msme_id" value={row.msme_id} /><input type="hidden" name="action" value="under_review" />
                     <button className="rounded border px-2 py-1 text-xs">Mark under review</button>
                   </form>
-                  <Link href={`/dashboard/firs/${row.msmes?.msme_id}`} className="text-xs text-emerald-700 hover:underline">Open tax detail →</Link>
+                  <Link href={`/dashboard/firs/${(row.msmes as any)?.msme_id}`} className="text-xs text-emerald-700 hover:underline">Open tax detail →</Link>
                 </td>
               </tr>
             ))}

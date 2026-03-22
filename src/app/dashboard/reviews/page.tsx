@@ -3,8 +3,8 @@ import { revalidatePath } from "next/cache";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCurrentUserContext } from "@/lib/auth/session";
 import { generateMsmeId } from "@/lib/data/ndmii";
+import { assertMsmeAction, requireRole } from "@/lib/data/authorization-scope";
 
 async function reviewAction(formData: FormData) {
   "use server";
@@ -13,7 +13,7 @@ async function reviewAction(formData: FormData) {
   const note = String(formData.get("note") ?? "");
 
   const supabase = await createServerSupabaseClient();
-  const { profile } = await getCurrentUserContext();
+  const { ctx } = await assertMsmeAction(id, action);
   const { data: msme } = await supabase.from("msmes").select("state,msme_id").eq("id", id).single();
   const update: Record<string, unknown> = {
     reviewer_notes: note,
@@ -41,7 +41,7 @@ async function reviewAction(formData: FormData) {
 
   await supabase.from("msmes").update(update).eq("id", id);
   await supabase.from("activity_logs").insert({
-    actor_user_id: profile?.id,
+    actor_user_id: ctx.appUserId,
     action: `review_${action}`,
     entity_type: "msme",
     entity_id: id,
@@ -61,6 +61,7 @@ export default async function ReviewsPage({
 }: {
   searchParams: Promise<{ state?: string; sector?: string; status?: string; done?: string }>;
 }) {
+  await requireRole(["reviewer", "admin"]);
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
   let query = supabase

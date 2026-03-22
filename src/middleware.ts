@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getDefaultDashboardRoute, isRoleAllowedPath } from "@/lib/auth/rbac";
+import { canAccessRoute, getDefaultDashboardRoute } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 export function middleware(request: NextRequest) {
@@ -14,8 +14,8 @@ export function middleware(request: NextRequest) {
     ? ((request.cookies.get("ndmii_role")?.value as UserRole | undefined) ?? "public")
     : "public";
 
-  if (!isRoleAllowedPath(role, pathname)) {
-    const redirectPath = hasAuth && role !== "public" ? `${getDefaultDashboardRoute(role)}?denied=1` : "/login";
+  if (!canAccessRoute(role, pathname)) {
+    const redirectPath = hasAuth && role !== "public" ? `/access-denied?from=${encodeURIComponent(pathname)}` : "/login";
     return NextResponse.redirect(new URL(redirectPath, request.url));
   }
 

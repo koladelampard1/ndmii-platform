@@ -8,8 +8,9 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 async function saveOnboarding(formData: FormData) {
   "use server";
 
-  const { user, profile } = await getCurrentUserContext();
-  if (!user || !profile) {
+  const context = await getCurrentUserContext();
+  const { email, fullName, appUserId, role } = context;
+  if (!email || !appUserId || !["msme", "admin"].includes(role)) {
     redirect("/login?message=Please sign in first");
   }
 
@@ -17,7 +18,7 @@ async function saveOnboarding(formData: FormData) {
   const intent = String(formData.get("intent") ?? "draft");
   const state = String(formData.get("state") ?? "Lagos");
   const businessName = String(formData.get("business_name") ?? "Untitled MSME");
-  const ownerName = String(formData.get("owner_name") ?? profile.full_name ?? "Unknown Owner");
+  const ownerName = String(formData.get("owner_name") ?? fullName ?? "Unknown Owner");
   const sector = String(formData.get("sector") ?? "Services");
 
   const kycPayload = {
@@ -34,7 +35,7 @@ async function saveOnboarding(formData: FormData) {
     owner_name: ownerName,
     state,
     sector,
-    contact_email: String(formData.get("contact_email") ?? user.email ?? ""),
+    contact_email: String(formData.get("contact_email") ?? email ?? ""),
     contact_phone: String(formData.get("contact_phone") ?? ""),
     lga: String(formData.get("lga") ?? ""),
     address: String(formData.get("address") ?? ""),
@@ -46,13 +47,13 @@ async function saveOnboarding(formData: FormData) {
     association_id: String(formData.get("association_id") || "") || null,
     verification_status: intent === "submit" ? "pending_review" : "draft",
     review_status: intent === "submit" ? "pending_review" : "draft",
-    created_by: profile.id,
+    created_by: appUserId,
   };
 
   const { data: existing } = await supabase
     .from("msmes")
     .select("id,msme_id")
-    .eq("created_by", profile.id)
+    .eq("created_by", appUserId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -81,7 +82,7 @@ async function saveOnboarding(formData: FormData) {
   });
 
   await supabase.from("activity_logs").insert({
-    actor_user_id: profile.id,
+    actor_user_id: appUserId,
     action: intent === "submit" ? "msme_submitted" : "msme_draft_saved",
     entity_type: "msme",
     entity_id: data.id,
