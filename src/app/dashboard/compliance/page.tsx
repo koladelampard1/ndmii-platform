@@ -16,7 +16,7 @@ async function overrideAction(formData: FormData) {
     redirect("/access-denied");
   }
 
-  await supabase.from("compliance_profiles").update({ admin_override_status: status, override_notes: notes, overall_status: status }).eq("id", id);
+  await supabase.from("compliance_profiles").update({ admin_override_status: status, override_notes: notes, overall_status: status, validation_overridden_at: new Date().toISOString() }).eq("id", id);
   await supabase.from("activity_logs").insert({ actor_user_id: ctx.appUserId, action: "kyc_override", entity_type: "compliance_profile", entity_id: id, metadata: { status, notes } });
   redirect("/dashboard/compliance?saved=1");
 }
@@ -32,7 +32,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
 
   let query = supabase
     .from("compliance_profiles")
-    .select("id,msme_id,overall_status,nin_status,bvn_status,cac_status,tin_status,admin_override_status,msmes(id,msme_id,business_name)")
+    .select("id,msme_id,overall_status,nin_status,bvn_status,cac_status,tin_status,nin_checked_at,bvn_checked_at,cac_checked_at,tin_checked_at,admin_override_status,override_notes,validation_overridden_at,msmes(id,msme_id,business_name)")
     .order("last_reviewed_at", { ascending: false });
 
   if (ctx.role === "msme") query = query.eq("msme_id", ctx.linkedMsmeId ?? "");
@@ -53,7 +53,8 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
               </div>
               <StatusBadge status={row.overall_status === "verified" ? "active" : row.overall_status === "failed" ? "critical" : "warning"} label={row.overall_status} />
             </div>
-            <p className="mt-2 text-xs text-slate-600">NIN: {row.nin_status} • BVN: {row.bvn_status} • CAC: {row.cac_status} • TIN: {row.tin_status}</p>
+            <p className="mt-2 text-xs text-slate-600">NIN: {row.nin_status} ({row.nin_checked_at ? new Date(row.nin_checked_at).toLocaleString() : "pending"}) • BVN: {row.bvn_status} ({row.bvn_checked_at ? new Date(row.bvn_checked_at).toLocaleString() : "pending"}) • CAC: {row.cac_status} ({row.cac_checked_at ? new Date(row.cac_checked_at).toLocaleString() : "pending"}) • TIN: {row.tin_status} ({row.tin_checked_at ? new Date(row.tin_checked_at).toLocaleString() : "pending"})</p>
+            {row.admin_override_status && <p className="mt-1 text-xs text-amber-700">Override: {row.admin_override_status} {row.validation_overridden_at ? `at ${new Date(row.validation_overridden_at).toLocaleString()}` : ""} {row.override_notes ? `• ${row.override_notes}` : ""}</p>}
             {ctx.role !== "msme" && (
               <form action={overrideAction} className="mt-3 flex flex-wrap gap-2">
                 <input type="hidden" name="id" value={row.id} />

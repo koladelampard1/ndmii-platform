@@ -23,16 +23,18 @@ export async function getCurrentUserContext(): Promise<UserContext> {
   if (!appUserId || role === "public") return context;
 
   const supabase = await createServerSupabaseClient();
-
-  const [{ data: user }, { data: msme }, { data: association }] = await Promise.all([
-    supabase.from("users").select("full_name").eq("id", appUserId).maybeSingle(),
-    supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("associations").select("id").eq("officer_user_id", appUserId).maybeSingle(),
-  ]);
-
+  const { data: user } = await supabase.from("users").select("full_name").eq("id", appUserId).maybeSingle();
   context.fullName = user?.full_name ?? context.fullName;
-  context.linkedMsmeId = msme?.id ?? null;
-  context.linkedAssociationId = association?.id ?? null;
+
+  if (role === "msme") {
+    const { data: msme } = await supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    context.linkedMsmeId = msme?.id ?? null;
+  }
+
+  if (role === "association_officer") {
+    const { data: association } = await supabase.from("associations").select("id").eq("officer_user_id", appUserId).maybeSingle();
+    context.linkedAssociationId = association?.id ?? null;
+  }
 
   return context;
 }

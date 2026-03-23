@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { generateMsmeId } from "@/lib/data/ndmii";
+import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { assertMsmeAction, requireRole } from "@/lib/data/authorization-scope";
 
 async function reviewAction(formData: FormData) {
@@ -14,11 +14,32 @@ async function reviewAction(formData: FormData) {
 
   const supabase = await createServerSupabaseClient();
   const { ctx } = await assertMsmeAction(id, action);
-  const { data: msme } = await supabase.from("msmes").select("state,msme_id").eq("id", id).single();
+  const { data: msme } = await supabase.from("msmes").select("state,msme_id,nin,bvn,cac_number,tin").eq("id", id).single();
+  const validation = await runKycSimulation({
+    NIN: msme?.nin ?? "",
+    BVN: msme?.bvn ?? "",
+    CAC: msme?.cac_number ?? "",
+    TIN: msme?.tin ?? "",
+  });
+  const nowIso = new Date().toISOString();
   const update: Record<string, unknown> = {
     reviewer_notes: note,
     reviewed_at: new Date().toISOString(),
   };
+
+  await supabase.from("compliance_profiles").upsert({
+    msme_id: id,
+    overall_status: validation.overallStatus,
+    nin_status: validation.checks.find((x) => x.provider === "NIN")?.status ?? "pending",
+    bvn_status: validation.checks.find((x) => x.provider === "BVN")?.status ?? "pending",
+    cac_status: validation.checks.find((x) => x.provider === "CAC")?.status ?? "pending",
+    tin_status: validation.checks.find((x) => x.provider === "TIN")?.status ?? "pending",
+    nin_checked_at: nowIso,
+    bvn_checked_at: nowIso,
+    cac_checked_at: nowIso,
+    tin_checked_at: nowIso,
+    last_reviewed_at: nowIso,
+  }, { onConflict: "msme_id" });
 
   if (action === "approve") {
     update.verification_status = "verified";

@@ -12,7 +12,7 @@ const DEMO_USERS = [
   { email: "admin@ndmii.gov.ng", role: "admin" },
   { email: "reviewer@ndmii.gov.ng", role: "reviewer" },
   { email: "officer@fccpc.gov.ng", role: "fccpc_officer" },
-  { email: "officer@firs.gov.ng", role: "firs_officer" },
+  { email: "officer@nrs.gov.ng", role: "firs_officer" },
   { email: "assoc.lagos@ndmii.ng", role: "association_officer" },
   { email: "msme.demo@ndmii.ng", role: "msme" },
 ] as const;

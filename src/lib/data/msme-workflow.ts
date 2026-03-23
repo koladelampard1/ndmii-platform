@@ -23,6 +23,7 @@ export async function ensureWorkflowRecords(
   }
 ) {
   const complianceSnapshot = buildComplianceSnapshot(params.overallStatus);
+  const nowIso = new Date().toISOString();
 
   await supabase.from("compliance_profiles").upsert(
     {
@@ -32,6 +33,11 @@ export async function ensureWorkflowRecords(
       bvn_status: params.checks.find((x) => x.provider === "BVN")?.status ?? "pending",
       cac_status: params.checks.find((x) => x.provider === "CAC")?.status ?? "pending",
       tin_status: params.checks.find((x) => x.provider === "TIN")?.status ?? "pending",
+      nin_checked_at: params.checks.find((x) => x.provider === "NIN") ? nowIso : null,
+      bvn_checked_at: params.checks.find((x) => x.provider === "BVN") ? nowIso : null,
+      cac_checked_at: params.checks.find((x) => x.provider === "CAC") ? nowIso : null,
+      tin_checked_at: params.checks.find((x) => x.provider === "TIN") ? nowIso : null,
+      last_reviewed_at: nowIso,
     },
     { onConflict: "msme_id" }
   );
