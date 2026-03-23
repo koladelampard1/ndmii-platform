@@ -14,18 +14,18 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   admin: "/dashboard/executive",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
-  firs_officer: "/dashboard/firs",
+  firs_officer: "/dashboard/nrs",
   association_officer: "/dashboard/associations",
   msme: "/dashboard/msme",
 };
 
-const ROUTE_RULES: Record<Exclude<UserRole, "public">, string[]> = {
+export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
   admin: ["/dashboard"],
   msme: ["/dashboard/msme", "/dashboard/compliance", "/dashboard/payments"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
   reviewer: ["/dashboard/reviews", "/dashboard/compliance"],
   fccpc_officer: ["/dashboard/fccpc"],
-  firs_officer: ["/dashboard/firs", "/dashboard/payments"],
+  firs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
 };
 
 export function isPublicPath(path: string): boolean {
@@ -41,7 +41,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   if (isPublicPath(path)) return true;
   if (role === "public") return false;
   if (role === "admin") return path.startsWith("/dashboard");
-  return ROUTE_RULES[role].some((prefix) => path.startsWith(prefix));
+  return ROLE_ROUTE_PREFIXES[role].some((prefix) => path.startsWith(prefix));
 }
 
 export type MsmeLikeRecord = {
@@ -63,7 +63,7 @@ export function canViewMsme(role: UserRole, userContext: UserContext, msmeRecord
   }
 
   if (role === "reviewer") {
-    return ["pending_review", "submitted", "changes_requested"].includes(msmeRecord.review_status ?? "");
+    return ["pending_review", "submitted", "changes_requested", "approved", "rejected"].includes(msmeRecord.review_status ?? "");
   }
 
   if (role === "fccpc_officer" || role === "firs_officer") {
@@ -87,8 +87,8 @@ export function canActOnMsme(role: UserRole, action: string, userContext: UserCo
   }
 
   if (role === "reviewer") {
-    if (!["approve", "reject", "changes"].includes(action)) return false;
-    return ["pending_review", "submitted", "changes_requested"].includes(msmeRecord.review_status ?? "");
+    if (!["approve", "reject", "changes", "override_validation"].includes(action)) return false;
+    return ["pending_review", "submitted", "changes_requested", "approved", "rejected"].includes(msmeRecord.review_status ?? "");
   }
 
   if (role === "fccpc_officer") {
@@ -96,7 +96,7 @@ export function canActOnMsme(role: UserRole, action: string, userContext: UserCo
   }
 
   if (role === "firs_officer") {
-    return ["tax_action", "compliance_notice", "reminder", "under_review"].includes(action);
+    return ["tax_action", "compliance_notice", "reminder", "under_review", "mark_overdue", "mark_compliant"].includes(action);
   }
 
   return false;
@@ -107,11 +107,11 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/executive", label: "Executive Dashboard" },
     { href: "/dashboard/msme", label: "MSME Registry" },
     { href: "/dashboard/msme/onboarding", label: "Onboarding Wizard" },
-    { href: "/dashboard/msme/id-card", label: "Digital ID Card" },
+    { href: "/dashboard/msme/id-registry", label: "Digital ID Registry" },
     { href: "/dashboard/reviews", label: "Reviewer Workflow" },
     { href: "/dashboard/compliance", label: "KYC Simulation" },
     { href: "/dashboard/fccpc", label: "FCCPC Workspace" },
-    { href: "/dashboard/firs", label: "FIRS Operations" },
+    { href: "/dashboard/nrs", label: "NRS Operations" },
     { href: "/dashboard/associations", label: "Associations" },
     { href: "/dashboard/manufacturers", label: "Manufacturers" },
     { href: "/dashboard/reports", label: "Reports & Export" },
@@ -142,7 +142,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/verify", label: "Public Verification" },
   ],
   firs_officer: [
-    { href: "/dashboard/firs", label: "FIRS Operations" },
+    { href: "/dashboard/nrs", label: "NRS Operations" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],

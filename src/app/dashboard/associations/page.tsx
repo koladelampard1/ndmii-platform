@@ -1,137 +1,138 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { logActivity } from "@/lib/data/operations";
-import { supabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 async function associationAction(formData: FormData) {
   "use server";
-  const associationId = String(formData.get("association_id"));
   const ctx = await getCurrentUserContext();
+  const supabase = await createServerSupabaseClient();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
-  if (ctx.role === "association_officer" && associationId !== ctx.linkedAssociationId) redirect("/access-denied");
-  const memberId = String(formData.get("member_id") ?? "");
+
   const kind = String(formData.get("kind"));
+  const associationId = String(formData.get("association_id") ?? "");
 
-  if (kind === "verify_member") {
-    await supabase.from("association_members").update({ is_verified: true, member_status: "active" }).eq("id", memberId);
-    await logActivity("association_verify_member", "association_member", memberId, { associationId });
+  if (kind === "create" && ctx.role === "admin") {
+    await supabase.from("associations").insert({
+      name: String(formData.get("name")),
+      sector: String(formData.get("sector_focus") ?? "General"),
+      state: String(formData.get("state")),
+      lga_coverage: String(formData.get("lga_coverage") ?? ""),
+      profile: String(formData.get("profile") ?? ""),
+      contact_email: String(formData.get("contact_email") ?? null) || null,
+      contact_phone: String(formData.get("contact_phone") ?? null) || null,
+      status: String(formData.get("status") ?? "active"),
+    });
   }
 
-  if (kind === "invite_member") {
-    const msmeId = String(formData.get("msme_id"));
-    await supabase.from("association_members").insert({ association_id: associationId, msme_id: msmeId, member_status: "invited", is_verified: false });
-    await logActivity("association_invite_member", "association", associationId, { msmeId });
-  }
-
-  if (kind === "update_details") {
-    const profile = String(formData.get("profile") ?? "");
-    const lgaCoverage = String(formData.get("lga_coverage") ?? "");
-    await supabase.from("associations").update({ profile, lga_coverage: lgaCoverage }).eq("id", associationId);
-    await logActivity("association_update_details", "association", associationId, { lgaCoverage });
+  if (kind === "update") {
+    if (ctx.role === "association_officer" && associationId !== ctx.linkedAssociationId) redirect("/access-denied");
+    await supabase
+      .from("associations")
+      .update({
+        name: String(formData.get("name")),
+        sector: String(formData.get("sector_focus") ?? "General"),
+        state: String(formData.get("state")),
+        lga_coverage: String(formData.get("lga_coverage") ?? ""),
+        profile: String(formData.get("profile") ?? ""),
+        contact_email: String(formData.get("contact_email") ?? null) || null,
+        contact_phone: String(formData.get("contact_phone") ?? null) || null,
+        status: String(formData.get("status") ?? "active"),
+      })
+      .eq("id", associationId);
   }
 
   redirect("/dashboard/associations?saved=1");
 }
 
-export default async function AssociationsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+export default async function AssociationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; state?: string; sector?: string; sort?: string; saved?: string }>;
+}) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
-  const associationQuery = supabase.from("associations").select("id,name,state,sector,lga_coverage,profile");
-  const msmeQuery = supabase.from("msmes").select("id,msme_id,business_name,association_id").limit(80);
+  const supabase = await createServerSupabaseClient();
+  let query = supabase
+    .from("associations")
+    .select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone")
+    .order(params.sort === "members" ? "name" : "created_at", { ascending: true });
 
-  const [{ data: associations }, { data: msmes }] = await Promise.all([
-    ctx.role === "association_officer" ? associationQuery.eq("id", ctx.linkedAssociationId ?? "") : associationQuery,
-    ctx.role === "association_officer" ? msmeQuery.eq("association_id", ctx.linkedAssociationId ?? "") : msmeQuery,
-  ]);
+  if (ctx.role === "association_officer") query = query.eq("id", ctx.linkedAssociationId ?? "");
+  const { data: associations } = await query;
 
-  const memberMap = new Map<string, { total: number; verified: number; pending: number; flagged: number; members: any[] }>();
-  let membersQuery = supabase
-    .from("association_members")
-    .select("id,association_id,member_status,is_verified,msmes(msme_id,business_name,flagged)");
+  const { data: members } = await supabase.from("association_members").select("association_id,id");
+  const counts = new Map<string, number>();
+  (members ?? []).forEach((m) => counts.set(m.association_id, (counts.get(m.association_id) ?? 0) + 1));
 
-  if (ctx.role === "association_officer") {
-    membersQuery = membersQuery.eq("association_id", ctx.linkedAssociationId ?? "");
+  let rows = associations ?? [];
+  if (params.q) {
+    const q = params.q.toLowerCase();
+    rows = rows.filter((a) => a.name.toLowerCase().includes(q) || (a.profile ?? "").toLowerCase().includes(q));
   }
-
-  const { data: members } = await membersQuery;
-
-  (members ?? []).forEach((m) => {
-    const prev = memberMap.get(m.association_id) ?? { total: 0, verified: 0, pending: 0, flagged: 0, members: [] };
-    prev.total += 1;
-    if (m.is_verified) prev.verified += 1;
-    if (!m.is_verified) prev.pending += 1;
-    if ((m.msmes as any)?.flagged) prev.flagged += 1;
-    prev.members.push(m);
-    memberMap.set(m.association_id, prev);
-  });
+  if (params.state) rows = rows.filter((a) => a.state === params.state);
+  if (params.sector) rows = rows.filter((a) => a.sector === params.sector);
+  if (params.sort === "members") rows = [...rows].sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
 
   return (
     <section className="space-y-5">
       <h1 className="text-2xl font-semibold">Association Management Console</h1>
-      {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association workflow updated.</p>}
-      {(associations ?? []).map((association) => {
-        const stats = memberMap.get(association.id) ?? { total: 0, verified: 0, pending: 0, flagged: 0, members: [] };
-        const csv = ["MSME ID,Business,Status,Verified"].concat(
-          stats.members.map((m) => `${(m.msmes as any)?.msme_id ?? ""},${(m.msmes as any)?.business_name ?? ""},${m.member_status},${m.is_verified}`)
-        ).join("\n");
-        const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+      {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association changes saved.</p>}
 
-        return (
-          <article key={association.id} className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">{association.name}</h2>
-                <p className="text-sm text-slate-600">{association.sector} • {association.state} • LGA coverage: {association.lga_coverage ?? "Not specified"}</p>
-                <p className="mt-1 text-xs text-slate-500">{association.profile ?? "Association profile pending update."}</p>
-              </div>
-              <a href={csvHref} download={`${association.name.replaceAll(" ", "-").toLowerCase()}-members.csv`} className="rounded border px-3 py-2 text-xs">Export member list</a>
+      <div className="grid gap-3 md:grid-cols-3">
+        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Associations</p><p className="text-2xl font-semibold">{rows.length}</p></article>
+        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total linked members</p><p className="text-2xl font-semibold">{rows.reduce((sum, r) => sum + (counts.get(r.id) ?? 0), 0)}</p></article>
+        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">States covered</p><p className="text-2xl font-semibold">{new Set(rows.map((r) => r.state)).size}</p></article>
+      </div>
+
+      <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-5">
+        <input name="q" defaultValue={params.q} placeholder="Search name/profile" className="rounded border px-2 py-2 text-sm" />
+        <input name="state" defaultValue={params.state} placeholder="State" className="rounded border px-2 py-2 text-sm" />
+        <input name="sector" defaultValue={params.sector} placeholder="Sector" className="rounded border px-2 py-2 text-sm" />
+        <select name="sort" defaultValue={params.sort} className="rounded border px-2 py-2 text-sm"><option value="">Newest</option><option value="members">Member count</option></select>
+        <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Apply</button>
+      </form>
+
+      {ctx.role === "admin" && (
+        <form action={associationAction} className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-4">
+          <input type="hidden" name="kind" value="create" />
+          <input name="name" required placeholder="Association name" className="rounded border px-2 py-2 text-sm" />
+          <input name="sector_focus" placeholder="Sector focus" className="rounded border px-2 py-2 text-sm" />
+          <input name="state" placeholder="State" className="rounded border px-2 py-2 text-sm" />
+          <input name="lga_coverage" placeholder="LGA coverage" className="rounded border px-2 py-2 text-sm" />
+          <input name="contact_email" placeholder="Contact email" className="rounded border px-2 py-2 text-sm" />
+          <input name="contact_phone" placeholder="Contact phone" className="rounded border px-2 py-2 text-sm" />
+          <select name="status" className="rounded border px-2 py-2 text-sm"><option>active</option><option>inactive</option><option>under review</option></select>
+          <input name="profile" placeholder="Association summary" className="rounded border px-2 py-2 text-sm md:col-span-3" />
+          <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Create new association</button>
+        </form>
+      )}
+
+      {rows.map((association) => (
+        <article key={association.id} className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">{association.name}</h2>
+              <p className="text-sm text-slate-600">{association.sector} • {association.state} • {association.status ?? "active"}</p>
+              <p className="text-xs text-slate-500">Members: {counts.get(association.id) ?? 0} • LGA: {association.lga_coverage || "n/a"}</p>
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-4 text-sm">
-              <div className="rounded border p-2">Total members: <strong>{stats.total}</strong></div>
-              <div className="rounded border p-2">Verified members: <strong>{stats.verified}</strong></div>
-              <div className="rounded border p-2">Pending members: <strong>{stats.pending}</strong></div>
-              <div className="rounded border p-2">Flagged members: <strong>{stats.flagged}</strong></div>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <form action={associationAction} className="space-y-2 rounded border p-3">
-                <input type="hidden" name="association_id" value={association.id} /><input type="hidden" name="kind" value="invite_member" />
-                <p className="text-xs font-medium">Invite member</p>
-                <select name="msme_id" className="w-full rounded border px-2 py-1 text-xs">{(msmes ?? []).map((m) => <option key={m.id} value={m.id}>{m.business_name} ({m.msme_id})</option>)}</select>
-                <button className="w-full rounded bg-slate-900 px-2 py-1 text-xs text-white">Send invite</button>
-              </form>
-              <form action={associationAction} className="space-y-2 rounded border p-3 md:col-span-2">
-                <input type="hidden" name="association_id" value={association.id} /><input type="hidden" name="kind" value="update_details" />
-                <p className="text-xs font-medium">Update association details</p>
-                <input name="lga_coverage" defaultValue={association.lga_coverage ?? ""} className="w-full rounded border px-2 py-1 text-xs" placeholder="LGA coverage" />
-                <input name="profile" defaultValue={association.profile ?? ""} className="w-full rounded border px-2 py-1 text-xs" placeholder="Association profile" />
-                <button className="rounded bg-slate-900 px-3 py-1 text-xs text-white">Save details</button>
-              </form>
-            </div>
-            <div className="mt-3 overflow-hidden rounded border">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100"><tr><th className="px-2 py-2">Member</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Action</th></tr></thead>
-                <tbody>
-                  {stats.members.length === 0 && <tr><td className="px-2 py-4 text-center text-slate-500" colSpan={3}>No members linked yet.</td></tr>}
-                  {stats.members.map((member) => (
-                    <tr key={member.id} className="border-t">
-                      <td className="px-2 py-2">{(member.msmes as any)?.business_name} ({(member.msmes as any)?.msme_id})</td>
-                      <td className="px-2 py-2">{member.member_status} {member.is_verified ? "• verified" : "• pending"}</td>
-                      <td className="px-2 py-2">
-                        <form action={associationAction}>
-                          <input type="hidden" name="association_id" value={association.id} /><input type="hidden" name="member_id" value={member.id} /><input type="hidden" name="kind" value="verify_member" />
-                          <button className="rounded border px-2 py-1">Verify member association</button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </article>
-        );
-      })}
+          </div>
+          <form action={associationAction} className="mt-3 grid gap-2 rounded border p-3 md:grid-cols-4">
+            <input type="hidden" name="kind" value="update" />
+            <input type="hidden" name="association_id" value={association.id} />
+            <input name="name" defaultValue={association.name} className="rounded border px-2 py-2 text-sm" />
+            <input name="sector_focus" defaultValue={association.sector} className="rounded border px-2 py-2 text-sm" />
+            <input name="state" defaultValue={association.state} className="rounded border px-2 py-2 text-sm" />
+            <input name="lga_coverage" defaultValue={association.lga_coverage ?? ""} className="rounded border px-2 py-2 text-sm" />
+            <input name="contact_email" defaultValue={(association as any).contact_email ?? ""} className="rounded border px-2 py-2 text-sm" />
+            <input name="contact_phone" defaultValue={(association as any).contact_phone ?? ""} className="rounded border px-2 py-2 text-sm" />
+            <select name="status" defaultValue={(association as any).status ?? "active"} className="rounded border px-2 py-2 text-sm"><option>active</option><option>inactive</option><option>under review</option></select>
+            <input name="profile" defaultValue={association.profile ?? ""} className="rounded border px-2 py-2 text-sm md:col-span-3" />
+            <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Save association</button>
+          </form>
+        </article>
+      ))}
     </section>
   );
 }

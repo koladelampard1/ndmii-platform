@@ -19,7 +19,7 @@ export default async function IdCardPage({ searchParams }: { searchParams: Promi
   } else if (requestedPublicId) {
     query = query.eq("msme_id", requestedPublicId);
   } else {
-    query = query.eq("verification_status", "verified").limit(1);
+    redirect("/dashboard/msme/id-registry");
   }
 
   const { data: profile } = await query.maybeSingle();
