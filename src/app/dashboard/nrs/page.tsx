@@ -10,7 +10,7 @@ export default async function NrsPage({
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  if (!["firs_officer", "nrs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase

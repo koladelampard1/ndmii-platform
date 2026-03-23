@@ -8,6 +8,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   admin: "Administrator",
   reviewer: "Reviewer",
   fccpc_officer: "FCCPC Officer",
+  nrs_officer: "NRS Officer",
   firs_officer: "NRS Officer",
   association_officer: "Association Officer",
   msme: "MSME Operator",

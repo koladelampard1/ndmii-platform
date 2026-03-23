@@ -7,12 +7,14 @@ import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
+import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
+import type { UserRole } from "@/types/roles";
 
 const DEMO_USERS = [
   { email: "admin@ndmii.gov.ng", role: "admin" },
   { email: "reviewer@ndmii.gov.ng", role: "reviewer" },
   { email: "officer@fccpc.gov.ng", role: "fccpc_officer" },
-  { email: "officer@nrs.gov.ng", role: "firs_officer" },
+  { email: "officer@nrs.gov.ng", role: "nrs_officer" },
   { email: "assoc.lagos@ndmii.ng", role: "association_officer" },
   { email: "msme.demo@ndmii.ng", role: "msme" },
 ] as const;
@@ -43,7 +45,7 @@ export default function LoginPage() {
       return;
     }
 
-    let role = "public";
+    let role: UserRole = "public";
     let appUserId: string | null = null;
 
     try {
@@ -65,7 +67,7 @@ export default function LoginPage() {
 
     setLoading(false);
     setMessage("Authentication successful. Redirecting to your dashboard...");
-    router.replace("/dashboard");
+    router.replace(getDefaultDashboardRoute(role));
     router.refresh();
   }
 

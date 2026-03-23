@@ -4,5 +4,6 @@ export type UserRole =
   | "association_officer"
   | "reviewer"
   | "fccpc_officer"
+  | "nrs_officer"
   | "firs_officer"
   | "admin";
