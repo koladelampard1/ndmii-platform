@@ -7,7 +7,7 @@ MSMEs
 Association officers
 Reviewers
 FCCPC officers
-FIRS officers
+NRS officers
 Admins
 
 Primary workflows

@@ -13,19 +13,19 @@ export default async function DigitalIdRegistryPage({
   if (ctx.role !== "admin") redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
-  const { data } = await supabase
+  let query = supabase
     .from("msmes")
-    .select("id,msme_id,business_name,state,sector,verification_status,issued_at")
-    .order("issued_at", { ascending: false, nullsFirst: false });
-  let rows = data ?? [];
+    .select("id,msme_id,business_name,passport_photo_url,state,sector,verification_status,issued_at")
+    .order("issued_at", { ascending: false, nullsFirst: false })
+    .limit(250);
 
-  if (params.q) {
-    const q = params.q.toLowerCase();
-    rows = rows.filter((row) => row.msme_id.toLowerCase().includes(q) || row.business_name.toLowerCase().includes(q));
-  }
-  if (params.state) rows = rows.filter((row) => row.state === params.state);
-  if (params.sector) rows = rows.filter((row) => row.sector === params.sector);
-  if (params.status) rows = rows.filter((row) => row.verification_status === params.status);
+  if (params.state) query = query.eq("state", params.state);
+  if (params.sector) query = query.eq("sector", params.sector);
+  if (params.status) query = query.eq("verification_status", params.status);
+  if (params.q) query = query.or(`msme_id.ilike.%${params.q}%,business_name.ilike.%${params.q}%`);
+
+  const { data } = await query;
+  const rows = data ?? [];
 
   return (
     <section className="space-y-4">
@@ -47,6 +47,7 @@ export default async function DigitalIdRegistryPage({
             <tr>
               <th className="px-3 py-2">MSME ID</th>
               <th className="px-3 py-2">Business name</th>
+              <th className="px-3 py-2">Passport</th>
               <th className="px-3 py-2">State</th>
               <th className="px-3 py-2">Sector</th>
               <th className="px-3 py-2">Status</th>
@@ -57,7 +58,7 @@ export default async function DigitalIdRegistryPage({
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-8 text-center text-slate-500" colSpan={7}>
+                <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>
                   No digital IDs match the selected filters.
                 </td>
               </tr>
@@ -66,13 +67,20 @@ export default async function DigitalIdRegistryPage({
               <tr key={row.id} className="border-t">
                 <td className="px-3 py-2 font-medium">{row.msme_id}</td>
                 <td className="px-3 py-2">{row.business_name}</td>
+                <td className="px-3 py-2">
+                  {row.passport_photo_url ? (
+                    <img src={row.passport_photo_url} alt={`${row.business_name} passport`} className="h-10 w-10 rounded object-cover" />
+                  ) : (
+                    <span className="text-xs text-slate-500">N/A</span>
+                  )}
+                </td>
                 <td className="px-3 py-2">{row.state}</td>
                 <td className="px-3 py-2">{row.sector}</td>
                 <td className="px-3 py-2 capitalize">{row.verification_status}</td>
                 <td className="px-3 py-2">{row.issued_at ? new Date(row.issued_at).toLocaleDateString() : "Not issued"}</td>
                 <td className="px-3 py-2">
                   <Link className="text-emerald-700 hover:underline" href={`/dashboard/msme/id-card/${encodeURIComponent(row.msme_id)}`}>
-                    Open card
+                    Open detail
                   </Link>
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -80,10 +81,11 @@ export default async function AssociationsPage({
       <h1 className="text-2xl font-semibold">Association Management Console</h1>
       {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association changes saved.</p>}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Associations</p><p className="text-2xl font-semibold">{rows.length}</p></article>
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total linked members</p><p className="text-2xl font-semibold">{rows.reduce((sum, r) => sum + (counts.get(r.id) ?? 0), 0)}</p></article>
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">States covered</p><p className="text-2xl font-semibold">{new Set(rows.map((r) => r.state)).size}</p></article>
+        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Active associations</p><p className="text-2xl font-semibold">{rows.filter((r) => (r.status ?? "active") === "active").length}</p></article>
       </div>
 
       <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-5">
@@ -109,30 +111,20 @@ export default async function AssociationsPage({
         </form>
       )}
 
-      {rows.map((association) => (
-        <article key={association.id} className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">{association.name}</h2>
-              <p className="text-sm text-slate-600">{association.sector} • {association.state} • {association.status ?? "active"}</p>
-              <p className="text-xs text-slate-500">Members: {counts.get(association.id) ?? 0} • LGA: {association.lga_coverage || "n/a"}</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        {rows.map((association) => (
+          <article key={association.id} className="rounded-xl border bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">{association.name}</h2>
+                <p className="text-sm text-slate-600">{association.sector} • {association.state} • {association.status ?? "active"}</p>
+                <p className="text-xs text-slate-500">Members: {counts.get(association.id) ?? 0} • LGA: {association.lga_coverage || "n/a"}</p>
+              </div>
+              <Link href={`/dashboard/associations/${association.id}`} className="rounded border px-3 py-1 text-xs">Open details</Link>
             </div>
-          </div>
-          <form action={associationAction} className="mt-3 grid gap-2 rounded border p-3 md:grid-cols-4">
-            <input type="hidden" name="kind" value="update" />
-            <input type="hidden" name="association_id" value={association.id} />
-            <input name="name" defaultValue={association.name} className="rounded border px-2 py-2 text-sm" />
-            <input name="sector_focus" defaultValue={association.sector} className="rounded border px-2 py-2 text-sm" />
-            <input name="state" defaultValue={association.state} className="rounded border px-2 py-2 text-sm" />
-            <input name="lga_coverage" defaultValue={association.lga_coverage ?? ""} className="rounded border px-2 py-2 text-sm" />
-            <input name="contact_email" defaultValue={(association as any).contact_email ?? ""} className="rounded border px-2 py-2 text-sm" />
-            <input name="contact_phone" defaultValue={(association as any).contact_phone ?? ""} className="rounded border px-2 py-2 text-sm" />
-            <select name="status" defaultValue={(association as any).status ?? "active"} className="rounded border px-2 py-2 text-sm"><option>active</option><option>inactive</option><option>under review</option></select>
-            <input name="profile" defaultValue={association.profile ?? ""} className="rounded border px-2 py-2 text-sm md:col-span-3" />
-            <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Save association</button>
-          </form>
-        </article>
-      ))}
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 const steps = [
@@ -19,11 +19,23 @@ type Props = {
 
 export function OnboardingWizard({ associations, onSave }: Props) {
   const [step, setStep] = useState(0);
+  const [passportPreview, setPassportPreview] = useState("");
   const progress = useMemo(() => Math.round(((step + 1) / steps.length) * 100), [step]);
+
+  const onPassportChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setPassportPreview(typeof reader.result === "string" ? reader.result : "");
+    reader.readAsDataURL(file);
+  };
 
   return (
     <form action={onSave} className="space-y-6 rounded-xl border bg-white p-6 shadow-sm">
       <input type="hidden" name="currentStep" value={steps[step]} />
+      <input type="hidden" name="passport_photo_data" value={passportPreview} />
+
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">MSME onboarding wizard</p>
         <h2 className="text-2xl font-bold text-slate-900">{steps[step]}</h2>
@@ -48,6 +60,12 @@ export function OnboardingWizard({ associations, onSave }: Props) {
             <input name="contact_phone" className="rounded border px-3 py-2" placeholder="Phone Number" />
             <input name="contact_email" type="email" className="rounded border px-3 py-2" placeholder="Email" />
             <input name="contact_title" className="rounded border px-3 py-2" placeholder="Designation" />
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-600">Passport Photograph</label>
+              <input type="file" accept="image/*" className="rounded border px-3 py-2 text-sm" onChange={onPassportChange} />
+              <p className="text-xs text-slate-500">Optional. A small passport-style photo improves regulator verification and ID card quality.</p>
+              {passportPreview && <img src={passportPreview} alt="Passport preview" className="h-20 w-20 rounded-lg border object-cover" />}
+            </div>
           </>
         )}
         {step === 2 && (
@@ -77,9 +95,9 @@ export function OnboardingWizard({ associations, onSave }: Props) {
           </>
         )}
         {step === 5 && (
-          <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 md:col-span-2">
             Review your information and choose <strong>Save Draft</strong> or <strong>Submit Final</strong>.
-            KYC simulation runs automatically at save time.
+            Automated CAC, NIN, BVN, and TIN validation runs immediately at save time.
           </div>
         )}
       </section>
