@@ -38,7 +38,7 @@ Attach notes
 Regulator Operations
 
 FCCPC complaint tracking
-FIRS tax profile tracking
+NRS tax profile tracking
 Inspection flags
 Suspension control
 

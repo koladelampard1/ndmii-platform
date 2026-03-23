@@ -13,7 +13,7 @@ const DEMO_ROLE_BY_EMAIL: Record<string, UserRole> = {
   "admin@ndmii.gov.ng": "admin",
   "reviewer@ndmii.gov.ng": "reviewer",
   "officer@fccpc.gov.ng": "fccpc_officer",
-  "officer@nrs.gov.ng": "firs_officer",
+  "officer@nrs.gov.ng": "nrs_officer",
   "assoc.lagos@ndmii.ng": "association_officer",
   "assoc.kano@ndmii.ng": "association_officer",
   "msme.demo@ndmii.ng": "msme",

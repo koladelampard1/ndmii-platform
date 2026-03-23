@@ -110,11 +110,13 @@ export async function runKycSimulation(payload: Record<VerificationProvider, str
       verifyWithAdapter(provider as VerificationProvider, identifier)
     )
   );
-  const overallStatus: VerificationState = checks.some((item) => item.status === "failed" || item.status === "mismatch")
+  const overallStatus: VerificationState = checks.some((item) => item.status === "failed")
     ? "failed"
-    : checks.some((item) => item.status === "pending")
-      ? "pending"
-      : "verified";
+    : checks.some((item) => item.status === "mismatch")
+      ? "mismatch"
+      : checks.some((item) => item.status === "pending")
+        ? "pending"
+        : "verified";
 
   return { checks, overallStatus };
 }

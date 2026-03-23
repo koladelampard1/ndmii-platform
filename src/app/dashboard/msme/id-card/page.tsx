@@ -6,27 +6,22 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { PrintButton } from "@/components/msme/print-button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
-export default async function IdCardPage({ searchParams }: { searchParams: Promise<{ msmeId?: string }> }) {
-  const params = await searchParams;
+export default async function IdCardPage() {
   const supabase = await createServerSupabaseClient();
   const ctx = await getCurrentUserContext();
 
-  const requestedPublicId = params.msmeId;
-  let query = supabase.from("msmes").select("id,msme_id,business_name,owner_name,state,sector,verification_status");
-
-  if (ctx.role === "msme") {
-    query = query.eq("id", ctx.linkedMsmeId ?? "");
-  } else if (requestedPublicId) {
-    query = query.eq("msme_id", requestedPublicId);
-  } else {
+  if (ctx.role !== "msme") {
     redirect("/dashboard/msme/id-registry");
   }
 
-  const { data: profile } = await query.maybeSingle();
+  const { data: profile } = await supabase
+    .from("msmes")
+    .select("id,msme_id,business_name,owner_name,state,sector,passport_photo_url,verification_status")
+    .eq("id", ctx.linkedMsmeId ?? "")
+    .maybeSingle();
 
   if (!profile) {
-    if (ctx.role === "msme") redirect("/access-denied");
-    return <p className="rounded border bg-white p-6 text-slate-500">No approved MSME found yet.</p>;
+    redirect("/access-denied");
   }
 
   const verifyUrl = `https://ndmii.gov.ng/verify/${profile.msme_id}`;
@@ -34,11 +29,16 @@ export default async function IdCardPage({ searchParams }: { searchParams: Promi
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">Digital MSME Identity Card</h1>
+      <h1 className="text-2xl font-bold">My Digital MSME Identity Card</h1>
       <div className="rounded-2xl border bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white shadow-xl print:bg-white print:text-slate-900">
         <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Federal Republic of Nigeria • NDMII</p>
-        <h2 className="mt-2 text-2xl font-bold">{profile.business_name}</h2>
-        <p className="text-sm text-slate-200">Owner/Contact: {profile.owner_name}</p>
+        <div className="mt-4 flex items-start gap-4">
+          {profile.passport_photo_url && <img src={profile.passport_photo_url} alt="Passport" className="h-24 w-24 rounded-xl border border-white/40 object-cover" />}
+          <div>
+            <h2 className="text-2xl font-bold">{profile.business_name}</h2>
+            <p className="text-sm text-slate-200">Owner/Contact: {profile.owner_name}</p>
+          </div>
+        </div>
         <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
           <p><span className="text-slate-300">MSME ID:</span> {profile.msme_id}</p>
           <p><span className="text-slate-300">Sector:</span> {profile.sector}</p>

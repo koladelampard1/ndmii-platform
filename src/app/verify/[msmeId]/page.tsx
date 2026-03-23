@@ -7,7 +7,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
   const supabase = await createServerSupabaseClient();
   const { data: msme } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,owner_name,state,sector,verification_status,association_id,flagged,suspended,compliance_tag,enforcement_note")
+    .select("id,msme_id,business_name,owner_name,state,sector,passport_photo_url,verification_status,association_id,flagged,suspended,compliance_tag,enforcement_note")
     .eq("msme_id", msmeId)
     .maybeSingle();
 
@@ -30,10 +30,10 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
   const qrDataUrl = await QRCode.toDataURL(verificationUrl);
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-16">
-      <h1 className="text-2xl font-bold">Public MSME Verification</h1>
+    <main className="mx-auto max-w-5xl px-6 py-16">
+      <h1 className="text-3xl font-bold">Public MSME Verification Result</h1>
       <p className="mt-2 text-slate-600">Identity, enforcement, compliance, and traceability status for MSME ID: {msmeId}</p>
-      <div className="mt-6 grid gap-4 rounded-lg border bg-white p-6 md:grid-cols-[1fr_240px]">
+      <div className="mt-6 grid gap-4 rounded-xl border bg-white p-6 md:grid-cols-[1fr_260px]">
         <div className="space-y-2 text-sm">
           <p><strong>Business:</strong> {msme.business_name}</p>
           <p><strong>Owner/Contact:</strong> {msme.owner_name}</p>
@@ -43,7 +43,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
           <p><strong>Sector:</strong> {msme.sector}</p>
           <p><strong>Association:</strong> {association?.name ?? "Unlinked"}</p>
           <p><strong>State/LGA:</strong> {msme.state}</p>
-          <p><strong>Tax Profile:</strong> {tax ? `${tax.tax_category} • VAT ${tax.vat_applicable ? "Applicable" : "Not Applicable"} • ${tax.compliance_status} • Outstanding ₦${Number(tax.outstanding_amount).toLocaleString()}` : "Not yet profiled"}</p>
+          <p><strong>NRS Tax Profile:</strong> {tax ? `${tax.tax_category} • VAT ${tax.vat_applicable ? "Applicable" : "Not Applicable"} • ${tax.compliance_status} • Outstanding ₦${Number(tax.outstanding_amount).toLocaleString()}` : "Not yet profiled"}</p>
           <p><strong>Complaint Indicator:</strong> {complaints ? `${complaints} active complaint(s)` : "No active complaints"}</p>
           <p><strong>Enforcement Note:</strong> {msme.enforcement_note ?? "No enforcement note"}</p>
           <p><strong>Manufacturer Status:</strong> {manufacturer ? `${manufacturer.standards_status} • Inspection ${manufacturer.inspection_status} • Badge ${manufacturer.compliance_badge} • Risk ${manufacturer.counterfeit_risk_flag ? "ALERT" : "CLEAR"}` : "Not a manufacturer"}</p>
@@ -58,9 +58,10 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
             </div>
           )}
         </div>
-        <div className="rounded-lg border bg-slate-50 p-3 text-center">
-          <img src={qrDataUrl} alt={`QR for ${msmeId}`} className="mx-auto h-44 w-44" />
-          <p className="mt-3 text-xs text-slate-500">{verificationUrl}</p>
+        <div className="space-y-3 rounded-lg border bg-slate-50 p-3 text-center">
+          {msme.passport_photo_url && <img src={msme.passport_photo_url} alt="Passport" className="mx-auto h-24 w-24 rounded-xl border object-cover" />}
+          <img src={qrDataUrl} alt={`QR for ${msmeId}`} className="mx-auto h-40 w-40" />
+          <p className="text-xs text-slate-500">{verificationUrl}</p>
         </div>
       </div>
     </main>

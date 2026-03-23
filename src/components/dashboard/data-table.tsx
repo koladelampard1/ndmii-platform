@@ -23,7 +23,7 @@ export function DataTable({ rows }: { rows: { msme_id: string; state: string; se
               <td className="px-4 py-3">{row.state}</td>
               <td className="px-4 py-3">{row.sector}</td>
               <td className="px-4 py-3">{row.verification_status}</td>
-              <td className="px-4 py-3"><Link href={`/dashboard/msme/id-card?msmeId=${row.msme_id}`} className="text-emerald-700 hover:underline">View</Link></td>
+              <td className="px-4 py-3"><Link href={`/dashboard/msme/id-card/${encodeURIComponent(row.msme_id)}`} className="text-emerald-700 hover:underline">View</Link></td>
             </tr>
           ))}
         </tbody>

@@ -39,6 +39,17 @@ async function updateNrsAction(formData: FormData) {
       metadata: { notice_type: String(formData.get("notice_type") ?? "general"), message: String(formData.get("message") ?? "") },
     });
   }
+  if (kind === "configure_vat") {
+    const category = String(formData.get("category") ?? "General goods");
+    await supabase.from("vat_rules").upsert({
+      category,
+      vat_percent: Number(formData.get("vat_percent") ?? 7.5),
+      applies_to: String(formData.get("applies_to") ?? "service"),
+      status: String(formData.get("vat_status") ?? "active"),
+      notes: String(formData.get("notes") ?? ""),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "category" });
+  }
 
   await supabase.from("activity_logs").insert({
     actor_user_id: ctx.appUserId,
@@ -61,9 +72,10 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
   const { data: msme } = await supabase.from("msmes").select("id,msme_id,business_name,state,sector").eq("msme_id", msmeId).maybeSingle();
   if (!msme) return <div className="rounded border bg-white p-6">MSME tax record not found.</div>;
 
-  const [{ data: tax }, { data: payments }] = await Promise.all([
+  const [{ data: tax }, { data: payments }, { data: vatRules }] = await Promise.all([
     supabase.from("tax_profiles").select("id,tax_category,vat_applicable,estimated_monthly_obligation,outstanding_amount,compliance_score,compliance_status,arrears_status").eq("msme_id", msme.id).maybeSingle(),
     supabase.from("payments").select("amount,tax_type,status,payment_date,receipt_reference").eq("msme_id", msme.id).order("payment_date", { ascending: false }),
+    supabase.from("vat_rules").select("id,category,vat_percent,applies_to,status,notes").order("updated_at", { ascending: false }),
   ]);
 
   if (!tax) return <div className="rounded border bg-white p-6">No tax profile has been generated for this MSME.</div>;
@@ -107,26 +119,50 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
           <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="adjust_arrears" />
           <p className="text-xs font-medium">Add/adjust arrears</p>
           <input name="outstanding_amount" type="number" defaultValue={tax.outstanding_amount} className="w-full rounded border px-2 py-1 text-xs" />
-          <select name="arrears_status" className="w-full rounded border px-2 py-1 text-xs"><option>none</option><option>low</option><option>medium</option><option>high</option></select>
+          <select name="arrears_status" defaultValue={tax.arrears_status} className="w-full rounded border px-2 py-1 text-xs"><option>none</option><option>low</option><option>medium</option><option>high</option></select>
           <button className="w-full rounded bg-emerald-800 px-2 py-1 text-xs text-white">Update</button>
         </form>
         <form action={updateNrsAction} className="space-y-2 rounded border p-3">
           <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="set_status" />
           <p className="text-xs font-medium">Compliance state</p>
-          <select name="status" className="w-full rounded border px-2 py-1 text-xs"><option>compliant</option><option>overdue</option><option>under review</option><option>partially compliant</option></select>
+          <select name="status" defaultValue={tax.compliance_status} className="w-full rounded border px-2 py-1 text-xs"><option>compliant</option><option>overdue</option><option>under review</option><option>partially compliant</option></select>
           <button className="w-full rounded bg-emerald-800 px-2 py-1 text-xs text-white">Mark status</button>
         </form>
       </div>
 
-      <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
-        <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="issue_notice" />
-        <p className="text-sm font-medium">Issue simulated notice</p>
-        <div className="grid gap-2 md:grid-cols-4">
-          <input name="notice_type" placeholder="Notice type" className="rounded border px-2 py-2 text-sm" defaultValue="compliance_reminder" />
-          <input name="message" placeholder="Notice message" className="rounded border px-2 py-2 text-sm md:col-span-2" />
-          <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Issue notice</button>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
+          <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="issue_notice" />
+          <p className="text-sm font-medium">Issue simulated notice</p>
+          <div className="grid gap-2 md:grid-cols-4">
+            <input name="notice_type" placeholder="Notice type" className="rounded border px-2 py-2 text-sm" defaultValue="compliance_reminder" />
+            <input name="message" placeholder="Notice message" className="rounded border px-2 py-2 text-sm md:col-span-2" />
+            <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Issue notice</button>
+          </div>
+        </form>
+
+        <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
+          <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="configure_vat" />
+          <p className="text-sm font-medium">Configure VAT rule by category</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            <input name="category" placeholder="Category name" className="rounded border px-2 py-2 text-sm" />
+            <input name="vat_percent" type="number" step="0.01" defaultValue="7.50" className="rounded border px-2 py-2 text-sm" />
+            <select name="applies_to" className="rounded border px-2 py-2 text-sm"><option value="product">product</option><option value="service">service</option><option value="mixed">mixed</option></select>
+            <select name="vat_status" className="rounded border px-2 py-2 text-sm"><option value="active">active</option><option value="inactive">inactive</option></select>
+            <input name="notes" placeholder="Notes" className="rounded border px-2 py-2 text-sm md:col-span-2" />
+          </div>
+          <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Save VAT rule</button>
+        </form>
+      </div>
+
+      <article className="rounded-xl border bg-white p-4">
+        <h2 className="font-semibold">VAT rules visible to MSMEs</h2>
+        <div className="mt-2 grid gap-2 md:grid-cols-2 text-sm">
+          {(vatRules ?? []).map((rule) => (
+            <p key={rule.id} className="rounded border p-2">{rule.category} • {Number(rule.vat_percent).toFixed(2)}% • {rule.applies_to} • {rule.status}</p>
+          ))}
         </div>
-      </form>
+      </article>
 
       <article className="rounded-xl border bg-white p-4">
         <h2 className="font-semibold">Payment ledger / history</h2>

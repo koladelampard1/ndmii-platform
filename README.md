@@ -8,7 +8,7 @@ This platform enables:
 
 • MSME digital identity issuance
 • QR-based verification
-• regulator workflows (FCCPC, FIRS)
+• regulator workflows (FCCPC, NRS)
 • association onboarding
 • simulated tax/VAT compliance tracking
 • complaint management
@@ -19,7 +19,7 @@ This platform enables:
 This repository contains the production-grade MVP system designed for demonstration to:
 
 FCCPC  
-FIRS  
+NRS  
 SMEDAN  
 SON  
 NAFDAC  

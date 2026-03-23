@@ -38,6 +38,10 @@ async function reviewAction(formData: FormData) {
     bvn_checked_at: nowIso,
     cac_checked_at: nowIso,
     tin_checked_at: nowIso,
+    nin_response_summary: validation.checks.find((x) => x.provider === "NIN")?.summary ?? null,
+    bvn_response_summary: validation.checks.find((x) => x.provider === "BVN")?.summary ?? null,
+    cac_response_summary: validation.checks.find((x) => x.provider === "CAC")?.summary ?? null,
+    tin_response_summary: validation.checks.find((x) => x.provider === "TIN")?.summary ?? null,
     last_reviewed_at: nowIso,
   }, { onConflict: "msme_id" });
 
