@@ -5,7 +5,7 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 async function updateNrsAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  if (!["firs_officer", "nrs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
   const taxId = String(formData.get("tax_id"));
@@ -55,7 +55,7 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
   const { msmeId } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (!["firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  if (!["firs_officer", "nrs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
   const { data: msme } = await supabase.from("msmes").select("id,msme_id,business_name,state,sector").eq("msme_id", msmeId).maybeSingle();

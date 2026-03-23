@@ -7,6 +7,7 @@ export const roleRouteMap: Record<UserRole, string[]> = {
   association_officer: ROLE_ROUTE_PREFIXES.association_officer,
   reviewer: ROLE_ROUTE_PREFIXES.reviewer,
   fccpc_officer: ROLE_ROUTE_PREFIXES.fccpc_officer,
+  nrs_officer: ROLE_ROUTE_PREFIXES.nrs_officer,
   firs_officer: ROLE_ROUTE_PREFIXES.firs_officer,
   admin: ["/dashboard"],
 };

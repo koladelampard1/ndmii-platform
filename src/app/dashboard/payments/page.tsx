@@ -11,7 +11,7 @@ async function simulatePayment(formData: FormData) {
   const amount = Number(formData.get("amount") ?? 0);
   const receiptRef = `RCP-${Date.now()}`;
 
-  if (!["admin", "firs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
+  if (!["admin", "firs_officer", "nrs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
   if (ctx.role === "msme" && msmeId !== ctx.linkedMsmeId) redirect("/access-denied");
 
   await supabase.from("payments").insert({ msme_id: msmeId, amount, tax_type: "VAT_SIM", status: "simulated_paid", receipt_reference: receiptRef });
@@ -30,7 +30,7 @@ export default async function PaymentsPage({
   const supabase = await createServerSupabaseClient();
   const ctx = await getCurrentUserContext();
 
-  if (!["admin", "firs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
+  if (!["admin", "firs_officer", "nrs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
 
   let profilesQuery = supabase
     .from("tax_profiles")

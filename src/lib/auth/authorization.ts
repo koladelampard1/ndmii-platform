@@ -14,6 +14,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   admin: "/dashboard/executive",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
+  nrs_officer: "/dashboard/nrs",
   firs_officer: "/dashboard/nrs",
   association_officer: "/dashboard/associations",
   msme: "/dashboard/msme",
@@ -21,6 +22,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
 
 export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
   admin: ["/dashboard"],
+  nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
   msme: ["/dashboard/msme", "/dashboard/compliance", "/dashboard/payments"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
   reviewer: ["/dashboard/reviews", "/dashboard/compliance"],
@@ -41,6 +43,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   if (isPublicPath(path)) return true;
   if (role === "public") return false;
   if (role === "admin") return path.startsWith("/dashboard");
+  if (path === "/dashboard") return true;
   return ROLE_ROUTE_PREFIXES[role].some((prefix) => path.startsWith(prefix));
 }
 
@@ -66,7 +69,7 @@ export function canViewMsme(role: UserRole, userContext: UserContext, msmeRecord
     return ["pending_review", "submitted", "changes_requested", "approved", "rejected"].includes(msmeRecord.review_status ?? "");
   }
 
-  if (role === "fccpc_officer" || role === "firs_officer") {
+  if (role === "fccpc_officer" || role === "firs_officer" || role === "nrs_officer") {
     return true;
   }
 
@@ -95,7 +98,7 @@ export function canActOnMsme(role: UserRole, action: string, userContext: UserCo
     return ["assign_complaint", "update_complaint_status", "flag", "suspend", "reinstate"].includes(action);
   }
 
-  if (role === "firs_officer") {
+  if (role === "firs_officer" || role === "nrs_officer") {
     return ["tax_action", "compliance_notice", "reminder", "under_review", "mark_overdue", "mark_compliant"].includes(action);
   }
 
@@ -139,6 +142,11 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
   ],
   fccpc_officer: [
     { href: "/dashboard/fccpc", label: "FCCPC Workspace" },
+    { href: "/verify", label: "Public Verification" },
+  ],
+  nrs_officer: [
+    { href: "/dashboard/nrs", label: "NRS Operations" },
+    { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],
   firs_officer: [
