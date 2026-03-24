@@ -1,32 +1,18 @@
 import QRCode from "qrcode";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getPublicVerificationDetail } from "@/lib/data/public-verification";
 
 export default async function VerifyPage({ params }: { params: Promise<{ msmeId: string }> }) {
   const { msmeId } = await params;
+  const detail = await getPublicVerificationDetail(msmeId);
+
+  if (!detail) {
+    return <main className="mx-auto max-w-xl px-6 py-16"><h1 className="text-2xl font-bold">Verification not found</h1><p className="mt-2 text-slate-600">No MSME exists for ID {decodeURIComponent(msmeId)}.</p></main>;
+  }
+
+  const { msme, digitalId, resolvedId } = detail;
   const supabase = await createServerSupabaseClient();
-
-  const { data: digital } = await supabase
-    .from("digital_ids")
-    .select("id,msme_id,ndmii_id,issued_at,status,qr_code_ref,validation_snapshot,msmes(id,msme_id,business_name,owner_name,state,sector,passport_photo_url,verification_status,association_id,flagged,suspended,compliance_tag,enforcement_note)")
-    .eq("ndmii_id", msmeId)
-    .maybeSingle();
-
-  let msme = digital?.msmes as any;
-  let digitalId = digital as any;
-
-  if (!msme) {
-    const { data: fallbackMsme } = await supabase
-      .from("msmes")
-      .select("id,msme_id,business_name,owner_name,state,sector,passport_photo_url,verification_status,association_id,flagged,suspended,compliance_tag,enforcement_note")
-      .eq("msme_id", msmeId)
-      .maybeSingle();
-    msme = fallbackMsme;
-  }
-
-  if (!msme) {
-    return <main className="mx-auto max-w-xl px-6 py-16"><h1 className="text-2xl font-bold">Verification not found</h1><p className="mt-2 text-slate-600">No MSME exists for ID {msmeId}.</p></main>;
-  }
 
   const [{ data: association }, { data: tax }, { count: complaints }, { data: manufacturer }, { data: validation }] = await Promise.all([
     supabase.from("associations").select("name").eq("id", msme.association_id ?? "").maybeSingle(),
@@ -40,7 +26,6 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
     supabase.from("validation_results").select("nin_status,bvn_status,cac_status,tin_status,confidence_score,validated_at,validation_summary").eq("msme_id", msme.id).maybeSingle(),
   ]);
 
-  const resolvedId = digitalId?.ndmii_id ?? msme.msme_id;
   const verificationUrl = digitalId?.qr_code_ref ?? `https://ndmii.gov.ng/verify/${resolvedId}`;
   const qrDataUrl = await QRCode.toDataURL(verificationUrl);
 
