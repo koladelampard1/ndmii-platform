@@ -32,7 +32,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
 
   let query = supabase
     .from("compliance_profiles")
-    .select("id,msme_id,overall_status,nin_status,bvn_status,cac_status,tin_status,nin_checked_at,bvn_checked_at,cac_checked_at,tin_checked_at,nin_response_summary,bvn_response_summary,cac_response_summary,tin_response_summary,admin_override_status,override_notes,validation_overridden_at,msmes(id,msme_id,business_name)")
+    .select("id,msme_id,overall_status,nin_status,bvn_status,cac_status,tin_status,nin_checked_at,bvn_checked_at,cac_checked_at,tin_checked_at,nin_response_summary,bvn_response_summary,cac_response_summary,tin_response_summary,admin_override_status,override_notes,validation_overridden_at,msmes(id,msme_id,business_name),validation_results(nin_status,bvn_status,cac_status,tin_status,confidence_score,validated_at,validation_summary)")
     .order("last_reviewed_at", { ascending: false });
 
   if (ctx.role === "msme") query = query.eq("msme_id", ctx.linkedMsmeId ?? "");
@@ -43,6 +43,43 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">{ctx.role === "msme" ? "My KYC & Compliance" : "KYC Simulation Module"}</h1>
       {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Override saved.</p>}
+
+      <div className="overflow-hidden rounded-xl border bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-100 text-left text-slate-700">
+            <tr>
+              <th className="px-3 py-2">MSME</th>
+              <th className="px-3 py-2">CAC</th>
+              <th className="px-3 py-2">BVN</th>
+              <th className="px-3 py-2">NIN</th>
+              <th className="px-3 py-2">TIN</th>
+              <th className="px-3 py-2">Confidence</th>
+              <th className="px-3 py-2">Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data ?? []).map((row) => {
+              const matrix = (row.validation_results as any) ?? {};
+              return (
+                <tr key={row.id} className="border-t align-top">
+                  <td className="px-3 py-2">
+                    <p className="font-semibold">{(row.msmes as any)?.business_name}</p>
+                    <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id}</p>
+                    <StatusBadge status={row.overall_status === "verified" ? "active" : row.overall_status === "failed" ? "critical" : "warning"} label={row.overall_status} />
+                  </td>
+                  <td className="px-3 py-2 capitalize">{matrix.cac_status ?? row.cac_status ?? "pending"}</td>
+                  <td className="px-3 py-2 capitalize">{matrix.bvn_status ?? row.bvn_status ?? "pending"}</td>
+                  <td className="px-3 py-2 capitalize">{matrix.nin_status ?? row.nin_status ?? "pending"}</td>
+                  <td className="px-3 py-2 capitalize">{matrix.tin_status ?? row.tin_status ?? "pending"}</td>
+                  <td className="px-3 py-2">{matrix.confidence_score ?? 0}%<p className="text-xs text-slate-500">{matrix.validated_at ? new Date(matrix.validated_at).toLocaleString() : "pending"}</p></td>
+                  <td className="px-3 py-2 text-xs text-slate-600">{matrix.validation_summary ?? "Validation simulation pending."}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <div className="grid gap-3">
         {(data ?? []).map((row) => (
           <article key={row.id} className="rounded-lg border bg-white p-4">
@@ -52,13 +89,6 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
                 <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id}</p>
               </div>
               <StatusBadge status={row.overall_status === "verified" ? "active" : row.overall_status === "failed" ? "critical" : "warning"} label={row.overall_status} />
-            </div>
-            <p className="mt-2 text-xs text-slate-600">NIN: {row.nin_status} ({row.nin_checked_at ? new Date(row.nin_checked_at).toLocaleString() : "pending"}) • BVN: {row.bvn_status} ({row.bvn_checked_at ? new Date(row.bvn_checked_at).toLocaleString() : "pending"}) • CAC: {row.cac_status} ({row.cac_checked_at ? new Date(row.cac_checked_at).toLocaleString() : "pending"}) • TIN: {row.tin_status} ({row.tin_checked_at ? new Date(row.tin_checked_at).toLocaleString() : "pending"})</p>
-            <div className="mt-2 grid gap-1 rounded-lg bg-slate-50 p-2 text-xs text-slate-600 md:grid-cols-2">
-              <p>NIN service: {row.nin_response_summary ?? "NIN simulation pending response"}</p>
-              <p>BVN service: {row.bvn_response_summary ?? "BVN simulation pending response"}</p>
-              <p>CAC service: {row.cac_response_summary ?? "CAC simulation pending response"}</p>
-              <p>TIN service: {row.tin_response_summary ?? "TIN simulation pending response"}</p>
             </div>
             {row.admin_override_status && <p className="mt-1 text-xs text-amber-700">Override: {row.admin_override_status} {row.validation_overridden_at ? `at ${new Date(row.validation_overridden_at).toLocaleString()}` : ""} {row.override_notes ? `• ${row.override_notes}` : ""}</p>}
             {ctx.role !== "msme" && (

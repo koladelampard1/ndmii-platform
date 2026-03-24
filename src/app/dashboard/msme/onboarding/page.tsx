@@ -5,6 +5,17 @@ import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
+function calculateConfidence(statuses: string[]) {
+  const points = statuses.reduce((acc, status) => {
+    if (status === "verified") return acc + 25;
+    if (status === "mismatch") return acc + 10;
+    if (status === "pending") return acc + 5;
+    return acc;
+  }, 0);
+
+  return Math.max(0, Math.min(100, points));
+}
+
 async function saveOnboarding(formData: FormData) {
   "use server";
 
@@ -60,11 +71,12 @@ async function saveOnboarding(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
+  const generatedMsmeId = existing?.msme_id ?? generateMsmeId(state);
   const { data, error } = existing?.id
     ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id").single()
     : await supabase
         .from("msmes")
-        .insert({ msme_id: generateMsmeId(state), ...basePayload })
+        .insert({ msme_id: generatedMsmeId, ...basePayload })
         .select("id,msme_id")
         .single();
 
@@ -83,26 +95,72 @@ async function saveOnboarding(formData: FormData) {
     },
   });
 
+  const nowIso = new Date().toISOString();
+  const ninStatus = byProvider.get("NIN")?.status ?? "pending";
+  const bvnStatus = byProvider.get("BVN")?.status ?? "pending";
+  const cacStatus = byProvider.get("CAC")?.status ?? "pending";
+  const tinStatus = byProvider.get("TIN")?.status ?? "pending";
+
   await supabase.from("compliance_profiles").upsert(
     {
       msme_id: data.id,
       overall_status: overallStatus,
-      nin_status: byProvider.get("NIN")?.status ?? "pending",
-      bvn_status: byProvider.get("BVN")?.status ?? "pending",
-      cac_status: byProvider.get("CAC")?.status ?? "pending",
-      tin_status: byProvider.get("TIN")?.status ?? "pending",
-      nin_checked_at: byProvider.get("NIN")?.checkedAt ?? new Date().toISOString(),
-      bvn_checked_at: byProvider.get("BVN")?.checkedAt ?? new Date().toISOString(),
-      cac_checked_at: byProvider.get("CAC")?.checkedAt ?? new Date().toISOString(),
-      tin_checked_at: byProvider.get("TIN")?.checkedAt ?? new Date().toISOString(),
+      nin_status: ninStatus,
+      bvn_status: bvnStatus,
+      cac_status: cacStatus,
+      tin_status: tinStatus,
+      nin_checked_at: byProvider.get("NIN")?.checkedAt ?? nowIso,
+      bvn_checked_at: byProvider.get("BVN")?.checkedAt ?? nowIso,
+      cac_checked_at: byProvider.get("CAC")?.checkedAt ?? nowIso,
+      tin_checked_at: byProvider.get("TIN")?.checkedAt ?? nowIso,
       nin_response_summary: byProvider.get("NIN")?.summary ?? null,
       bvn_response_summary: byProvider.get("BVN")?.summary ?? null,
       cac_response_summary: byProvider.get("CAC")?.summary ?? null,
       tin_response_summary: byProvider.get("TIN")?.summary ?? null,
-      last_reviewed_at: new Date().toISOString(),
+      last_reviewed_at: nowIso,
     },
     { onConflict: "msme_id" }
   );
+
+  await supabase.from("validation_results").upsert(
+    {
+      msme_id: data.id,
+      nin_status: ninStatus,
+      bvn_status: bvnStatus,
+      cac_status: cacStatus,
+      tin_status: tinStatus,
+      confidence_score: calculateConfidence([ninStatus, bvnStatus, cacStatus, tinStatus]),
+      validation_summary: `KYC simulation ${overallStatus}. NIN ${ninStatus}, BVN ${bvnStatus}, CAC ${cacStatus}, TIN ${tinStatus}.`,
+      validated_at: nowIso,
+      updated_at: nowIso,
+    },
+    { onConflict: "msme_id" }
+  );
+
+  if (intent === "submit") {
+    const ndmiiId = data.msme_id?.startsWith("NDMII-") ? data.msme_id : generatedMsmeId;
+    const verifyUrl = `https://ndmii.gov.ng/verify/${ndmiiId}`;
+    await supabase.from("digital_ids").upsert(
+      {
+        msme_id: data.id,
+        ndmii_id: ndmiiId,
+        issued_at: nowIso,
+        qr_code_ref: verifyUrl,
+        status: "active",
+        validation_snapshot: {
+          overall_status: overallStatus,
+          nin_status: ninStatus,
+          bvn_status: bvnStatus,
+          cac_status: cacStatus,
+          tin_status: tinStatus,
+          validated_at: nowIso,
+        },
+        updated_at: nowIso,
+      },
+      { onConflict: "msme_id" }
+    );
+    await supabase.from("msmes").update({ issued_at: nowIso }).eq("id", data.id);
+  }
 
   await supabase.from("activity_logs").insert({
     actor_user_id: appUserId,
@@ -129,9 +187,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   let latestValidation: any = null;
   if (ctx.linkedMsmeId || ctx.role === "admin") {
     const query = supabase
-      .from("compliance_profiles")
-      .select("overall_status,nin_status,bvn_status,cac_status,nin_checked_at,bvn_checked_at,cac_checked_at,nin_response_summary,bvn_response_summary,cac_response_summary")
-      .order("last_reviewed_at", { ascending: false })
+      .from("validation_results")
+      .select("msme_id,nin_status,bvn_status,cac_status,tin_status,confidence_score,validated_at,validation_summary")
+      .order("validated_at", { ascending: false })
       .limit(1);
 
     const scoped = ctx.role === "msme" ? query.eq("msme_id", ctx.linkedMsmeId ?? "") : query;
@@ -152,10 +210,10 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
       {latestValidation && (
         <article className="rounded-xl border bg-white p-4 text-sm">
           <h3 className="font-semibold">Latest validation simulation summary</h3>
-          <p className="mt-2">Overall status: <strong className="uppercase">{latestValidation.overall_status}</strong></p>
-          <p className="mt-1">NIN: {latestValidation.nin_status} • {latestValidation.nin_checked_at ? new Date(latestValidation.nin_checked_at).toLocaleString() : "pending"}</p>
-          <p className="mt-1">BVN: {latestValidation.bvn_status} • {latestValidation.bvn_checked_at ? new Date(latestValidation.bvn_checked_at).toLocaleString() : "pending"}</p>
-          <p className="mt-1">CAC: {latestValidation.cac_status} • {latestValidation.cac_checked_at ? new Date(latestValidation.cac_checked_at).toLocaleString() : "pending"}</p>
+          <p className="mt-2">Confidence score: <strong>{latestValidation.confidence_score}%</strong></p>
+          <p className="mt-1">NIN: {latestValidation.nin_status} • BVN: {latestValidation.bvn_status} • CAC: {latestValidation.cac_status} • TIN: {latestValidation.tin_status}</p>
+          <p className="mt-1 text-xs text-slate-600">Validated at: {latestValidation.validated_at ? new Date(latestValidation.validated_at).toLocaleString() : "pending"}</p>
+          <p className="mt-2 text-xs text-slate-700">{latestValidation.validation_summary ?? "Validation summary pending."}</p>
         </article>
       )}
       {params.error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{params.error}</div>}

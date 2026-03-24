@@ -39,16 +39,30 @@ async function updateNrsAction(formData: FormData) {
       metadata: { notice_type: String(formData.get("notice_type") ?? "general"), message: String(formData.get("message") ?? "") },
     });
   }
-  if (kind === "configure_vat") {
-    const category = String(formData.get("category") ?? "General goods");
-    await supabase.from("vat_rules").upsert({
-      category,
+  if (kind === "create_vat_rule") {
+    await supabase.from("vat_rules").insert({
+      category: String(formData.get("category") ?? "General goods"),
       vat_percent: Number(formData.get("vat_percent") ?? 7.5),
       applies_to: String(formData.get("applies_to") ?? "service"),
       status: String(formData.get("vat_status") ?? "active"),
       notes: String(formData.get("notes") ?? ""),
       updated_at: new Date().toISOString(),
-    }, { onConflict: "category" });
+    });
+  }
+  if (kind === "edit_vat_rule") {
+    await supabase.from("vat_rules").update({
+      category: String(formData.get("category") ?? "General goods"),
+      vat_percent: Number(formData.get("vat_percent") ?? 7.5),
+      applies_to: String(formData.get("applies_to") ?? "service"),
+      notes: String(formData.get("notes") ?? ""),
+      updated_at: new Date().toISOString(),
+    }).eq("id", String(formData.get("vat_rule_id") ?? ""));
+  }
+  if (kind === "set_vat_rule_status") {
+    await supabase.from("vat_rules").update({
+      status: String(formData.get("vat_status") ?? "active"),
+      updated_at: new Date().toISOString(),
+    }).eq("id", String(formData.get("vat_rule_id") ?? ""));
   }
 
   await supabase.from("activity_logs").insert({
@@ -142,24 +156,53 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
         </form>
 
         <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
-          <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="configure_vat" />
-          <p className="text-sm font-medium">Configure VAT rule by category</p>
+          <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="create_vat_rule" />
+          <p className="text-sm font-medium">Create VAT rule</p>
           <div className="grid gap-2 md:grid-cols-2">
-            <input name="category" placeholder="Category name" className="rounded border px-2 py-2 text-sm" />
-            <input name="vat_percent" type="number" step="0.01" defaultValue="7.50" className="rounded border px-2 py-2 text-sm" />
+            <input name="category" placeholder="Category name" className="rounded border px-2 py-2 text-sm" required />
+            <input name="vat_percent" type="number" step="0.01" defaultValue="7.50" className="rounded border px-2 py-2 text-sm" required />
             <select name="applies_to" className="rounded border px-2 py-2 text-sm"><option value="product">product</option><option value="service">service</option><option value="mixed">mixed</option></select>
             <select name="vat_status" className="rounded border px-2 py-2 text-sm"><option value="active">active</option><option value="inactive">inactive</option></select>
             <input name="notes" placeholder="Notes" className="rounded border px-2 py-2 text-sm md:col-span-2" />
           </div>
-          <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Save VAT rule</button>
+          <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Create VAT rule</button>
         </form>
       </div>
 
       <article className="rounded-xl border bg-white p-4">
         <h2 className="font-semibold">VAT rules visible to MSMEs</h2>
-        <div className="mt-2 grid gap-2 md:grid-cols-2 text-sm">
+        <div className="mt-2 space-y-2 text-sm">
           {(vatRules ?? []).map((rule) => (
-            <p key={rule.id} className="rounded border p-2">{rule.category} • {Number(rule.vat_percent).toFixed(2)}% • {rule.applies_to} • {rule.status}</p>
+            <div key={rule.id} className="rounded border p-3">
+              <form action={updateNrsAction} className="grid gap-2 md:grid-cols-6">
+                <input type="hidden" name="tax_id" value={tax.id} />
+                <input type="hidden" name="msme_id" value={msme.msme_id} />
+                <input type="hidden" name="kind" value="edit_vat_rule" />
+                <input type="hidden" name="vat_rule_id" value={rule.id} />
+                <input name="category" defaultValue={rule.category} className="rounded border px-2 py-1 text-xs md:col-span-2" />
+                <input name="vat_percent" type="number" step="0.01" defaultValue={rule.vat_percent} className="rounded border px-2 py-1 text-xs" />
+                <select name="applies_to" defaultValue={rule.applies_to} className="rounded border px-2 py-1 text-xs"><option value="product">product</option><option value="service">service</option><option value="mixed">mixed</option></select>
+                <input name="notes" defaultValue={rule.notes ?? ""} placeholder="Notes" className="rounded border px-2 py-1 text-xs" />
+                <button className="rounded bg-slate-900 px-2 py-1 text-xs text-white">Save</button>
+              </form>
+              <form action={updateNrsAction} className="mt-2 flex gap-2">
+                <input type="hidden" name="tax_id" value={tax.id} />
+                <input type="hidden" name="msme_id" value={msme.msme_id} />
+                <input type="hidden" name="kind" value="set_vat_rule_status" />
+                <input type="hidden" name="vat_rule_id" value={rule.id} />
+                <input type="hidden" name="vat_status" value="active" />
+                <button className="rounded border border-emerald-600 px-2 py-1 text-xs text-emerald-700">Activate</button>
+              </form>
+              <form action={updateNrsAction} className="mt-2 flex gap-2">
+                <input type="hidden" name="tax_id" value={tax.id} />
+                <input type="hidden" name="msme_id" value={msme.msme_id} />
+                <input type="hidden" name="kind" value="set_vat_rule_status" />
+                <input type="hidden" name="vat_rule_id" value={rule.id} />
+                <input type="hidden" name="vat_status" value="inactive" />
+                <button className="rounded border border-rose-500 px-2 py-1 text-xs text-rose-700">Deactivate</button>
+              </form>
+              <p className="mt-1 text-xs text-slate-500">Current status: {rule.status}</p>
+            </div>
           ))}
         </div>
       </article>
