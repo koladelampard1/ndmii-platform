@@ -8,13 +8,15 @@ export default async function MsmePage() {
   const supabase = await createServerSupabaseClient();
 
   const ids = rows.map((row) => row.id);
-  const [{ data: compliance }, { data: taxes }, { data: vatRules }] = await Promise.all([
+  const [{ data: compliance }, { data: validations }, { data: taxes }, { data: vatRules }] = await Promise.all([
     supabase.from("compliance_profiles").select("msme_id,overall_status,nin_status,bvn_status,cac_status").in("msme_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
+    supabase.from("validation_results").select("msme_id,nin_status,bvn_status,cac_status,tin_status,confidence_score,validated_at").in("msme_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
     supabase.from("tax_profiles").select("msme_id,compliance_status,outstanding_amount,tax_category,vat_applicable").in("msme_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
     supabase.from("vat_rules").select("category,vat_percent,status").eq("status", "active").order("category"),
   ]);
 
   const complianceMap = new Map((compliance ?? []).map((item) => [item.msme_id, item]));
+  const validationMap = new Map((validations ?? []).map((item) => [item.msme_id, item]));
   const taxMap = new Map((taxes ?? []).map((item) => [item.msme_id, item]));
 
   return (
@@ -53,6 +55,7 @@ export default async function MsmePage() {
           <tbody>
             {rows.map((row) => {
               const complianceState = complianceMap.get(row.id);
+              const validationState = validationMap.get(row.id);
               const taxState = taxMap.get(row.id);
               return (
                 <tr key={row.id} className="border-t align-top">
@@ -64,7 +67,8 @@ export default async function MsmePage() {
                   <td className="px-3 py-2">{row.sector}</td>
                   <td className="px-3 py-2 text-xs">
                     <p className="font-medium uppercase">{complianceState?.overall_status ?? "pending"}</p>
-                    <p>NIN {complianceState?.nin_status ?? "pending"} • BVN {complianceState?.bvn_status ?? "pending"} • CAC {complianceState?.cac_status ?? "pending"}</p>
+                    <p>NIN {validationState?.nin_status ?? complianceState?.nin_status ?? "pending"} • BVN {validationState?.bvn_status ?? complianceState?.bvn_status ?? "pending"} • CAC {validationState?.cac_status ?? complianceState?.cac_status ?? "pending"} • TIN {validationState?.tin_status ?? "pending"}</p>
+                    <p>Confidence {validationState?.confidence_score ?? 0}% • {validationState?.validated_at ? new Date(validationState.validated_at).toLocaleString() : "Validation pending"}</p>
                   </td>
                   <td className="px-3 py-2 text-xs">
                     <p>{taxState?.tax_category ?? "not profiled"}</p>

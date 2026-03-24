@@ -14,18 +14,22 @@ export default async function DigitalIdRegistryPage({
 
   const supabase = await createServerSupabaseClient();
   let query = supabase
-    .from("msmes")
-    .select("id,msme_id,business_name,passport_photo_url,state,sector,verification_status,issued_at")
-    .order("issued_at", { ascending: false, nullsFirst: false })
+    .from("digital_ids")
+    .select("id,ndmii_id,issued_at,status,qr_code_ref,msmes(id,business_name,passport_photo_url,state,sector,verification_status,msme_id)")
+    .order("issued_at", { ascending: false })
     .limit(250);
 
-  if (params.state) query = query.eq("state", params.state);
-  if (params.sector) query = query.eq("sector", params.sector);
-  if (params.status) query = query.eq("verification_status", params.status);
-  if (params.q) query = query.or(`msme_id.ilike.%${params.q}%,business_name.ilike.%${params.q}%`);
+  if (params.status) query = query.eq("status", params.status);
 
   const { data } = await query;
-  const rows = data ?? [];
+  let rows = data ?? [];
+
+  if (params.state) rows = rows.filter((row: any) => row.msmes?.state === params.state);
+  if (params.sector) rows = rows.filter((row: any) => row.msmes?.sector === params.sector);
+  if (params.q) {
+    const q = params.q.toLowerCase();
+    rows = rows.filter((row: any) => row.ndmii_id?.toLowerCase().includes(q) || row.msmes?.business_name?.toLowerCase().includes(q));
+  }
 
   return (
     <section className="space-y-4">
@@ -37,7 +41,7 @@ export default async function DigitalIdRegistryPage({
         <input name="q" placeholder="MSME ID or business" defaultValue={params.q} className="rounded border px-3 py-2" />
         <input name="state" placeholder="State" defaultValue={params.state} className="rounded border px-3 py-2" />
         <input name="sector" placeholder="Sector" defaultValue={params.sector} className="rounded border px-3 py-2" />
-        <input name="status" placeholder="Status" defaultValue={params.status} className="rounded border px-3 py-2" />
+        <input name="status" placeholder="Digital ID status" defaultValue={params.status} className="rounded border px-3 py-2" />
         <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Apply</button>
       </form>
 
@@ -45,7 +49,7 @@ export default async function DigitalIdRegistryPage({
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-left text-slate-600">
             <tr>
-              <th className="px-3 py-2">MSME ID</th>
+              <th className="px-3 py-2">NDMII ID</th>
               <th className="px-3 py-2">Business name</th>
               <th className="px-3 py-2">Passport</th>
               <th className="px-3 py-2">State</th>
@@ -63,23 +67,23 @@ export default async function DigitalIdRegistryPage({
                 </td>
               </tr>
             )}
-            {rows.map((row) => (
+            {rows.map((row: any) => (
               <tr key={row.id} className="border-t">
-                <td className="px-3 py-2 font-medium">{row.msme_id}</td>
-                <td className="px-3 py-2">{row.business_name}</td>
+                <td className="px-3 py-2 font-medium">{row.ndmii_id}</td>
+                <td className="px-3 py-2">{row.msmes?.business_name}</td>
                 <td className="px-3 py-2">
-                  {row.passport_photo_url ? (
-                    <img src={row.passport_photo_url} alt={`${row.business_name} passport`} className="h-10 w-10 rounded object-cover" />
+                  {row.msmes?.passport_photo_url ? (
+                    <img src={row.msmes.passport_photo_url} alt={`${row.msmes?.business_name} passport`} className="h-10 w-10 rounded object-cover" />
                   ) : (
                     <span className="text-xs text-slate-500">N/A</span>
                   )}
                 </td>
-                <td className="px-3 py-2">{row.state}</td>
-                <td className="px-3 py-2">{row.sector}</td>
-                <td className="px-3 py-2 capitalize">{row.verification_status}</td>
+                <td className="px-3 py-2">{row.msmes?.state}</td>
+                <td className="px-3 py-2">{row.msmes?.sector}</td>
+                <td className="px-3 py-2 capitalize">{row.status}</td>
                 <td className="px-3 py-2">{row.issued_at ? new Date(row.issued_at).toLocaleDateString() : "Not issued"}</td>
                 <td className="px-3 py-2">
-                  <Link className="text-emerald-700 hover:underline" href={`/dashboard/msme/id-card/${encodeURIComponent(row.msme_id)}`}>
+                  <Link className="text-emerald-700 hover:underline" href={`/verify/${encodeURIComponent(row.ndmii_id ?? row.msmes?.msme_id ?? "")}`}>
                     Open detail
                   </Link>
                 </td>

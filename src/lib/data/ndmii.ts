@@ -2,6 +2,10 @@ import { supabase } from "@/lib/supabase/client";
 import { verifyWithAdapter, type VerificationProvider, type VerificationState } from "@/lib/integrations/adapters";
 
 export type MsmeRecord = {
+  digital_id_id?: string;
+  qr_code_ref?: string | null;
+  digital_status?: string | null;
+  issued_at?: string | null;
   id: string;
   msme_id: string;
   business_name: string;
@@ -123,9 +127,35 @@ export async function runKycSimulation(payload: Record<VerificationProvider, str
 
 export async function searchMsme(query: string) {
   const trimmed = query.trim();
-  const msmes = await getMsmes();
-  if (!trimmed) return msmes.slice(0, 15);
+  const { data: digitalRows } = await supabase
+    .from("digital_ids")
+    .select("id,ndmii_id,status,issued_at,qr_code_ref,msmes(id,msme_id,business_name,owner_name,state,sector,verification_status,association_id,nin,bvn,cac_number,tin,created_at)")
+    .order("issued_at", { ascending: false });
+
+  const digitalMapped: MsmeRecord[] = (digitalRows ?? []).flatMap((row: any) => {
+    const msme = row.msmes;
+    if (!msme) return [];
+    return [{
+      ...msme,
+      msme_id: row.ndmii_id ?? msme.msme_id,
+      digital_id_id: row.id,
+      qr_code_ref: row.qr_code_ref,
+      digital_status: row.status,
+      issued_at: row.issued_at,
+    }];
+  });
+
+  const baseRows = digitalMapped.length ? digitalMapped : await getMsmes();
+  if (!trimmed) return baseRows.slice(0, 15);
+
   const q = trimmed.toLowerCase();
+  const filtered = baseRows.filter(
+    (row) => row.msme_id.toLowerCase().includes(q) || row.business_name.toLowerCase().includes(q)
+  );
+
+  if (filtered.length > 0) return filtered;
+
+  const msmes = await getMsmes();
   return msmes.filter(
     (row) => row.msme_id.toLowerCase().includes(q) || row.business_name.toLowerCase().includes(q)
   );
