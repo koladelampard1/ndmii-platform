@@ -1,31 +1,96 @@
 import Link from "next/link";
+import { ShieldCheck, Search, MapPin, BadgeCheck } from "lucide-react";
 import { Navbar } from "@/components/layout/navbar";
+import { ProviderCard } from "@/components/marketplace/provider-card";
 import { Button } from "@/components/ui/button";
+import { getMarketplaceLandingData } from "@/lib/data/marketplace";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const { topRated, featured, categories } = await getMarketplaceLandingData();
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.14),transparent_45%),linear-gradient(160deg,#020617_0%,#0f172a_40%,#111827_100%)] text-white">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="mx-auto flex max-w-6xl flex-col items-center px-6 pb-20 pt-16 text-center md:pt-24">
-        <p className="rounded-full border border-emerald-300/35 bg-emerald-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">
-          Federal verification service
-        </p>
-        <h1 className="mt-6 max-w-4xl text-4xl font-semibold leading-tight md:text-6xl">
-          Official Public Verification for Nigeria&apos;s Digital MSME IDs
-        </h1>
-        <p className="mt-4 max-w-2xl text-base text-slate-200 md:text-lg">
-          Confirm a business identity in seconds using the NDMII federal registry.
-        </p>
 
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/verify">
-            <Button className="h-12 min-w-[200px] bg-emerald-500 text-slate-950 hover:bg-emerald-400">Verify MSME ID</Button>
-          </Link>
-          <Link href="/register">
-            <Button variant="secondary" className="h-12 min-w-[200px] border border-white/30 bg-white/10 text-white hover:bg-white/20">
-              Start MSME onboarding
-            </Button>
-          </Link>
+      <section className="mx-auto max-w-7xl px-6 pb-14 pt-10 md:pt-16">
+        <div className="rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#111827_45%,#052e2b_100%)] p-8 text-white md:p-12">
+          <p className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
+            National verified marketplace
+          </p>
+          <h1 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight md:text-5xl">
+            Find verified artisans, businesses, and MSMEs across Nigeria.
+          </h1>
+          <p className="mt-4 max-w-3xl text-sm text-slate-200 md:text-base">
+            Discover trusted providers by category, specialization, and location—powered by the NDMII verification infrastructure.
+          </p>
+
+          <form action="/search" className="mt-8 rounded-2xl bg-white p-2 shadow-xl">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-slate-800">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  name="q"
+                  placeholder="Search provider name, service, or ID"
+                  className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                />
+              </div>
+              <Button type="submit" className="h-11 bg-emerald-500 text-slate-950 hover:bg-emerald-400">
+                Search marketplace
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            {categories.slice(0, 6).map((category) => (
+              <Link
+                key={category}
+                href={`/search?category=${encodeURIComponent(category)}`}
+                className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/20"
+              >
+                {category}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-4 px-6 pb-12 md:grid-cols-3">
+        {[
+          { icon: ShieldCheck, title: "NDMII Verified", body: "Only approved providers from the federal registry appear in public marketplace search." },
+          { icon: MapPin, title: "Location Precision", body: "Filter by state and LGA to quickly find providers near your market or project site." },
+          { icon: BadgeCheck, title: "Trust Signals", body: "Ratings, review summaries, and trust score placeholders build confidence before engagement." },
+        ].map((item) => (
+          <article key={item.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <item.icon className="h-5 w-5 text-emerald-600" />
+            <h2 className="mt-3 text-base font-semibold">{item.title}</h2>
+            <p className="mt-2 text-sm text-slate-600">{item.body}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-12">
+        <div className="mb-5 flex items-end justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Top-rated providers</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Trusted by marketplace users</h2>
+          </div>
+          <Link href="/search" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {topRated.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-16">
+        <div className="mb-5 flex items-end justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Featured verified businesses</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Discover standout MSMEs</h2>
+          </div>
+          <Link href="/verify" className="text-sm font-medium text-slate-600 hover:text-slate-900">Public verification portal</Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {featured.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
         </div>
       </section>
     </main>
