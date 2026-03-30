@@ -31,7 +31,18 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
 };
 
 export function isPublicPath(path: string): boolean {
-  return path === "/" || path === "/login" || path.startsWith("/register") || path.startsWith("/verify") || path === "/access-denied";
+  return (
+    path === "/" ||
+    path === "/login" ||
+    path.startsWith("/register") ||
+    path.startsWith("/verify") ||
+    path === "/search" ||
+    path.startsWith("/search?") ||
+    path === "/categories" ||
+    path.startsWith("/categories/") ||
+    path.startsWith("/providers/") ||
+    path === "/access-denied"
+  );
 }
 
 export function getDefaultDashboardRoute(role: UserRole): string {

@@ -3,7 +3,7 @@ import { ShieldCheck, Search, MapPin, BadgeCheck } from "lucide-react";
 import { Navbar } from "@/components/layout/navbar";
 import { ProviderCard } from "@/components/marketplace/provider-card";
 import { Button } from "@/components/ui/button";
-import { getMarketplaceLandingData } from "@/lib/data/marketplace";
+import { getMarketplaceLandingData, slugifyCategory } from "@/lib/data/marketplace";
 
 export default async function LandingPage() {
   const { topRated, featured, categories } = await getMarketplaceLandingData();
@@ -44,12 +44,15 @@ export default async function LandingPage() {
             {categories.slice(0, 6).map((category) => (
               <Link
                 key={category}
-                href={`/search?category=${encodeURIComponent(category)}`}
+                href={`/categories/${encodeURIComponent(slugifyCategory(category))}`}
                 className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/20"
               >
                 {category}
               </Link>
             ))}
+            <Link href="/categories" className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/20">
+              Browse all categories
+            </Link>
           </div>
         </div>
       </section>

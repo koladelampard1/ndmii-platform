@@ -15,7 +15,7 @@ export default async function SearchPage({
   const state = typeof params.state === "string" ? params.state : "";
   const lga = typeof params.lga === "string" ? params.lga : "";
   const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
-  const verification = typeof params.verification === "string" ? params.verification : "verified";
+  const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
 
   const [options, providers] = await Promise.all([
     getMarketplaceFilterOptions(),
@@ -42,7 +42,7 @@ export default async function SearchPage({
           <Link href="/verify" className="text-sm font-medium text-slate-600 hover:text-slate-900">Verify MSME ID</Link>
         </div>
 
-        <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+        <form action="/search" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
           <input name="q" defaultValue={q} placeholder="Business name or ID" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
           <select name="category" defaultValue={category} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
             <option value="">All categories</option>
@@ -64,14 +64,22 @@ export default async function SearchPage({
             <option value="3">3.0+</option>
           </select>
           <select name="verification" defaultValue={verification} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <option value="verified_or_approved">Verified + approved</option>
             <option value="verified">Verified only</option>
+            <option value="approved">Approved only</option>
+            <option value="all">All statuses</option>
           </select>
           <button type="submit" className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Apply filters</button>
         </form>
 
         <div className="mt-6 flex items-center justify-between text-sm text-slate-500">
-          <span>{providers.length} verified providers found</span>
-          <span>Search is restricted to approved NDMII identities.</span>
+          <span>{providers.length} providers found</span>
+          <span>
+            Search is restricted to approved NDMII identities.{" "}
+            <Link href="/categories" className="font-medium text-emerald-700 hover:text-emerald-800">
+              Browse categories
+            </Link>
+          </span>
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
