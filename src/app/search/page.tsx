@@ -16,6 +16,7 @@ export default async function SearchPage({
   const lga = typeof params.lga === "string" ? params.lga : "";
   const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
   const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
+  const sort = typeof params.sort === "string" ? params.sort : "relevance";
 
   const [options, providers] = await Promise.all([
     getMarketplaceFilterOptions(),
@@ -27,6 +28,7 @@ export default async function SearchPage({
       lga: lga || undefined,
       minRating: rating || undefined,
       verification,
+      sort: sort === "top-rated" || sort === "featured" ? sort : "relevance",
     }),
   ]);
 
@@ -68,6 +70,11 @@ export default async function SearchPage({
             <option value="verified">Verified only</option>
             <option value="approved">Approved only</option>
             <option value="all">All statuses</option>
+          </select>
+          <select name="sort" defaultValue={sort} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <option value="relevance">Best match</option>
+            <option value="top-rated">Top rated</option>
+            <option value="featured">Featured</option>
           </select>
           <button type="submit" className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Apply filters</button>
         </form>

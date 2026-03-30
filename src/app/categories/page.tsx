@@ -17,7 +17,7 @@ export default async function CategoriesPage() {
           {categories.map((category) => (
             <Link
               key={category.slug}
-              href={`/categories/${category.slug}`}
+              href={`/search?category=${encodeURIComponent(category.name)}&verification=verified_or_approved`}
               className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:text-emerald-700"
             >
               {category.name}

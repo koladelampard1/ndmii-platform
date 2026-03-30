@@ -3,7 +3,7 @@ import { ShieldCheck, Search, MapPin, BadgeCheck } from "lucide-react";
 import { Navbar } from "@/components/layout/navbar";
 import { ProviderCard } from "@/components/marketplace/provider-card";
 import { Button } from "@/components/ui/button";
-import { getMarketplaceLandingData, slugifyCategory } from "@/lib/data/marketplace";
+import { getMarketplaceLandingData } from "@/lib/data/marketplace";
 
 export default async function LandingPage() {
   const { topRated, featured, categories } = await getMarketplaceLandingData();
@@ -44,7 +44,7 @@ export default async function LandingPage() {
             {categories.slice(0, 6).map((category) => (
               <Link
                 key={category}
-                href={`/categories/${encodeURIComponent(slugifyCategory(category))}`}
+                href={`/search?category=${encodeURIComponent(category)}&verification=verified_or_approved`}
                 className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/20"
               >
                 {category}
@@ -77,7 +77,7 @@ export default async function LandingPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Top-rated providers</p>
             <h2 className="text-2xl font-semibold text-slate-900">Trusted by marketplace users</h2>
           </div>
-          <Link href="/search" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
+          <Link href="/search?sort=top-rated&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           {topRated.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
@@ -90,7 +90,7 @@ export default async function LandingPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Featured verified businesses</p>
             <h2 className="text-2xl font-semibold text-slate-900">Discover standout MSMEs</h2>
           </div>
-          <Link href="/verify" className="text-sm font-medium text-slate-600 hover:text-slate-900">Public verification portal</Link>
+          <Link href="/search?sort=featured&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {featured.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
