@@ -19,6 +19,13 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export function ProviderCard({ provider }: { provider: ProviderCardType }) {
+  const verificationLabel =
+    provider.verification_status === "approved"
+      ? "Approved"
+      : provider.verification_status === "verified"
+        ? "Verified"
+        : "Pending";
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex items-start gap-3">
@@ -32,7 +39,7 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-lg font-semibold text-slate-900">{provider.business_name}</h3>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Verified</span>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{verificationLabel}</span>
           </div>
           <p className="mt-1 text-sm text-slate-500">{provider.category}</p>
           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">

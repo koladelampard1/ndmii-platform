@@ -56,6 +56,14 @@ const FALLBACK_CATEGORIES = [
   "Repairs & Maintenance",
 ];
 
+export function slugifyCategory(category: string): string {
+  return category
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function toCard(row: any): ProviderCard {
   return {
     id: row.provider_id,
@@ -81,7 +89,6 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
   let query = supabase
     .from("marketplace_provider_search")
     .select("*")
-    .eq("verification_status", "verified")
     .or("review_status.is.null,review_status.eq.approved,review_status.eq.verified")
     .limit(limit)
     .order("avg_rating", { ascending: false })
@@ -94,7 +101,13 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
   if (filters.state) query = query.eq("state", filters.state);
   if (filters.lga) query = query.eq("lga", filters.lga);
   if (filters.minRating) query = query.gte("avg_rating", filters.minRating);
-  if (filters.verification === "verified") query = query.eq("verification_status", "verified");
+  if (filters.verification === "verified") {
+    query = query.eq("verification_status", "verified");
+  } else if (filters.verification === "approved") {
+    query = query.eq("verification_status", "approved");
+  } else if (filters.verification !== "all") {
+    query = query.in("verification_status", ["verified", "approved"]);
+  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -155,6 +168,16 @@ export async function getMarketplaceFilterOptions() {
   }
 }
 
+export async function getMarketplaceCategories() {
+  const { categories } = await getMarketplaceFilterOptions();
+  return categories.map((name) => ({ name, slug: slugifyCategory(name) }));
+}
+
+export async function getCategoryBySlug(slug: string): Promise<string | null> {
+  const categories = await getMarketplaceCategories();
+  return categories.find((item) => item.slug === slug)?.name ?? null;
+}
+
 export async function getProviderPublicProfile(providerId: string): Promise<ProviderProfile | null> {
   try {
     const supabase = await createServiceRoleSupabaseClient();
@@ -163,7 +186,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       .from("marketplace_provider_search")
       .select("*")
       .eq("provider_id", providerId)
-      .eq("verification_status", "verified")
+      .in("verification_status", ["verified", "approved"])
       .or("review_status.is.null,review_status.eq.approved,review_status.eq.verified")
       .maybeSingle();
 
