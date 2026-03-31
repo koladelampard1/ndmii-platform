@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { getMarketplaceLandingData } from "@/lib/data/marketplace";
 
 export default async function LandingPage() {
-  const { topRated, featured, categories } = await getMarketplaceLandingData();
+  const { topRated, featured, recentlyTrusted, categories } = await getMarketplaceLandingData();
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -94,6 +94,19 @@ export default async function LandingPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {featured.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-16">
+        <div className="mb-5 flex items-end justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Recently trusted providers</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Freshly validated and marketplace-ready</h2>
+          </div>
+          <Link href="/search?sort=featured&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">Explore providers</Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {recentlyTrusted.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
         </div>
       </section>
     </main>

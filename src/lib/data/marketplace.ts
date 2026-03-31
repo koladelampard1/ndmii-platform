@@ -15,20 +15,38 @@ export type ProviderCard = {
   trust_score: number;
   avg_rating: number;
   review_count: number;
+  is_featured?: boolean;
+};
+
+export type RatingBreakdown = {
+  five: number;
+  four: number;
+  three: number;
+  two: number;
+  one: number;
+};
+
+export type ProviderReview = {
+  id: string;
+  reviewer_name: string;
+  rating: number;
+  review_title: string;
+  review_body: string;
+  provider_reply?: string | null;
+  provider_reply_at?: string | null;
+  created_at: string;
 };
 
 export type ProviderProfile = ProviderCard & {
   owner_name: string;
   long_description: string;
   gallery: Array<{ id: string; asset_url: string; caption: string | null }>;
-  reviews: Array<{
-    id: string;
-    reviewer_name: string;
-    rating: number;
-    review_title: string;
-    review_body: string;
-    created_at: string;
-  }>;
+  reviews: ProviderReview[];
+  rating_breakdown: RatingBreakdown;
+  trust_badge: "Platinum Trust" | "Gold Trust" | "Verified Trust";
+  trust_factors: Array<{ label: string; value: string; impact: "positive" | "neutral" }>;
+  active_complaint_count: number;
+  association_name: string | null;
 };
 
 export type SearchFilters = {
@@ -57,6 +75,7 @@ type ProjectionRow = {
 export type MarketplaceLandingData = {
   topRated: ProviderCard[];
   featured: ProviderCard[];
+  recentlyTrusted: ProviderCard[];
   categories: string[];
 };
 
@@ -69,13 +88,15 @@ const FALLBACK_CATEGORIES = [
   "Repairs & Maintenance",
 ];
 
-const FALLBACK_REVIEWS: ProviderProfile["reviews"] = [
+const FALLBACK_REVIEWS: ProviderReview[] = [
   {
     id: "seed-1",
     reviewer_name: "Ngozi A.",
     rating: 5,
     review_title: "Reliable and professional",
     review_body: "Completed our request on schedule with verified quality standards.",
+    provider_reply: "Thank you for choosing our team. We appreciate your trust and look forward to serving your next project.",
+    provider_reply_at: "2026-01-16T09:00:00.000Z",
     created_at: "2026-01-15T09:00:00.000Z",
   },
   {
@@ -84,6 +105,8 @@ const FALLBACK_REVIEWS: ProviderProfile["reviews"] = [
     rating: 4,
     review_title: "Strong communication",
     review_body: "Clear pricing, quick turnaround, and dependable delivery.",
+    provider_reply: "Appreciate the feedback. We are implementing tighter update schedules for every milestone.",
+    provider_reply_at: "2026-01-12T09:00:00.000Z",
     created_at: "2026-01-11T09:00:00.000Z",
   },
 ];
@@ -112,6 +135,7 @@ function toCard(row: any): ProviderCard {
     trust_score: Number(row.trust_score ?? 0),
     avg_rating: Number(row.avg_rating ?? 0),
     review_count: Number(row.review_count ?? 0),
+    is_featured: Boolean(row.is_featured),
   };
 }
 
@@ -178,7 +202,9 @@ function normalizeVerificationFilter(verification?: string) {
 
 function applySort(data: ProviderCard[], sort: SearchFilters["sort"] = "relevance") {
   if (sort === "featured") {
-    return [...data].sort((a, b) => b.trust_score - a.trust_score || b.review_count - a.review_count);
+    return [...data].sort(
+      (a, b) => Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)) || b.trust_score - a.trust_score || b.review_count - a.review_count,
+    );
   }
   if (sort === "top-rated") {
     return [...data].sort((a, b) => b.avg_rating - a.avg_rating || b.review_count - a.review_count);
@@ -203,7 +229,42 @@ function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null): Prov
     trust_score,
     avg_rating,
     review_count,
+    is_featured: false,
   };
+}
+
+function safeNumber(value: unknown, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function calculateTrustScore(input: {
+  verification_status: string;
+  review_status?: string | null;
+  avg_rating: number;
+  review_count: number;
+  open_complaints: number;
+  association_name: string | null;
+}) {
+  let score = 40;
+
+  if (["verified", "approved"].includes(input.verification_status)) score += 20;
+  if (input.review_status === "approved") score += 10;
+
+  score += Math.min(20, input.avg_rating * 4);
+  score += Math.min(10, Math.floor(input.review_count / 3));
+
+  if (input.association_name) score += 8;
+
+  score -= Math.min(18, input.open_complaints * 6);
+
+  return Math.max(45, Math.min(99, Math.round(score)));
+}
+
+function badgeFromTrustScore(score: number): ProviderProfile["trust_badge"] {
+  if (score >= 90) return "Platinum Trust";
+  if (score >= 80) return "Gold Trust";
+  return "Verified Trust";
 }
 
 async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) {
@@ -294,18 +355,33 @@ async function getProvidersWithFallback(filters: SearchFilters = {}, limit = 24)
   }
 }
 
+async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("marketplace_provider_search")
+      .select("*")
+      .in("verification_status", ["verified", "approved"])
+      .order("trust_score", { ascending: false })
+      .order("review_count", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return (data ?? []).map(toCard);
+  } catch {
+    return getProvidersWithFallback({ sort: "featured", verification: "verified_or_approved" }, limit);
+  }
+}
+
 export async function getMarketplaceLandingData(): Promise<MarketplaceLandingData> {
   try {
-    const [topRated, featured, categoriesRaw] = await Promise.all([
+    const [topRated, featured, recentlyTrusted, categoriesRaw] = await Promise.all([
       getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 6),
       getProvidersWithFallback({ sort: "featured", verification: "verified_or_approved" }, 12),
+      getRecentlyTrustedProviders(6),
       (async () => {
         const supabase = await createServiceRoleSupabaseClient();
-        const { data, error } = await supabase
-          .from("service_categories")
-          .select("name")
-          .eq("is_active", true)
-          .order("name", { ascending: true });
+        const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true).order("name", { ascending: true });
         if (error) throw error;
         return data ?? [];
       })(),
@@ -314,11 +390,17 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
     return {
       topRated: topRated.slice(0, 3),
       featured: featured.slice(0, 6),
+      recentlyTrusted: recentlyTrusted.slice(0, 3),
       categories: (categoriesRaw as Array<{ name: string }>).map((c) => c.name),
     };
   } catch {
     const seeded = await getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 6);
-    return { topRated: seeded.slice(0, 3), featured: seeded.slice(0, 6), categories: FALLBACK_CATEGORIES };
+    return {
+      topRated: seeded.slice(0, 3),
+      featured: seeded.slice(0, 6),
+      recentlyTrusted: seeded.slice(0, 3),
+      categories: FALLBACK_CATEGORIES,
+    };
   }
 }
 
@@ -380,25 +462,67 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       .maybeSingle();
 
     if (!error && row) {
-      const [{ data: gallery }, { data: reviews }, { data: msme }] = await Promise.all([
+      const [{ data: gallery }, { data: reviews }, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
         supabase.from("provider_gallery").select("id,asset_url,caption").eq("provider_id", providerId).order("sort_order", { ascending: true }),
         supabase
           .from("reviews")
-          .select("id,reviewer_name,rating,review_title,review_body,created_at")
+          .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
           .eq("provider_id", providerId)
           .order("created_at", { ascending: false })
           .limit(20),
-        supabase.from("msmes").select("owner_name").eq("id", row.msme_row_id).maybeSingle(),
+        supabase
+          .from("msmes")
+          .select("owner_name,review_status,association_id,associations(name)")
+          .eq("id", row.msme_row_id)
+          .maybeSingle(),
+        supabase
+          .from("review_metrics")
+          .select("five_star_count,four_star_count,three_star_count,two_star_count,one_star_count")
+          .eq("provider_id", providerId)
+          .maybeSingle(),
+        supabase.from("complaints").select("id", { count: "exact", head: true }).eq("provider_id", providerId).neq("status", "closed"),
       ]);
 
       const base = toCard(row);
+      const breakdown: RatingBreakdown = {
+        five: metrics?.five_star_count ?? 0,
+        four: metrics?.four_star_count ?? 0,
+        three: metrics?.three_star_count ?? 0,
+        two: metrics?.two_star_count ?? 0,
+        one: metrics?.one_star_count ?? 0,
+      };
+
+      const associationName = (msme?.associations as { name?: string } | null)?.name ?? null;
+      const openCount = openComplaintCount ?? 0;
+      const trustScore = calculateTrustScore({
+        verification_status: row.verification_status,
+        review_status: msme?.review_status,
+        avg_rating: safeNumber(row.avg_rating),
+        review_count: safeNumber(row.review_count),
+        open_complaints: openCount,
+        association_name: associationName,
+      });
+
+      const trustFactors: ProviderProfile["trust_factors"] = [
+        { label: "Verification status", value: row.verification_status === "approved" ? "Approved" : "Verified", impact: "positive" },
+        { label: "Validation workflow", value: msme?.review_status ?? "Under review", impact: msme?.review_status === "approved" ? "positive" : "neutral" },
+        { label: "Public reviews", value: `${safeNumber(row.avg_rating).toFixed(1)} from ${safeNumber(row.review_count)} reviews`, impact: "positive" },
+        { label: "Active complaints", value: openCount === 0 ? "No active complaint" : `${openCount} open complaint(s)`, impact: openCount === 0 ? "positive" : "neutral" },
+        { label: "Association linkage", value: associationName ?? "Not linked", impact: associationName ? "positive" : "neutral" },
+      ];
 
       return {
         ...base,
+        trust_score: trustScore,
         owner_name: msme?.owner_name ?? "Verified MSME Owner",
         long_description: row.long_description ?? `${row.business_name} is a verified NDMII provider serving ${row.state}.`,
         gallery: (gallery ?? []) as Array<{ id: string; asset_url: string; caption: string | null }>,
-        reviews: (reviews ?? []) as ProviderProfile["reviews"],
+        reviews: (reviews ?? []) as ProviderReview[],
+        rating_breakdown: breakdown,
+        trust_badge: badgeFromTrustScore(trustScore),
+        trust_factors: trustFactors,
+        active_complaint_count: openCount,
+        association_name: associationName,
       };
     }
   } catch {
@@ -435,12 +559,22 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       gallery: [
         {
           id: `${card.id}-gallery-1`,
-          asset_url:
-            card.logo_url ?? "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=900&q=80",
+          asset_url: card.logo_url ?? "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=900&q=80",
           caption: "Verified business storefront",
         },
       ],
       reviews: FALLBACK_REVIEWS,
+      rating_breakdown: { five: 1, four: 1, three: 0, two: 0, one: 0 },
+      trust_badge: badgeFromTrustScore(card.trust_score),
+      trust_factors: [
+        { label: "Verification status", value: "Verified", impact: "positive" },
+        { label: "Validation workflow", value: "Approved", impact: "positive" },
+        { label: "Public reviews", value: `${card.avg_rating.toFixed(1)} from ${card.review_count} reviews`, impact: "positive" },
+        { label: "Active complaints", value: "No active complaint", impact: "positive" },
+        { label: "Association linkage", value: "Linked", impact: "positive" },
+      ],
+      active_complaint_count: 0,
+      association_name: "Demo association",
     };
   } catch {
     return null;
