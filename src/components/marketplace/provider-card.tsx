@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, Sparkles } from "lucide-react";
 import { ProviderCard as ProviderCardType } from "@/lib/data/marketplace";
 import { Button } from "@/components/ui/button";
 
@@ -26,6 +26,8 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
         ? "Verified"
         : "Pending";
 
+  const isTopRated = provider.avg_rating >= 4.7 && provider.review_count >= 10;
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex items-start gap-3">
@@ -40,6 +42,11 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-lg font-semibold text-slate-900">{provider.business_name}</h3>
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{verificationLabel}</span>
+            {isTopRated && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                <Sparkles className="h-3 w-3" /> Top rated
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-slate-500">{provider.category}</p>
           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
