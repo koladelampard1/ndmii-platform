@@ -17,6 +17,9 @@ const DEMO_USERS = [
   { email: "officer@nrs.gov.ng", role: "nrs_officer" },
   { email: "assoc.lagos@ndmii.ng", role: "association_officer" },
   { email: "msme.demo@ndmii.ng", role: "msme" },
+  { email: "msme.eko@ndmii.ng", role: "msme" },
+  { email: "msme.arewa@ndmii.ng", role: "msme" },
+  { email: "msme.fct@ndmii.ng", role: "msme" },
 ] as const;
 
 const DEMO_PASSWORD = "Demo@123456";
