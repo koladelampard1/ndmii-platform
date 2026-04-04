@@ -49,11 +49,17 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
 
   const { data: complaint } = await supabase
     .from("complaints")
-    .select("id,summary,description,status,severity,investigation_notes,msme_id,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
+    .select("id,summary,description,status,severity,investigation_notes,complaint_category,regulator_target,provider_profile_id,provider_id,msme_id,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
     .eq("id", id)
     .maybeSingle();
 
   if (!complaint) return <div className="rounded border bg-white p-6">Complaint record not found.</div>;
+  const providerId = complaint.provider_profile_id ?? complaint.provider_id;
+  const { data: provider } = await supabase
+    .from("provider_profiles")
+    .select("id,display_name")
+    .eq("id", providerId ?? "")
+    .maybeSingle();
 
   const [{ data: activity }, { data: compliance }, { data: tax }] = await Promise.all([
     supabase.from("activity_logs").select("action,metadata,created_at").in("entity_type", ["complaint", "msme"]).order("created_at", { ascending: false }).limit(12),
@@ -71,6 +77,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
           <p className="mt-2 text-sm">{complaint.summary}</p>
           <p className="mt-2 text-sm text-slate-600">{complaint.description}</p>
           <p className="mt-3 text-xs text-slate-500">Severity: {complaint.severity} • Status: {complaint.status}</p>
+          <p className="mt-1 text-xs text-slate-500">Category: {complaint.complaint_category ?? "marketplace_report"} • Regulator: {(complaint.regulator_target ?? "fccpc").toUpperCase()}</p>
           <h3 className="mt-4 text-sm font-medium">Investigation notes</h3>
           <form action={enforcementAction} className="mt-2 space-y-2">
             <input type="hidden" name="complaint_id" value={complaint.id} /><input type="hidden" name="msme_id" value={complaint.msme_id ?? ""} /><input type="hidden" name="kind" value="investigation_note" />
@@ -83,6 +90,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
           <h2 className="font-semibold">Linked MSME</h2>
           <p className="mt-2 text-sm">{(complaint.msmes as any)?.business_name}</p>
           <p className="text-xs text-slate-500">{(complaint.msmes as any)?.msme_id}</p>
+          <p className="text-xs text-slate-500">Provider: {provider?.display_name ?? "Not linked"}</p>
           <p className="mt-2 text-xs">Business Status: {(complaint.msmes as any)?.verification_status}</p>
           <p className="text-xs">Compliance tag: {(complaint.msmes as any)?.compliance_tag ?? "partially compliant"}</p>
           <p className="text-xs">Tax summary: {tax ? `${tax.tax_category} • Outstanding ₦${Number(tax.outstanding_amount).toLocaleString()} • ${tax.compliance_status}` : "No tax profile"}</p>

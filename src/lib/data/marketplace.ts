@@ -480,7 +480,11 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           .select("five_star_count,four_star_count,three_star_count,two_star_count,one_star_count")
           .eq("provider_id", providerId)
           .maybeSingle(),
-        supabase.from("complaints").select("id", { count: "exact", head: true }).eq("provider_id", providerId).neq("status", "closed"),
+        supabase
+          .from("complaints")
+          .select("id", { count: "exact", head: true })
+          .or(`provider_profile_id.eq.${providerId},provider_id.eq.${providerId}`)
+          .neq("status", "closed"),
       ]);
 
       const base = toCard(row);
