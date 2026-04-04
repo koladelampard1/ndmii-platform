@@ -9,7 +9,9 @@ async function submitReply(formData: FormData) {
   const providerId = String(formData.get("provider_id") ?? "");
   const replyText = String(formData.get("reply_text") ?? "").trim();
 
-  if (!reviewId || !providerId || !replyText) return;
+  if (!reviewId || !providerId || !replyText) {
+    redirect("/dashboard/msme/reputation?error=missing_fields");
+  }
 
   const ctx = await getCurrentUserContext();
   const supabase = await createServerSupabaseClient();
@@ -28,17 +30,33 @@ async function submitReply(formData: FormData) {
     redirect("/access-denied");
   }
 
-  await supabase
+  const { data: review } = await supabase
+    .from("reviews")
+    .select("id,provider_id")
+    .eq("id", reviewId)
+    .maybeSingle();
+
+  if (!review || review.provider_id !== providerId) {
+    redirect("/dashboard/msme/reputation?error=ownership_scope");
+  }
+
+  const { error, data: updatedRows } = await supabase
     .from("reviews")
     .update({
       provider_reply: replyText,
       provider_reply_at: new Date().toISOString(),
       provider_reply_by: ctx.appUserId,
     })
+    .select("id")
     .eq("id", reviewId)
     .eq("provider_id", providerId);
 
+  if (error || !updatedRows?.length) {
+    redirect("/dashboard/msme/reputation?error=save_failed");
+  }
+
   revalidatePath("/dashboard/msme/reputation");
+  revalidatePath(`/providers/${providerId}`);
   revalidatePath("/search");
   revalidatePath("/");
   redirect("/dashboard/msme/reputation?saved=1");
@@ -47,7 +65,7 @@ async function submitReply(formData: FormData) {
 export default async function MsmeReputationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "msme" && ctx.role !== "admin") redirect("/access-denied");
@@ -88,6 +106,15 @@ export default async function MsmeReputationPage({
         <h1 className="text-2xl font-bold">Reputation & Review Replies</h1>
       </div>
       {params.saved === "1" && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Reply published successfully.</p>}
+      {params.error && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {params.error === "ownership_scope"
+            ? "Reply could not be saved because this review is outside your provider scope."
+            : params.error === "missing_fields"
+              ? "Reply could not be saved. Please enter a response before publishing."
+              : "Reply could not be saved right now. Please retry."}
+        </p>
+      )}
 
       <article className="rounded-xl border bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Trust performance snapshot</h2>

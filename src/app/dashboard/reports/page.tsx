@@ -13,7 +13,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (!["admin", "association_officer"].includes(ctx.role)) redirect("/access-denied");
   const [msmes, complaints, compliance, tax, associations, manufacturers] = await Promise.all([
     supabase.from("msmes").select("msme_id,business_name,state,sector,verification_status,created_at,association_id"),
-    supabase.from("complaints").select("summary,status,severity,state,sector,created_at"),
+    supabase.from("complaints").select("summary,status,severity,state,sector,complaint_category,regulator_target,provider_profile_id,provider_id,created_at"),
     supabase.from("compliance_profiles").select("overall_status,score,risk_level,last_reviewed_at"),
     supabase.from("tax_profiles").select("tax_category,vat_applicable,outstanding_amount,compliance_status,arrears_status"),
     supabase.from("association_members").select("member_status,is_verified,created_at,associations(name),msmes(msme_id,business_name,state,sector)"),
@@ -28,7 +28,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   const reports = [
     { name: "MSME registry report", csv: toCsv(["MSME ID", "Business", "State", "Sector", "Status", "Created"], registryRows.map((m: any) => [m.msme_id, m.business_name, m.state, m.sector, m.verification_status, m.created_at])) },
-    { name: "Complaint report", csv: toCsv(["Summary", "Status", "Severity", "State", "Sector", "Created"], (complaints.data ?? []).map((c: any) => [c.summary, c.status, c.severity, c.state, c.sector, c.created_at])) },
+    { name: "Complaint report", csv: toCsv(["Summary", "Status", "Severity", "Category", "Regulator", "State", "Sector", "Provider Profile", "Created"], (complaints.data ?? []).map((c: any) => [c.summary, c.status, c.severity, c.complaint_category ?? "", c.regulator_target ?? "", c.state, c.sector, c.provider_profile_id ?? c.provider_id ?? "", c.created_at])) },
     { name: "Compliance report", csv: toCsv(["Status", "Score", "Risk", "Reviewed"], (compliance.data ?? []).map((c: any) => [c.overall_status, c.score, c.risk_level, c.last_reviewed_at])) },
     { name: "Tax summary report", csv: toCsv(["Category", "VAT", "Outstanding", "Compliance", "Arrears"], (tax.data ?? []).map((t: any) => [t.tax_category, t.vat_applicable, t.outstanding_amount, t.compliance_status, t.arrears_status])) },
     { name: "Association member report", csv: toCsv(["Association", "MSME ID", "Business", "Status", "Verified"], (associations.data ?? []).map((a: any) => [a.associations?.name, a.msmes?.msme_id, a.msmes?.business_name, a.member_status, a.is_verified])) },

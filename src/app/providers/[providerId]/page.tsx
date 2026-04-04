@@ -10,15 +10,21 @@ async function submitPublicComplaint(formData: FormData) {
   "use server";
 
   const providerId = String(formData.get("provider_id") ?? "");
-  if (!providerId) return;
+  if (!providerId) {
+    redirect("/search?complaint=missing_provider");
+  }
 
   const reporterName = String(formData.get("reporter_name") ?? "Anonymous User").trim() || "Anonymous User";
   const reporterEmail = String(formData.get("reporter_email") ?? "").trim();
-  const complaintType = String(formData.get("complaint_type") ?? "marketplace_report");
+  const complaintCategory = String(formData.get("complaint_category") ?? "marketplace_report");
+  const severity = String(formData.get("severity") ?? "medium");
+  const regulatorTarget = String(formData.get("regulator_target") ?? "fccpc");
   const summary = String(formData.get("summary") ?? "Provider complaint report").trim();
   const description = String(formData.get("description") ?? "").trim();
 
-  if (!description) return;
+  if (!description || !summary) {
+    redirect(`/providers/${providerId}?reported_error=missing_fields`);
+  }
 
   const supabase = await createServerSupabaseClient();
 
@@ -28,22 +34,31 @@ async function submitPublicComplaint(formData: FormData) {
     .eq("provider_id", providerId)
     .maybeSingle();
 
-  if (!provider) return;
+  if (!provider) {
+    redirect(`/providers/${providerId}?reported_error=provider_not_found`);
+  }
 
-  await supabase.from("complaints").insert({
+  const { error } = await supabase.from("complaints").insert({
     msme_id: provider.msme_row_id,
+    provider_profile_id: provider.provider_id,
     provider_id: provider.provider_id,
-    complaint_type: complaintType,
+    complaint_category: complaintCategory,
+    complaint_type: complaintCategory,
     summary: summary || `Public report for ${provider.business_name}`,
     description,
     status: "open",
-    severity: "medium",
+    severity,
+    regulator_target: regulatorTarget,
     state: provider.state,
     sector: provider.sector,
     reporter_name: reporterName,
     reporter_email: reporterEmail || null,
     source_channel: "marketplace_public_profile",
   });
+
+  if (error) {
+    redirect(`/providers/${providerId}?reported_error=submit_failed`);
+  }
 
   revalidatePath(`/providers/${providerId}`);
   redirect(`/providers/${providerId}?reported=1`);
@@ -59,7 +74,7 @@ export default async function ProviderPublicPage({
   searchParams,
 }: {
   params: Promise<{ providerId: string }>;
-  searchParams: Promise<{ reported?: string }>;
+  searchParams: Promise<{ reported?: string; reported_error?: string }>;
 }) {
   const { providerId } = await params;
   const query = await searchParams;
@@ -183,6 +198,13 @@ export default async function ProviderPublicPage({
                 Report submitted. The issue has been logged for FCCPC regulator triage.
               </div>
             )}
+            {query.reported_error && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {query.reported_error === "missing_fields"
+                  ? "Please complete summary and description before submitting your complaint."
+                  : "We could not submit your complaint right now. Please retry."}
+              </div>
+            )}
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Report this provider</h3>
               <p className="mt-1 text-xs text-slate-500">For service quality, fraud, counterfeit products, pricing abuse, or delivery disputes.</p>
@@ -190,12 +212,18 @@ export default async function ProviderPublicPage({
                 <input type="hidden" name="provider_id" value={provider.id} />
                 <input name="reporter_name" placeholder="Your name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <input name="reporter_email" type="email" placeholder="Email (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="complaint_category" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="marketplace_report">General marketplace report</option>
                   <option value="service_quality">Service quality issue</option>
                   <option value="pricing_dispute">Pricing or billing dispute</option>
                   <option value="identity_concern">Identity or trust concern</option>
                 </select>
+                <select name="severity" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+                <input type="hidden" name="regulator_target" value="fccpc" />
                 <input name="summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <textarea name="description" placeholder="Describe the issue" className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <button className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Submit report</button>

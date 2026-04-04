@@ -39,7 +39,8 @@ export default async function FccpcPage({
 
   let query = supabase
     .from("complaints")
-    .select("id,summary,status,severity,state,sector,assigned_officer_user_id,msmes(msme_id,business_name)")
+    .select("id,summary,status,severity,state,sector,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,msmes(msme_id,business_name)")
+    .or("regulator_target.eq.fccpc,regulator_target.is.null")
     .order("created_at", { ascending: false });
 
   if (params.status) query = query.eq("status", params.status);
@@ -49,6 +50,12 @@ export default async function FccpcPage({
   if (params.assigned) query = query.eq("assigned_officer_user_id", params.assigned);
 
   const { data: complaints } = await query;
+  const providerIds = (complaints ?? []).map((item) => item.provider_profile_id ?? item.provider_id).filter(Boolean);
+  const { data: providerRows } = await supabase
+    .from("provider_profiles")
+    .select("id,display_name,msme_id")
+    .in("id", providerIds.length ? providerIds : ["00000000-0000-0000-0000-000000000000"]);
+  const providerById = new Map((providerRows ?? []).map((row) => [row.id, row]));
 
   return (
     <section className="space-y-6">
@@ -87,8 +94,17 @@ export default async function FccpcPage({
                 <td className="px-3 py-3">
                   <p className="font-medium">{row.summary}</p>
                   <p className="text-xs text-slate-500">{row.state} • {row.sector}</p>
+                  <p className="text-xs text-slate-500">
+                    Category: {row.complaint_category ?? "marketplace_report"} • Target: {(row.regulator_target ?? "fccpc").toUpperCase()}
+                  </p>
                 </td>
-                <td className="px-3 py-3">{(row.msmes as any)?.business_name}<p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id}</p></td>
+                <td className="px-3 py-3">
+                  {(row.msmes as any)?.business_name}
+                  <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id ?? "MSME pending linkage"}</p>
+                  <p className="text-xs text-slate-500">
+                    Provider: {providerById.get((row.provider_profile_id ?? row.provider_id) as string)?.display_name ?? "Not linked"}
+                  </p>
+                </td>
                 <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity} /></td>
                 <td className="px-3 py-3">{row.status}</td>
                 <td className="px-3 py-3">{officers?.find((x) => x.id === row.assigned_officer_user_id)?.full_name ?? "Unassigned"}</td>
