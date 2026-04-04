@@ -39,7 +39,7 @@ export default async function FccpcPage({
 
   let query = supabase
     .from("complaints")
-    .select("id,summary,status,severity,state,sector,created_at,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,msmes(msme_id,business_name)")
+    .select("id,summary,status,severity,state,sector,created_at,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,provider_business_name,msmes(msme_id,business_name)")
     .or("regulator_target.eq.fccpc,regulator_target.is.null")
     .order("created_at", { ascending: false });
 
@@ -100,7 +100,7 @@ export default async function FccpcPage({
                   </p>
                 </td>
                 <td className="px-3 py-3">
-                  {(row.msmes as any)?.business_name}
+                  {(row.msmes as any)?.business_name ?? row.provider_business_name ?? "Unknown business"}
                   <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id ?? "MSME pending linkage"}</p>
                   <p className="text-xs text-slate-500">
                     Provider: {providerById.get((row.provider_profile_id ?? row.provider_id) as string)?.display_name ?? "Not linked"}
