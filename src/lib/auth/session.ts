@@ -27,8 +27,34 @@ export async function getCurrentUserContext(): Promise<UserContext> {
   context.fullName = user?.full_name ?? context.fullName;
 
   if (role === "msme") {
-    const { data: msme } = await supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    context.linkedMsmeId = msme?.id ?? null;
+    const { data: linkedByOwner } = await supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+    if (linkedByOwner?.id) {
+      context.linkedMsmeId = linkedByOwner.id;
+    } else if (email) {
+      const { data: linkedByEmail } = await supabase
+        .from("msmes")
+        .select("id")
+        .eq("contact_email", email.toLowerCase())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (linkedByEmail?.id) {
+        context.linkedMsmeId = linkedByEmail.id;
+      }
+    }
+
+    if (!context.linkedMsmeId && context.fullName) {
+      const { data: linkedByProviderName } = await supabase
+        .from("provider_profiles")
+        .select("msme_id,display_name")
+        .ilike("display_name", context.fullName)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      context.linkedMsmeId = linkedByProviderName?.msme_id ?? null;
+    }
   }
 
   if (role === "association_officer") {

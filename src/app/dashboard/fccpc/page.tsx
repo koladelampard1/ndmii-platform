@@ -39,7 +39,7 @@ export default async function FccpcPage({
 
   let query = supabase
     .from("complaints")
-    .select("id,summary,status,severity,state,sector,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,msmes(msme_id,business_name)")
+    .select("id,summary,status,severity,state,sector,created_at,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,msmes(msme_id,business_name)")
     .or("regulator_target.eq.fccpc,regulator_target.is.null")
     .order("created_at", { ascending: false });
 
@@ -80,6 +80,7 @@ export default async function FccpcPage({
               <th className="px-3 py-2">Complaint</th>
               <th className="px-3 py-2">MSME</th>
               <th className="px-3 py-2">Severity</th>
+              <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Assigned</th>
               <th className="px-3 py-2">Actions</th>
@@ -87,7 +88,7 @@ export default async function FccpcPage({
           </thead>
           <tbody>
             {(complaints ?? []).length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No complaints found. Queue is currently clear.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No complaints found. Queue is currently clear.</td></tr>
             )}
             {(complaints ?? []).map((row) => (
               <tr key={row.id} className="border-t align-top">
@@ -106,6 +107,7 @@ export default async function FccpcPage({
                   </p>
                 </td>
                 <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity} /></td>
+                <td className="px-3 py-3 text-xs text-slate-600">{new Date(row.created_at).toLocaleDateString()}</td>
                 <td className="px-3 py-3">{row.status}</td>
                 <td className="px-3 py-3">{officers?.find((x) => x.id === row.assigned_officer_user_id)?.full_name ?? "Unassigned"}</td>
                 <td className="space-y-2 px-3 py-3">
