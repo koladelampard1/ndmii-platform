@@ -7,6 +7,7 @@ export type UserContext = {
   email: string | null;
   fullName: string | null;
   linkedMsmeId: string | null;
+  linkedProviderId: string | null;
   linkedAssociationId: string | null;
 };
 

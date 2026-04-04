@@ -17,6 +17,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
     email,
     fullName: email,
     linkedMsmeId: null,
+    linkedProviderId: null,
     linkedAssociationId: null,
   };
 
@@ -54,6 +55,17 @@ export async function getCurrentUserContext(): Promise<UserContext> {
         .limit(1)
         .maybeSingle();
       context.linkedMsmeId = linkedByProviderName?.msme_id ?? null;
+    }
+
+    if (context.linkedMsmeId) {
+      const { data: linkedProvider } = await supabase
+        .from("provider_profiles")
+        .select("id")
+        .eq("msme_id", context.linkedMsmeId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      context.linkedProviderId = linkedProvider?.id ?? null;
     }
   }
 

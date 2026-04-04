@@ -17,6 +17,9 @@ const DEMO_ROLE_BY_EMAIL: Record<string, UserRole> = {
   "assoc.lagos@ndmii.ng": "association_officer",
   "assoc.kano@ndmii.ng": "association_officer",
   "msme.demo@ndmii.ng": "msme",
+  "msme.eko@ndmii.ng": "msme",
+  "msme.arewa@ndmii.ng": "msme",
+  "msme.fct@ndmii.ng": "msme",
 };
 
 export function inferRoleFromEmail(email: string): UserRole {

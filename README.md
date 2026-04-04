@@ -73,3 +73,14 @@ Manufacturer traceability
 ## Deployment Target
 
 Production-ready demo environment within 1 day
+
+---
+
+## Demo MSME Provider Accounts
+
+All demo accounts use password: `Demo@123456`
+
+- `msme.demo@ndmii.ng` → `NDMII-LAG-0003` (MSME baseline account)
+- `msme.eko@ndmii.ng` → `NDMII-LAG-0001` (provider-linked MSME demo)
+- `msme.arewa@ndmii.ng` → `NDMII-KAN-0004` (provider-linked MSME demo)
+- `msme.fct@ndmii.ng` → `NDMII-FCT-0010` (provider-linked MSME demo)

@@ -20,6 +20,10 @@ async function submitReply(formData: FormData) {
     redirect("/access-denied");
   }
 
+  if (ctx.role === "msme" && !ctx.linkedMsmeId) {
+    redirect("/dashboard/msme/reviews?error=ownership_scope");
+  }
+
   let providerQuery = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
   if (ctx.role === "msme" && ctx.linkedMsmeId) {
     providerQuery = providerQuery.eq("msme_id", ctx.linkedMsmeId);
@@ -63,6 +67,54 @@ async function submitReply(formData: FormData) {
   redirect("/dashboard/msme/reviews?saved=1");
 }
 
+async function updateProviderProfile(formData: FormData) {
+  "use server";
+  const providerId = String(formData.get("provider_id") ?? "");
+  const displayName = String(formData.get("display_name") ?? "").trim();
+  const shortDescription = String(formData.get("short_description") ?? "").trim();
+
+  if (!providerId || !displayName || !shortDescription) {
+    redirect("/dashboard/msme/reviews?error=missing_fields");
+  }
+
+  const ctx = await getCurrentUserContext();
+  if (ctx.role !== "msme" && ctx.role !== "admin") {
+    redirect("/access-denied");
+  }
+  if (ctx.role === "msme" && !ctx.linkedMsmeId) {
+    redirect("/dashboard/msme/reviews?error=ownership_scope");
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+  let query = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
+  if (ctx.role === "msme" && ctx.linkedMsmeId) {
+    query = query.eq("msme_id", ctx.linkedMsmeId);
+  }
+
+  const { data: provider } = await query.maybeSingle();
+  if (!provider) {
+    redirect("/dashboard/msme/reviews?error=ownership_scope");
+  }
+
+  const { error } = await supabase
+    .from("provider_profiles")
+    .update({
+      display_name: displayName,
+      short_description: shortDescription,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", providerId);
+
+  if (error) {
+    redirect("/dashboard/msme/reviews?error=save_failed");
+  }
+
+  revalidatePath("/dashboard/msme/reviews");
+  revalidatePath("/search");
+  revalidatePath("/");
+  redirect("/dashboard/msme/reviews?saved=1");
+}
+
 export default async function MsmeReputationPage({
   searchParams,
 }: {
@@ -76,12 +128,16 @@ export default async function MsmeReputationPage({
 
   let providerQuery = supabase
     .from("provider_profiles")
-    .select("id,display_name,msme_id")
+    .select("id,display_name,short_description,msme_id,msmes(msme_id,business_name,owner_name)")
     .order("updated_at", { ascending: false })
     .limit(5);
 
-  if (ctx.role === "msme" && ctx.linkedMsmeId) {
-    providerQuery = providerQuery.eq("msme_id", ctx.linkedMsmeId);
+  if (ctx.role === "msme") {
+    if (!ctx.linkedMsmeId) {
+      providerQuery = providerQuery.eq("msme_id", "00000000-0000-0000-0000-000000000000");
+    } else {
+      providerQuery = providerQuery.eq("msme_id", ctx.linkedMsmeId);
+    }
   }
 
   const { data: providers } = await providerQuery;
@@ -106,6 +162,11 @@ export default async function MsmeReputationPage({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reputation & Review Replies</h1>
       </div>
+      {ctx.role === "msme" && !ctx.linkedMsmeId && (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Your session is not mapped to an MSME provider profile yet. Use a seeded demo MSME account to test provider ownership and review replies.
+        </p>
+      )}
       {params.saved === "1" && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Reply published successfully.</p>}
       {params.error && (
         <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -122,9 +183,13 @@ export default async function MsmeReputationPage({
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           {(providers ?? []).map((provider) => {
             const metrics = metricsByProviderId.get(provider.id);
+            const providerMsme = provider.msmes as { msme_id?: string | null; owner_name?: string | null; business_name?: string | null } | null;
             return (
               <div key={provider.id} className="rounded-lg border bg-slate-50 p-3 text-sm">
                 <p className="font-semibold">{provider.display_name}</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Owned by {providerMsme?.owner_name ?? "MSME Owner"} • {providerMsme?.msme_id ?? "Unmapped MSME"}
+                </p>
                 <p className="mt-1 text-xs text-slate-600">Rating {Number(metrics?.avg_rating ?? 0).toFixed(1)} • {Number(metrics?.review_count ?? 0)} reviews</p>
                 <p className="text-xs text-slate-600">Trust score {Number(metrics?.trust_score ?? 0)}</p>
               </div>
@@ -137,6 +202,7 @@ export default async function MsmeReputationPage({
       <div className="space-y-3">
         {(reviews ?? []).map((review) => {
           const provider = providerById.get(review.provider_id);
+          const providerMsme = provider?.msmes as { msme_id?: string | null; owner_name?: string | null; business_name?: string | null } | null;
           return (
             <article key={review.id} className="rounded-xl border bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -144,7 +210,26 @@ export default async function MsmeReputationPage({
                 <p className="text-xs text-slate-500">{Number(review.rating).toFixed(1)} / 5</p>
               </div>
               <p className="mt-1 text-xs text-slate-500">{provider?.display_name ?? "Provider"} • by {review.reviewer_name}</p>
+              <p className="mt-1 text-xs text-slate-500">Owner: {providerMsme?.owner_name ?? "MSME Owner"} • MSME ID: {providerMsme?.msme_id ?? "N/A"}</p>
               <p className="mt-2 text-sm text-slate-700">{review.review_body}</p>
+
+              <form action={updateProviderProfile} className="mt-3 space-y-2 rounded-lg border bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Provider profile quick edit</p>
+                <input type="hidden" name="provider_id" value={review.provider_id} />
+                <input
+                  name="display_name"
+                  defaultValue={provider?.display_name ?? ""}
+                  placeholder="Provider display name"
+                  className="w-full rounded border px-3 py-2 text-sm"
+                />
+                <textarea
+                  name="short_description"
+                  defaultValue={provider?.short_description ?? ""}
+                  placeholder="Short provider description"
+                  className="min-h-16 w-full rounded border px-3 py-2 text-sm"
+                />
+                <button className="rounded bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">Save profile details</button>
+              </form>
 
               <form action={submitReply} className="mt-3 space-y-2">
                 <input type="hidden" name="review_id" value={review.id} />
