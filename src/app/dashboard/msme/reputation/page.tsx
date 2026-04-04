@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function submitReply(formData: FormData) {
@@ -10,11 +10,11 @@ async function submitReply(formData: FormData) {
   const replyText = String(formData.get("reply_text") ?? "").trim();
 
   if (!reviewId || !providerId || !replyText) {
-    redirect("/dashboard/msme/reputation?error=missing_fields");
+    redirect("/dashboard/msme/reviews?error=missing_fields");
   }
 
   const ctx = await getCurrentUserContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   if (ctx.role !== "msme" && ctx.role !== "admin") {
     redirect("/access-denied");
@@ -37,7 +37,7 @@ async function submitReply(formData: FormData) {
     .maybeSingle();
 
   if (!review || review.provider_id !== providerId) {
-    redirect("/dashboard/msme/reputation?error=ownership_scope");
+    redirect("/dashboard/msme/reviews?error=ownership_scope");
   }
 
   const { error, data: updatedRows } = await supabase
@@ -52,14 +52,15 @@ async function submitReply(formData: FormData) {
     .eq("provider_id", providerId);
 
   if (error || !updatedRows?.length) {
-    redirect("/dashboard/msme/reputation?error=save_failed");
+    redirect("/dashboard/msme/reviews?error=save_failed");
   }
 
   revalidatePath("/dashboard/msme/reputation");
+  revalidatePath("/dashboard/msme/reviews");
   revalidatePath(`/providers/${providerId}`);
   revalidatePath("/search");
   revalidatePath("/");
-  redirect("/dashboard/msme/reputation?saved=1");
+  redirect("/dashboard/msme/reviews?saved=1");
 }
 
 export default async function MsmeReputationPage({
@@ -71,7 +72,7 @@ export default async function MsmeReputationPage({
   if (ctx.role !== "msme" && ctx.role !== "admin") redirect("/access-denied");
 
   const params = await searchParams;
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   let providerQuery = supabase
     .from("provider_profiles")

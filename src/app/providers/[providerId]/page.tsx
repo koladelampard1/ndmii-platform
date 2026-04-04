@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile } from "@/lib/data/marketplace";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 async function submitPublicComplaint(formData: FormData) {
   "use server";
@@ -26,7 +26,7 @@ async function submitPublicComplaint(formData: FormData) {
     redirect(`/providers/${providerId}?reported_error=missing_fields`);
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   const { data: provider } = await supabase
     .from("marketplace_provider_search")
@@ -202,6 +202,8 @@ export default async function ProviderPublicPage({
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                 {query.reported_error === "missing_fields"
                   ? "Please complete summary and description before submitting your complaint."
+                  : query.reported_error === "provider_not_found"
+                    ? "Provider routing failed. Refresh this profile and submit your complaint again."
                   : "We could not submit your complaint right now. Please retry."}
               </div>
             )}
