@@ -53,7 +53,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
   if (role === "msme") {
     const { data: linkedByOwner } = await supabase
       .from("msmes")
-      .select("id")
+      .select("id,msme_id")
       .eq("created_by", appUserId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -64,7 +64,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
     } else if (email) {
       const { data: linkedByEmail } = await supabase
         .from("msmes")
-        .select("id")
+        .select("id,msme_id")
         .eq("contact_email", email.toLowerCase())
         .order("created_at", { ascending: false })
         .limit(1)
@@ -97,14 +97,43 @@ export async function getCurrentUserContext(): Promise<UserContext> {
     }
 
     if (context.linkedMsmeId) {
-      const { data: linkedProvider } = await supabase
-        .from("provider_profiles")
-        .select("id")
-        .eq("msme_id", context.linkedMsmeId)
-        .order("updated_at", { ascending: false })
+      const { data: linkedMsme } = await supabase
+        .from("msmes")
+        .select("id,msme_id")
+        .or(`id.eq.${context.linkedMsmeId},msme_id.eq.${context.linkedMsmeId}`)
+        .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      context.linkedProviderId = linkedProvider?.id ?? context.linkedProviderId;
+
+      const msmeLookupCandidates = [linkedMsme?.msme_id, linkedMsme?.id, context.linkedMsmeId].filter(
+        (value): value is string => Boolean(value),
+      );
+
+      for (const candidate of msmeLookupCandidates) {
+        const { data: linkedProvider } = await supabase
+          .from("provider_profiles")
+          .select("id,msme_id")
+          .eq("msme_id", candidate)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (linkedProvider?.id) {
+          context.linkedProviderId = linkedProvider.id;
+          break;
+        }
+      }
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[session-msme-linking]", {
+        source: "src/lib/auth/session.ts#getCurrentUserContext",
+        authEmail: context.email,
+        userId: context.appUserId,
+        linkedMsmeId: context.linkedMsmeId,
+        linkedProviderId: context.linkedProviderId,
+        decision: context.linkedMsmeId ? "resolved_msme_link" : "missing_msme_link",
+      });
     }
   }
 
