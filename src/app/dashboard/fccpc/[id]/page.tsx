@@ -49,7 +49,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
 
   const { data: complaint } = await supabase
     .from("complaints")
-    .select("id,summary,description,status,severity,investigation_notes,complaint_category,regulator_target,provider_profile_id,provider_id,msme_id,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
+    .select("id,summary,description,status,severity,investigation_notes,complaint_type,regulator_target,provider_profile_id,provider_id,msme_id,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
     .eq("id", id)
     .maybeSingle();
 
@@ -77,7 +77,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
           <p className="mt-2 text-sm">{complaint.summary}</p>
           <p className="mt-2 text-sm text-slate-600">{complaint.description}</p>
           <p className="mt-3 text-xs text-slate-500">Severity: {complaint.severity} • Status: {complaint.status}</p>
-          <p className="mt-1 text-xs text-slate-500">Category: {complaint.complaint_category ?? "marketplace_report"} • Regulator: {(complaint.regulator_target ?? "fccpc").toUpperCase()}</p>
+          <p className="mt-1 text-xs text-slate-500">Type: {complaint.complaint_type ?? "marketplace_report"} • Regulator: {(complaint.regulator_target ?? "fccpc").toUpperCase()}</p>
           <h3 className="mt-4 text-sm font-medium">Investigation notes</h3>
           <form action={enforcementAction} className="mt-2 space-y-2">
             <input type="hidden" name="complaint_id" value={complaint.id} /><input type="hidden" name="msme_id" value={complaint.msme_id ?? ""} /><input type="hidden" name="kind" value="investigation_note" />
