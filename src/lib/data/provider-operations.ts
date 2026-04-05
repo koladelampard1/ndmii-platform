@@ -31,6 +31,7 @@ export type ProviderWorkspaceContext = {
 type ProviderAccessAuditLog = {
   route: string;
   source: string;
+  component: string;
   email: string | null;
   role: string;
   resolvedUserId: string | null;
@@ -53,14 +54,21 @@ function logProviderAccessAudit(payload: ProviderAccessAuditLog) {
   console.info("[provider-rbac]", payload);
 }
 
+function denyProviderWorkspaceAccess(payload: ProviderAccessAuditLog): never {
+  logProviderAccessAudit(payload);
+  redirect("/access-denied");
+}
+
 export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceContext> {
   const ctx = await getCurrentUserContext();
   const route = "/dashboard/msme/*";
   const source = "src/lib/data/provider-operations.ts#getProviderWorkspaceContext";
+  const component = "ProviderWorkspaceGuard";
   if (!["msme", "admin"].includes(ctx.role)) {
-    logProviderAccessAudit({
+    denyProviderWorkspaceAccess({
       route,
       source,
+      component,
       email: ctx.email,
       role: ctx.role,
       resolvedUserId: ctx.appUserId,
@@ -73,7 +81,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       decision: "deny",
       reason: "role_not_allowed_for_provider_workspace",
     });
-    redirect("/access-denied");
   }
 
   const supabase = await createServerSupabaseClient();
@@ -149,13 +156,25 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       .eq("id", ctx.linkedProviderId)
       .maybeSingle();
 
-    msmeId = byProvider?.msme_id ?? null;
+    const providerLinkedMsmeRef = byProvider?.msme_id ?? null;
+    if (providerLinkedMsmeRef) {
+      const { data: byProviderMsmeRef } = await supabase
+        .from("msmes")
+        .select("id,msme_id")
+        .or(`id.eq.${providerLinkedMsmeRef},msme_id.eq.${providerLinkedMsmeRef}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      msmeId = byProviderMsmeRef?.id ?? null;
+      msmePublicId = byProviderMsmeRef?.msme_id ?? null;
+    }
   }
 
   if (!msmeId) {
-    logProviderAccessAudit({
+    denyProviderWorkspaceAccess({
       route,
       source,
+      component,
       email: ctx.email,
       role: ctx.role,
       resolvedUserId: resolvedAppUserId,
@@ -168,19 +187,19 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       decision: "deny",
       reason: "no_owned_msme_found_after_lookup",
     });
-    redirect("/access-denied");
   }
 
   const { data: msme } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email")
+    .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,created_by")
     .eq("id", msmeId)
     .maybeSingle();
 
   if (!msme) {
-    logProviderAccessAudit({
+    denyProviderWorkspaceAccess({
       route,
       source,
+      component,
       email: ctx.email,
       role: ctx.role,
       resolvedUserId: resolvedAppUserId,
@@ -193,7 +212,25 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       decision: "deny",
       reason: "owned_msme_not_found_in_table",
     });
-    redirect("/access-denied");
+  }
+
+  if (ctx.role === "msme" && resolvedAppUserId && msme.created_by !== resolvedAppUserId) {
+    denyProviderWorkspaceAccess({
+      route,
+      source,
+      component,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: resolvedAppUserId,
+      resolvedMsmeId: msme.id,
+      resolvedMsmePublicId: msme.msme_id,
+      linkedMsmeId: ctx.linkedMsmeId,
+      linkedProviderId: ctx.linkedProviderId,
+      providerRow: null,
+      resolvedProviderMsmeId: null,
+      decision: "deny",
+      reason: "msme_user_not_creator_of_resolved_msme",
+    });
   }
 
   const providerLookupCandidates = [msme.msme_id, msme.id, ctx.linkedProviderId].filter((value): value is string => Boolean(value));
@@ -236,9 +273,21 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   }
 
   if (!provider) {
-    logProviderAccessAudit({
+    const { data: providerByMsmePublicId } = await supabase
+      .from("provider_profiles")
+      .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
+      .eq("msme_id", msme.msme_id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    provider = providerByMsmePublicId ?? null;
+  }
+
+  if (!provider) {
+    denyProviderWorkspaceAccess({
       route,
       source,
+      component,
       email: ctx.email,
       role: ctx.role,
       resolvedUserId: resolvedAppUserId,
@@ -251,12 +300,36 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       decision: "deny",
       reason: "provider_profile_not_found_for_owned_msme",
     });
-    redirect("/access-denied");
+  }
+
+  const ownsProvider = [msme.id, msme.msme_id].includes(provider.msme_id);
+  if (!ownsProvider) {
+    denyProviderWorkspaceAccess({
+      route,
+      source,
+      component,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: resolvedAppUserId,
+      resolvedMsmeId: msme.id,
+      resolvedMsmePublicId: msme.msme_id,
+      linkedMsmeId: ctx.linkedMsmeId,
+      linkedProviderId: ctx.linkedProviderId,
+      providerRow: {
+        id: provider.id,
+        msme_id: provider.msme_id ?? null,
+        display_name: provider.display_name,
+      },
+      resolvedProviderMsmeId: provider.msme_id ?? null,
+      decision: "deny",
+      reason: "provider_profile_msme_id_does_not_match_owned_msme",
+    });
   }
 
   logProviderAccessAudit({
     route,
     source,
+    component,
     email: ctx.email,
     role: ctx.role,
     resolvedUserId: resolvedAppUserId,
