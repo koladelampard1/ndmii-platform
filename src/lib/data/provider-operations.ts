@@ -28,30 +28,70 @@ export type ProviderWorkspaceContext = {
   };
 };
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 55);
+type ProviderAccessAuditLog = {
+  route: string;
+  email: string | null;
+  role: string;
+  resolvedUserId: string | null;
+  resolvedMsmeId: string | null;
+  resolvedProviderMsmeId: string | null;
+  decision: "allow" | "deny";
+  reason: string;
+};
+
+function logProviderAccessAudit(payload: ProviderAccessAuditLog) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info("[provider-rbac]", payload);
 }
 
 export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceContext> {
   const ctx = await getCurrentUserContext();
-  if (!ctx.appUserId || !["msme", "admin"].includes(ctx.role)) {
+  const route = "/dashboard/msme/*";
+  if (!["msme", "admin"].includes(ctx.role)) {
+    logProviderAccessAudit({
+      route,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: ctx.appUserId,
+      resolvedMsmeId: null,
+      resolvedProviderMsmeId: null,
+      decision: "deny",
+      reason: "role_not_allowed_for_provider_workspace",
+    });
     redirect("/access-denied");
   }
 
   const supabase = await createServerSupabaseClient();
+  let resolvedAppUserId = ctx.appUserId;
 
-  let msmeId = ctx.linkedMsmeId;
+  if (!resolvedAppUserId && ctx.authUserId) {
+    const { data: byAuthUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("auth_user_id", ctx.authUserId)
+      .maybeSingle();
+    resolvedAppUserId = byAuthUser?.id ?? null;
+  }
 
-  if (!msmeId) {
+  if (!resolvedAppUserId && ctx.email) {
+    const { data: byEmailUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", ctx.email.toLowerCase())
+      .maybeSingle();
+    resolvedAppUserId = byEmailUser?.id ?? null;
+  }
+
+  let msmeId: string | null = null;
+  if (ctx.role === "admin") {
+    msmeId = ctx.linkedMsmeId;
+  }
+
+  if (!msmeId && resolvedAppUserId) {
     const { data: byOwner } = await supabase
       .from("msmes")
       .select("id")
-      .eq("created_by", ctx.appUserId)
+      .eq("created_by", resolvedAppUserId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -82,6 +122,16 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   }
 
   if (!msmeId) {
+    logProviderAccessAudit({
+      route,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: resolvedAppUserId,
+      resolvedMsmeId: null,
+      resolvedProviderMsmeId: null,
+      decision: "deny",
+      reason: "no_owned_msme_found_after_lookup",
+    });
     redirect("/access-denied");
   }
 
@@ -92,44 +142,53 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     .maybeSingle();
 
   if (!msme) {
+    logProviderAccessAudit({
+      route,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: resolvedAppUserId,
+      resolvedMsmeId: msmeId,
+      resolvedProviderMsmeId: null,
+      decision: "deny",
+      reason: "owned_msme_not_found_in_table",
+    });
     redirect("/access-denied");
   }
 
-  let { data: provider } = await supabase
+  const { data: provider } = await supabase
     .from("provider_profiles")
     .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
     .eq("msme_id", msme.id)
     .maybeSingle();
 
   if (!provider) {
-    const suffix = msme.msme_id.slice(-4).toLowerCase();
-    const slugBase = `${slugify(msme.business_name)}-${suffix}`;
-    const { data: inserted } = await supabase
-      .from("provider_profiles")
-      .insert({
-        msme_id: msme.id,
-        display_name: msme.business_name,
-        slug: slugBase,
-        short_description: `Verified ${msme.sector.toLowerCase()} provider in ${msme.state}.`,
-        long_description: `${msme.business_name} is a verified MSME provider operating within the NDMII marketplace operations layer.`,
-        logo_url: null,
-        passport_url: null,
-        trust_score: 82,
-        is_featured: false,
-      })
-      .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
-      .maybeSingle();
-
-    provider = inserted ?? null;
-  }
-
-  if (!provider) {
+    logProviderAccessAudit({
+      route,
+      email: ctx.email,
+      role: ctx.role,
+      resolvedUserId: resolvedAppUserId,
+      resolvedMsmeId: msme.id,
+      resolvedProviderMsmeId: null,
+      decision: "deny",
+      reason: "provider_profile_not_found_for_owned_msme",
+    });
     redirect("/access-denied");
   }
 
+  logProviderAccessAudit({
+    route,
+    email: ctx.email,
+    role: ctx.role,
+    resolvedUserId: resolvedAppUserId,
+    resolvedMsmeId: msme.id,
+    resolvedProviderMsmeId: provider.msme_id ?? null,
+    decision: "allow",
+    reason: "msme_role_and_owned_provider_profile_resolved",
+  });
+
   return {
     role: ctx.role,
-    appUserId: ctx.appUserId,
+    appUserId: resolvedAppUserId,
     msme,
     provider: {
       ...provider,

@@ -8,7 +8,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
   const role = (cookieStore.get("ndmii_role")?.value as UserRole | undefined) ?? "public";
   const email = cookieStore.get("ndmii_email")?.value ?? null;
   const authUserId = cookieStore.get("ndmii_auth_user_id")?.value ?? null;
-  const appUserId = cookieStore.get("ndmii_app_user_id")?.value ?? null;
+  let appUserId = cookieStore.get("ndmii_app_user_id")?.value ?? null;
 
   const context: UserContext = {
     authUserId,
@@ -21,9 +21,31 @@ export async function getCurrentUserContext(): Promise<UserContext> {
     linkedAssociationId: null,
   };
 
-  if (!appUserId || role === "public") return context;
-
   const supabase = await createServerSupabaseClient();
+  if (role === "public") return context;
+
+  if (!appUserId && authUserId) {
+    const { data: linkedByAuthUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
+    appUserId = linkedByAuthUser?.id ?? null;
+    context.appUserId = appUserId;
+  }
+
+  if (!appUserId && email) {
+    const { data: linkedByEmail } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    appUserId = linkedByEmail?.id ?? null;
+    context.appUserId = appUserId;
+  }
+
+  if (!appUserId) return context;
+
   const { data: user } = await supabase.from("users").select("full_name").eq("id", appUserId).maybeSingle();
   context.fullName = user?.full_name ?? context.fullName;
 
