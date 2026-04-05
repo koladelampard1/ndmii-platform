@@ -25,6 +25,14 @@ export type ProviderWorkspaceContext = {
     logo_url: string | null;
     slug: string;
     trust_score: number;
+    public_slug: string | null;
+    tagline: string | null;
+    description: string | null;
+    contact_email: string | null;
+    contact_phone: string | null;
+    website: string | null;
+    is_verified: boolean | null;
+    is_active: boolean | null;
   };
 };
 
@@ -291,16 +299,19 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
   const providerLookupKey = msme.msme_id;
   const providerSelect =
-    "id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score";
+    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active";
   let provider: {
     id: string;
     msme_id: string;
+    public_slug: string | null;
     display_name: string;
-    short_description: string | null;
-    long_description: string | null;
-    logo_url: string | null;
-    slug: string;
-    trust_score: number;
+    tagline: string | null;
+    description: string | null;
+    contact_email: string | null;
+    contact_phone: string | null;
+    website: string | null;
+    is_verified: boolean | null;
+    is_active: boolean | null;
   } | null = null;
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
@@ -315,6 +326,17 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   providerQueryResultLength = providerByMsmePublicIdRows?.length ?? 0;
   providerQueryError = providerByMsmePublicIdError?.message ?? null;
   provider = providerByMsmePublicIdRows?.[0] ?? null;
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[provider-workspace-query]", {
+      source,
+      route,
+      select: providerSelect,
+      lookupField: "msme_id",
+      lookupValue: providerLookupKey,
+      providerQueryError,
+      providerRow: provider,
+    });
+  }
 
   logProviderAccessAudit({
     route,
@@ -362,6 +384,17 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     const providerById = providerByIdRows?.[0] ?? null;
     providerQueryResultLength = providerByIdRows?.length ?? 0;
     providerQueryError = providerByIdError?.message ?? null;
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[provider-workspace-query]", {
+        source,
+        route,
+        select: providerSelect,
+        lookupField: "id",
+        lookupValue: ctx.linkedProviderId,
+        providerQueryError,
+        providerRow: providerById,
+      });
+    }
 
     const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.msme_id);
     if (providerById && ownsProvider) {
@@ -514,7 +547,11 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     msme,
     provider: {
       ...provider,
-      trust_score: Number(provider.trust_score ?? 0),
+      short_description: provider.tagline ?? provider.description ?? null,
+      long_description: provider.description ?? null,
+      slug: provider.public_slug ?? provider.id,
+      trust_score: 0,
+      logo_url: null,
     },
   };
 }

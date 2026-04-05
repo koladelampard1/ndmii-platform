@@ -97,7 +97,7 @@ async function updateProviderProfile(formData: FormData) {
     .from("provider_profiles")
     .update({
       display_name: displayName,
-      short_description: shortDescription,
+      tagline: shortDescription,
       updated_at: new Date().toISOString(),
     })
     .eq("id", providerId);
@@ -126,7 +126,7 @@ export default async function MsmeReputationPage({
 
   let providerQuery = supabase
     .from("provider_profiles")
-    .select("id,display_name,short_description,msme_id,msmes(msme_id,business_name,owner_name)")
+    .select("id,display_name,tagline,description,public_slug,msme_id,msmes(msme_id,business_name,owner_name)")
     .order("updated_at", { ascending: false })
     .limit(5);
 
@@ -213,7 +213,7 @@ export default async function MsmeReputationPage({
                 />
                 <textarea
                   name="short_description"
-                  defaultValue={provider?.short_description ?? ""}
+                  defaultValue={provider?.tagline ?? provider?.description ?? ""}
                   placeholder="Short provider description"
                   className="min-h-16 w-full rounded border px-3 py-2 text-sm"
                 />
