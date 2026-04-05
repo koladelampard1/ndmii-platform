@@ -78,7 +78,7 @@ export default async function AssociationsPage({
 
   return (
     <section className="space-y-5">
-      <h1 className="text-2xl font-semibold">Association Management Console</h1>
+      <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-semibold">Association Management Console</h1><Link href="/dashboard/associations/bulk-upload" className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Bulk upload members</Link></div>
       {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association changes saved.</p>}
 
       <div className="grid gap-3 md:grid-cols-4">
