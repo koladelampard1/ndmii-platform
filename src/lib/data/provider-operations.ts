@@ -39,6 +39,8 @@ type ProviderAccessAuditLog = {
   resolvedMsmePublicId: string | null;
   linkedMsmeId: string | null;
   linkedProviderId: string | null;
+  providerLookupKeyUsed: string | null;
+  providerRowFound: boolean;
   providerRow: {
     id: string;
     msme_id: string | null;
@@ -76,6 +78,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: null,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: null,
+      providerRowFound: false,
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
@@ -182,6 +186,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: msmePublicId,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: null,
+      providerRowFound: false,
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
@@ -207,6 +213,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: msmePublicId,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: null,
+      providerRowFound: false,
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
@@ -226,6 +234,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: msme.msme_id,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: null,
+      providerRowFound: false,
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
@@ -233,7 +243,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupCandidates = [msme.msme_id, msme.id, ctx.linkedProviderId].filter((value): value is string => Boolean(value));
+  const providerLookupKey = msme.msme_id;
   let provider: {
     id: string;
     msme_id: string;
@@ -245,19 +255,14 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     trust_score: number;
   } | null = null;
 
-  for (const candidate of providerLookupCandidates) {
-    const { data: providerMatch } = await supabase
-      .from("provider_profiles")
-      .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
-      .eq("msme_id", candidate)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (providerMatch) {
-      provider = providerMatch;
-      break;
-    }
-  }
+  const { data: providerByMsmePublicId } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
+    .eq("msme_id", providerLookupKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  provider = providerByMsmePublicId ?? null;
 
   if (!provider && ctx.linkedProviderId) {
     const { data: providerById } = await supabase
@@ -266,21 +271,10 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       .eq("id", ctx.linkedProviderId)
       .maybeSingle();
 
-    const ownsProvider = Boolean(providerById?.msme_id && [msme.id, msme.msme_id].includes(providerById.msme_id));
+    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.msme_id);
     if (providerById && ownsProvider) {
       provider = providerById;
     }
-  }
-
-  if (!provider) {
-    const { data: providerByMsmePublicId } = await supabase
-      .from("provider_profiles")
-      .select("id,msme_id,display_name,short_description,long_description,logo_url,slug,trust_score")
-      .eq("msme_id", msme.msme_id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    provider = providerByMsmePublicId ?? null;
   }
 
   if (!provider) {
@@ -295,6 +289,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: msme.msme_id,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: providerLookupKey,
+      providerRowFound: false,
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
@@ -302,7 +298,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const ownsProvider = [msme.id, msme.msme_id].includes(provider.msme_id);
+  const ownsProvider = provider.msme_id === msme.msme_id;
   if (!ownsProvider) {
     denyProviderWorkspaceAccess({
       route,
@@ -315,6 +311,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       resolvedMsmePublicId: msme.msme_id,
       linkedMsmeId: ctx.linkedMsmeId,
       linkedProviderId: ctx.linkedProviderId,
+      providerLookupKeyUsed: providerLookupKey,
+      providerRowFound: true,
       providerRow: {
         id: provider.id,
         msme_id: provider.msme_id ?? null,
@@ -337,6 +335,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     resolvedMsmePublicId: msme.msme_id,
     linkedMsmeId: ctx.linkedMsmeId,
     linkedProviderId: ctx.linkedProviderId,
+    providerLookupKeyUsed: providerLookupKey,
+    providerRowFound: true,
     providerRow: {
       id: provider.id,
       msme_id: provider.msme_id ?? null,
