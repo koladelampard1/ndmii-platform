@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 
 async function submitReply(formData: FormData) {
   "use server";
@@ -20,13 +21,11 @@ async function submitReply(formData: FormData) {
     redirect("/access-denied");
   }
 
-  if (ctx.role === "msme" && !ctx.linkedMsmeId) {
-    redirect("/dashboard/msme/reviews?error=ownership_scope");
-  }
+  const workspace = ctx.role === "msme" ? await getProviderWorkspaceContext() : null;
 
   let providerQuery = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
-  if (ctx.role === "msme" && ctx.linkedMsmeId) {
-    providerQuery = providerQuery.eq("msme_id", ctx.linkedMsmeId);
+  if (workspace) {
+    providerQuery = providerQuery.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
   }
 
   const { data: provider } = await providerQuery.maybeSingle();
@@ -81,14 +80,12 @@ async function updateProviderProfile(formData: FormData) {
   if (ctx.role !== "msme" && ctx.role !== "admin") {
     redirect("/access-denied");
   }
-  if (ctx.role === "msme" && !ctx.linkedMsmeId) {
-    redirect("/dashboard/msme/reviews?error=ownership_scope");
-  }
+  const workspace = ctx.role === "msme" ? await getProviderWorkspaceContext() : null;
 
   const supabase = await createServiceRoleSupabaseClient();
   let query = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
-  if (ctx.role === "msme" && ctx.linkedMsmeId) {
-    query = query.eq("msme_id", ctx.linkedMsmeId);
+  if (workspace) {
+    query = query.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
   }
 
   const { data: provider } = await query.maybeSingle();
@@ -122,6 +119,7 @@ export default async function MsmeReputationPage({
 }) {
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "msme" && ctx.role !== "admin") redirect("/access-denied");
+  const workspace = ctx.role === "msme" ? await getProviderWorkspaceContext() : null;
 
   const params = await searchParams;
   const supabase = await createServiceRoleSupabaseClient();
@@ -132,12 +130,8 @@ export default async function MsmeReputationPage({
     .order("updated_at", { ascending: false })
     .limit(5);
 
-  if (ctx.role === "msme") {
-    if (!ctx.linkedMsmeId) {
-      providerQuery = providerQuery.eq("msme_id", "00000000-0000-0000-0000-000000000000");
-    } else {
-      providerQuery = providerQuery.eq("msme_id", ctx.linkedMsmeId);
-    }
+  if (workspace) {
+    providerQuery = providerQuery.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
   }
 
   const { data: providers } = await providerQuery;
@@ -162,11 +156,6 @@ export default async function MsmeReputationPage({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reputation & Review Replies</h1>
       </div>
-      {ctx.role === "msme" && !ctx.linkedMsmeId && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Your session is not mapped to an MSME provider profile yet. Use a seeded demo MSME account to test provider ownership and review replies.
-        </p>
-      )}
       {params.saved === "1" && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Reply published successfully.</p>}
       {params.error && (
         <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
