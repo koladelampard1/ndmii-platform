@@ -12,9 +12,13 @@ export const roleRouteMap: Record<UserRole, string[]> = {
   admin: ["/dashboard"],
 };
 
+function routeMatchesPrefix(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
 export function isRouteAllowed(role: UserRole, pathname: string) {
   if (isPublicPath(pathname)) return true;
   if (role === "public") return false;
-  if (role === "admin") return pathname.startsWith("/dashboard");
-  return roleRouteMap[role].some((route) => pathname.startsWith(route));
+  if (role === "admin") return routeMatchesPrefix(pathname, "/dashboard");
+  return roleRouteMap[role].some((route) => routeMatchesPrefix(pathname, route));
 }

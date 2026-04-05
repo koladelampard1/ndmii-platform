@@ -11,6 +11,33 @@ export type UserContext = {
   linkedAssociationId: string | null;
 };
 
+const KNOWN_ROLES: UserRole[] = [
+  "public",
+  "msme",
+  "association_officer",
+  "reviewer",
+  "fccpc_officer",
+  "nrs_officer",
+  "firs_officer",
+  "admin",
+];
+
+const ROLE_ALIASES: Record<string, UserRole> = {
+  association: "association_officer",
+  associationofficer: "association_officer",
+  association_officer: "association_officer",
+  reviewer: "reviewer",
+  fccpc: "fccpc_officer",
+  fccpc_officer: "fccpc_officer",
+  nrs: "nrs_officer",
+  nrs_officer: "nrs_officer",
+  firs: "firs_officer",
+  firs_officer: "firs_officer",
+  msme: "msme",
+  admin: "admin",
+  public: "public",
+};
+
 const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   admin: "/dashboard/executive",
   reviewer: "/dashboard/reviews",
@@ -51,12 +78,27 @@ export function getDefaultDashboardRoute(role: UserRole): string {
   return ROLE_HOME[role];
 }
 
+export function normalizeUserRole(rawRole: string | null | undefined, fallback: UserRole = "public"): UserRole {
+  if (!rawRole) return fallback;
+  const cleaned = rawRole.trim().toLowerCase();
+  if (!cleaned) return fallback;
+  const compacted = cleaned.replace(/[\s-]/g, "_");
+  const withoutUnderscore = compacted.replace(/_/g, "");
+  const resolved = ROLE_ALIASES[compacted] ?? ROLE_ALIASES[withoutUnderscore];
+  if (resolved) return resolved;
+  return KNOWN_ROLES.includes(compacted as UserRole) ? (compacted as UserRole) : fallback;
+}
+
+function routeMatchesPrefix(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
 export function canAccessRoute(role: UserRole, path: string): boolean {
   if (isPublicPath(path)) return true;
   if (role === "public") return false;
-  if (role === "admin") return path.startsWith("/dashboard");
+  if (role === "admin") return routeMatchesPrefix(path, "/dashboard");
   if (path === "/dashboard") return true;
-  return ROLE_ROUTE_PREFIXES[role].some((prefix) => path.startsWith(prefix));
+  return ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
 }
 
 export type MsmeLikeRecord = {
