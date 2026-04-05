@@ -13,6 +13,57 @@ function devLog(message: string, payload?: Record<string, unknown>) {
   console.info(`[public-complaint] ${message}`, payload ?? {});
 }
 
+function parseMissingColumn(errorMessage: string) {
+  const postgrestMatch = errorMessage.match(/Could not find the '([^']+)' column/i);
+  if (postgrestMatch?.[1]) return postgrestMatch[1];
+
+  const postgresMatch = errorMessage.match(/column \"([^\"]+)\"/i);
+  if (postgresMatch?.[1]) return postgresMatch[1];
+
+  return null;
+}
+
+async function insertComplaintWithSchemaAdaptation(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  payload: Record<string, unknown>,
+  providerId: string,
+) {
+  const mutablePayload = { ...payload };
+
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    devLog("complaint_insert_payload", { providerId, attempt, payload: mutablePayload });
+
+    const { data, error } = await supabase.from("complaints").insert(mutablePayload).select("id").maybeSingle();
+
+    if (!error) {
+      devLog("complaint_insert_success", { providerId, attempt, complaintId: data?.id ?? null });
+      return { data, error: null };
+    }
+
+    devLog("complaint_insert_failed", {
+      providerId,
+      attempt,
+      code: error.code ?? null,
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+    });
+
+    const missingColumn = parseMissingColumn(error.message ?? "");
+    if (!missingColumn || !(missingColumn in mutablePayload)) {
+      return { data: null, error };
+    }
+
+    devLog("complaint_insert_drop_unknown_column", { providerId, attempt, missingColumn });
+    delete mutablePayload[missingColumn];
+  }
+
+  return {
+    data: null,
+    error: { message: "Exceeded complaint insert retries while adapting to schema." } as { message: string },
+  };
+}
+
 function resolveRegulatorTarget(category: string, requestedTarget: string) {
   const normalizedCategory = category.trim().toLowerCase();
   const normalizedRequested = requestedTarget.trim().toLowerCase();
@@ -61,14 +112,14 @@ async function submitPublicComplaint(formData: FormData) {
     .select("id,msme_id,display_name,msmes(business_name,state,sector)")
     .eq("id", providerId)
     .maybeSingle();
-  devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile) });
+  devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile), providerProfile });
 
   const { data: marketplaceProvider } = await supabase
     .from("marketplace_provider_search")
     .select("provider_id,msme_row_id,state,sector,business_name")
     .eq("provider_id", providerId)
     .maybeSingle();
-  devLog("marketplace_provider_lookup", { providerId, found: Boolean(marketplaceProvider) });
+  devLog("marketplace_provider_lookup", { providerId, found: Boolean(marketplaceProvider), marketplaceProvider });
 
   let linkedMsmeId =
     providerProfile?.msme_id ??
@@ -88,8 +139,28 @@ async function submitPublicComplaint(formData: FormData) {
     devLog("linked_msme_fallback_from_projected_provider", { providerId, projectedMsmeId, found: Boolean(projectedMsme) });
   }
 
-  if (!linkedMsmeId) {
-    devLog("linked_msme_lookup_failed", { providerId });
+  if (!linkedMsmeId && fallbackBusinessName) {
+    let msmeQuery = supabase.from("msmes").select("id,business_name,state,sector").ilike("business_name", fallbackBusinessName).limit(1);
+    if (fallbackState) msmeQuery = msmeQuery.eq("state", fallbackState);
+    if (fallbackSector) msmeQuery = msmeQuery.eq("sector", fallbackSector);
+    const { data: businessMatchedMsme } = await msmeQuery.maybeSingle();
+    linkedMsmeId = businessMatchedMsme?.id ?? null;
+    devLog("linked_msme_fallback_from_business_name", {
+      providerId,
+      fallbackBusinessName,
+      fallbackState,
+      fallbackSector,
+      found: Boolean(businessMatchedMsme),
+    });
+  }
+
+  const providerProfileExists = Boolean(providerProfile?.id || marketplaceProvider?.provider_id);
+  if (!linkedMsmeId && providerProfileExists) {
+    devLog("linked_msme_lookup_incomplete_provider_profile", { providerId, note: "Continuing with complaint creation while retaining provider linkage." });
+  }
+
+  if (!linkedMsmeId && !providerProfileExists) {
+    devLog("linked_msme_lookup_failed_no_provider_profile", { providerId });
     redirect(`/providers/${providerId}?reported_error=provider_not_found`);
   }
 
@@ -111,9 +182,30 @@ async function submitPublicComplaint(formData: FormData) {
     fallbackSector ??
     null;
 
-  devLog("linked_msme_lookup_result", { providerId, linkedMsmeId, providerProfileId: resolvedProviderProfileId, resolvedBusinessName });
+  devLog("linked_msme_lookup_result", {
+    providerId,
+    linkedMsmeId,
+    providerProfileId: resolvedProviderProfileId,
+    resolvedBusinessName,
+    resolvedState,
+    resolvedSector,
+  });
 
-  const { error } = await supabase.from("complaints").insert({
+  if (providerProfile?.id && linkedMsmeId && !providerProfile.msme_id) {
+    const { error: linkageRepairError } = await supabase
+      .from("provider_profiles")
+      .update({ msme_id: linkedMsmeId })
+      .eq("id", providerProfile.id);
+    devLog("provider_linkage_repair", {
+      providerId,
+      providerProfileId: providerProfile.id,
+      linkedMsmeId,
+      repaired: !linkageRepairError,
+      error: linkageRepairError?.message ?? null,
+    });
+  }
+
+  const complaintInsertPayload: Record<string, unknown> = {
     msme_id: linkedMsmeId,
     provider_profile_id: resolvedProviderProfileId,
     provider_id: resolvedProviderProfileId,
@@ -131,13 +223,28 @@ async function submitPublicComplaint(formData: FormData) {
     reporter_email: reporterEmail || null,
     source_channel: "marketplace_public_profile",
     created_at: new Date().toISOString(),
-  });
+  };
+
+  const { error, data } = await insertComplaintWithSchemaAdaptation(supabase, complaintInsertPayload, providerId);
 
   if (error) {
-    devLog("complaint_insert_failed", { providerId, message: error.message });
+    devLog("complaint_insert_failed_final", {
+      providerId,
+      message: error.message ?? null,
+      details: "details" in error ? (error as { details?: string }).details ?? null : null,
+      hint: "hint" in error ? (error as { hint?: string }).hint ?? null : null,
+      code: "code" in error ? (error as { code?: string }).code ?? null : null,
+    });
     redirect(`/providers/${providerId}?reported_error=submit_failed`);
   }
-  devLog("complaint_insert_success", { providerId, linkedMsmeId, providerProfileId: resolvedProviderProfileId, chosenRegulator });
+  devLog("complaint_insert_complete", {
+    providerId,
+    complaintId: data?.id ?? null,
+    linkedMsmeId,
+    providerProfileId: resolvedProviderProfileId,
+    businessName: resolvedBusinessName,
+    chosenRegulator,
+  });
 
   revalidatePath(`/providers/${providerId}`);
   redirect(`/providers/${providerId}?reported=1`);
@@ -282,7 +389,7 @@ export default async function ProviderPublicPage({
                 {query.reported_error === "missing_fields"
                   ? "Please complete summary and description before submitting your complaint."
                   : query.reported_error === "provider_not_found"
-                    ? "Provider routing failed. Refresh this profile and submit your complaint again."
+                    ? "Provider profile could not be resolved. Please reopen this provider page and try again."
                   : "We could not submit your complaint right now. Please retry."}
               </div>
             )}
