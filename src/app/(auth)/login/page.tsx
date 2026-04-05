@@ -6,8 +6,8 @@ import { FormEvent, useMemo, useState } from "react";
 import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
-import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
+import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profile";
+import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 const DEMO_USERS = [
@@ -56,21 +56,25 @@ export default function LoginPage() {
         authUserId: signInData.user.id,
         email: signInData.user.email ?? email,
       });
-      role = profile?.role ?? "public";
+      role = normalizeUserRole(profile?.role, "public");
       appUserId = profile?.id ?? null;
     } catch (profileError) {
       console.error("Unable to resolve user profile during login", profileError);
     }
 
+    if (role === "public") {
+      role = inferRoleFromEmail(signInData.user.email ?? email);
+    }
+
     await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, email, userId: signInData.user.id, appUserId }),
+      body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
     });
 
     setLoading(false);
     setMessage("Authentication successful. Redirecting to your dashboard...");
-    router.replace(getDefaultDashboardRoute(role));
+    router.replace(role === "msme" ? "/dashboard/msme" : getDefaultDashboardRoute(role));
     router.refresh();
   }
 

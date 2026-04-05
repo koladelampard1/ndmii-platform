@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/types/roles";
 import type { UserContext } from "@/lib/auth/authorization";
+import { normalizeUserRole } from "@/lib/auth/authorization";
+import type { UserRole } from "@/types/roles";
 
 export async function getCurrentUserContext(): Promise<UserContext> {
   const cookieStore = await cookies();
-  const role = (cookieStore.get("ndmii_role")?.value as UserRole | undefined) ?? "public";
+  const role = normalizeUserRole(cookieStore.get("ndmii_role")?.value, "public");
   const email = cookieStore.get("ndmii_email")?.value ?? null;
   const authUserId = cookieStore.get("ndmii_auth_user_id")?.value ?? null;
   let appUserId = cookieStore.get("ndmii_app_user_id")?.value ?? null;
