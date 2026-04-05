@@ -26,6 +26,20 @@ export type RatingBreakdown = {
   one: number;
 };
 
+export type ProviderService = {
+  id: string;
+  category: string;
+  specialization: string | null;
+  title: string;
+  short_description: string;
+  pricing_mode: string;
+  min_price: number | null;
+  max_price: number | null;
+  turnaround_time: string | null;
+  vat_applicable: boolean;
+  availability_status: string;
+};
+
 export type ProviderReview = {
   id: string;
   reviewer_name: string;
@@ -40,7 +54,8 @@ export type ProviderReview = {
 export type ProviderProfile = ProviderCard & {
   owner_name: string;
   long_description: string;
-  gallery: Array<{ id: string; asset_url: string; caption: string | null }>;
+  gallery: Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>;
+  services: ProviderService[];
   reviews: ProviderReview[];
   rating_breakdown: RatingBreakdown;
   trust_badge: "Platinum Trust" | "Gold Trust" | "Verified Trust";
@@ -462,8 +477,9 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       .maybeSingle();
 
     if (!error && row) {
-      const [{ data: gallery }, { data: reviews }, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
-        supabase.from("provider_gallery").select("id,asset_url,caption").eq("provider_id", providerId).order("sort_order", { ascending: true }),
+      const [{ data: gallery }, { data: services }, { data: reviews }, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
+        supabase.from("provider_gallery").select("id,asset_url,caption,is_featured").eq("provider_id", providerId).order("sort_order", { ascending: true }),
+        supabase.from("provider_services").select("id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status").eq("provider_id", providerId).order("created_at", { ascending: false }),
         supabase
           .from("reviews")
           .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
@@ -520,7 +536,13 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
         trust_score: trustScore,
         owner_name: msme?.owner_name ?? "Verified MSME Owner",
         long_description: row.long_description ?? `${row.business_name} is a verified NDMII provider serving ${row.state}.`,
-        gallery: (gallery ?? []) as Array<{ id: string; asset_url: string; caption: string | null }>,
+        gallery: (gallery ?? []) as Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>,
+        services: (services ?? []).map((service: any) => ({
+          ...service,
+          min_price: service.min_price == null ? null : Number(service.min_price),
+          max_price: service.max_price == null ? null : Number(service.max_price),
+          vat_applicable: Boolean(service.vat_applicable),
+        })) as ProviderService[],
         reviews: (reviews ?? []) as ProviderReview[],
         rating_breakdown: breakdown,
         trust_badge: badgeFromTrustScore(trustScore),
@@ -565,6 +587,22 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           id: `${card.id}-gallery-1`,
           asset_url: card.logo_url ?? "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=900&q=80",
           caption: "Verified business storefront",
+          is_featured: true,
+        },
+      ],
+      services: [
+        {
+          id: `${card.id}-service-1`,
+          category: card.category,
+          specialization: card.specialization,
+          title: `${card.business_name} Core Service`,
+          short_description: card.short_description,
+          pricing_mode: "range",
+          min_price: 50000,
+          max_price: 250000,
+          turnaround_time: "5-10 business days",
+          vat_applicable: true,
+          availability_status: "available",
         },
       ],
       reviews: FALLBACK_REVIEWS,

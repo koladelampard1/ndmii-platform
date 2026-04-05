@@ -250,6 +250,39 @@ async function submitPublicComplaint(formData: FormData) {
   redirect(`/providers/${providerId}?reported=1`);
 }
 
+async function submitQuoteRequest(formData: FormData) {
+  "use server";
+
+  const providerId = String(formData.get("provider_id") ?? "");
+  if (!providerId) redirect("/search?quote=missing_provider");
+
+  const customerName = String(formData.get("customer_name") ?? "").trim();
+  const customerContact = String(formData.get("customer_contact") ?? "").trim();
+  const serviceDetails = String(formData.get("service_details") ?? "").trim();
+  const requestedDate = String(formData.get("requested_date") ?? "").trim();
+
+  if (!customerName || !customerContact || !serviceDetails) {
+    redirect(`/providers/${providerId}?quote_error=missing_fields`);
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { error } = await supabase.from("provider_quote_requests").insert({
+    provider_id: providerId,
+    customer_name: customerName,
+    customer_contact: customerContact,
+    service_details: serviceDetails,
+    requested_date: requestedDate || null,
+    status: "new",
+  });
+
+  if (error) {
+    redirect(`/providers/${providerId}?quote_error=submit_failed`);
+  }
+
+  revalidatePath(`/providers/${providerId}`);
+  redirect(`/providers/${providerId}?quote=1`);
+}
+
 function ratingPercent(count: number, total: number) {
   if (!total) return 0;
   return Math.round((count / total) * 100);
@@ -260,7 +293,7 @@ export default async function ProviderPublicPage({
   searchParams,
 }: {
   params: Promise<{ providerId: string }>;
-  searchParams: Promise<{ reported?: string; reported_error?: string }>;
+  searchParams: Promise<{ reported?: string; reported_error?: string; quote?: string; quote_error?: string }>;
 }) {
   const { providerId } = await params;
   const query = await searchParams;
@@ -355,6 +388,38 @@ export default async function ProviderPublicPage({
           </div>
         </div>
 
+        <section className="mt-8 grid gap-6 md:grid-cols-2">
+          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold">Services</h2>
+            <div className="mt-3 space-y-2">
+              {provider.services.map((service) => (
+                <div key={service.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-semibold text-slate-900">{service.title}</p>
+                  <p className="text-xs text-slate-500">{service.category} • {service.specialization ?? "General"}</p>
+                  <p className="mt-1 text-slate-700">{service.short_description}</p>
+                  <p className="mt-1 text-xs text-slate-600">{service.pricing_mode} • ₦{Number(service.min_price ?? 0).toLocaleString()} - ₦{Number(service.max_price ?? 0).toLocaleString()} • {service.turnaround_time ?? "Turnaround on request"}</p>
+                  <p className="text-xs text-slate-500">{service.vat_applicable ? "VAT applicable" : "VAT not applicable"} • {service.availability_status}</p>
+                </div>
+              ))}
+              {provider.services.length === 0 && <p className="text-sm text-slate-500">No services listed yet.</p>}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold">Portfolio gallery</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {provider.gallery.map((asset) => (
+                <div key={asset.id} className="rounded-xl border border-slate-200 p-2">
+                  <Image src={asset.asset_url} alt={asset.caption ?? provider.business_name} width={420} height={220} className="h-28 w-full rounded-lg object-cover" />
+                  <p className="mt-2 text-xs text-slate-600">{asset.caption ?? "Project sample"}</p>
+                  {asset.is_featured && <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Featured</p>}
+                </div>
+              ))}
+              {provider.gallery.length === 0 && <p className="text-sm text-slate-500">No portfolio items yet.</p>}
+            </div>
+          </article>
+        </section>
+
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
           <div>
             <h2 className="text-xl font-semibold">Recent reviews</h2>
@@ -384,6 +449,18 @@ export default async function ProviderPublicPage({
                 Report submitted. The issue has been logged for FCCPC regulator triage.
               </div>
             )}
+            {query.quote === "1" && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                Quote request submitted. This provider can respond from their MSME quote inbox.
+              </div>
+            )}
+            {query.quote_error && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {query.quote_error === "missing_fields"
+                  ? "Please complete your name, contact, and request details before submitting."
+                  : "We could not submit your quote request right now. Please retry."}
+              </div>
+            )}
             {query.reported_error && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                 {query.reported_error === "missing_fields"
@@ -393,6 +470,18 @@ export default async function ProviderPublicPage({
                   : "We could not submit your complaint right now. Please retry."}
               </div>
             )}
+            <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+              <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
+              <p className="mt-1 text-xs text-indigo-900">Share your service scope. The provider will see this request in their operations inbox.</p>
+              <form action={submitQuoteRequest} className="mt-3 space-y-2">
+                <input type="hidden" name="provider_id" value={provider.id} />
+                <input name="customer_name" placeholder="Your name" required className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
+                <input name="customer_contact" placeholder="Phone or email" required className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
+                <input name="requested_date" type="date" className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
+                <textarea name="service_details" required placeholder="Describe your request" className="min-h-20 w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
+                <button className="w-full rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">Submit quote request</button>
+              </form>
+            </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Report this provider</h3>
               <p className="mt-1 text-xs text-slate-500">For service quality, fraud, counterfeit products, pricing abuse, or delivery disputes.</p>

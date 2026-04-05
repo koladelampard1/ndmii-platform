@@ -28,7 +28,13 @@ export async function getCurrentUserContext(): Promise<UserContext> {
   context.fullName = user?.full_name ?? context.fullName;
 
   if (role === "msme") {
-    const { data: linkedByOwner } = await supabase.from("msmes").select("id").eq("created_by", appUserId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const { data: linkedByOwner } = await supabase
+      .from("msmes")
+      .select("id")
+      .eq("created_by", appUserId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (linkedByOwner?.id) {
       context.linkedMsmeId = linkedByOwner.id;
@@ -46,15 +52,25 @@ export async function getCurrentUserContext(): Promise<UserContext> {
       }
     }
 
+    if (!context.linkedMsmeId && context.linkedProviderId) {
+      const { data: providerMsme } = await supabase
+        .from("provider_profiles")
+        .select("msme_id")
+        .eq("id", context.linkedProviderId)
+        .maybeSingle();
+      context.linkedMsmeId = providerMsme?.msme_id ?? null;
+    }
+
     if (!context.linkedMsmeId && context.fullName) {
       const { data: linkedByProviderName } = await supabase
         .from("provider_profiles")
-        .select("msme_id,display_name")
+        .select("id,msme_id,display_name")
         .ilike("display_name", context.fullName)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       context.linkedMsmeId = linkedByProviderName?.msme_id ?? null;
+      context.linkedProviderId = linkedByProviderName?.id ?? context.linkedProviderId;
     }
 
     if (context.linkedMsmeId) {
@@ -65,7 +81,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      context.linkedProviderId = linkedProvider?.id ?? null;
+      context.linkedProviderId = linkedProvider?.id ?? context.linkedProviderId;
     }
   }
 
