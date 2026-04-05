@@ -148,6 +148,15 @@ export default async function FccpcPage({
               <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No complaints found. Queue is currently clear.</td></tr>
             )}
             {(complaints ?? []).map((row) => (
+              (() => {
+                const complaintId = String(row.id ?? "").trim();
+
+                devQueueLog("workspace_link_prepared", {
+                  clickedComplaintId: complaintId || null,
+                  queueRowStatus: row.status ?? "open",
+                });
+
+                return (
               <tr key={row.id} className="border-t align-top">
                 <td className="px-3 py-3">
                   <p className="font-medium">{row.complaint_type ?? "marketplace_report"}</p>
@@ -170,7 +179,7 @@ export default async function FccpcPage({
                 <td className="px-3 py-3">{officers?.find((x) => x.id === (row.assigned_officer_user_id ?? row.assigned_officer_id))?.full_name ?? "Unassigned"}</td>
                 <td className="space-y-2 px-3 py-3">
                   <form action={complaintAction} className="flex gap-2">
-                    <input type="hidden" name="complaint_id" value={row.id} />
+                    <input type="hidden" name="complaint_id" value={complaintId} />
                     <input type="hidden" name="kind" value="assign" />
                     <select name="assigned_officer_user_id" className="rounded border px-2 py-1 text-xs">
                       <option value="">Unassigned</option>
@@ -179,16 +188,27 @@ export default async function FccpcPage({
                     <button className="rounded border px-2 py-1 text-xs">Assign</button>
                   </form>
                   <form action={complaintAction} className="flex gap-2">
-                    <input type="hidden" name="complaint_id" value={row.id} />
+                    <input type="hidden" name="complaint_id" value={complaintId} />
                     <input type="hidden" name="kind" value="status" />
                     <select name="status" className="rounded border px-2 py-1 text-xs">
                       <option value="open">open</option><option value="investigating">investigating</option><option value="enforcement">enforcement</option><option value="closed">closed</option>
                     </select>
                     <button className="rounded border px-2 py-1 text-xs">Update</button>
                   </form>
-                  <Link href={`/dashboard/fccpc/${row.id}`} className="inline-block text-xs text-emerald-700 hover:underline">Open complaint workspace →</Link>
+                  {complaintId ? (
+                    <Link
+                      href={`/dashboard/fccpc/${complaintId}?qid=${encodeURIComponent(complaintId)}`}
+                      className="inline-block text-xs text-emerald-700 hover:underline"
+                    >
+                      Open complaint workspace →
+                    </Link>
+                  ) : (
+                    <span className="inline-block text-xs text-rose-700">Complaint ID unavailable</span>
+                  )}
                 </td>
               </tr>
+                );
+              })()
             ))}
           </tbody>
         </table>

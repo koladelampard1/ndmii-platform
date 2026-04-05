@@ -4,6 +4,12 @@ import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
+function devDetailLog(message: string, payload?: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info(`[ndmii][complaint-detail] ${message}`, payload ?? {});
+  }
+}
+
 async function enforcementAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
@@ -41,17 +47,56 @@ async function enforcementAction(formData: FormData) {
   redirect(`/dashboard/fccpc/${complaintId}?saved=1`);
 }
 
-export default async function ComplaintDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
+export default async function ComplaintDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string; qid?: string }> }) {
   const { id } = await params;
   const ctx = await getCurrentUserContext();
   if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const query = await searchParams;
+  const clickedComplaintId = String((query as Record<string, string | undefined>).qid ?? "").trim() || null;
+  const detailQueryId = String(id ?? "").trim();
 
-  const { data: complaint } = await supabase
+  devDetailLog("workspace_opened", {
+    clickedComplaintId,
+    detailQueryId,
+  });
+
+  const { data: complaintFromRichQuery, error: richQueryError } = await supabase
     .from("complaints")
-    .select("id,summary,description,status,severity,investigation_notes,complaint_type,regulator_target,provider_profile_id,provider_id,msme_id,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
-    .eq("id", id)
+    .select("*,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
+    .eq("id", detailQueryId)
     .maybeSingle();
+
+  if (richQueryError) {
+    devDetailLog("rich_lookup_error", {
+      detailQueryId,
+      message: richQueryError.message,
+    });
+  }
+
+  let complaint = complaintFromRichQuery;
+
+  if (!complaint) {
+    const { data: complaintFallback, error: fallbackError } = await supabase
+      .from("complaints")
+      .select("id,msme_id,provider_profile_id,provider_id,summary,description,status,severity,complaint_type,regulator_target")
+      .eq("id", detailQueryId)
+      .maybeSingle();
+
+    if (fallbackError) {
+      devDetailLog("fallback_lookup_error", {
+        detailQueryId,
+        message: fallbackError.message,
+      });
+    }
+
+    complaint = complaintFallback;
+  }
+
+  devDetailLog("lookup_result", {
+    clickedComplaintId,
+    detailQueryId,
+    rowFound: Boolean(complaint),
+  });
 
   if (!complaint) return <div className="rounded border bg-white p-6">Complaint record not found.</div>;
   const providerId = complaint.provider_profile_id ?? complaint.provider_id;
