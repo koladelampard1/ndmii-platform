@@ -5,6 +5,75 @@ import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
+type ComplaintQueueRow = {
+  id: string;
+  msme_id?: string | null;
+  complaint_type?: string | null;
+  description?: string | null;
+  summary?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  regulator_target?: string | null;
+  provider_business_name?: string | null;
+  severity?: string | null;
+  assigned_officer_id?: string | null;
+  assigned_officer_user_id?: string | null;
+  provider_profile_id?: string | null;
+  provider_id?: string | null;
+  state?: string | null;
+  sector?: string | null;
+  msmes?: { msme_id?: string | null; business_name?: string | null } | null;
+};
+
+function devQueueLog(message: string, payload?: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info(`[ndmii][complaint-queue] ${message}`, payload ?? {});
+  }
+}
+
+async function fetchComplaintQueue(role: string, params: Record<string, string | undefined>) {
+  const querySource = role === "admin" ? "dashboard/fccpc (admin_all)" : "dashboard/fccpc (fccpc_routed)";
+  let queue: ComplaintQueueRow[] = [];
+  let schemaMismatchError: string | null = null;
+  let queryError: string | null = null;
+
+  const { data, error } = await supabase
+    .from("complaints")
+    .select("*,msmes(msme_id,business_name)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    queryError = error.message;
+    schemaMismatchError = error.message;
+  } else {
+    queue = (data ?? []) as ComplaintQueueRow[];
+  }
+
+  if (params.status) queue = queue.filter((row) => (row.status ?? "open") === params.status);
+  if (params.state) queue = queue.filter((row) => (row.state ?? "") === params.state);
+  if (params.sector) queue = queue.filter((row) => (row.sector ?? "") === params.sector);
+  if (params.severity) queue = queue.filter((row) => (row.severity ?? "") === params.severity);
+  if (params.assigned) {
+    queue = queue.filter((row) => (row.assigned_officer_user_id ?? row.assigned_officer_id ?? "") === params.assigned);
+  }
+
+  if (role !== "admin") {
+    queue = queue.filter((row) => {
+      const target = (row.regulator_target ?? "fccpc").toLowerCase();
+      return target === "fccpc";
+    });
+  }
+
+  devQueueLog("retrieval", {
+    querySource,
+    complaintsReturned: queue.length,
+    schemaMismatchError,
+    queryError,
+  });
+
+  return { queue, querySource };
+}
+
 async function complaintAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
@@ -37,19 +106,7 @@ export default async function FccpcPage({
   if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const { data: officers } = await supabase.from("users").select("id,full_name").eq("role", "fccpc_officer");
 
-  let query = supabase
-    .from("complaints")
-    .select("id,summary,status,severity,state,sector,created_at,assigned_officer_user_id,regulator_target,complaint_category,provider_profile_id,provider_id,provider_business_name,msmes(msme_id,business_name)")
-    .or("regulator_target.eq.fccpc,regulator_target.is.null")
-    .order("created_at", { ascending: false });
-
-  if (params.status) query = query.eq("status", params.status);
-  if (params.state) query = query.eq("state", params.state);
-  if (params.sector) query = query.eq("sector", params.sector);
-  if (params.severity) query = query.eq("severity", params.severity);
-  if (params.assigned) query = query.eq("assigned_officer_user_id", params.assigned);
-
-  const { data: complaints } = await query;
+  const { queue: complaints, querySource } = await fetchComplaintQueue(ctx.role, params);
   const providerIds = (complaints ?? []).map((item) => item.provider_profile_id ?? item.provider_id).filter(Boolean);
   const { data: providerRows } = await supabase
     .from("provider_profiles")
@@ -93,10 +150,11 @@ export default async function FccpcPage({
             {(complaints ?? []).map((row) => (
               <tr key={row.id} className="border-t align-top">
                 <td className="px-3 py-3">
-                  <p className="font-medium">{row.summary}</p>
+                  <p className="font-medium">{row.complaint_type ?? "marketplace_report"}</p>
+                  <p className="text-xs text-slate-500">{row.summary ?? row.description ?? "Complaint submitted for regulator review."}</p>
                   <p className="text-xs text-slate-500">{row.state} • {row.sector}</p>
                   <p className="text-xs text-slate-500">
-                    Category: {row.complaint_category ?? "marketplace_report"} • Target: {(row.regulator_target ?? "fccpc").toUpperCase()}
+                    Source: {querySource} • Target: {(row.regulator_target ?? "fccpc").toUpperCase()}
                   </p>
                 </td>
                 <td className="px-3 py-3">
@@ -106,10 +164,10 @@ export default async function FccpcPage({
                     Provider: {providerById.get((row.provider_profile_id ?? row.provider_id) as string)?.display_name ?? "Not linked"}
                   </p>
                 </td>
-                <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity} /></td>
-                <td className="px-3 py-3 text-xs text-slate-600">{new Date(row.created_at).toLocaleDateString()}</td>
-                <td className="px-3 py-3">{row.status}</td>
-                <td className="px-3 py-3">{officers?.find((x) => x.id === row.assigned_officer_user_id)?.full_name ?? "Unassigned"}</td>
+                <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity ?? "medium"} /></td>
+                <td className="px-3 py-3 text-xs text-slate-600">{row.created_at ? new Date(row.created_at).toLocaleDateString() : "Unknown date"}</td>
+                <td className="px-3 py-3">{row.status ?? "open"}</td>
+                <td className="px-3 py-3">{officers?.find((x) => x.id === (row.assigned_officer_user_id ?? row.assigned_officer_id))?.full_name ?? "Unassigned"}</td>
                 <td className="space-y-2 px-3 py-3">
                   <form action={complaintAction} className="flex gap-2">
                     <input type="hidden" name="complaint_id" value={row.id} />
