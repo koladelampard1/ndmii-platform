@@ -27,14 +27,25 @@ export default async function NrsInvoicesPage({ searchParams }: { searchParams: 
   if (params.provider) rows = rows.filter((row) => (row.provider?.display_name ?? "").toLowerCase().includes((params.provider ?? "").toLowerCase()));
   if (params.category) rows = rows.filter((row) => (row.provider?.provider_categories ?? []).some((entry: any) => (entry.service_categories?.name ?? "") === params.category));
 
+  const totalInvoices = rows.length;
+  const paidCount = rows.filter((row) => row.invoice.status === "paid").length;
+  const unpaidCount = totalInvoices - paidCount;
+  const totalVatPaid = rows.filter((row) => row.invoice.status === "paid").reduce((sum, row) => sum + Number(row.invoice.vat_amount ?? 0), 0);
+
   return (
     <section className="space-y-4">
       <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">NRS Invoice Registry</h1><p className="text-sm text-slate-600">Search invoice activity across providers, states, and sectors for tax exposure monitoring.</p></header>
+      <div className="grid gap-3 md:grid-cols-4">
+        <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">Invoices in view</p><p className="text-2xl font-semibold">{totalInvoices}</p></article>
+        <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">Paid invoices</p><p className="text-2xl font-semibold text-emerald-700">{paidCount}</p></article>
+        <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">Unpaid invoices</p><p className="text-2xl font-semibold text-amber-700">{unpaidCount}</p></article>
+        <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">VAT from paid</p><p className="text-2xl font-semibold">{formatNaira(totalVatPaid)}</p></article>
+      </div>
       <form className="grid gap-2 rounded-xl border bg-white p-3 md:grid-cols-5">
         <input name="provider" defaultValue={params.provider} placeholder="provider name" className="rounded border px-2 py-2 text-sm" />
         <input name="state" defaultValue={params.state} placeholder="state" className="rounded border px-2 py-2 text-sm" />
         <input name="category" defaultValue={params.category} placeholder="category" className="rounded border px-2 py-2 text-sm" />
-        <select name="status" defaultValue={params.status ?? ""} className="rounded border px-2 py-2 text-sm"><option value="">all status</option>{["draft","issued","pending_payment","paid","overdue","cancelled"].map((s)=><option key={s} value={s}>{s}</option>)}</select>
+        <select name="status" defaultValue={params.status ?? ""} className="rounded border px-2 py-2 text-sm"><option value="">all status</option>{["draft", "issued", "pending_payment", "paid", "overdue", "cancelled"].map((s) => <option key={s} value={s}>{s}</option>)}</select>
         <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Apply</button>
       </form>
       <div className="overflow-hidden rounded-xl border bg-white">

@@ -1,8 +1,10 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export const INVOICE_STATUSES = ["draft", "issued", "pending_payment", "paid", "overdue", "cancelled"] as const;
+export const INVOICE_PAYMENT_STATUSES = ["initiated", "pending", "success", "failed", "refunded"] as const;
 
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+export type InvoicePaymentStatus = (typeof INVOICE_PAYMENT_STATUSES)[number];
 
 export function generateInvoiceNumber(date = new Date()) {
   const y = date.getUTCFullYear();
@@ -20,19 +22,12 @@ export function calculateLineTotal(quantity: number, unitPrice: number) {
 
 export async function recalculateInvoiceTotals(invoiceId: string) {
   const supabase = await createServiceRoleSupabaseClient();
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("invoices")
-    .select("id,vat_rate")
-    .eq("id", invoiceId)
-    .maybeSingle();
+  const { data: invoice, error: invoiceError } = await supabase.from("invoices").select("id,vat_rate").eq("id", invoiceId).maybeSingle();
 
   if (invoiceError) throw new Error(invoiceError.message);
   if (!invoice) throw new Error("Invoice not found.");
 
-  const { data: items, error: itemError } = await supabase
-    .from("invoice_items")
-    .select("line_total,vat_applicable")
-    .eq("invoice_id", invoiceId);
+  const { data: items, error: itemError } = await supabase.from("invoice_items").select("line_total,vat_applicable").eq("invoice_id", invoiceId);
 
   if (itemError) throw new Error(itemError.message);
 
@@ -61,11 +56,35 @@ export function formatNaira(value: number | string | null | undefined) {
   return `₦${Number(value ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+export function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-NG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
+}
+
 export function invoiceStatusClasses(status: string) {
   if (status === "paid") return "bg-emerald-100 text-emerald-700";
   if (status === "pending_payment") return "bg-amber-100 text-amber-700";
   if (status === "issued") return "bg-blue-100 text-blue-700";
   if (status === "overdue") return "bg-red-100 text-red-700";
   if (status === "cancelled") return "bg-slate-200 text-slate-700";
+  return "bg-slate-100 text-slate-700";
+}
+
+export function invoicePaymentStatusClasses(status: string) {
+  if (status === "success") return "bg-emerald-100 text-emerald-700";
+  if (status === "pending" || status === "initiated") return "bg-amber-100 text-amber-700";
+  if (status === "failed") return "bg-rose-100 text-rose-700";
+  if (status === "refunded") return "bg-violet-100 text-violet-700";
   return "bg-slate-100 text-slate-700";
 }
