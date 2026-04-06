@@ -69,6 +69,7 @@ export function isPublicPath(path: string): boolean {
     path === "/categories" ||
     path.startsWith("/categories/") ||
     path.startsWith("/providers/") ||
+    path.startsWith("/invoice/") ||
     path === "/access-denied"
   );
 }
@@ -174,6 +175,8 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/reports", label: "Reports & Export" },
     { href: "/dashboard/audit", label: "Audit Trail" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
+    { href: "/dashboard/executive/invoices", label: "Invoice Monitor" },
+    { href: "/dashboard/executive/revenue", label: "Revenue Monitor" },
     { href: "/verify", label: "Public Verification" },
   ],
   msme: [
@@ -185,6 +188,8 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/msme/reviews", label: "Reviews & Replies" },
     { href: "/dashboard/msme/complaints", label: "Complaint Visibility" },
     { href: "/dashboard/msme/quotes", label: "Quote Requests" },
+    { href: "/dashboard/msme/invoices", label: "Invoices" },
+    { href: "/dashboard/msme/revenue", label: "Revenue" },
     { href: "/dashboard/msme/settings", label: "Provider Settings" },
     { href: "/dashboard/msme/onboarding", label: "My Onboarding" },
     { href: "/dashboard/msme/id-card", label: "My Digital ID Card" },
@@ -209,11 +214,17 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
   ],
   nrs_officer: [
     { href: "/dashboard/nrs", label: "NRS Operations" },
+    { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
+    { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
+    { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],
   firs_officer: [
     { href: "/dashboard/nrs", label: "NRS Operations" },
+    { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
+    { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
+    { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],

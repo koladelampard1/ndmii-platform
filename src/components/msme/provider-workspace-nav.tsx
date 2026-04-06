@@ -8,6 +8,8 @@ const LINKS = [
   { href: "/dashboard/msme/reviews", label: "Reviews" },
   { href: "/dashboard/msme/complaints", label: "Complaints" },
   { href: "/dashboard/msme/quotes", label: "Quote requests" },
+  { href: "/dashboard/msme/invoices", label: "Invoices" },
+  { href: "/dashboard/msme/revenue", label: "Revenue" },
   { href: "/dashboard/msme/settings", label: "Settings" },
 ];
 

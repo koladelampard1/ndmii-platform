@@ -55,6 +55,11 @@ export default async function NrsPage({
       <header className="rounded-2xl border bg-gradient-to-r from-emerald-950 to-emerald-700 p-6 text-white shadow-lg">
         <h1 className="text-2xl font-semibold">NRS Operations Console</h1>
         <p className="mt-1 text-sm text-emerald-100">NRS (Nigeria Revenue Service) revenue operations, notices, and MSME tax posture management.</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <Link href="/dashboard/nrs/invoices" className="rounded bg-white/20 px-2 py-1 hover:bg-white/30">Invoice registry</Link>
+          <Link href="/dashboard/nrs/vat-monitor" className="rounded bg-white/20 px-2 py-1 hover:bg-white/30">VAT monitor</Link>
+          <Link href="/dashboard/nrs/revenue" className="rounded bg-white/20 px-2 py-1 hover:bg-white/30">Revenue monitor</Link>
+        </div>
       </header>
 
       <div className="grid gap-3 md:grid-cols-4">

@@ -1,6 +1,7 @@
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
+import Link from "next/link";
 
 type MonthPoint = { period: string; registrations: number; kycRate: number; complaints: number; tax: number };
 
@@ -93,6 +94,10 @@ export default async function ExecutiveDashboardPage() {
       <header className="rounded-2xl border bg-gradient-to-r from-indigo-900 via-slate-900 to-emerald-900 p-7 text-white shadow-xl">
         <h1 className="text-3xl font-bold">Executive National Dashboard</h1>
         <p className="mt-2 text-sm text-slate-200">Federal-level oversight for MSME identity, compliance, tax simulation, and enforcement operations.</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <Link href="/dashboard/executive/invoices" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Invoice monitor</Link>
+          <Link href="/dashboard/executive/revenue" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Revenue monitor</Link>
+        </div>
       </header>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardCard title="Total Registered MSMEs" value={totalMsmes.toLocaleString()} status="up" />
