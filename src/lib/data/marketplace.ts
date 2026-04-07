@@ -622,3 +622,25 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     return null;
   }
 }
+
+export async function resolveProviderPublicId(providerSlugOrId: string): Promise<string | null> {
+  const value = providerSlugOrId.trim();
+  if (!value) return null;
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data: providerBySlug } = await supabase
+    .from("provider_profiles")
+    .select("id")
+    .or(`slug.eq.${value},public_slug.eq.${value},id.eq.${value}`)
+    .maybeSingle();
+
+  if (providerBySlug?.id) return providerBySlug.id;
+
+  const { data: providerByMarketplaceProjection } = await supabase
+    .from("marketplace_provider_search")
+    .select("provider_id")
+    .eq("provider_id", value)
+    .maybeSingle();
+
+  return providerByMarketplaceProjection?.provider_id ?? null;
+}
