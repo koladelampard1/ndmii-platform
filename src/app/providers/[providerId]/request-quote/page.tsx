@@ -12,10 +12,61 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   console.info(`[public-quote] ${message}`, payload);
 }
 
+type ResolvedProviderProfileRow = {
+  id: string;
+  msme_id: string;
+  public_slug: string | null;
+  slug: string | null;
+  business_name: string | null;
+};
+
+async function resolveQuoteProviderProfileRow(input: {
+  providerPathSegment: string;
+  providerMsmeId?: string | null;
+  providerPublicId?: string | null;
+}): Promise<ResolvedProviderProfileRow | null> {
+  const providerPathSegment = input.providerPathSegment.trim();
+  if (!providerPathSegment) return null;
+
+  const supabase = await createServiceRoleSupabaseClient();
+
+  const { data: byPublicPath } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id,public_slug,slug,business_name")
+    .or(`public_slug.eq.${providerPathSegment},slug.eq.${providerPathSegment},id.eq.${providerPathSegment}`)
+    .maybeSingle();
+
+  if (byPublicPath?.id) return byPublicPath as ResolvedProviderProfileRow;
+
+  if (input.providerMsmeId?.trim()) {
+    const { data: byMsmeId } = await supabase
+      .from("provider_profiles")
+      .select("id,msme_id,public_slug,slug,business_name")
+      .eq("msme_id", input.providerMsmeId.trim().toUpperCase())
+      .maybeSingle();
+
+    if (byMsmeId?.id) return byMsmeId as ResolvedProviderProfileRow;
+  }
+
+  if (input.providerPublicId?.trim()) {
+    const { data: byProviderId } = await supabase
+      .from("provider_profiles")
+      .select("id,msme_id,public_slug,slug,business_name")
+      .eq("id", input.providerPublicId.trim())
+      .maybeSingle();
+
+    if (byProviderId?.id) return byProviderId as ResolvedProviderProfileRow;
+  }
+
+  return null;
+}
+
 async function submitProviderQuoteRequest(formData: FormData) {
   "use server";
 
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
+  const submittedProviderProfileId = String(formData.get("provider_profile_id") ?? "").trim();
+  const submittedProviderMsmeId = String(formData.get("provider_msme_id") ?? "").trim();
 
   if (!providerPathSegment) {
     redirect("/search?quote_error=missing_provider");
@@ -46,18 +97,18 @@ async function submitProviderQuoteRequest(formData: FormData) {
     redirect(`/providers/${providerPathSegment}/request-quote?error=budget_range`);
   }
 
-  const supabase = await createServiceRoleSupabaseClient();
-  const { data: providerProfile } = await supabase
-    .from("provider_profiles")
-    .select("id,slug,public_slug,business_name")
-    .or(`slug.eq.${providerPathSegment},public_slug.eq.${providerPathSegment},id.eq.${providerPathSegment}`)
-    .maybeSingle();
+  const providerProfile = await resolveQuoteProviderProfileRow({
+    providerPathSegment,
+    providerMsmeId: submittedProviderMsmeId || undefined,
+    providerPublicId: submittedProviderProfileId || undefined,
+  });
 
   devQuoteLog("quote_submission_provider_resolved", {
     providerPathSegment,
     providerProfile: providerProfile
       ? {
           id: providerProfile.id,
+          msmeId: providerProfile.msme_id,
           slug: providerProfile.slug ?? null,
           publicSlug: providerProfile.public_slug ?? null,
           businessName: providerProfile.business_name ?? null,
@@ -71,6 +122,8 @@ async function submitProviderQuoteRequest(formData: FormData) {
 
   const providerProfileId = providerProfile.id;
   devQuoteLog("quote_submission_provider_uuid_for_insert", { providerPathSegment, providerProfileId });
+
+  const supabase = await createServiceRoleSupabaseClient();
 
   const payload = {
     provider_profile_id: providerProfileId,
@@ -161,6 +214,21 @@ export default async function PublicProviderRequestQuotePage({
     );
   }
 
+  const resolvedProviderProfileRow = await resolveQuoteProviderProfileRow({
+    providerPathSegment: providerSlug,
+    providerMsmeId: provider.msme_id,
+    providerPublicId: providerId,
+  });
+
+  devQuoteLog("provider_profile_row_for_quote_loaded", {
+    providerSlug,
+    providerId,
+    found: Boolean(resolvedProviderProfileRow?.id),
+    providerProfileId: resolvedProviderProfileRow?.id ?? null,
+    providerProfileMsmeId: resolvedProviderProfileRow?.msme_id ?? null,
+    providerProfilePublicSlug: resolvedProviderProfileRow?.public_slug ?? null,
+  });
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
@@ -186,53 +254,61 @@ export default async function PublicProviderRequestQuotePage({
                 : query.error === "budget_invalid"
                   ? "Budget values must be valid numbers."
                   : query.error === "provider_not_found"
-                    ? "We could not map this provider link to a valid provider profile. Please return to the provider page and try again."
+                    ? "This provider is visible publicly but has no provider profile row yet."
                   : "Budget minimum cannot be greater than budget maximum."}
             </div>
           )}
 
-          <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
-            <input type="hidden" name="provider_path_segment" value={providerSlug} />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                Requester name *
-                <input name="requester_name" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Amina Yusuf" />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Email *
-                <input name="requester_email" type="email" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="you@example.com" />
-              </label>
+          {!resolvedProviderProfileRow ? (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              This provider is visible publicly but has no provider profile row yet.
             </div>
+          ) : (
+            <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
+              <input type="hidden" name="provider_path_segment" value={providerSlug} />
+              <input type="hidden" name="provider_profile_id" value={resolvedProviderProfileRow.id} />
+              <input type="hidden" name="provider_msme_id" value={resolvedProviderProfileRow.msme_id} />
 
-            <label className="text-sm font-medium text-slate-700">
-              Phone *
-              <input name="requester_phone" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="0800 000 0000" />
-            </label>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Requester name *
+                  <input name="requester_name" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Amina Yusuf" />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Email *
+                  <input name="requester_email" type="email" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="you@example.com" />
+                </label>
+              </div>
 
-            <label className="text-sm font-medium text-slate-700">
-              Summary *
-              <input name="request_summary" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Website redesign + onboarding support" />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Detailed request *
-              <textarea name="request_details" required className="mt-1 min-h-32 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Describe your scope, expected deliverables, and timeline." />
-            </label>
-
-            <div className="grid gap-4 md:grid-cols-2">
               <label className="text-sm font-medium text-slate-700">
-                Budget min (₦)
-                <input name="budget_min" type="number" min={0} step={0.01} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="50000" />
+                Phone *
+                <input name="requester_phone" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="0800 000 0000" />
               </label>
-              <label className="text-sm font-medium text-slate-700">
-                Budget max (₦)
-                <input name="budget_max" type="number" min={0} step={0.01} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="250000" />
-              </label>
-            </div>
 
-            <button className="rounded-xl bg-indigo-900 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-800">Submit quote request</button>
-          </form>
+              <label className="text-sm font-medium text-slate-700">
+                Summary *
+                <input name="request_summary" required className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Website redesign + onboarding support" />
+              </label>
+
+              <label className="text-sm font-medium text-slate-700">
+                Detailed request *
+                <textarea name="request_details" required className="mt-1 min-h-32 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Describe your scope, expected deliverables, and timeline." />
+              </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Budget min (₦)
+                  <input name="budget_min" type="number" min={0} step={0.01} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="50000" />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Budget max (₦)
+                  <input name="budget_max" type="number" min={0} step={0.01} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="250000" />
+                </label>
+              </div>
+
+              <button className="rounded-xl bg-indigo-900 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-800">Submit quote request</button>
+            </form>
+          )}
         </div>
       </section>
     </main>
