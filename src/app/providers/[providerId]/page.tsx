@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile } from "@/lib/data/marketplace";
+import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
@@ -264,8 +264,9 @@ export default async function ProviderPublicPage({
   params: Promise<{ providerId: string }>;
   searchParams: Promise<{ reported?: string; reported_error?: string; quote?: string; quote_error?: string }>;
 }) {
-  const { providerId } = await params;
+  const { providerId: providerSlug } = await params;
   const query = await searchParams;
+  const providerId = (await resolveProviderPublicId(providerSlug)) ?? providerSlug;
   const provider = await getProviderPublicProfile(providerId);
 
   if (!provider) {
@@ -442,7 +443,7 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
               <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
               <p className="mt-1 text-xs text-indigo-900">Use the structured request form to share your scope, budget, and contact details with this provider.</p>
-              <Link href={`/providers/${providerId}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
+              <Link href={`/providers/${providerSlug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
                 Open quote request form
               </Link>
             </article>
