@@ -642,5 +642,19 @@ export async function resolveProviderPublicId(providerSlugOrId: string): Promise
     .eq("provider_id", value)
     .maybeSingle();
 
-  return providerByMarketplaceProjection?.provider_id ?? null;
+  if (providerByMarketplaceProjection?.provider_id) return providerByMarketplaceProjection.provider_id;
+
+  const projectedMsmeId = value.startsWith("msme-") ? value.slice(5).toUpperCase() : value.toUpperCase();
+  const { data: projectedMsme } = await supabase
+    .from("msmes")
+    .select("msme_id")
+    .eq("msme_id", projectedMsmeId)
+    .in("verification_status", ["verified", "approved"])
+    .maybeSingle();
+
+  if (projectedMsme?.msme_id) {
+    return `msme-${projectedMsme.msme_id.toLowerCase()}`;
+  }
+
+  return null;
 }
