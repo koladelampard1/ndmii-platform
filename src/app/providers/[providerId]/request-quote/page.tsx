@@ -15,12 +15,13 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
 async function submitProviderQuoteRequest(formData: FormData) {
   "use server";
 
-  const providerId = String(formData.get("provider_id") ?? "").trim();
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
 
-  if (!providerId || !providerPathSegment) {
+  if (!providerPathSegment) {
     redirect("/search?quote_error=missing_provider");
   }
+
+  devQuoteLog("quote_submission_route_param_received", { providerPathSegment });
 
   const requesterName = String(formData.get("requester_name") ?? "").trim();
   const requesterEmail = String(formData.get("requester_email") ?? "").trim();
@@ -46,8 +47,33 @@ async function submitProviderQuoteRequest(formData: FormData) {
   }
 
   const supabase = await createServiceRoleSupabaseClient();
+  const { data: providerProfile } = await supabase
+    .from("provider_profiles")
+    .select("id,slug,public_slug,business_name")
+    .or(`slug.eq.${providerPathSegment},public_slug.eq.${providerPathSegment},id.eq.${providerPathSegment}`)
+    .maybeSingle();
+
+  devQuoteLog("quote_submission_provider_resolved", {
+    providerPathSegment,
+    providerProfile: providerProfile
+      ? {
+          id: providerProfile.id,
+          slug: providerProfile.slug ?? null,
+          publicSlug: providerProfile.public_slug ?? null,
+          businessName: providerProfile.business_name ?? null,
+        }
+      : null,
+  });
+
+  if (!providerProfile?.id) {
+    redirect(`/providers/${providerPathSegment}/request-quote?error=provider_not_found`);
+  }
+
+  const providerProfileId = providerProfile.id;
+  devQuoteLog("quote_submission_provider_uuid_for_insert", { providerPathSegment, providerProfileId });
+
   const payload = {
-    provider_profile_id: providerId,
+    provider_profile_id: providerProfileId,
     requester_name: requesterName,
     requester_email: requesterEmail,
     requester_phone: requesterPhone,
@@ -58,13 +84,14 @@ async function submitProviderQuoteRequest(formData: FormData) {
     status: "new",
   };
 
-  devQuoteLog("quote_submission_attempt", { providerId, requesterEmail, hasBudget: budgetMin !== null || budgetMax !== null });
+  devQuoteLog("quote_submission_attempt", { providerPathSegment, providerProfileId, requesterEmail, hasBudget: budgetMin !== null || budgetMax !== null });
 
   const { error } = await supabase.from("provider_quotes").insert(payload);
 
   if (error) {
     devQuoteLog("quote_submission_failed", {
-      providerId,
+      providerPathSegment,
+      providerProfileId,
       message: error.message ?? null,
       details: error.details ?? null,
       hint: error.hint ?? null,
@@ -73,7 +100,7 @@ async function submitProviderQuoteRequest(formData: FormData) {
     throw new Error(`Quote submission failed: ${error.message}`);
   }
 
-  devQuoteLog("quote_submission_success", { providerId, requesterEmail });
+  devQuoteLog("quote_submission_success", { providerPathSegment, providerProfileId, requesterEmail });
 
   revalidatePath(`/providers/${providerPathSegment}`);
   revalidatePath(`/providers/${providerPathSegment}/request-quote`);
@@ -158,12 +185,13 @@ export default async function PublicProviderRequestQuotePage({
                 ? "Please complete all required fields before submitting your request."
                 : query.error === "budget_invalid"
                   ? "Budget values must be valid numbers."
+                  : query.error === "provider_not_found"
+                    ? "We could not map this provider link to a valid provider profile. Please return to the provider page and try again."
                   : "Budget minimum cannot be greater than budget maximum."}
             </div>
           )}
 
           <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
-            <input type="hidden" name="provider_id" value={provider.id} />
             <input type="hidden" name="provider_path_segment" value={providerSlug} />
 
             <div className="grid gap-4 md:grid-cols-2">
