@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -250,38 +251,6 @@ async function submitPublicComplaint(formData: FormData) {
   redirect(`/providers/${providerId}?reported=1`);
 }
 
-async function submitQuoteRequest(formData: FormData) {
-  "use server";
-
-  const providerId = String(formData.get("provider_id") ?? "");
-  if (!providerId) redirect("/search?quote=missing_provider");
-
-  const customerName = String(formData.get("customer_name") ?? "").trim();
-  const customerContact = String(formData.get("customer_contact") ?? "").trim();
-  const serviceDetails = String(formData.get("service_details") ?? "").trim();
-  const requestedDate = String(formData.get("requested_date") ?? "").trim();
-
-  if (!customerName || !customerContact || !serviceDetails) {
-    redirect(`/providers/${providerId}?quote_error=missing_fields`);
-  }
-
-  const supabase = await createServiceRoleSupabaseClient();
-  const { error } = await supabase.from("provider_quote_requests").insert({
-    provider_id: providerId,
-    customer_name: customerName,
-    customer_contact: customerContact,
-    service_details: serviceDetails,
-    requested_date: requestedDate || null,
-    status: "new",
-  });
-
-  if (error) {
-    redirect(`/providers/${providerId}?quote_error=submit_failed`);
-  }
-
-  revalidatePath(`/providers/${providerId}`);
-  redirect(`/providers/${providerId}?quote=1`);
-}
 
 function ratingPercent(count: number, total: number) {
   if (!total) return 0;
@@ -472,15 +441,10 @@ export default async function ProviderPublicPage({
             )}
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
               <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
-              <p className="mt-1 text-xs text-indigo-900">Share your service scope. The provider will see this request in their operations inbox.</p>
-              <form action={submitQuoteRequest} className="mt-3 space-y-2">
-                <input type="hidden" name="provider_id" value={provider.id} />
-                <input name="customer_name" placeholder="Your name" required className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
-                <input name="customer_contact" placeholder="Phone or email" required className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
-                <input name="requested_date" type="date" className="w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
-                <textarea name="service_details" required placeholder="Describe your request" className="min-h-20 w-full rounded-lg border border-indigo-200 px-3 py-2 text-sm" />
-                <button className="w-full rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">Submit quote request</button>
-              </form>
+              <p className="mt-1 text-xs text-indigo-900">Use the structured request form to share your scope, budget, and contact details with this provider.</p>
+              <Link href={`/providers/${providerId}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
+                Open quote request form
+              </Link>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Report this provider</h3>
