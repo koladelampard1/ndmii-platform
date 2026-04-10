@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
+import { buildProviderProfileHref } from "@/lib/provider-links";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -54,6 +55,7 @@ async function submitProviderQuoteRequest(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerPathSegment,
+    allowLegacyCompatibility: true,
   });
 
   devQuoteLog("quote_submission_provider_resolved", {
@@ -126,7 +128,11 @@ export default async function PublicProviderRequestQuotePage({
   devQuoteLog("provider_slug_received", { providerSlug });
   const resolvedByPublicSlug = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
+    allowLegacyCompatibility: true,
   });
+  if (resolvedByPublicSlug.redirectToCanonicalSlug && resolvedByPublicSlug.redirectToCanonicalSlug !== providerSlug) {
+    redirect(`/providers/${resolvedByPublicSlug.redirectToCanonicalSlug}/request-quote`);
+  }
   devQuoteLog("provider_lookup_query_target", {
     table: "provider_profiles",
     select: PROVIDER_PROFILE_SELECT,
@@ -182,6 +188,7 @@ export default async function PublicProviderRequestQuotePage({
 
   const resolvedProviderProfileRow = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
+    allowLegacyCompatibility: true,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {
@@ -197,7 +204,14 @@ export default async function PublicProviderRequestQuotePage({
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
       <section className="mx-auto max-w-3xl px-6 py-10">
-        <Link href={`/providers/${provider.public_slug}`} className="text-sm font-medium text-indigo-700 hover:underline">
+        <Link
+          href={buildProviderProfileHref({
+            id: provider.id,
+            msme_id: provider.msme_id,
+            public_slug: provider.public_slug,
+          })}
+          className="text-sm font-medium text-indigo-700 hover:underline"
+        >
           ← Back to provider profile
         </Link>
 
