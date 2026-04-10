@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -12,54 +13,6 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   console.info(`[public-quote] ${message}`, payload);
 }
 
-type ResolvedProviderProfileRow = {
-  id: string;
-  msme_id: string;
-  public_slug: string | null;
-  slug: string | null;
-  business_name: string | null;
-};
-
-async function resolveQuoteProviderProfileRow(input: {
-  providerPathSegment: string;
-  providerMsmeId?: string | null;
-  providerPublicId?: string | null;
-}): Promise<ResolvedProviderProfileRow | null> {
-  const providerPathSegment = input.providerPathSegment.trim();
-  if (!providerPathSegment) return null;
-
-  const supabase = await createServiceRoleSupabaseClient();
-
-  const { data: byPublicPath } = await supabase
-    .from("provider_profiles")
-    .select("id,msme_id,public_slug,slug,business_name")
-    .or(`public_slug.eq.${providerPathSegment},slug.eq.${providerPathSegment},id.eq.${providerPathSegment}`)
-    .maybeSingle();
-
-  if (byPublicPath?.id) return byPublicPath as ResolvedProviderProfileRow;
-
-  if (input.providerMsmeId?.trim()) {
-    const { data: byMsmeId } = await supabase
-      .from("provider_profiles")
-      .select("id,msme_id,public_slug,slug,business_name")
-      .eq("msme_id", input.providerMsmeId.trim().toUpperCase())
-      .maybeSingle();
-
-    if (byMsmeId?.id) return byMsmeId as ResolvedProviderProfileRow;
-  }
-
-  if (input.providerPublicId?.trim()) {
-    const { data: byProviderId } = await supabase
-      .from("provider_profiles")
-      .select("id,msme_id,public_slug,slug,business_name")
-      .eq("id", input.providerPublicId.trim())
-      .maybeSingle();
-
-    if (byProviderId?.id) return byProviderId as ResolvedProviderProfileRow;
-  }
-
-  return null;
-}
 
 async function submitProviderQuoteRequest(formData: FormData) {
   "use server";
@@ -97,10 +50,10 @@ async function submitProviderQuoteRequest(formData: FormData) {
     redirect(`/providers/${providerPathSegment}/request-quote?error=budget_range`);
   }
 
-  const providerProfile = await resolveQuoteProviderProfileRow({
+  const providerProfile = await resolveProviderProfileRow({
     providerPathSegment,
-    providerMsmeId: submittedProviderMsmeId || undefined,
-    providerPublicId: submittedProviderProfileId || undefined,
+    providerId: submittedProviderProfileId || undefined,
+    msmePublicId: submittedProviderMsmeId || undefined,
   });
 
   devQuoteLog("quote_submission_provider_resolved", {
@@ -214,10 +167,10 @@ export default async function PublicProviderRequestQuotePage({
     );
   }
 
-  const resolvedProviderProfileRow = await resolveQuoteProviderProfileRow({
+  const resolvedProviderProfileRow = await resolveProviderProfileRow({
     providerPathSegment: providerSlug,
-    providerMsmeId: provider.msme_id,
-    providerPublicId: providerId,
+    providerId,
+    msmePublicId: provider.msme_id,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {

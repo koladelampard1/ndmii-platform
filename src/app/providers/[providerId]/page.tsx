@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -108,24 +109,14 @@ async function submitPublicComplaint(formData: FormData) {
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
   devLog("regulator_target_chosen", { providerId, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
-  const { data: providerProfile } = await supabase
-    .from("provider_profiles")
-    .select("id,msme_id,display_name,msmes(business_name,state,sector)")
-    .eq("id", providerId)
-    .maybeSingle();
+  const providerProfile = await resolveProviderProfileRow({
+    providerPathSegment: providerId,
+    providerId,
+    msmePublicId: fallbackMsmePublicId || undefined,
+  });
   devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile), providerProfile });
 
-  const { data: marketplaceProvider } = await supabase
-    .from("marketplace_provider_search")
-    .select("provider_id,msme_row_id,state,sector,business_name")
-    .eq("provider_id", providerId)
-    .maybeSingle();
-  devLog("marketplace_provider_lookup", { providerId, found: Boolean(marketplaceProvider), marketplaceProvider });
-
-  let linkedMsmeId =
-    providerProfile?.msme_id ??
-    marketplaceProvider?.msme_row_id ??
-    null;
+  let linkedMsmeId = providerProfile?.msme_id ?? null;
 
   if (!linkedMsmeId && fallbackMsmePublicId) {
     const { data: fallbackMsme } = await supabase.from("msmes").select("id").eq("msme_id", fallbackMsmePublicId).maybeSingle();
@@ -155,7 +146,7 @@ async function submitPublicComplaint(formData: FormData) {
     });
   }
 
-  const providerProfileExists = Boolean(providerProfile?.id || marketplaceProvider?.provider_id);
+  const providerProfileExists = Boolean(providerProfile?.id);
   if (!linkedMsmeId && providerProfileExists) {
     devLog("linked_msme_lookup_incomplete_provider_profile", { providerId, note: "Continuing with complaint creation while retaining provider linkage." });
   }
@@ -165,21 +156,16 @@ async function submitPublicComplaint(formData: FormData) {
     redirect(`/providers/${providerId}?reported_error=provider_not_found`);
   }
 
-  const resolvedProviderProfileId = providerProfile?.id ?? marketplaceProvider?.provider_id ?? null;
+  const resolvedProviderProfileId = providerProfile?.id ?? null;
   const resolvedBusinessName =
-    (providerProfile?.msmes as { business_name?: string } | null)?.business_name ??
-    marketplaceProvider?.business_name ??
+    providerProfile?.business_name ??
     providerProfile?.display_name ??
     fallbackBusinessName ??
     "Unknown business";
   const resolvedState =
-    (providerProfile?.msmes as { state?: string } | null)?.state ??
-    marketplaceProvider?.state ??
     fallbackState ??
     null;
   const resolvedSector =
-    (providerProfile?.msmes as { sector?: string } | null)?.sector ??
-    marketplaceProvider?.sector ??
     fallbackSector ??
     null;
 
@@ -192,19 +178,6 @@ async function submitPublicComplaint(formData: FormData) {
     resolvedSector,
   });
 
-  if (providerProfile?.id && linkedMsmeId && !providerProfile.msme_id) {
-    const { error: linkageRepairError } = await supabase
-      .from("provider_profiles")
-      .update({ msme_id: linkedMsmeId })
-      .eq("id", providerProfile.id);
-    devLog("provider_linkage_repair", {
-      providerId,
-      providerProfileId: providerProfile.id,
-      linkedMsmeId,
-      repaired: !linkageRepairError,
-      error: linkageRepairError?.message ?? null,
-    });
-  }
 
   const complaintInsertPayload: Record<string, unknown> = {
     msme_id: linkedMsmeId,

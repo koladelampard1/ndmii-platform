@@ -1,4 +1,5 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { ensureProviderProfileForPublicMsme, resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
 export type ProviderCard = {
   id: string;
@@ -627,34 +628,15 @@ export async function resolveProviderPublicId(providerSlugOrId: string): Promise
   const value = providerSlugOrId.trim();
   if (!value) return null;
 
-  const supabase = await createServiceRoleSupabaseClient();
-  const { data: providerBySlug } = await supabase
-    .from("provider_profiles")
-    .select("id")
-    .or(`slug.eq.${value},public_slug.eq.${value},id.eq.${value}`)
-    .maybeSingle();
-
-  if (providerBySlug?.id) return providerBySlug.id;
-
-  const { data: providerByMarketplaceProjection } = await supabase
-    .from("marketplace_provider_search")
-    .select("provider_id")
-    .eq("provider_id", value)
-    .maybeSingle();
-
-  if (providerByMarketplaceProjection?.provider_id) return providerByMarketplaceProjection.provider_id;
+  const resolvedProvider = await resolveProviderProfileRow({
+    providerPathSegment: value,
+    providerId: value,
+  });
+  if (resolvedProvider?.id) return resolvedProvider.id;
 
   const projectedMsmeId = value.startsWith("msme-") ? value.slice(5).toUpperCase() : value.toUpperCase();
-  const { data: projectedMsme } = await supabase
-    .from("msmes")
-    .select("msme_id")
-    .eq("msme_id", projectedMsmeId)
-    .in("verification_status", ["verified", "approved"])
-    .maybeSingle();
-
-  if (projectedMsme?.msme_id) {
-    return `msme-${projectedMsme.msme_id.toLowerCase()}`;
-  }
+  const ensuredProvider = await ensureProviderProfileForPublicMsme({ msmePublicId: projectedMsmeId });
+  if (ensuredProvider?.id) return ensuredProvider.id;
 
   return null;
 }
