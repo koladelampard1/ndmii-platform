@@ -2,7 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
+import { getProviderPublicProfile, resolveProviderPublicRoute } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
@@ -124,10 +124,15 @@ export default async function PublicProviderRequestQuotePage({
   const query = await searchParams;
 
   devQuoteLog("provider_slug_received", { providerSlug });
-  const providerId = await resolveProviderPublicId(providerSlug);
-  devQuoteLog("provider_lookup_result", { providerSlug, providerId, found: Boolean(providerId) });
+  const resolvedRoute = await resolveProviderPublicRoute(providerSlug);
+  devQuoteLog("provider_lookup_result", {
+    providerSlug,
+    providerId: resolvedRoute?.providerId ?? null,
+    canonicalSlug: resolvedRoute?.canonicalSlug ?? null,
+    found: Boolean(resolvedRoute?.providerId),
+  });
 
-  if (!providerId) {
+  if (!resolvedRoute?.providerId) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
@@ -147,6 +152,13 @@ export default async function PublicProviderRequestQuotePage({
     );
   }
 
+  if (resolvedRoute.isLegacyMatch) {
+    devQuoteLog("legacy_slug_redirect", { from: providerSlug, to: resolvedRoute.canonicalSlug, providerId: resolvedRoute.providerId });
+    redirect(`/providers/${resolvedRoute.canonicalSlug}/request-quote`);
+  }
+
+  const providerId = resolvedRoute.providerId;
+  const canonicalSlug = resolvedRoute.canonicalSlug;
   const provider = await getProviderPublicProfile(providerId);
   devQuoteLog("provider_profile_loaded", { providerSlug, providerId, found: Boolean(provider) });
   if (!provider) {
@@ -168,13 +180,13 @@ export default async function PublicProviderRequestQuotePage({
   }
 
   const resolvedProviderProfileRow = await resolveProviderProfileRow({
-    providerPathSegment: providerSlug,
+    providerPathSegment: canonicalSlug,
     providerId,
     msmePublicId: provider.msme_id,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {
-    providerSlug,
+    providerSlug: canonicalSlug,
     providerId,
     found: Boolean(resolvedProviderProfileRow?.id),
     providerProfileId: resolvedProviderProfileRow?.id ?? null,
@@ -186,7 +198,7 @@ export default async function PublicProviderRequestQuotePage({
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
       <section className="mx-auto max-w-3xl px-6 py-10">
-        <Link href={`/providers/${providerSlug}`} className="text-sm font-medium text-indigo-700 hover:underline">
+        <Link href={`/providers/${canonicalSlug}`} className="text-sm font-medium text-indigo-700 hover:underline">
           ← Back to provider profile
         </Link>
 
@@ -218,7 +230,7 @@ export default async function PublicProviderRequestQuotePage({
             </div>
           ) : (
             <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
-              <input type="hidden" name="provider_path_segment" value={providerSlug} />
+              <input type="hidden" name="provider_path_segment" value={canonicalSlug} />
               <input type="hidden" name="provider_profile_id" value={resolvedProviderProfileRow.id} />
               <input type="hidden" name="provider_msme_id" value={resolvedProviderProfileRow.msme_id} />
 

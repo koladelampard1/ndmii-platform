@@ -16,6 +16,7 @@ export type ProviderProfileRow = {
   business_name: string | null;
   slug: string | null;
   public_slug: string | null;
+  updated_at?: string | null;
 };
 
 function slugifySegment(value: string) {
@@ -28,6 +29,26 @@ function slugifySegment(value: string) {
 
 function buildStableProviderSlug(msmePublicId: string, businessName: string) {
   return `${slugifySegment(businessName)}-${slugifySegment(msmePublicId)}`;
+}
+
+function canonicalSlugScore(slug: string | null | undefined) {
+  if (!slug) return -1000;
+  let score = slug.length;
+  if (!slug.startsWith("msme-")) score += 200;
+  if (!slug.includes("ndmii-")) score += 60;
+  return score;
+}
+
+function chooseCanonicalProviderProfile(rows: ProviderProfileRow[]): ProviderProfileRow | null {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const slugDelta = canonicalSlugScore(b.public_slug) - canonicalSlugScore(a.public_slug);
+    if (slugDelta !== 0) return slugDelta;
+    const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    if (updatedB !== updatedA) return updatedB - updatedA;
+    return a.id.localeCompare(b.id);
+  })[0];
 }
 
 async function getPublicMsmeByAnyKey(input: { msmeRowId?: string | null; msmePublicId?: string | null }): Promise<PublicMsmeRow | null> {
@@ -66,11 +87,14 @@ export async function ensureProviderProfileForPublicMsme(input: {
   const supabase = await createServiceRoleSupabaseClient();
   const stableSlug = buildStableProviderSlug(msme.msme_id, msme.business_name);
 
-  const { data: existing } = await supabase
+  const { data: existingRows } = await supabase
     .from("provider_profiles")
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
+    .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
     .eq("msme_id", msme.id)
-    .maybeSingle();
+    .order("updated_at", { ascending: false })
+    .limit(20);
+
+  const existing = chooseCanonicalProviderProfile((existingRows ?? []) as ProviderProfileRow[]);
 
   if (existing?.id) {
     const patch: Record<string, unknown> = {};
@@ -84,7 +108,7 @@ export async function ensureProviderProfileForPublicMsme(input: {
         .from("provider_profiles")
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq("id", existing.id)
-        .select("id,msme_id,display_name,business_name,slug,public_slug")
+        .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
         .maybeSingle();
       return (updated as ProviderProfileRow | null) ?? (existing as ProviderProfileRow);
     }
@@ -107,7 +131,7 @@ export async function ensureProviderProfileForPublicMsme(input: {
       is_verified: true,
       is_active: true,
     })
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
+    .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
     .maybeSingle();
 
   return (inserted as ProviderProfileRow | null) ?? null;
@@ -124,22 +148,31 @@ export async function resolveProviderProfileRow(input: {
 
   const supabase = await createServiceRoleSupabaseClient();
 
+  const { data: byCanonicalPath } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
+    .eq("public_slug", value)
+    .limit(20);
+  const canonicalBySlug = chooseCanonicalProviderProfile((byCanonicalPath ?? []) as ProviderProfileRow[]);
+  if (canonicalBySlug?.id) return canonicalBySlug as ProviderProfileRow;
+
   const { data: byPath } = await supabase
     .from("provider_profiles")
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
-    .or(`public_slug.eq.${value},slug.eq.${value},id.eq.${value}`)
-    .maybeSingle();
-
-  if (byPath?.id) return byPath as ProviderProfileRow;
+    .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
+    .or(`slug.eq.${value},id.eq.${value}`)
+    .limit(20);
+  const canonicalByLegacyPath = chooseCanonicalProviderProfile((byPath ?? []) as ProviderProfileRow[]);
+  if (canonicalByLegacyPath?.id) return canonicalByLegacyPath as ProviderProfileRow;
 
   if (input.providerId?.trim()) {
     const { data: byProviderId } = await supabase
       .from("provider_profiles")
-      .select("id,msme_id,display_name,business_name,slug,public_slug")
+      .select("id,msme_id,display_name,business_name,slug,public_slug,updated_at")
       .eq("id", input.providerId.trim())
-      .maybeSingle();
+      .limit(20);
+    const canonicalByProviderId = chooseCanonicalProviderProfile((byProviderId ?? []) as ProviderProfileRow[]);
 
-    if (byProviderId?.id) return byProviderId as ProviderProfileRow;
+    if (canonicalByProviderId?.id) return canonicalByProviderId as ProviderProfileRow;
   }
 
   if (input.msmeRowId?.trim() || input.msmePublicId?.trim()) {

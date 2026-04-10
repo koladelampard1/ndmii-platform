@@ -60,7 +60,9 @@ async function submitReply(formData: FormData) {
 
   revalidatePath("/dashboard/msme/reputation");
   revalidatePath("/dashboard/msme/reviews");
-  revalidatePath(`/providers/${providerId}`);
+  if (workspace?.provider?.slug) {
+    revalidatePath(`/providers/${workspace.provider.slug}`);
+  }
   revalidatePath("/search");
   revalidatePath("/");
   redirect("/dashboard/msme/reviews?saved=1");

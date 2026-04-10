@@ -34,7 +34,7 @@ async function serviceAction(formData: FormData) {
   }
 
   revalidatePath("/dashboard/msme/services");
-  revalidatePath(`/providers/${workspace.provider.id}`);
+  revalidatePath(`/providers/${workspace.provider.slug}`);
   redirect("/dashboard/msme/services?saved=1");
 }
 

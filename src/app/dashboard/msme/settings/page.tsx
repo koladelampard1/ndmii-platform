@@ -20,7 +20,7 @@ async function settingsAction(formData: FormData) {
     .eq("msme_id", workspace.provider.msme_id);
 
   revalidatePath("/dashboard/msme/settings");
-  revalidatePath(`/providers/${workspace.provider.id}`);
+  revalidatePath(`/providers/${workspace.provider.slug}`);
   redirect("/dashboard/msme/settings?saved=1");
 }
 
