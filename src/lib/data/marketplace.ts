@@ -5,6 +5,7 @@ export type ProviderCard = {
   id: string;
   public_slug: string;
   msme_id: string;
+  display_name: string | null;
   ndmii_id: string | null;
   business_name: string;
   logo_url: string | null;
@@ -139,12 +140,15 @@ export function slugifyCategory(category: string): string {
 function toCard(row: any): ProviderCard | null {
   const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? null;
   if (!canonicalSlug) return null;
-  const providerId = row.provider_id ?? row.id;
+  const providerId = row.provider_id ?? row.provider_profile_id ?? row.id;
   if (!providerId) return null;
+  const msmeId = row.msme_id ?? row.provider_profile_msme_id ?? null;
+  if (!msmeId) return null;
   return {
     id: providerId,
     public_slug: canonicalSlug,
-    msme_id: row.msme_id,
+    msme_id: msmeId,
+    display_name: row.display_name ?? row.provider_display_name ?? row.business_name ?? null,
     ndmii_id: row.ndmii_id ?? null,
     business_name: row.business_name,
     logo_url: row.logo_url ?? row.passport_photo_url ?? null,
@@ -232,6 +236,7 @@ function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publi
     id: row.id,
     public_slug: publicSlug,
     msme_id: row.msme_id,
+    display_name: row.business_name,
     ndmii_id: ndmiiId,
     business_name: row.business_name,
     logo_url: row.passport_photo_url ?? null,
@@ -246,6 +251,37 @@ function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publi
     review_count,
     is_featured: false,
   };
+}
+
+async function attachProviderProfileMetadata(rows: any[]) {
+  if (!rows.length) return rows;
+  const supabase = await createServiceRoleSupabaseClient();
+  const providerIds = rows
+    .map((row) => (row.provider_id ?? row.id ?? null) as string | null)
+    .filter((value): value is string => Boolean(value));
+  if (!providerIds.length) return rows;
+
+  const { data: providerProfiles } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id,public_slug,display_name")
+    .in("id", providerIds);
+
+  const profileById = new Map((providerProfiles ?? []).map((profile: any) => [profile.id as string, profile]));
+
+  return rows.map((row) => {
+    const providerId = (row.provider_id ?? row.id) as string;
+    const profile = profileById.get(providerId);
+    return {
+      ...row,
+      provider_profile_id: profile?.id ?? providerId,
+      provider_profile_msme_id: profile?.msme_id ?? null,
+      provider_public_slug: profile?.public_slug ?? null,
+      provider_display_name: profile?.display_name ?? null,
+      public_slug: row.public_slug ?? profile?.public_slug ?? null,
+      display_name: row.display_name ?? profile?.display_name ?? null,
+      msme_id: row.msme_id ?? profile?.msme_id ?? null,
+    };
+  });
 }
 
 function safeNumber(value: unknown, fallback = 0) {
@@ -366,7 +402,8 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
 
   const { data, error } = await query;
   if (error) throw error;
-  return applySort((data ?? []).map(toCard).filter((provider): provider is ProviderCard => Boolean(provider)), filters.sort);
+  const hydrated = await attachProviderProfileMetadata(data ?? []);
+  return applySort(hydrated.map(toCard).filter((provider): provider is ProviderCard => Boolean(provider)), filters.sort);
 }
 
 async function getProvidersWithFallback(filters: SearchFilters = {}, limit = 24) {
@@ -396,7 +433,8 @@ async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
       .limit(limit);
 
     if (error) throw error;
-    return (data ?? []).map(toCard).filter((provider): provider is ProviderCard => Boolean(provider));
+    const hydrated = await attachProviderProfileMetadata(data ?? []);
+    return hydrated.map(toCard).filter((provider): provider is ProviderCard => Boolean(provider));
   } catch {
     return getProvidersWithFallback({ sort: "featured", verification: "verified_or_approved" }, limit);
   }
@@ -517,7 +555,9 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           .neq("status", "closed"),
       ]);
 
-      const base = toCard(row);
+      const [hydratedRow] = await attachProviderProfileMetadata([row]);
+      const base = toCard(hydratedRow);
+      if (!base) return null;
       const breakdown: RatingBreakdown = {
         five: metrics?.five_star_count ?? 0,
         four: metrics?.four_star_count ?? 0,
