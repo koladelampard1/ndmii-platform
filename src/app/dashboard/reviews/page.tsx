@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { assertMsmeAction, requireRole } from "@/lib/data/authorization-scope";
+import { ensureProviderProfileForPublicMsme } from "@/lib/data/provider-profiles";
 
 function calculateConfidence(statuses: string[]) {
   return statuses.reduce((acc, status) => acc + (status === "verified" ? 25 : status === "mismatch" ? 10 : status === "pending" ? 5 : 0), 0);
@@ -92,6 +93,7 @@ async function reviewAction(formData: FormData) {
     }, { onConflict: "msme_id" });
     await supabase.from("compliance_profiles").upsert({ msme_id: id, overall_status: "verified", admin_override_status: "verified", risk_level: "low", score: 92 }, { onConflict: "msme_id" });
     await supabase.from("tax_profiles").upsert({ msme_id: id, tax_category: "SME_STANDARD", vat_applicable: true, estimated_monthly_obligation: 125000, outstanding_amount: 0, compliance_status: "compliant", last_reviewed_at: nowIso }, { onConflict: "msme_id" });
+    await ensureProviderProfileForPublicMsme({ msmeRowId: id, msmePublicId: ndmiiId });
   }
   if (action === "reject") {
     update.verification_status = "rejected";
