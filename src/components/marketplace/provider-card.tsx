@@ -69,7 +69,7 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
 
       <div className="mt-5 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Trust score: {provider.trust_score}</span>
-        <Link href={`/providers/${provider.id}`}>
+        <Link href={`/providers/${provider.public_slug}`}>
           <Button size="sm">View profile</Button>
         </Link>
       </div>

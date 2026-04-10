@@ -1,8 +1,9 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { ensureProviderProfileForPublicMsme, resolveProviderProfileRow } from "@/lib/data/provider-profiles";
+import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 
 export type ProviderCard = {
   id: string;
+  public_slug: string;
   msme_id: string;
   ndmii_id: string | null;
   business_name: string;
@@ -136,8 +137,10 @@ export function slugifyCategory(category: string): string {
 }
 
 function toCard(row: any): ProviderCard {
+  const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? row.slug ?? row.msme_id?.toLowerCase() ?? row.provider_id;
   return {
     id: row.provider_id,
+    public_slug: canonicalSlug,
     msme_id: row.msme_id,
     ndmii_id: row.ndmii_id ?? null,
     business_name: row.business_name,
@@ -153,14 +156,6 @@ function toCard(row: any): ProviderCard {
     review_count: Number(row.review_count ?? 0),
     is_featured: Boolean(row.is_featured),
   };
-}
-
-function toProjectedProviderId(msmeId: string) {
-  return `msme-${msmeId.toLowerCase()}`;
-}
-
-function fromProjectedProviderId(providerId: string) {
-  return providerId.startsWith("msme-") ? providerId.slice(5).toUpperCase() : providerId;
 }
 
 function categoryFromSector(sector: string) {
@@ -231,7 +226,8 @@ function applySort(data: ProviderCard[], sort: SearchFilters["sort"] = "relevanc
 function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null): ProviderCard {
   const { avg_rating, review_count, trust_score } = seededMetrics(row.msme_id);
   return {
-    id: toProjectedProviderId(row.msme_id),
+    id: row.id,
+    public_slug: row.msme_id.toLowerCase(),
     msme_id: row.msme_id,
     ndmii_id: ndmiiId,
     business_name: row.business_name,
@@ -558,19 +554,12 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    const msmeLookup = fromProjectedProviderId(providerId);
-
     let msmeQuery = supabase
       .from("msmes")
       .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,passport_photo_url")
       .in("verification_status", ["verified", "approved"])
       .limit(1);
-
-    if (providerId.startsWith("msme-")) {
-      msmeQuery = msmeQuery.eq("msme_id", msmeLookup);
-    } else {
-      msmeQuery = msmeQuery.or(`id.eq.${providerId},msme_id.eq.${providerId.toUpperCase()}`);
-    }
+    msmeQuery = msmeQuery.or(`id.eq.${providerId},msme_id.eq.${providerId.toUpperCase()}`);
 
     const { data: msmes, error } = await msmeQuery;
     if (error || !msmes?.length) return null;
@@ -628,15 +617,12 @@ export async function resolveProviderPublicId(providerSlugOrId: string): Promise
   const value = providerSlugOrId.trim();
   if (!value) return null;
 
-  const resolvedProvider = await resolveProviderProfileRow({
-    providerPathSegment: value,
-    providerId: value,
+  const resolvedProvider = await resolvePublicProviderProfile({
+    providerRouteParam: value,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
   });
-  if (resolvedProvider?.id) return resolvedProvider.id;
-
-  const projectedMsmeId = value.startsWith("msme-") ? value.slice(5).toUpperCase() : value.toUpperCase();
-  const ensuredProvider = await ensureProviderProfileForPublicMsme({ msmePublicId: projectedMsmeId });
-  if (ensuredProvider?.id) return ensuredProvider.id;
+  if (resolvedProvider.provider?.id) return resolvedProvider.provider.id;
 
   return null;
 }

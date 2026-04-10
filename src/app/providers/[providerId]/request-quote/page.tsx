@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
+import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -13,7 +13,7 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   console.info(`[public-quote] ${message}`, payload);
 }
 
-const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,business_name,slug,public_slug";
+const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,slug,public_slug";
 
 
 async function submitProviderQuoteRequest(formData: FormData) {
@@ -52,30 +52,30 @@ async function submitProviderQuoteRequest(formData: FormData) {
     redirect(`/providers/${providerPathSegment}/request-quote?error=budget_range`);
   }
 
-  const providerProfile = await resolveProviderProfileRow({
-    providerPathSegment,
-    providerId: submittedProviderProfileId || undefined,
-    msmePublicId: submittedProviderMsmeId || undefined,
+  const providerProfile = await resolvePublicProviderProfile({
+    providerRouteParam: providerPathSegment,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
   });
 
   devQuoteLog("quote_submission_provider_resolved", {
     providerPathSegment,
-    providerProfile: providerProfile
+    providerProfile: providerProfile.provider
       ? {
-          id: providerProfile.id,
-          msmeId: providerProfile.msme_id,
-          slug: providerProfile.slug ?? null,
-          publicSlug: providerProfile.public_slug ?? null,
-          businessName: providerProfile.business_name ?? null,
+          id: providerProfile.provider.id,
+          msmeId: providerProfile.provider.msme_id,
+          publicSlug: providerProfile.provider.public_slug ?? null,
+          submittedProviderProfileId: submittedProviderProfileId || null,
+          submittedProviderMsmeId: submittedProviderMsmeId || null,
         }
       : null,
   });
 
-  if (!providerProfile?.id) {
+  if (!providerProfile.provider?.id) {
     redirect(`/providers/${providerPathSegment}/request-quote?error=provider_not_found`);
   }
 
-  const providerProfileId = providerProfile.id;
+  const providerProfileId = providerProfile.provider.id;
   devQuoteLog("quote_submission_provider_uuid_for_insert", { providerPathSegment, providerProfileId });
 
   const supabase = await createServiceRoleSupabaseClient();
@@ -126,22 +126,25 @@ export default async function PublicProviderRequestQuotePage({
   const query = await searchParams;
 
   devQuoteLog("provider_slug_received", { providerSlug });
+  const resolvedByPublicSlug = await resolvePublicProviderProfile({
+    providerRouteParam: providerSlug,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
+  });
+  if (resolvedByPublicSlug.redirectToCanonicalSlug) {
+    redirect(`/providers/${resolvedByPublicSlug.redirectToCanonicalSlug}/request-quote`);
+  }
   devQuoteLog("provider_lookup_query_target", {
     table: "provider_profiles",
     select: PROVIDER_PROFILE_SELECT,
     filter: `public_slug.eq.${providerSlug},slug.eq.${providerSlug}`,
   });
-  const resolvedByPublicSlug = await resolveProviderProfileRow({
-    providerPathSegment: providerSlug,
-    providerId: providerSlug,
-  });
-  const providerId = resolvedByPublicSlug?.id ?? null;
+  const providerId = resolvedByPublicSlug.provider?.id ?? null;
   devQuoteLog("provider_lookup_result", {
     providerSlug,
     providerId,
     found: Boolean(providerId),
-    providerProfilePublicSlug: resolvedByPublicSlug?.public_slug ?? null,
-    providerProfileSlug: resolvedByPublicSlug?.slug ?? null,
+    providerProfilePublicSlug: resolvedByPublicSlug.provider?.public_slug ?? null,
   });
 
   if (!providerId) {
@@ -184,26 +187,26 @@ export default async function PublicProviderRequestQuotePage({
     );
   }
 
-  const resolvedProviderProfileRow = await resolveProviderProfileRow({
-    providerPathSegment: providerSlug,
-    providerId,
-    msmePublicId: provider.msme_id,
+  const resolvedProviderProfileRow = await resolvePublicProviderProfile({
+    providerRouteParam: providerSlug,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {
     providerSlug,
     providerId,
-    found: Boolean(resolvedProviderProfileRow?.id),
-    providerProfileId: resolvedProviderProfileRow?.id ?? null,
-    providerProfileMsmeId: resolvedProviderProfileRow?.msme_id ?? null,
-    providerProfilePublicSlug: resolvedProviderProfileRow?.public_slug ?? null,
+    found: Boolean(resolvedProviderProfileRow.provider?.id),
+    providerProfileId: resolvedProviderProfileRow.provider?.id ?? null,
+    providerProfileMsmeId: resolvedProviderProfileRow.provider?.msme_id ?? null,
+    providerProfilePublicSlug: resolvedProviderProfileRow.provider?.public_slug ?? null,
   });
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
       <section className="mx-auto max-w-3xl px-6 py-10">
-        <Link href={`/providers/${providerSlug}`} className="text-sm font-medium text-indigo-700 hover:underline">
+        <Link href={`/providers/${provider.public_slug}`} className="text-sm font-medium text-indigo-700 hover:underline">
           ← Back to provider profile
         </Link>
 
@@ -229,15 +232,15 @@ export default async function PublicProviderRequestQuotePage({
             </div>
           )}
 
-          {!resolvedProviderProfileRow ? (
+          {!resolvedProviderProfileRow.provider ? (
             <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               This provider is visible publicly but has no provider profile row yet.
             </div>
           ) : (
             <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
               <input type="hidden" name="provider_path_segment" value={providerSlug} />
-              <input type="hidden" name="provider_profile_id" value={resolvedProviderProfileRow.id} />
-              <input type="hidden" name="provider_msme_id" value={resolvedProviderProfileRow.msme_id} />
+              <input type="hidden" name="provider_profile_id" value={resolvedProviderProfileRow.provider.id} />
+              <input type="hidden" name="provider_msme_id" value={resolvedProviderProfileRow.provider.msme_id} />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">

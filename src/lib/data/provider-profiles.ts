@@ -1,128 +1,19 @@
-import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { resolvePublicProviderProfile, type NormalizedProviderProfile } from "@/lib/data/provider-profile-resolver";
 
-type PublicMsmeRow = {
-  id: string;
-  msme_id: string;
-  business_name: string;
-  state: string;
-  sector: string;
-  passport_photo_url: string | null;
-};
-
-export type ProviderProfileRow = {
-  id: string;
-  msme_id: string;
-  display_name: string | null;
-  business_name: string | null;
-  slug: string | null;
-  public_slug: string | null;
-};
-
-const DEV_MODE = process.env.NODE_ENV !== "production";
-const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,business_name,slug,public_slug";
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function devProviderLookupLog(message: string, payload: Record<string, unknown>) {
-  if (!DEV_MODE) return;
-  console.info(`[provider-profile-lookup] ${message}`, payload);
-}
-
-function slugifySegment(value: string) {
-  const normalized = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "provider";
-}
-
-function buildStableProviderSlug(msmePublicId: string, businessName: string) {
-  return `${slugifySegment(businessName)}-${slugifySegment(msmePublicId)}`;
-}
-
-async function getPublicMsmeByAnyKey(input: { msmeRowId?: string | null; msmePublicId?: string | null }): Promise<PublicMsmeRow | null> {
-  const supabase = await createServiceRoleSupabaseClient();
-
-  if (input.msmeRowId?.trim()) {
-    const { data } = await supabase
-      .from("msmes")
-      .select("id,msme_id,business_name,state,sector,passport_photo_url")
-      .eq("id", input.msmeRowId.trim())
-      .in("verification_status", ["verified", "approved"])
-      .maybeSingle();
-    if (data?.id) return data as PublicMsmeRow;
-  }
-
-  if (input.msmePublicId?.trim()) {
-    const { data } = await supabase
-      .from("msmes")
-      .select("id,msme_id,business_name,state,sector,passport_photo_url")
-      .eq("msme_id", input.msmePublicId.trim().toUpperCase())
-      .in("verification_status", ["verified", "approved"])
-      .maybeSingle();
-    if (data?.id) return data as PublicMsmeRow;
-  }
-
-  return null;
-}
+export type ProviderProfileRow = NormalizedProviderProfile & { slug?: string | null };
 
 export async function ensureProviderProfileForPublicMsme(input: {
   msmeRowId?: string | null;
   msmePublicId?: string | null;
 }): Promise<ProviderProfileRow | null> {
-  const msme = await getPublicMsmeByAnyKey(input);
-  if (!msme?.id) return null;
-
-  const supabase = await createServiceRoleSupabaseClient();
-  const stableSlug = buildStableProviderSlug(msme.msme_id, msme.business_name);
-
-  const { data: existing } = await supabase
-    .from("provider_profiles")
-    .select(PROVIDER_PROFILE_SELECT)
-    .eq("msme_id", msme.id)
-    .maybeSingle();
-
-  if (existing?.id) {
-    const patch: Record<string, unknown> = {};
-    if (!existing.public_slug) patch.public_slug = stableSlug;
-    if (!existing.slug) patch.slug = stableSlug;
-    if (!existing.display_name) patch.display_name = msme.business_name;
-    if (!existing.business_name) patch.business_name = msme.business_name;
-
-    if (Object.keys(patch).length > 0) {
-      const { data: updated } = await supabase
-        .from("provider_profiles")
-        .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq("id", existing.id)
-        .select(PROVIDER_PROFILE_SELECT)
-        .maybeSingle();
-      return (updated as ProviderProfileRow | null) ?? (existing as ProviderProfileRow);
-    }
-
-    return existing as ProviderProfileRow;
-  }
-
-  const { data: inserted } = await supabase
-    .from("provider_profiles")
-    .insert({
-      msme_id: msme.id,
-      display_name: msme.business_name,
-      business_name: msme.business_name,
-      slug: stableSlug,
-      public_slug: stableSlug,
-      short_description: `Verified NDMII provider in ${msme.state} delivering trusted ${msme.sector.toLowerCase()} services.`,
-      long_description: `${msme.business_name} is a verified business in the NDMII marketplace with a validated identity profile and strong compliance records.`,
-      logo_url: msme.passport_photo_url,
-      passport_url: msme.passport_photo_url,
-      is_verified: true,
-      is_active: true,
-    })
-    .select(PROVIDER_PROFILE_SELECT)
-    .maybeSingle();
-
-  return (inserted as ProviderProfileRow | null) ?? null;
+  const legacyKey = input.msmePublicId?.trim() || input.msmeRowId?.trim();
+  if (!legacyKey) return null;
+  const resolved = await resolvePublicProviderProfile({
+    providerRouteParam: legacyKey,
+    allowSlugFallback: false,
+    allowLegacyMsmeFallback: true,
+  });
+  return resolved.provider;
 }
 
 export async function resolveProviderProfileRow(input: {
@@ -131,84 +22,20 @@ export async function resolveProviderProfileRow(input: {
   msmeRowId?: string | null;
   msmePublicId?: string | null;
 }): Promise<ProviderProfileRow | null> {
-  const value = input.providerPathSegment.trim();
-  if (!value) return null;
+  const lookupParam =
+    input.providerPathSegment?.trim() ||
+    input.providerId?.trim() ||
+    input.msmePublicId?.trim() ||
+    input.msmeRowId?.trim() ||
+    "";
 
-  const supabase = await createServiceRoleSupabaseClient();
-  const slugLookupFilter = `public_slug.eq.${value},slug.eq.${value}`;
+  if (!lookupParam) return null;
 
-  devProviderLookupLog("query_attempt", {
-    table: "provider_profiles",
-    select: PROVIDER_PROFILE_SELECT,
-    filter: slugLookupFilter,
-    providerPathSegment: value,
-  });
-  const { data: bySlug, error: bySlugError } = await supabase
-    .from("provider_profiles")
-    .select(PROVIDER_PROFILE_SELECT)
-    .or(slugLookupFilter)
-    .maybeSingle();
-  devProviderLookupLog("query_result", {
-    table: "provider_profiles",
-    filter: slugLookupFilter,
-    found: Boolean(bySlug?.id),
-    rowId: bySlug?.id ?? null,
-    error: bySlugError
-      ? {
-          message: bySlugError.message ?? null,
-          details: bySlugError.details ?? null,
-          hint: bySlugError.hint ?? null,
-          code: bySlugError.code ?? null,
-        }
-      : null,
+  const resolved = await resolvePublicProviderProfile({
+    providerRouteParam: lookupParam,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
   });
 
-  if (bySlug?.id) return bySlug as ProviderProfileRow;
-
-  if (input.providerId?.trim()) {
-    const providerIdValue = input.providerId.trim();
-    if (!isUuid(providerIdValue)) {
-      devProviderLookupLog("query_skipped", {
-        table: "provider_profiles",
-        filter: `id.eq.${providerIdValue}`,
-        reason: "providerId_not_uuid",
-      });
-    } else {
-      devProviderLookupLog("query_attempt", {
-        table: "provider_profiles",
-        select: PROVIDER_PROFILE_SELECT,
-        filter: `id.eq.${providerIdValue}`,
-      });
-      const { data: byProviderId, error: byProviderIdError } = await supabase
-        .from("provider_profiles")
-        .select(PROVIDER_PROFILE_SELECT)
-        .eq("id", providerIdValue)
-        .maybeSingle();
-      devProviderLookupLog("query_result", {
-        table: "provider_profiles",
-        filter: `id.eq.${providerIdValue}`,
-        found: Boolean(byProviderId?.id),
-        rowId: byProviderId?.id ?? null,
-        error: byProviderIdError
-          ? {
-              message: byProviderIdError.message ?? null,
-              details: byProviderIdError.details ?? null,
-              hint: byProviderIdError.hint ?? null,
-              code: byProviderIdError.code ?? null,
-            }
-          : null,
-      });
-      if (byProviderId?.id) return byProviderId as ProviderProfileRow;
-    }
-  }
-
-  if (input.msmeRowId?.trim() || input.msmePublicId?.trim()) {
-    const ensured = await ensureProviderProfileForPublicMsme({
-      msmeRowId: input.msmeRowId,
-      msmePublicId: input.msmePublicId,
-    });
-    if (ensured?.id) return ensured;
-  }
-
-  return null;
+  return resolved.provider;
 }
