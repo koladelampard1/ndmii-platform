@@ -13,7 +13,7 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   console.info(`[public-quote] ${message}`, payload);
 }
 
-const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,slug,public_slug";
+const PROVIDER_PROFILE_SELECT = "id,msme_id,public_slug,display_name";
 
 
 async function submitProviderQuoteRequest(formData: FormData) {
@@ -54,8 +54,6 @@ async function submitProviderQuoteRequest(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerPathSegment,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
 
   devQuoteLog("quote_submission_provider_resolved", {
@@ -128,16 +126,11 @@ export default async function PublicProviderRequestQuotePage({
   devQuoteLog("provider_slug_received", { providerSlug });
   const resolvedByPublicSlug = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
-  if (resolvedByPublicSlug.redirectToCanonicalSlug) {
-    redirect(`/providers/${resolvedByPublicSlug.redirectToCanonicalSlug}/request-quote`);
-  }
   devQuoteLog("provider_lookup_query_target", {
     table: "provider_profiles",
     select: PROVIDER_PROFILE_SELECT,
-    filter: `public_slug.eq.${providerSlug},slug.eq.${providerSlug}`,
+    filter: `public_slug.eq.${providerSlug}`,
   });
   const providerId = resolvedByPublicSlug.provider?.id ?? null;
   devQuoteLog("provider_lookup_result", {
@@ -189,8 +182,6 @@ export default async function PublicProviderRequestQuotePage({
 
   const resolvedProviderProfileRow = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {

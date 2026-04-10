@@ -2,9 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
+import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 
@@ -111,8 +110,6 @@ async function submitPublicComplaint(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerId,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
   devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
 
@@ -240,17 +237,47 @@ export default async function ProviderPublicPage({
   const query = await searchParams;
   const resolvedRoute = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
-  if (resolvedRoute.redirectToCanonicalSlug) {
-    redirect(`/providers/${resolvedRoute.redirectToCanonicalSlug}`);
+
+  if (!resolvedRoute.provider?.id) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-900">
+        <Navbar />
+        <section className="mx-auto max-w-3xl px-6 py-14">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Provider not found</p>
+            <h1 className="mt-2 text-2xl font-semibold text-amber-900">We could not locate this provider profile</h1>
+            <p className="mt-2 text-sm text-amber-800">
+              The provider link is invalid or the provider is no longer publicly available.
+            </p>
+            <Link href="/search" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+              Return to provider search
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
   }
-  const providerId = (await resolveProviderPublicId(providerSlug)) ?? providerSlug;
+
+  const providerId = resolvedRoute.provider.id;
   const provider = await getProviderPublicProfile(providerId);
 
   if (!provider) {
-    notFound();
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-900">
+        <Navbar />
+        <section className="mx-auto max-w-3xl px-6 py-14">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Provider not found</p>
+            <h1 className="mt-2 text-2xl font-semibold text-amber-900">This provider profile could not be loaded</h1>
+            <p className="mt-2 text-sm text-amber-800">Please reopen the provider profile and try again.</p>
+            <Link href="/search" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+              Return to provider search
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   const breakdownRows = [

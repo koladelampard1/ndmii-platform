@@ -1,18 +1,18 @@
 import { resolvePublicProviderProfile, type NormalizedProviderProfile } from "@/lib/data/provider-profile-resolver";
 
-export type ProviderProfileRow = NormalizedProviderProfile & { slug?: string | null };
+export type ProviderProfileRow = NormalizedProviderProfile;
 
 export async function ensureProviderProfileForPublicMsme(input: {
   msmeRowId?: string | null;
   msmePublicId?: string | null;
 }): Promise<ProviderProfileRow | null> {
-  const legacyKey = input.msmePublicId?.trim() || input.msmeRowId?.trim();
-  if (!legacyKey) return null;
+  const providerSlug = input.msmePublicId?.trim() || input.msmeRowId?.trim();
+  if (!providerSlug) return null;
+
   const resolved = await resolvePublicProviderProfile({
-    providerRouteParam: legacyKey,
-    allowSlugFallback: false,
-    allowLegacyMsmeFallback: true,
+    providerRouteParam: providerSlug,
   });
+
   return resolved.provider;
 }
 
@@ -22,19 +22,11 @@ export async function resolveProviderProfileRow(input: {
   msmeRowId?: string | null;
   msmePublicId?: string | null;
 }): Promise<ProviderProfileRow | null> {
-  const lookupParam =
-    input.providerPathSegment?.trim() ||
-    input.providerId?.trim() ||
-    input.msmePublicId?.trim() ||
-    input.msmeRowId?.trim() ||
-    "";
-
-  if (!lookupParam) return null;
+  const providerSlug = input.providerPathSegment?.trim() || "";
+  if (!providerSlug) return null;
 
   const resolved = await resolvePublicProviderProfile({
-    providerRouteParam: lookupParam,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
+    providerRouteParam: providerSlug,
   });
 
   return resolved.provider;

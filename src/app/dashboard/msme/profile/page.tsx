@@ -20,7 +20,7 @@ export default async function MsmeProfileOverviewPage() {
         <dl className="mt-3 space-y-2 text-sm">
           <div><dt className="text-slate-500">Provider profile ID</dt><dd className="font-mono text-xs">{workspace.provider.id}</dd></div>
           <div><dt className="text-slate-500">Display name</dt><dd>{workspace.provider.display_name}</dd></div>
-          <div><dt className="text-slate-500">Slug</dt><dd>{workspace.provider.slug}</dd></div>
+          <div><dt className="text-slate-500">Public slug</dt><dd>{workspace.provider.public_slug}</dd></div>
           <div><dt className="text-slate-500">Trust score</dt><dd>{workspace.provider.trust_score}</dd></div>
         </dl>
       </article>

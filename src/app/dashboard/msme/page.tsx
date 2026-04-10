@@ -43,7 +43,7 @@ export default async function MsmePage() {
       <article className="rounded-xl border bg-white p-4">
         <h2 className="text-lg font-semibold">Operational readiness</h2>
         <ul className="mt-3 grid list-disc gap-2 pl-5 text-sm text-slate-700 md:grid-cols-2">
-          <li>Public provider URL: <Link className="font-medium text-indigo-700 hover:underline" href={`/providers/${workspace.provider.public_slug ?? workspace.provider.slug}`}>/providers/{workspace.provider.public_slug ?? workspace.provider.slug}</Link></li>
+          <li>Public provider URL: <Link className="font-medium text-indigo-700 hover:underline" href={`/providers/${workspace.provider.public_slug}`}>/providers/{workspace.provider.public_slug}</Link></li>
           <li>Verification status: <span className="font-medium uppercase">{workspace.msme.verification_status}</span></li>
           <li>Sector coverage: {workspace.msme.sector} • {workspace.msme.state}</li>
           <li>Trust score signal: <span className="font-semibold">{workspace.provider.trust_score}</span></li>
