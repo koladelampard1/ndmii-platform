@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Star, Sparkles } from "lucide-react";
 import { ProviderCard as ProviderCardType } from "@/lib/data/marketplace";
 import { Button } from "@/components/ui/button";
+import { buildProviderProfileHref } from "@/lib/provider-links";
 
 function Stars({ rating }: { rating: number }) {
   const rounded = Math.round(rating);
@@ -19,6 +20,11 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export function ProviderCard({ provider }: { provider: ProviderCardType }) {
+  const providerHref = buildProviderProfileHref({
+    id: provider.id,
+    msme_id: provider.msme_id,
+    public_slug: provider.public_slug,
+  });
   const verificationLabel =
     provider.verification_status === "approved"
       ? "Approved"
@@ -69,7 +75,7 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
 
       <div className="mt-5 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Trust score: {provider.trust_score}</span>
-        <Link href={`/providers/${provider.public_slug}`}>
+        <Link href={providerHref}>
           <Button size="sm">View profile</Button>
         </Link>
       </div>

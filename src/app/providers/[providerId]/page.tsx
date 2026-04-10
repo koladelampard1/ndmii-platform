@@ -6,6 +6,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
+import { buildProviderQuoteHref } from "@/lib/provider-links";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -110,6 +111,7 @@ async function submitPublicComplaint(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerId,
+    allowLegacyCompatibility: true,
   });
   devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
 
@@ -237,7 +239,12 @@ export default async function ProviderPublicPage({
   const query = await searchParams;
   const resolvedRoute = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
+    allowLegacyCompatibility: true,
   });
+
+  if (resolvedRoute.redirectToCanonicalSlug && resolvedRoute.redirectToCanonicalSlug !== providerSlug) {
+    redirect(`/providers/${resolvedRoute.redirectToCanonicalSlug}`);
+  }
 
   if (!resolvedRoute.provider?.id) {
     return (
@@ -450,7 +457,14 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
               <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
               <p className="mt-1 text-xs text-indigo-900">Use the structured request form to share your scope, budget, and contact details with this provider.</p>
-              <Link href={`/providers/${provider.public_slug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
+              <Link
+                href={buildProviderQuoteHref({
+                  id: provider.id,
+                  msme_id: provider.msme_id,
+                  public_slug: provider.public_slug,
+                })}
+                className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800"
+              >
                 Open quote request form
               </Link>
             </article>

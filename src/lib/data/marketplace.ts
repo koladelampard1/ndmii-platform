@@ -136,10 +136,13 @@ export function slugifyCategory(category: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function toCard(row: any): ProviderCard {
-  const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? row.provider_id;
+function toCard(row: any): ProviderCard | null {
+  const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? null;
+  if (!canonicalSlug) return null;
+  const providerId = row.provider_id ?? row.id;
+  if (!providerId) return null;
   return {
-    id: row.provider_id,
+    id: providerId,
     public_slug: canonicalSlug,
     msme_id: row.msme_id,
     ndmii_id: row.ndmii_id ?? null,
@@ -223,11 +226,11 @@ function applySort(data: ProviderCard[], sort: SearchFilters["sort"] = "relevanc
   return [...data].sort((a, b) => b.avg_rating - a.avg_rating || b.trust_score - a.trust_score || b.review_count - a.review_count);
 }
 
-function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null): ProviderCard {
+function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publicSlug: string): ProviderCard {
   const { avg_rating, review_count, trust_score } = seededMetrics(row.msme_id);
   return {
     id: row.id,
-    public_slug: row.id,
+    public_slug: publicSlug,
     msme_id: row.msme_id,
     ndmii_id: ndmiiId,
     business_name: row.business_name,
@@ -299,12 +302,26 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
     .in("msme_id", msmeRows.map((row) => row.id));
 
   const ndmiiByMsmeRowId = new Map((digitalIds ?? []).map((item: any) => [item.msme_id, item.ndmii_id as string | null]));
+  const { data: providerProfiles } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id,public_slug")
+    .not("public_slug", "is", null);
+  const publicSlugByMsmeRowId = new Map(
+    (providerProfiles ?? [])
+      .filter((profile: any) => profile.public_slug && profile.msme_id)
+      .map((profile: any) => [profile.msme_id as string, profile.public_slug as string]),
+  );
 
   const lowerQ = filters.q?.toLowerCase().trim();
   const lowerSpec = filters.specialization?.toLowerCase().trim();
 
   const projected = msmeRows
-    .map((row) => projectMsmeToProvider(row, ndmiiByMsmeRowId.get(row.id) ?? null))
+    .map((row) => {
+      const publicSlug = publicSlugByMsmeRowId.get(row.id);
+      if (!publicSlug) return null;
+      return projectMsmeToProvider(row, ndmiiByMsmeRowId.get(row.id) ?? null, publicSlug);
+    })
+    .filter((provider): provider is ProviderCard => Boolean(provider))
     .filter((provider) => {
       if (filters.category && provider.category !== filters.category) return false;
       if (filters.state && provider.state !== filters.state) return false;
@@ -349,7 +366,7 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
 
   const { data, error } = await query;
   if (error) throw error;
-  return applySort((data ?? []).map(toCard), filters.sort);
+  return applySort((data ?? []).map(toCard).filter((provider): provider is ProviderCard => Boolean(provider)), filters.sort);
 }
 
 async function getProvidersWithFallback(filters: SearchFilters = {}, limit = 24) {
@@ -379,7 +396,7 @@ async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
       .limit(limit);
 
     if (error) throw error;
-    return (data ?? []).map(toCard);
+    return (data ?? []).map(toCard).filter((provider): provider is ProviderCard => Boolean(provider));
   } catch {
     return getProvidersWithFallback({ sort: "featured", verification: "verified_or_approved" }, limit);
   }
@@ -566,7 +583,15 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
     const row = msmes[0] as ProjectionRow;
     const { data: digitalId } = await supabase.from("digital_ids").select("ndmii_id").eq("msme_id", row.id).maybeSingle();
-    const card = projectMsmeToProvider(row, digitalId?.ndmii_id ?? null);
+    const { data: providerProfile } = await supabase
+      .from("provider_profiles")
+      .select("public_slug")
+      .eq("msme_id", row.id)
+      .not("public_slug", "is", null)
+      .maybeSingle();
+
+    if (!providerProfile?.public_slug) return null;
+    const card = projectMsmeToProvider(row, digitalId?.ndmii_id ?? null, providerProfile.public_slug);
 
     return {
       ...card,
