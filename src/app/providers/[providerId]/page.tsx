@@ -111,7 +111,6 @@ async function submitPublicComplaint(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerId,
-    allowLegacyCompatibility: true,
   });
   devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
 
@@ -239,7 +238,6 @@ export default async function ProviderPublicPage({
   const query = await searchParams;
   const resolvedRoute = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowLegacyCompatibility: true,
   });
 
   if (resolvedRoute.redirectToCanonicalSlug && resolvedRoute.redirectToCanonicalSlug !== providerSlug) {

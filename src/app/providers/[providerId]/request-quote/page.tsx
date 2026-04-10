@@ -55,7 +55,6 @@ async function submitProviderQuoteRequest(formData: FormData) {
 
   const providerProfile = await resolvePublicProviderProfile({
     providerRouteParam: providerPathSegment,
-    allowLegacyCompatibility: true,
   });
 
   devQuoteLog("quote_submission_provider_resolved", {
@@ -128,7 +127,6 @@ export default async function PublicProviderRequestQuotePage({
   devQuoteLog("provider_slug_received", { providerSlug });
   const resolvedByPublicSlug = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowLegacyCompatibility: true,
   });
   if (resolvedByPublicSlug.redirectToCanonicalSlug && resolvedByPublicSlug.redirectToCanonicalSlug !== providerSlug) {
     redirect(`/providers/${resolvedByPublicSlug.redirectToCanonicalSlug}/request-quote`);
@@ -188,7 +186,6 @@ export default async function PublicProviderRequestQuotePage({
 
   const resolvedProviderProfileRow = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
-    allowLegacyCompatibility: true,
   });
 
   devQuoteLog("provider_profile_row_for_quote_loaded", {

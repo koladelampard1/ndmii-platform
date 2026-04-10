@@ -3,7 +3,9 @@ import Link from "next/link";
 import { Star, Sparkles } from "lucide-react";
 import { ProviderCard as ProviderCardType } from "@/lib/data/marketplace";
 import { Button } from "@/components/ui/button";
-import { buildProviderProfileHref } from "@/lib/provider-links";
+import { buildProviderProfileHref, buildProviderQuoteHref } from "@/lib/provider-links";
+
+const DEV_MODE = process.env.NODE_ENV !== "production";
 
 function Stars({ rating }: { rating: number }) {
   const rounded = Math.round(rating);
@@ -21,6 +23,11 @@ function Stars({ rating }: { rating: number }) {
 
 export function ProviderCard({ provider }: { provider: ProviderCardType }) {
   const providerHref = buildProviderProfileHref({
+    id: provider.id,
+    msme_id: provider.msme_id,
+    public_slug: provider.public_slug,
+  });
+  const quoteHref = buildProviderQuoteHref({
     id: provider.id,
     msme_id: provider.msme_id,
     public_slug: provider.public_slug,
@@ -75,10 +82,31 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
 
       <div className="mt-5 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Trust score: {provider.trust_score}</span>
-        <Link href={providerHref}>
-          <Button size="sm">View profile</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={quoteHref}>
+            <Button size="sm" variant="secondary">Request quote</Button>
+          </Link>
+          <Link href={providerHref}>
+            <Button size="sm">View profile</Button>
+          </Link>
+        </div>
       </div>
+      {DEV_MODE && (
+        <pre className="sr-only" data-provider-card-debug>
+          {JSON.stringify(
+            {
+              provider_id: provider.id,
+              msme_id: provider.msme_id,
+              public_slug: provider.public_slug,
+              href: providerHref,
+              quote_href: quoteHref,
+              display_name: provider.display_name,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      )}
     </article>
   );
 }

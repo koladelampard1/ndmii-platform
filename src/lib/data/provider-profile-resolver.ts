@@ -17,7 +17,6 @@ function logResolver(message: string, payload: Record<string, unknown>) {
 
 export async function resolvePublicProviderProfile(params: {
   providerRouteParam: string;
-  allowLegacyCompatibility?: boolean;
 }) {
   const providerRouteParam = params.providerRouteParam.trim();
 
@@ -57,48 +56,6 @@ export async function resolvePublicProviderProfile(params: {
     found: Boolean(data?.id),
     providerId: data?.id ?? null,
   });
-
-  if (!data?.id && params.allowLegacyCompatibility) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providerRouteParam);
-    const isMsmeId = /^msme-[a-z0-9-]+$/i.test(providerRouteParam);
-
-    if (isUuid || isMsmeId) {
-      let legacyQuery = supabase.from("provider_profiles").select(PROVIDER_PROFILE_SELECT).limit(1);
-      if (isUuid) {
-        legacyQuery = legacyQuery.or(`id.eq.${providerRouteParam},msme_id.eq.${providerRouteParam}`);
-      } else {
-        legacyQuery = legacyQuery.eq("msme_id", providerRouteParam.toUpperCase());
-      }
-
-      const { data: legacyData, error: legacyError } = await legacyQuery.maybeSingle();
-
-      if (legacyError) {
-        logResolver("legacy_provider_lookup_error", {
-          message: legacyError.message ?? null,
-          details: legacyError.details ?? null,
-          hint: legacyError.hint ?? null,
-          code: legacyError.code ?? null,
-          providerRouteParam,
-        });
-      }
-
-      if (legacyData?.id && legacyData.public_slug) {
-        const provider: NormalizedProviderProfile = {
-          id: legacyData.id,
-          msme_id: legacyData.msme_id,
-          public_slug: legacyData.public_slug,
-          display_name: legacyData.display_name ?? null,
-        };
-        const redirectToCanonicalSlug = legacyData.public_slug;
-        logResolver("legacy_provider_lookup_redirect", {
-          providerRouteParam,
-          providerId: provider.id,
-          redirectToCanonicalSlug,
-        });
-        return { provider, redirectToCanonicalSlug };
-      }
-    }
-  }
 
   if (!data?.id) {
     return { provider: null, redirectToCanonicalSlug: null };
