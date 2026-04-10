@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
+import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -109,14 +109,14 @@ async function submitPublicComplaint(formData: FormData) {
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
   devLog("regulator_target_chosen", { providerId, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
-  const providerProfile = await resolveProviderProfileRow({
-    providerPathSegment: providerId,
-    providerId,
-    msmePublicId: fallbackMsmePublicId || undefined,
+  const providerProfile = await resolvePublicProviderProfile({
+    providerRouteParam: providerId,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
   });
-  devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile), providerProfile });
+  devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
 
-  let linkedMsmeId = providerProfile?.msme_id ?? null;
+  let linkedMsmeId = providerProfile.provider?.msme_id ?? null;
 
   if (!linkedMsmeId && fallbackMsmePublicId) {
     const { data: fallbackMsme } = await supabase.from("msmes").select("id").eq("msme_id", fallbackMsmePublicId).maybeSingle();
@@ -146,7 +146,7 @@ async function submitPublicComplaint(formData: FormData) {
     });
   }
 
-  const providerProfileExists = Boolean(providerProfile?.id);
+  const providerProfileExists = Boolean(providerProfile.provider?.id);
   if (!linkedMsmeId && providerProfileExists) {
     devLog("linked_msme_lookup_incomplete_provider_profile", { providerId, note: "Continuing with complaint creation while retaining provider linkage." });
   }
@@ -156,10 +156,9 @@ async function submitPublicComplaint(formData: FormData) {
     redirect(`/providers/${providerId}?reported_error=provider_not_found`);
   }
 
-  const resolvedProviderProfileId = providerProfile?.id ?? null;
+  const resolvedProviderProfileId = providerProfile.provider?.id ?? null;
   const resolvedBusinessName =
-    providerProfile?.business_name ??
-    providerProfile?.display_name ??
+    providerProfile.provider?.display_name ??
     fallbackBusinessName ??
     "Unknown business";
   const resolvedState =
@@ -239,6 +238,14 @@ export default async function ProviderPublicPage({
 }) {
   const { providerId: providerSlug } = await params;
   const query = await searchParams;
+  const resolvedRoute = await resolvePublicProviderProfile({
+    providerRouteParam: providerSlug,
+    allowSlugFallback: true,
+    allowLegacyMsmeFallback: true,
+  });
+  if (resolvedRoute.redirectToCanonicalSlug) {
+    redirect(`/providers/${resolvedRoute.redirectToCanonicalSlug}`);
+  }
   const providerId = (await resolveProviderPublicId(providerSlug)) ?? providerSlug;
   const provider = await getProviderPublicProfile(providerId);
 
@@ -416,7 +423,7 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
               <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
               <p className="mt-1 text-xs text-indigo-900">Use the structured request form to share your scope, budget, and contact details with this provider.</p>
-              <Link href={`/providers/${providerSlug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
+              <Link href={`/providers/${provider.public_slug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
                 Open quote request form
               </Link>
             </article>
