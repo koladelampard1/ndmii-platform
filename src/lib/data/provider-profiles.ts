@@ -18,6 +18,18 @@ export type ProviderProfileRow = {
   public_slug: string | null;
 };
 
+const DEV_MODE = process.env.NODE_ENV !== "production";
+const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,business_name,slug,public_slug";
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function devProviderLookupLog(message: string, payload: Record<string, unknown>) {
+  if (!DEV_MODE) return;
+  console.info(`[provider-profile-lookup] ${message}`, payload);
+}
+
 function slugifySegment(value: string) {
   const normalized = value
     .toLowerCase()
@@ -68,7 +80,7 @@ export async function ensureProviderProfileForPublicMsme(input: {
 
   const { data: existing } = await supabase
     .from("provider_profiles")
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
+    .select(PROVIDER_PROFILE_SELECT)
     .eq("msme_id", msme.id)
     .maybeSingle();
 
@@ -84,7 +96,7 @@ export async function ensureProviderProfileForPublicMsme(input: {
         .from("provider_profiles")
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq("id", existing.id)
-        .select("id,msme_id,display_name,business_name,slug,public_slug")
+        .select(PROVIDER_PROFILE_SELECT)
         .maybeSingle();
       return (updated as ProviderProfileRow | null) ?? (existing as ProviderProfileRow);
     }
@@ -107,7 +119,7 @@ export async function ensureProviderProfileForPublicMsme(input: {
       is_verified: true,
       is_active: true,
     })
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
+    .select(PROVIDER_PROFILE_SELECT)
     .maybeSingle();
 
   return (inserted as ProviderProfileRow | null) ?? null;
@@ -123,23 +135,71 @@ export async function resolveProviderProfileRow(input: {
   if (!value) return null;
 
   const supabase = await createServiceRoleSupabaseClient();
+  const slugLookupFilter = `public_slug.eq.${value},slug.eq.${value}`;
 
-  const { data: byPath } = await supabase
+  devProviderLookupLog("query_attempt", {
+    table: "provider_profiles",
+    select: PROVIDER_PROFILE_SELECT,
+    filter: slugLookupFilter,
+    providerPathSegment: value,
+  });
+  const { data: bySlug, error: bySlugError } = await supabase
     .from("provider_profiles")
-    .select("id,msme_id,display_name,business_name,slug,public_slug")
-    .or(`public_slug.eq.${value},slug.eq.${value},id.eq.${value}`)
+    .select(PROVIDER_PROFILE_SELECT)
+    .or(slugLookupFilter)
     .maybeSingle();
+  devProviderLookupLog("query_result", {
+    table: "provider_profiles",
+    filter: slugLookupFilter,
+    found: Boolean(bySlug?.id),
+    rowId: bySlug?.id ?? null,
+    error: bySlugError
+      ? {
+          message: bySlugError.message ?? null,
+          details: bySlugError.details ?? null,
+          hint: bySlugError.hint ?? null,
+          code: bySlugError.code ?? null,
+        }
+      : null,
+  });
 
-  if (byPath?.id) return byPath as ProviderProfileRow;
+  if (bySlug?.id) return bySlug as ProviderProfileRow;
 
   if (input.providerId?.trim()) {
-    const { data: byProviderId } = await supabase
-      .from("provider_profiles")
-      .select("id,msme_id,display_name,business_name,slug,public_slug")
-      .eq("id", input.providerId.trim())
-      .maybeSingle();
-
-    if (byProviderId?.id) return byProviderId as ProviderProfileRow;
+    const providerIdValue = input.providerId.trim();
+    if (!isUuid(providerIdValue)) {
+      devProviderLookupLog("query_skipped", {
+        table: "provider_profiles",
+        filter: `id.eq.${providerIdValue}`,
+        reason: "providerId_not_uuid",
+      });
+    } else {
+      devProviderLookupLog("query_attempt", {
+        table: "provider_profiles",
+        select: PROVIDER_PROFILE_SELECT,
+        filter: `id.eq.${providerIdValue}`,
+      });
+      const { data: byProviderId, error: byProviderIdError } = await supabase
+        .from("provider_profiles")
+        .select(PROVIDER_PROFILE_SELECT)
+        .eq("id", providerIdValue)
+        .maybeSingle();
+      devProviderLookupLog("query_result", {
+        table: "provider_profiles",
+        filter: `id.eq.${providerIdValue}`,
+        found: Boolean(byProviderId?.id),
+        rowId: byProviderId?.id ?? null,
+        error: byProviderIdError
+          ? {
+              message: byProviderIdError.message ?? null,
+              details: byProviderIdError.details ?? null,
+              hint: byProviderIdError.hint ?? null,
+              code: byProviderIdError.code ?? null,
+            }
+          : null,
+      });
+      if (byProviderId?.id) return byProviderId as ProviderProfileRow;
+    }
   }
 
   if (input.msmeRowId?.trim() || input.msmePublicId?.trim()) {

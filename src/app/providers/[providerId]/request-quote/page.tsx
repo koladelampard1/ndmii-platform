@@ -2,7 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
+import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
@@ -12,6 +12,8 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[public-quote] ${message}`, payload);
 }
+
+const PROVIDER_PROFILE_SELECT = "id,msme_id,display_name,business_name,slug,public_slug";
 
 
 async function submitProviderQuoteRequest(formData: FormData) {
@@ -124,8 +126,23 @@ export default async function PublicProviderRequestQuotePage({
   const query = await searchParams;
 
   devQuoteLog("provider_slug_received", { providerSlug });
-  const providerId = await resolveProviderPublicId(providerSlug);
-  devQuoteLog("provider_lookup_result", { providerSlug, providerId, found: Boolean(providerId) });
+  devQuoteLog("provider_lookup_query_target", {
+    table: "provider_profiles",
+    select: PROVIDER_PROFILE_SELECT,
+    filter: `public_slug.eq.${providerSlug},slug.eq.${providerSlug}`,
+  });
+  const resolvedByPublicSlug = await resolveProviderProfileRow({
+    providerPathSegment: providerSlug,
+    providerId: providerSlug,
+  });
+  const providerId = resolvedByPublicSlug?.id ?? null;
+  devQuoteLog("provider_lookup_result", {
+    providerSlug,
+    providerId,
+    found: Boolean(providerId),
+    providerProfilePublicSlug: resolvedByPublicSlug?.public_slug ?? null,
+    providerProfileSlug: resolvedByPublicSlug?.slug ?? null,
+  });
 
   if (!providerId) {
     return (
