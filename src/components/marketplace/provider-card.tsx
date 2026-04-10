@@ -19,6 +19,15 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export function ProviderCard({ provider }: { provider: ProviderCardType }) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[provider-link-render]", {
+      providerId: provider.provider_id,
+      msmeId: provider.msme_id,
+      publicSlug: provider.public_slug,
+      url: `/providers/${provider.public_slug}`,
+    });
+  }
+
   const verificationLabel =
     provider.verification_status === "approved"
       ? "Approved"
@@ -69,7 +78,7 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
 
       <div className="mt-5 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Trust score: {provider.trust_score}</span>
-        <Link href={`/providers/${provider.id}`}>
+        <Link href={`/providers/${provider.public_slug}`}>
           <Button size="sm">View profile</Button>
         </Link>
       </div>

@@ -3,6 +3,8 @@ import { ensureProviderProfileForPublicMsme, resolveProviderProfileRow } from "@
 
 export type ProviderCard = {
   id: string;
+  provider_id: string;
+  public_slug: string;
   msme_id: string;
   ndmii_id: string | null;
   business_name: string;
@@ -136,8 +138,19 @@ export function slugifyCategory(category: string): string {
 }
 
 function toCard(row: any): ProviderCard {
+  const publicSlug = row.public_slug ?? row.provider_public_slug ?? row.provider_id;
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[marketplace-provider-row-selected]", {
+      providerId: row.provider_id,
+      msmeId: row.msme_id,
+      publicSlug,
+      source: "marketplace_provider_search",
+    });
+  }
   return {
-    id: row.provider_id,
+    id: publicSlug,
+    provider_id: row.provider_id,
+    public_slug: publicSlug,
     msme_id: row.msme_id,
     ndmii_id: row.ndmii_id ?? null,
     business_name: row.business_name,
@@ -153,10 +166,6 @@ function toCard(row: any): ProviderCard {
     review_count: Number(row.review_count ?? 0),
     is_featured: Boolean(row.is_featured),
   };
-}
-
-function toProjectedProviderId(msmeId: string) {
-  return `msme-${msmeId.toLowerCase()}`;
 }
 
 function fromProjectedProviderId(providerId: string) {
@@ -228,10 +237,12 @@ function applySort(data: ProviderCard[], sort: SearchFilters["sort"] = "relevanc
   return [...data].sort((a, b) => b.avg_rating - a.avg_rating || b.trust_score - a.trust_score || b.review_count - a.review_count);
 }
 
-function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null): ProviderCard {
+function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publicSlug: string): ProviderCard {
   const { avg_rating, review_count, trust_score } = seededMetrics(row.msme_id);
   return {
-    id: toProjectedProviderId(row.msme_id),
+    id: publicSlug,
+    provider_id: row.id,
+    public_slug: publicSlug,
     msme_id: row.msme_id,
     ndmii_id: ndmiiId,
     business_name: row.business_name,
@@ -307,9 +318,16 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
   const lowerQ = filters.q?.toLowerCase().trim();
   const lowerSpec = filters.specialization?.toLowerCase().trim();
 
-  const projected = msmeRows
-    .map((row) => projectMsmeToProvider(row, ndmiiByMsmeRowId.get(row.id) ?? null))
+  const projectedRows = await Promise.all(msmeRows.map(async (row) => {
+    const profile = await ensureProviderProfileForPublicMsme({ msmeRowId: row.id, msmePublicId: row.msme_id });
+    if (!profile?.public_slug) return null;
+    return projectMsmeToProvider(row, ndmiiByMsmeRowId.get(row.id) ?? null, profile.public_slug);
+  }));
+
+  const projected = projectedRows
+    .filter(Boolean)
     .filter((provider) => {
+      if (!provider) return false;
       if (filters.category && provider.category !== filters.category) return false;
       if (filters.state && provider.state !== filters.state) return false;
       if (filters.lga && provider.lga !== filters.lga) return false;
@@ -329,7 +347,7 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
         .join(" ")
         .toLowerCase();
       return text.includes(lowerQ);
-    });
+    }) as ProviderCard[];
 
   return applySort(projected, filters.sort).slice(0, limit);
 }
@@ -473,7 +491,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     const { data: row, error } = await supabase
       .from("marketplace_provider_search")
       .select("*")
-      .eq("provider_id", providerId)
+      .or(`public_slug.eq.${providerId},provider_id.eq.${providerId}`)
       .in("verification_status", ["verified", "approved"])
       .maybeSingle();
 
@@ -577,7 +595,9 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
     const row = msmes[0] as ProjectionRow;
     const { data: digitalId } = await supabase.from("digital_ids").select("ndmii_id").eq("msme_id", row.id).maybeSingle();
-    const card = projectMsmeToProvider(row, digitalId?.ndmii_id ?? null);
+    const ensuredProvider = await ensureProviderProfileForPublicMsme({ msmeRowId: row.id, msmePublicId: row.msme_id });
+    if (!ensuredProvider?.public_slug) return null;
+    const card = projectMsmeToProvider(row, digitalId?.ndmii_id ?? null, ensuredProvider.public_slug);
 
     return {
       ...card,
@@ -628,15 +648,38 @@ export async function resolveProviderPublicId(providerSlugOrId: string): Promise
   const value = providerSlugOrId.trim();
   if (!value) return null;
 
+  const canonicalByPublicSlug = await resolveProviderProfileRow({
+    providerPathSegment: value,
+  });
+  if (canonicalByPublicSlug?.public_slug === value && canonicalByPublicSlug.id) return canonicalByPublicSlug.id;
+
   const resolvedProvider = await resolveProviderProfileRow({
     providerPathSegment: value,
     providerId: value,
   });
-  if (resolvedProvider?.id) return resolvedProvider.id;
+  if (resolvedProvider?.id && resolvedProvider.public_slug) return resolvedProvider.id;
 
   const projectedMsmeId = value.startsWith("msme-") ? value.slice(5).toUpperCase() : value.toUpperCase();
   const ensuredProvider = await ensureProviderProfileForPublicMsme({ msmePublicId: projectedMsmeId });
   if (ensuredProvider?.id) return ensuredProvider.id;
 
   return null;
+}
+
+export async function resolveProviderPublicRoute(providerSlugOrId: string): Promise<{
+  providerId: string;
+  canonicalSlug: string;
+  isLegacyMatch: boolean;
+} | null> {
+  const value = providerSlugOrId.trim();
+  if (!value) return null;
+
+  const canonicalBySlug = await resolveProviderProfileRow({ providerPathSegment: value });
+  if (canonicalBySlug?.id && canonicalBySlug.public_slug === value) {
+    return { providerId: canonicalBySlug.id, canonicalSlug: canonicalBySlug.public_slug, isLegacyMatch: false };
+  }
+
+  const fallback = await resolveProviderProfileRow({ providerPathSegment: value, providerId: value, msmePublicId: fromProjectedProviderId(value) });
+  if (!fallback?.id || !fallback.public_slug) return null;
+  return { providerId: fallback.id, canonicalSlug: fallback.public_slug, isLegacyMatch: fallback.public_slug !== value };
 }

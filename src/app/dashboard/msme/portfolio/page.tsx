@@ -28,7 +28,7 @@ async function galleryAction(formData: FormData) {
   }
 
   revalidatePath("/dashboard/msme/portfolio");
-  revalidatePath(`/providers/${workspace.provider.id}`);
+  revalidatePath(`/providers/${workspace.provider.slug}`);
   redirect("/dashboard/msme/portfolio?saved=1");
 }
 

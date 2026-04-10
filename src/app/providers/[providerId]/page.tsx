@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile, resolveProviderPublicId } from "@/lib/data/marketplace";
+import { getProviderPublicProfile, resolveProviderPublicRoute } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderProfileRow } from "@/lib/data/provider-profiles";
 
@@ -85,6 +85,7 @@ async function submitPublicComplaint(formData: FormData) {
   "use server";
 
   const providerId = String(formData.get("provider_id") ?? "");
+  const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
   if (!providerId) {
     redirect("/search?complaint=missing_provider");
   }
@@ -102,7 +103,7 @@ async function submitPublicComplaint(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
 
   if (!description || !summary) {
-    redirect(`/providers/${providerId}?reported_error=missing_fields`);
+    redirect(`/providers/${providerPathSegment || providerId}?reported_error=missing_fields`);
   }
 
   const supabase = await createServiceRoleSupabaseClient();
@@ -153,7 +154,7 @@ async function submitPublicComplaint(formData: FormData) {
 
   if (!linkedMsmeId && !providerProfileExists) {
     devLog("linked_msme_lookup_failed_no_provider_profile", { providerId });
-    redirect(`/providers/${providerId}?reported_error=provider_not_found`);
+    redirect(`/providers/${providerPathSegment || providerId}?reported_error=provider_not_found`);
   }
 
   const resolvedProviderProfileId = providerProfile?.id ?? null;
@@ -209,7 +210,7 @@ async function submitPublicComplaint(formData: FormData) {
       hint: "hint" in error ? (error as { hint?: string }).hint ?? null : null,
       code: "code" in error ? (error as { code?: string }).code ?? null : null,
     });
-    redirect(`/providers/${providerId}?reported_error=submit_failed`);
+    redirect(`/providers/${providerPathSegment || providerId}?reported_error=submit_failed`);
   }
   devLog("complaint_insert_complete", {
     providerId,
@@ -220,8 +221,9 @@ async function submitPublicComplaint(formData: FormData) {
     chosenRegulator,
   });
 
-  revalidatePath(`/providers/${providerId}`);
-  redirect(`/providers/${providerId}?reported=1`);
+  const providerCanonicalPathSegment = providerProfile?.public_slug ?? providerPathSegment ?? providerId;
+  revalidatePath(`/providers/${providerCanonicalPathSegment}`);
+  redirect(`/providers/${providerCanonicalPathSegment}?reported=1`);
 }
 
 
@@ -239,7 +241,19 @@ export default async function ProviderPublicPage({
 }) {
   const { providerId: providerSlug } = await params;
   const query = await searchParams;
-  const providerId = (await resolveProviderPublicId(providerSlug)) ?? providerSlug;
+  const resolvedRoute = await resolveProviderPublicRoute(providerSlug);
+  if (!resolvedRoute) notFound();
+  if (resolvedRoute.isLegacyMatch) {
+    devLog("legacy_slug_redirect", {
+      from: providerSlug,
+      to: resolvedRoute.canonicalSlug,
+      providerId: resolvedRoute.providerId,
+    });
+    redirect(`/providers/${resolvedRoute.canonicalSlug}`);
+  }
+
+  const providerId = resolvedRoute.providerId;
+  const canonicalSlug = resolvedRoute.canonicalSlug;
   const provider = await getProviderPublicProfile(providerId);
 
   if (!provider) {
@@ -416,7 +430,7 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
               <h3 className="text-base font-semibold text-indigo-950">Request a quote</h3>
               <p className="mt-1 text-xs text-indigo-900">Use the structured request form to share your scope, budget, and contact details with this provider.</p>
-              <Link href={`/providers/${providerSlug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
+              <Link href={`/providers/${canonicalSlug}/request-quote`} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-indigo-900 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
                 Open quote request form
               </Link>
             </article>
@@ -425,6 +439,7 @@ export default async function ProviderPublicPage({
               <p className="mt-1 text-xs text-slate-500">For service quality, fraud, counterfeit products, pricing abuse, or delivery disputes.</p>
               <form action={submitPublicComplaint} className="mt-3 space-y-2">
                 <input type="hidden" name="provider_id" value={provider.id} />
+                <input type="hidden" name="provider_path_segment" value={canonicalSlug} />
                 <input type="hidden" name="provider_msme_public_id" value={provider.msme_id} />
                 <input type="hidden" name="provider_business_name" value={provider.business_name} />
                 <input type="hidden" name="provider_state" value={provider.state} />
