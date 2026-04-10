@@ -16,7 +16,7 @@ export default async function MsmePublicProfilePreviewPage() {
       <article className="rounded-xl border bg-white p-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Public profile preview</h2>
-          <Link href={`/providers/${workspace.provider.public_slug ?? workspace.provider.slug}`} className="rounded bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Open public page</Link>
+          <Link href={`/providers/${workspace.provider.public_slug}`} className="rounded bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Open public page</Link>
         </div>
         <p className="mt-1 text-sm text-slate-600">This is what public buyers will evaluate before sending a quote request.</p>
 

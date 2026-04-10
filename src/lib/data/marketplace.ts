@@ -137,7 +137,7 @@ export function slugifyCategory(category: string): string {
 }
 
 function toCard(row: any): ProviderCard {
-  const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? row.slug ?? row.msme_id?.toLowerCase() ?? row.provider_id;
+  const canonicalSlug = row.public_slug ?? row.provider_public_slug ?? row.provider_id;
   return {
     id: row.provider_id,
     public_slug: canonicalSlug,
@@ -227,7 +227,7 @@ function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null): Prov
   const { avg_rating, review_count, trust_score } = seededMetrics(row.msme_id);
   return {
     id: row.id,
-    public_slug: row.msme_id.toLowerCase(),
+    public_slug: row.id,
     msme_id: row.msme_id,
     ndmii_id: ndmiiId,
     business_name: row.business_name,
@@ -619,8 +619,6 @@ export async function resolveProviderPublicId(providerSlugOrId: string): Promise
 
   const resolvedProvider = await resolvePublicProviderProfile({
     providerRouteParam: value,
-    allowSlugFallback: true,
-    allowLegacyMsmeFallback: true,
   });
   if (resolvedProvider.provider?.id) return resolvedProvider.provider.id;
 
