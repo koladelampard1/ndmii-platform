@@ -74,20 +74,9 @@ async function resolveInvoiceMsmeRef(
     providerProfileId: string;
     providerMsmeId: string | null;
     linkedMsmeId: string | null;
+    quoteMsmeId: string | null;
   }
 ) {
-  const { data: columnMeta } = await supabase
-    .from("information_schema.columns")
-    .select("data_type,udt_name")
-    .eq("table_schema", "public")
-    .eq("table_name", "invoices")
-    .eq("column_name", "msme_id")
-    .maybeSingle();
-
-  const msmeIdDataType = String((columnMeta as { data_type?: string | null })?.data_type ?? "").toLowerCase();
-  const msmeIdUdt = String((columnMeta as { udt_name?: string | null })?.udt_name ?? "").toLowerCase();
-  const expectsUuid = msmeIdDataType.includes("uuid") || msmeIdUdt === "uuid";
-
   const { data: providerRow, error: providerLookupError } = await supabase
     .from("provider_profiles")
     .select("id,msme_id")
@@ -97,28 +86,67 @@ async function resolveInvoiceMsmeRef(
   const providerDbMsmeId = providerRow?.msme_id ? String(providerRow.msme_id) : null;
   const rawCandidates = [
     params.workspaceMsmeId,
+    params.linkedMsmeId,
+    params.quoteMsmeId,
     params.workspaceMsmePublicId,
     params.providerMsmeId,
     providerDbMsmeId,
-    params.linkedMsmeId,
   ].filter((value): value is string => Boolean(value && String(value).trim().length > 0));
   const uniqueCandidates = Array.from(new Set(rawCandidates.map((value) => value.trim())));
 
-  const selectedCandidate = expectsUuid
-    ? uniqueCandidates.find((value) => isUuidLike(value)) ?? null
-    : uniqueCandidates.find((value) => !isUuidLike(value)) ?? uniqueCandidates[0] ?? null;
+  const uuidCandidates = uniqueCandidates.filter((value) => isUuidLike(value));
+  const publicIdCandidates = uniqueCandidates.filter((value) => !isUuidLike(value));
+
+  let resolvedMsmeUuid: string | null = null;
+  let resolvedPublicMsmeId: string | null = null;
+
+  if (uuidCandidates.length > 0) {
+    const { data: msmesById, error: msmesByIdError } = await supabase
+      .from("msmes")
+      .select("id,msme_id")
+      .in("id", uuidCandidates)
+      .limit(1);
+    if (msmesByIdError) {
+      devQuoteLog("convert:msme_uuid_lookup_error", {
+        message: msmesByIdError.message,
+        code: msmesByIdError.code ?? null,
+      });
+    }
+    const matched = (msmesById ?? [])[0] as { id?: string | null; msme_id?: string | null } | undefined;
+    resolvedMsmeUuid = matched?.id ?? uuidCandidates[0] ?? null;
+    resolvedPublicMsmeId = matched?.msme_id ?? null;
+  }
+
+  if (!resolvedMsmeUuid && publicIdCandidates.length > 0) {
+    const { data: msmesByPublic, error: msmesByPublicError } = await supabase
+      .from("msmes")
+      .select("id,msme_id")
+      .in("msme_id", publicIdCandidates)
+      .limit(1);
+
+    if (msmesByPublicError) {
+      devQuoteLog("convert:msme_public_lookup_error", {
+        message: msmesByPublicError.message,
+        code: msmesByPublicError.code ?? null,
+      });
+    }
+
+    const matched = (msmesByPublic ?? [])[0] as { id?: string | null; msme_id?: string | null } | undefined;
+    resolvedMsmeUuid = matched?.id ?? null;
+    resolvedPublicMsmeId = matched?.msme_id ?? null;
+  }
 
   devQuoteLog("convert:msme_ref_resolution", {
-    msmeIdColumnType: msmeIdDataType || null,
-    msmeIdColumnUdt: msmeIdUdt || null,
-    expectsUuid,
     providerLookupError: providerLookupError?.message ?? null,
     providerDbMsmeId,
     candidates: uniqueCandidates,
-    selectedCandidate,
+    uuidCandidates,
+    publicIdCandidates,
+    resolvedMsmeUuid,
+    resolvedPublicMsmeId,
   });
 
-  return { selectedMsmeRef: selectedCandidate, expectsUuid, msmeIdDataType, msmeIdUdt, providerDbMsmeId };
+  return { resolvedMsmeUuid, resolvedPublicMsmeId, providerDbMsmeId };
 }
 
 async function updateQuoteStatus(
@@ -246,7 +274,7 @@ async function quoteWorkflowAction(formData: FormData) {
 
   const { data: quote, error: quoteLoadError } = await supabase
     .from("provider_quotes")
-    .select("id,status,provider_profile_id,request_summary,request_details,requester_name,requester_email,requester_phone,budget_min,budget_max")
+    .select("id,status,provider_profile_id,msme_id,request_summary,request_details,requester_name,requester_email,requester_phone,budget_min,budget_max")
     .eq("id", quoteId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
@@ -314,12 +342,13 @@ async function quoteWorkflowAction(formData: FormData) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
-    const { selectedMsmeRef, expectsUuid, msmeIdDataType, msmeIdUdt, providerDbMsmeId } = await resolveInvoiceMsmeRef(supabase, {
+    const { resolvedMsmeUuid, resolvedPublicMsmeId, providerDbMsmeId } = await resolveInvoiceMsmeRef(supabase, {
       workspaceMsmeId: workspace.msme.id ?? null,
       workspaceMsmePublicId: workspace.msme.msme_id ?? null,
       providerProfileId: workspace.provider.id,
       providerMsmeId: workspace.provider.msme_id ?? null,
       linkedMsmeId: currentUserCtx.linkedMsmeId ?? null,
+      quoteMsmeId: String((quote as { msme_id?: string | null }).msme_id ?? "").trim() || null,
     });
 
     devQuoteLog("convert:context", {
@@ -340,16 +369,18 @@ async function quoteWorkflowAction(formData: FormData) {
         budget_max: quote.budget_max,
       },
       invoiceMsmeResolution: {
-        selectedMsmeRef,
-        expectsUuid,
-        msmeIdDataType,
-        msmeIdUdt,
+        resolvedMsmeUuid,
+        resolvedPublicMsmeId,
         providerDbMsmeId,
       },
     });
 
-    if (!selectedMsmeRef) {
-      throw new Error("Invoice creation from quote failed: unable to resolve non-null invoices.msme_id.");
+    if (!resolvedMsmeUuid) {
+      throw new Error("Invoice creation from quote failed: unable to resolve MSME UUID for invoices.msme_id.");
+    }
+
+    if (!isUuidLike(resolvedMsmeUuid)) {
+      throw new Error("Resolved MSME ID for invoice is not a UUID");
     }
 
     const availableInvoicesColumnsSet = await getFreshTableColumns(supabase, "invoices");
@@ -359,7 +390,7 @@ async function quoteWorkflowAction(formData: FormData) {
     const invoiceNotes = [quoteSummary, quoteDetails].filter(Boolean).join(" — ");
     const rawInvoicePayload = {
       provider_profile_id: workspace.provider.id,
-      msme_id: selectedMsmeRef,
+      msme_id: resolvedMsmeUuid,
       invoice_number: generateInvoiceNumber(),
       customer_name: quote.requester_name,
       customer_email: quote.requester_email,
@@ -385,15 +416,16 @@ async function quoteWorkflowAction(formData: FormData) {
       delete finalInvoiceInsertPayload.description;
     }
 
-    devQuoteLog("convert:invoice_insert_attempt", {
+    devQuoteLog("invoiceInsertPayload", {
       quoteId: quote.id,
       providerProfileId: workspace.provider.id,
+      invoiceInsertPayload: finalInvoiceInsertPayload,
       availableInvoicesColumns,
-      finalInvoiceInsertPayload,
       rawInvoicePayload,
       invoiceColumnsCount: availableInvoicesColumnsSet.size,
-      hasMsmeId: "msme_id" in finalInvoiceInsertPayload && Boolean(finalInvoiceInsertPayload.msme_id),
     });
+    devQuoteLog("resolvedMsmeUuid", { quoteId: quote.id, resolvedMsmeUuid });
+    devQuoteLog("resolvedPublicMsmeId", { quoteId: quote.id, resolvedPublicMsmeId });
 
     const { data: invoiceInsertData, error: invoiceInsertError } = await supabase
       .from("invoices")
