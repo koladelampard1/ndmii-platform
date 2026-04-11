@@ -3,6 +3,8 @@ import { Navbar } from "@/components/layout/navbar";
 import { ProviderCard } from "@/components/marketplace/provider-card";
 import { getMarketplaceFilterOptions, searchMarketplaceProviders } from "@/lib/data/marketplace";
 
+const DEV_MODE = process.env.NODE_ENV !== "production";
+
 export default async function SearchPage({
   searchParams,
 }: {
@@ -17,6 +19,7 @@ export default async function SearchPage({
   const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
   const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
   const sort = typeof params.sort === "string" ? params.sort : "relevance";
+  const normalizedSearchTerm = q.trim().toLowerCase().replace(/\s+/g, " ");
 
   const [options, providers] = await Promise.all([
     getMarketplaceFilterOptions(),
@@ -88,6 +91,11 @@ export default async function SearchPage({
             </Link>
           </span>
         </div>
+        {DEV_MODE && (
+          <div className="mt-3 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700">
+            DEV diagnostics — normalized search term: "{normalizedSearchTerm || "(empty)"}" • results: {providers.length}
+          </div>
+        )}
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}

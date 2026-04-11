@@ -104,6 +104,18 @@ type UsableHomepageProviderProfileRow = {
   display_name: string | null;
 };
 
+type MarketplaceDevLogPayload = {
+  section: string;
+  stage: string;
+  input_params?: Record<string, unknown>;
+  select_fields?: string[];
+  filters?: Record<string, unknown>;
+  result_count?: number;
+  first_result_sample?: unknown;
+  db_error?: unknown;
+  js_error?: { message: string; stack: string | null };
+};
+
 const FALLBACK_CATEGORIES = [
   "Construction & Artisan",
   "Fashion & Textiles",
@@ -249,6 +261,7 @@ function seededMetrics(msmeId: string) {
 function normalizeVerificationFilter(verification?: string) {
   if (verification === "verified") return ["verified"];
   if (verification === "approved") return ["approved"];
+  if (verification === "verified_or_approved") return ["verified", "approved"];
   if (verification === "all") return ["verified", "approved", "pending"];
   return ["verified", "approved"];
 }
@@ -340,6 +353,11 @@ function safeNumber(value: unknown, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function devLog(payload: MarketplaceDevLogPayload) {
+  if (!DEV_MODE) return;
+  console.info("[marketplace-dev]", payload);
+}
+
 function classifyCategoriesFailure(error: unknown): CategoriesFailureCause {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   if (message.includes("column") && message.includes("name")) return "missing_category_field";
@@ -381,41 +399,58 @@ function badgeFromTrustScore(score: number): ProviderProfile["trust_badge"] {
 async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) {
   const supabase = await createServiceRoleSupabaseClient();
   const allowedStatuses = normalizeVerificationFilter(filters.verification);
+  const normalizedSearchTerm = normalizeSearchTerm(filters.q);
 
   const { data: msmes, error } = await supabase
     .from("msmes")
     .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,passport_photo_url")
     .in("verification_status", allowedStatuses);
 
-  if (error) throw error;
+  if (error) {
+    devLog({
+      section: "projected_search",
+      stage: "msmes_query_error",
+      input_params: { filters, limit },
+      select_fields: ["id", "msme_id", "business_name", "owner_name", "state", "lga", "sector", "verification_status", "passport_photo_url"],
+      filters: { verification_status: allowedStatuses },
+      db_error: error,
+      js_error: { message: String(error.message ?? "Unknown database error"), stack: null },
+    });
+    throw error;
+  }
 
   const msmeRows = (msmes ?? []) as ProjectionRow[];
   if (msmeRows.length === 0) return [];
 
+  const msmeRowIds = msmeRows.map((row) => row.id);
+  const publicMsmeIds = msmeRows.map((row) => row.msme_id);
+
   const { data: digitalIds } = await supabase
     .from("digital_ids")
     .select("msme_id,ndmii_id")
-    .in("msme_id", msmeRows.map((row) => row.id));
+    .in("msme_id", [...msmeRowIds, ...publicMsmeIds]);
 
-  const ndmiiByMsmeRowId = new Map((digitalIds ?? []).map((item: any) => [item.msme_id, item.ndmii_id as string | null]));
+  const ndmiiByMsmeRef = new Map((digitalIds ?? []).map((item: any) => [item.msme_id, item.ndmii_id as string | null]));
   const { data: providerProfiles } = await supabase
     .from("provider_profiles")
     .select("id,msme_id,public_slug")
     .not("public_slug", "is", null);
-  const publicSlugByMsmeRowId = new Map(
+
+  const publicSlugByMsmeRef = new Map(
     (providerProfiles ?? [])
       .filter((profile: any) => profile.public_slug && profile.msme_id)
       .map((profile: any) => [profile.msme_id as string, profile.public_slug as string]),
   );
 
-  const lowerQ = filters.q?.toLowerCase().trim();
+  const lowerQ = normalizedSearchTerm;
   const lowerSpec = filters.specialization?.toLowerCase().trim();
+  const exactMsmeSearch = lowerQ.length > 0 && /^ndmii-[a-z0-9-]+$/.test(lowerQ);
 
   const projected = msmeRows
     .map((row) => {
-      const publicSlug = publicSlugByMsmeRowId.get(row.id);
+      const publicSlug = publicSlugByMsmeRef.get(row.id) ?? publicSlugByMsmeRef.get(row.msme_id);
       if (!publicSlug) return null;
-      return projectMsmeToProvider(row, ndmiiByMsmeRowId.get(row.id) ?? null, publicSlug);
+      return projectMsmeToProvider(row, ndmiiByMsmeRef.get(row.id) ?? ndmiiByMsmeRef.get(row.msme_id) ?? null, publicSlug);
     })
     .filter((provider): provider is ProviderCard => Boolean(provider))
     .filter((provider) => {
@@ -426,8 +461,13 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
       if (lowerSpec && !(provider.specialization ?? "").toLowerCase().includes(lowerSpec)) return false;
 
       if (!lowerQ) return true;
+      if (exactMsmeSearch) {
+        return [provider.msme_id, provider.ndmii_id ?? ""].some((value) => value.toLowerCase() === lowerQ);
+      }
       const text = [
         provider.business_name,
+        provider.display_name ?? "",
+        provider.public_slug,
         provider.msme_id,
         provider.ndmii_id ?? "",
         provider.category,
@@ -440,7 +480,15 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
       return text.includes(lowerQ);
     });
 
-  return applySort(projected, filters.sort).slice(0, limit);
+  const sorted = applySort(projected, filters.sort).slice(0, limit);
+  devLog({
+    section: "projected_search",
+    stage: "post_filter",
+    input_params: { filters, limit, normalizedSearchTerm },
+    result_count: sorted.length,
+    first_result_sample: sorted[0] ?? null,
+  });
+  return sorted;
 }
 
 async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24) {
@@ -465,8 +513,27 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
   if (filters.minRating) query = query.gte("avg_rating", filters.minRating);
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    devLog({
+      section: "public_search",
+      stage: "marketplace_provider_search_query_error",
+      input_params: { filters, limit },
+      select_fields: ["*"],
+      filters: {
+        verification_status: allowedStatuses,
+        category: filters.category ?? null,
+        specialization: filters.specialization ?? null,
+        state: filters.state ?? null,
+        lga: filters.lga ?? null,
+        min_rating: filters.minRating ?? null,
+      },
+      db_error: error,
+      js_error: { message: error.message ?? "Unknown database error", stack: null },
+    });
+    throw error;
+  }
   const hydrated = await attachProviderProfileMetadata(data ?? []);
+  const exactMsmeSearch = normalizedSearchTerm.length > 0 && /^ndmii-[a-z0-9-]+$/.test(normalizedSearchTerm);
 
   const searchedRows = !hasSearchTerm
     ? hydrated
@@ -478,12 +545,20 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
           row?.public_slug,
           row?.provider_profile_msme_id,
           row?.msme_id,
+          row?.ndmii_id,
           row?.business_name,
         ]
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .map((value: string) => value.toLowerCase())
           .join(" ")
           .replace(/\s+/g, " ");
+
+        if (exactMsmeSearch) {
+          return [row?.provider_profile_msme_id, row?.msme_id, row?.ndmii_id]
+            .filter((value) => typeof value === "string")
+            .map((value: string) => value.toLowerCase())
+            .includes(normalizedSearchTerm);
+        }
 
         return candidateText.includes(normalizedSearchTerm);
       });
@@ -498,6 +573,14 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
     result_count: sorted.length,
     first_three_matched_slugs: sorted.slice(0, 3).map((item) => item.public_slug),
   });
+  devLog({
+    section: "public_search",
+    stage: "post_filter",
+    input_params: { filters, limit },
+    select_fields: ["* + provider_profiles(id, msme_id, public_slug, display_name)"],
+    result_count: sorted.length,
+    first_result_sample: sorted[0] ?? null,
+  });
 
   return sorted;
 }
@@ -506,8 +589,19 @@ async function getProvidersWithFallback(filters: SearchFilters = {}, limit = 24)
   try {
     const primary = await queryMarketplaceProviders(filters, limit);
     if (primary.length > 0) return primary;
+    devLog({
+      section: "public_search",
+      stage: "primary_empty_fallback_to_projected",
+      input_params: { filters, limit },
+      result_count: 0,
+    });
   } catch {
     // fall through to MSME projection
+    devLog({
+      section: "public_search",
+      stage: "primary_failed_fallback_to_projected",
+      input_params: { filters, limit },
+    });
   }
 
   try {
@@ -547,7 +641,17 @@ async function fetchHomepageProviderProfiles(): Promise<UsableHomepageProviderPr
     .order("display_name", { ascending: true })
     .limit(54);
 
-  if (error) throw error;
+  if (error) {
+    devLog({
+      section: "homepage-base",
+      stage: "provider_profiles_query_error",
+      select_fields: selectFields,
+      filters: { public_slug_not_null: true, order_by: "display_name", limit: 54 },
+      db_error: error,
+      js_error: { message: error.message ?? "Unknown database error", stack: null },
+    });
+    throw error;
+  }
 
   const rows = (data ?? []) as any[];
   return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
@@ -708,7 +812,8 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
   let categories: string[] = FALLBACK_CATEGORIES;
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true);
+    const possibleCategoryFields = ["name", "category_name", "title", "label"];
+    const { data, error } = await supabase.from("service_categories").select("*").eq("is_active", true).limit(200);
     if (error) throw error;
 
     const counts = new Map<string, number>();
@@ -716,11 +821,13 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
     let skippedNullOrInvalid = 0;
 
     for (const row of data ?? []) {
-      if (!row || typeof row !== "object" || !("name" in row)) {
+      if (!row || typeof row !== "object") {
         skippedMissingField += 1;
         continue;
       }
-      const rawName = (row as { name?: unknown }).name;
+      const rawName = possibleCategoryFields
+        .map((field) => (row as Record<string, unknown>)[field])
+        .find((value) => typeof value === "string" && value.trim().length > 0);
       if (typeof rawName !== "string" || !rawName.trim()) {
         skippedNullOrInvalid += 1;
         continue;
@@ -749,12 +856,34 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
         section: "categories",
         skippedMissingField,
         skippedNullOrInvalid,
+        categoryFieldCandidates: possibleCategoryFields,
       });
+    }
+
+    if (!categories.length) {
+      const { data: providerRows, error: providerRowsError } = await supabase
+        .from("marketplace_provider_search")
+        .select("category_name")
+        .in("verification_status", ["verified", "approved"])
+        .limit(200);
+
+      if (providerRowsError) {
+        throw providerRowsError;
+      }
+      categories = [...new Set((providerRows ?? []).map((row: any) => row?.category_name).filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0))];
     }
 
     if (!categories.length) {
       categories = FALLBACK_CATEGORIES;
     }
+    devLog({
+      section: "homepage-categories",
+      stage: "computed_categories",
+      select_fields: ["service_categories.*", "marketplace_provider_search.category_name (fallback)"],
+      filters: { service_categories_is_active: true },
+      result_count: categories.length,
+      first_result_sample: categories[0] ?? null,
+    });
   } catch (error) {
     console.error("[homepage-marketplace] categories section failure", {
       section: "categories",
