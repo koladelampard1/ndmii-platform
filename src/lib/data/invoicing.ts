@@ -1,4 +1,5 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
 
 export const INVOICE_STATUSES = ["draft", "issued", "pending_payment", "paid", "overdue", "cancelled"] as const;
 export const INVOICE_PAYMENT_STATUSES = ["initiated", "pending", "success", "failed", "refunded"] as const;
@@ -22,32 +23,43 @@ export function calculateLineTotal(quantity: number, unitPrice: number) {
 
 export async function recalculateInvoiceTotals(invoiceId: string) {
   const supabase = await createServiceRoleSupabaseClient();
-  const { data: invoice, error: invoiceError } = await supabase.from("invoices").select("id,vat_rate").eq("id", invoiceId).maybeSingle();
+  const invoiceColumns = await getTableColumns(supabase, "invoices");
+  const itemColumns = await getTableColumns(supabase, "invoice_items");
 
-  if (invoiceError) throw new Error(invoiceError.message);
-  if (!invoice) throw new Error("Invoice not found.");
+  const invoiceSelect = ["id", "vat_rate"].filter((column) => invoiceColumns.has(column)).join(",");
+  if (!invoiceSelect.includes("id")) {
+    return { subtotal: 0, vatAmount: 0, totalAmount: 0 };
+  }
 
-  const { data: items, error: itemError } = await supabase.from("invoice_items").select("line_total,vat_applicable").eq("invoice_id", invoiceId);
+  const { data: invoice, error: invoiceError } = await supabase.from("invoices").select(invoiceSelect).eq("id", invoiceId).maybeSingle();
+  if (invoiceError || !invoice) return { subtotal: 0, vatAmount: 0, totalAmount: 0 };
 
-  if (itemError) throw new Error(itemError.message);
+  const itemSelectColumns = ["line_total", "vat_applicable"].filter((column) => itemColumns.has(column));
+  const { data: items, error: itemError } = await supabase
+    .from("invoice_items")
+    .select(itemSelectColumns.length ? itemSelectColumns.join(",") : "id")
+    .eq("invoice_id", invoiceId);
 
-  const subtotal = Number((items ?? []).reduce((sum, item) => sum + Number(item.line_total ?? 0), 0).toFixed(2));
+  if (itemError) return { subtotal: 0, vatAmount: 0, totalAmount: 0 };
+
+  const subtotal = Number((items ?? []).reduce((sum, item) => sum + Number((item as any).line_total ?? 0), 0).toFixed(2));
   const vatBase = Number(
     (items ?? [])
-      .filter((item) => item.vat_applicable)
-      .reduce((sum, item) => sum + Number(item.line_total ?? 0), 0)
+      .filter((item) => (item as any).vat_applicable ?? true)
+      .reduce((sum, item) => sum + Number((item as any).line_total ?? 0), 0)
       .toFixed(2)
   );
-  const vatRate = Number(invoice.vat_rate ?? 0);
+  const vatRate = Number((invoice as any).vat_rate ?? 0);
   const vatAmount = Number(((vatBase * vatRate) / 100).toFixed(2));
   const totalAmount = Number((subtotal + vatAmount).toFixed(2));
 
-  const { error: updateError } = await supabase
-    .from("invoices")
-    .update({ subtotal, vat_amount: vatAmount, total_amount: totalAmount, updated_at: new Date().toISOString() })
-    .eq("id", invoiceId);
-
-  if (updateError) throw new Error(updateError.message);
+  const payload = filterPayloadByColumns(
+    { subtotal, vat_amount: vatAmount, total_amount: totalAmount, updated_at: new Date().toISOString() },
+    invoiceColumns
+  );
+  if (Object.keys(payload).length > 0) {
+    await supabase.from("invoices").update(payload).eq("id", invoiceId);
+  }
 
   return { subtotal, vatAmount, totalAmount };
 }

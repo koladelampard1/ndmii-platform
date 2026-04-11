@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatDateTime, formatNaira, invoicePaymentStatusClasses } from "@/lib/data/invoicing";
+import { loadRevenueSnapshot } from "@/lib/data/commercial-ops";
 
 function monthKey(value: string) {
   const date = new Date(value);
@@ -12,25 +13,7 @@ export default async function MsmeRevenuePage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
 
-  const { data: invoices, error } = await supabase
-    .from("invoices")
-    .select("id,invoice_number,status,total_amount,vat_amount,created_at,paid_at")
-    .eq("provider_profile_id", workspace.provider.id)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  const rows = invoices ?? [];
-  const invoiceIds = rows.map((row) => row.id);
-
-  const { data: payments, error: paymentError } = await supabase
-    .from("invoice_payments")
-    .select("invoice_id,payment_reference,payment_status,amount,created_at")
-    .in("invoice_id", invoiceIds.length ? invoiceIds : ["00000000-0000-0000-0000-000000000000"])
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  if (paymentError) throw new Error(paymentError.message);
+  const { invoices: rows, payments } = await loadRevenueSnapshot(supabase, workspace.provider.id);
 
   const totalInvoiced = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
   const paidTotal = rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
@@ -82,8 +65,8 @@ export default async function MsmeRevenuePage() {
       <article className="rounded-xl border bg-white p-4">
         <h3 className="font-semibold">Recent invoice payment activity</h3>
         <div className="mt-3 space-y-2 text-sm">
-          {(payments ?? []).length === 0 && <p className="text-slate-500">No invoice payment activity yet.</p>}
-          {(payments ?? []).slice(0, 8).map((payment) => {
+          {payments.length === 0 && <p className="text-slate-500">No invoice payment activity yet.</p>}
+          {payments.slice(0, 8).map((payment) => {
             const invoice = invoiceMap.get(payment.invoice_id);
             return (
               <div key={payment.payment_reference} className="rounded border p-3">

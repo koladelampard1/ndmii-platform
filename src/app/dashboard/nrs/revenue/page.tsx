@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
+import { loadRevenueSnapshot } from "@/lib/data/commercial-ops";
 
 function monthKey(value: string) {
   const date = new Date(value);
@@ -13,16 +14,14 @@ export default async function NrsRevenuePage() {
   if (!["nrs_officer", "firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
-  const { data: invoices, error } = await supabase.from("invoices").select("provider_profile_id,status,total_amount,created_at");
-  if (error) throw new Error(error.message);
+  const { invoices: rows } = await loadRevenueSnapshot(supabase);
 
-  const rows = invoices ?? [];
   const total = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
   const paid = rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
   const outstanding = total - paid;
 
   const providerTotals = new Map<string, number>();
-  rows.forEach((row) => providerTotals.set(row.provider_profile_id, (providerTotals.get(row.provider_profile_id) ?? 0) + Number(row.total_amount ?? 0)));
+  rows.forEach((row) => providerTotals.set(row.provider_profile_id ?? "unknown", (providerTotals.get(row.provider_profile_id ?? "unknown") ?? 0) + Number(row.total_amount ?? 0)));
 
   const trend = new Map<string, { invoiced: number; paid: number }>();
   rows.forEach((row) => {

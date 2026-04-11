@@ -3,62 +3,35 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { calculateLineTotal, generateInvoiceNumber } from "@/lib/data/invoicing";
+import {
+  filterPayloadByColumns,
+  getTableColumns,
+  logActivityEvent,
+  logInvoiceEvent,
+  normalizeInvoiceStatus,
+} from "@/lib/data/commercial-ops";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
-const DEV_MODE = process.env.NODE_ENV !== "production";
-let providerQuoteColumnsCache: Set<string> | null = null;
+async function updateQuoteStatus(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  quoteId: string,
+  providerId: string,
+  nextStatus: "in_review" | "quoted" | "declined" | "converted",
+  lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at"
+) {
+  const nowIso = new Date().toISOString();
+  const columns = await getTableColumns(supabase, "provider_quotes");
+  const payload = filterPayloadByColumns(
+    {
+      status: nextStatus,
+      [lifecycleColumn ?? ""]: lifecycleColumn ? nowIso : undefined,
+      updated_at: nowIso,
+    },
+    columns
+  );
 
-function devQuoteWorkflowLog(message: string, payload: Record<string, unknown>) {
-  if (!DEV_MODE) return;
-  console.info(`[provider-quote-workflow] ${message}`, payload);
-}
-
-async function getProviderQuoteColumns(supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>) {
-  if (providerQuoteColumnsCache) return providerQuoteColumnsCache;
-
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name")
-    .eq("table_schema", "public")
-    .eq("table_name", "provider_quotes");
-
-  if (error) {
-    devQuoteWorkflowLog("provider_quote_columns_lookup_error", {
-      message: error.message ?? null,
-      details: error.details ?? null,
-      hint: error.hint ?? null,
-      code: error.code ?? null,
-    });
-    providerQuoteColumnsCache = new Set();
-    return providerQuoteColumnsCache;
-  }
-
-  providerQuoteColumnsCache = new Set((data ?? []).map((row) => row.column_name));
-  devQuoteWorkflowLog("provider_quote_columns_detected", {
-    columns: [...providerQuoteColumnsCache].sort(),
-  });
-  return providerQuoteColumnsCache;
-}
-
-function buildProviderQuoteStatusPayload(params: {
-  nextStatus: "in_review" | "quoted" | "declined" | "converted";
-  lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at";
-  nowIso: string;
-  columns: Set<string>;
-}) {
-  const payload: Record<string, unknown> = { status: params.nextStatus };
-  const columnsAttempted = ["status"];
-
-  if (params.lifecycleColumn && params.columns.has(params.lifecycleColumn)) {
-    payload[params.lifecycleColumn] = params.nowIso;
-    columnsAttempted.push(params.lifecycleColumn);
-  }
-  if (params.columns.has("updated_at")) {
-    payload.updated_at = params.nowIso;
-    columnsAttempted.push("updated_at");
-  }
-
-  return { payload, columnsAttempted };
+  const { error } = await supabase.from("provider_quotes").update(payload).eq("id", quoteId).eq("provider_profile_id", providerId);
+  if (error) throw new Error(`Quote status update failed: ${error.message}`);
 }
 
 async function quoteWorkflowAction(formData: FormData) {
@@ -77,124 +50,45 @@ async function quoteWorkflowAction(formData: FormData) {
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
 
-  if (quoteLoadError) throw new Error(`Quote load failed: ${quoteLoadError.message}`);
-  if (!quote) throw new Error("Quote not found for this provider.");
+  if (quoteLoadError || !quote) throw new Error("Quote not found for this provider.");
 
   if (action === "mark_reviewed") {
-    const nowIso = new Date().toISOString();
-    const columns = await getProviderQuoteColumns(supabase);
-    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
-      nextStatus: "in_review",
-      lifecycleColumn: "reviewed_at",
-      nowIso,
-      columns,
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "in_review", "reviewed_at");
+    await logActivityEvent(supabase, {
+      action: "quote_reviewed",
+      entityType: "provider_quote",
+      entityId: quote.id,
+      actorUserId: workspace.appUserId,
+      metadata: { provider_profile_id: workspace.provider.id },
     });
-    devQuoteWorkflowLog("quote_status_update_attempt", {
-      action,
-      quoteId: quote.id,
-      payload,
-      columnsAttempted,
-    });
-
-    const { error } = await supabase
-      .from("provider_quotes")
-      .update(payload)
-      .eq("id", quote.id)
-      .eq("provider_profile_id", workspace.provider.id);
-
-    if (error) {
-      devQuoteWorkflowLog("quote_status_update_error", {
-        action,
-        quoteId: quote.id,
-        payload,
-        columnsAttempted,
-        message: error.message ?? null,
-        details: error.details ?? null,
-        hint: error.hint ?? null,
-        code: error.code ?? null,
-      });
-      throw new Error(`Quote review update failed: ${error.message}`);
-    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
   }
 
   if (action === "accept") {
-    const nowIso = new Date().toISOString();
-    const columns = await getProviderQuoteColumns(supabase);
-    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
-      nextStatus: "quoted",
-      lifecycleColumn: "accepted_at",
-      nowIso,
-      columns,
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "quoted", "accepted_at");
+    await logActivityEvent(supabase, {
+      action: "quote_accepted",
+      entityType: "provider_quote",
+      entityId: quote.id,
+      actorUserId: workspace.appUserId,
+      metadata: { provider_profile_id: workspace.provider.id },
     });
-    devQuoteWorkflowLog("quote_status_update_attempt", {
-      action,
-      quoteId: quote.id,
-      payload,
-      columnsAttempted,
-    });
-
-    const { error } = await supabase
-      .from("provider_quotes")
-      .update(payload)
-      .eq("id", quote.id)
-      .eq("provider_profile_id", workspace.provider.id);
-
-    if (error) {
-      devQuoteWorkflowLog("quote_status_update_error", {
-        action,
-        quoteId: quote.id,
-        payload,
-        columnsAttempted,
-        message: error.message ?? null,
-        details: error.details ?? null,
-        hint: error.hint ?? null,
-        code: error.code ?? null,
-      });
-      throw new Error(`Quote acceptance update failed: ${error.message}`);
-    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
   }
 
   if (action === "decline") {
-    const nowIso = new Date().toISOString();
-    const columns = await getProviderQuoteColumns(supabase);
-    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
-      nextStatus: "declined",
-      lifecycleColumn: "declined_at",
-      nowIso,
-      columns,
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "declined", "declined_at");
+    await logActivityEvent(supabase, {
+      action: "quote_declined",
+      entityType: "provider_quote",
+      entityId: quote.id,
+      actorUserId: workspace.appUserId,
+      metadata: { provider_profile_id: workspace.provider.id },
     });
-    devQuoteWorkflowLog("quote_status_update_attempt", {
-      action,
-      quoteId: quote.id,
-      payload,
-      columnsAttempted,
-    });
-
-    const { error } = await supabase
-      .from("provider_quotes")
-      .update(payload)
-      .eq("id", quote.id)
-      .eq("provider_profile_id", workspace.provider.id);
-
-    if (error) {
-      devQuoteWorkflowLog("quote_status_update_error", {
-        action,
-        quoteId: quote.id,
-        payload,
-        columnsAttempted,
-        message: error.message ?? null,
-        details: error.details ?? null,
-        hint: error.hint ?? null,
-        code: error.code ?? null,
-      });
-      throw new Error(`Quote decline update failed: ${error.message}`);
-    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
@@ -205,81 +99,76 @@ async function quoteWorkflowAction(formData: FormData) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
-    const invoiceNumber = generateInvoiceNumber();
-    const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
-
-    const { data: invoice, error: invoiceError } = await supabase
-      .from("invoices")
-      .insert({
+    const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const invoicePayload = filterPayloadByColumns(
+      {
         provider_profile_id: workspace.provider.id,
         msme_id: workspace.msme.id,
-        invoice_number: invoiceNumber,
+        invoice_number: generateInvoiceNumber(),
         customer_name: quote.requester_name,
         customer_email: quote.requester_email,
         customer_phone: quote.requester_phone,
         currency: "NGN",
         vat_rate: 7.5,
-        status: "draft",
-      })
-      .select("id")
-      .single();
+        status: normalizeInvoiceStatus("draft"),
+        updated_at: new Date().toISOString(),
+        quote_id: quote.id,
+      },
+      invoiceColumns
+    );
 
-    if (invoiceError) throw new Error(`Invoice creation from quote failed: ${invoiceError.message}`);
+    const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
+    if (invoiceError || !invoice) throw new Error(`Invoice creation from quote failed: ${invoiceError?.message ?? "unknown"}`);
 
-    const { error: itemError } = await supabase.from("invoice_items").insert({
-      invoice_id: invoice.id,
-      item_name: quote.request_summary,
-      description: `Auto-created from quote ${quote.id}`,
-      quantity: 1,
-      unit_price: seededAmount,
-      line_total: calculateLineTotal(1, seededAmount),
-      vat_applicable: true,
-    });
-
-    if (itemError) throw new Error(`Invoice item creation from quote failed: ${itemError.message}`);
-
-    const { error: linkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
-    if (linkError) throw new Error(`Quote/invoice linking failed: ${linkError.message}`);
-
-    const nowIso = new Date().toISOString();
-    const columns = await getProviderQuoteColumns(supabase);
-    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
-      nextStatus: "converted",
-      nowIso,
-      columns,
-    });
-    devQuoteWorkflowLog("quote_status_update_attempt", {
-      action,
-      quoteId: quote.id,
-      payload,
-      columnsAttempted,
-    });
-
-    const { error: statusError } = await supabase
-      .from("provider_quotes")
-      .update(payload)
-      .eq("id", quote.id)
-      .eq("provider_profile_id", workspace.provider.id);
-
-    if (statusError) {
-      devQuoteWorkflowLog("quote_status_update_error", {
-        action,
-        quoteId: quote.id,
-        payload,
-        columnsAttempted,
-        message: statusError.message ?? null,
-        details: statusError.details ?? null,
-        hint: statusError.hint ?? null,
-        code: statusError.code ?? null,
-      });
-      throw new Error(`Quote conversion status update failed: ${statusError.message}`);
+    const itemColumns = await getTableColumns(supabase, "invoice_items");
+    const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
+    const itemPayload = filterPayloadByColumns(
+      {
+        invoice_id: invoice.id,
+        item_name: quote.request_summary,
+        description: `Auto-created from quote ${quote.id}`,
+        quantity: 1,
+        unit_price: seededAmount,
+        line_total: calculateLineTotal(1, seededAmount),
+        vat_applicable: true,
+      },
+      itemColumns
+    );
+    if (Object.keys(itemPayload).length > 0) {
+      const { error: itemError } = await supabase.from("invoice_items").insert(itemPayload);
+      if (itemError) throw new Error(`Invoice item creation from quote failed: ${itemError.message}`);
     }
 
-    devQuoteWorkflowLog("quote_converted_to_invoice", {
-      quoteId: quote.id,
+    const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
+    const canLinkQuoteInvoice = linkColumns.has("quote_id") && linkColumns.has("invoice_id");
+    if (canLinkQuoteInvoice) {
+      await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
+    } else {
+      await logActivityEvent(supabase, {
+        action: "quote_invoice_link_fallback",
+        entityType: "invoice",
+        entityId: invoice.id,
+        actorUserId: workspace.appUserId,
+        metadata: { quote_id: quote.id, link_mode: "metadata_only" },
+      });
+    }
+
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "converted");
+
+    await logInvoiceEvent(supabase, {
       invoiceId: invoice.id,
-      providerId: workspace.provider.id,
-      seededAmount,
+      eventType: "invoice_created",
+      actorRole: workspace.role,
+      actorId: workspace.msme.id,
+      metadata: { quote_id: quote.id, source: "quote_conversion" },
+    });
+
+    await logActivityEvent(supabase, {
+      action: "invoice_created_from_quote",
+      entityType: "invoice",
+      entityId: invoice.id,
+      actorUserId: workspace.appUserId,
+      metadata: { quote_id: quote.id, provider_profile_id: workspace.provider.id },
     });
 
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
@@ -309,15 +198,13 @@ export default async function MsmeQuoteDetailPage({
       .eq("id", quoteId)
       .eq("provider_profile_id", workspace.provider.id)
       .maybeSingle(),
-    supabase
-      .from("quote_invoice_links")
-      .select("invoice_id,created_at")
-      .eq("quote_id", quoteId)
-      .order("created_at", { ascending: false }),
+    supabase.from("quote_invoice_links").select("invoice_id,created_at").eq("quote_id", quoteId).order("created_at", { ascending: false }),
   ]);
 
   if (quoteError) throw new Error(quoteError.message);
-  if (linkError) throw new Error(linkError.message);
+  if (linkError) {
+    console.info("[quote-invoice-links:fallback]", linkError.message);
+  }
   if (!quote) redirect("/dashboard/msme/quotes");
 
   return (
@@ -370,7 +257,7 @@ export default async function MsmeQuoteDetailPage({
         <h3 className="font-semibold">Linked invoices</h3>
         <div className="mt-3 space-y-2">
           {(links ?? []).length === 0 && <p className="text-sm text-slate-500">No invoices linked yet.</p>}
-          {(links ?? []).map((link) => (
+          {(links ?? []).map((link: { invoice_id: string; created_at: string }) => (
             <p key={`${link.invoice_id}-${link.created_at}`} className="text-sm">
               <Link className="text-indigo-700 hover:underline" href={`/dashboard/msme/invoices/${link.invoice_id}`}>
                 Invoice {link.invoice_id}

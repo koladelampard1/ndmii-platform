@@ -2,17 +2,16 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
+import { loadRevenueSnapshot } from "@/lib/data/commercial-ops";
 
 export default async function NrsVatMonitorPage() {
   const ctx = await getCurrentUserContext();
   if (!["nrs_officer", "firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
-  const { data: invoices, error } = await supabase.from("invoices").select("status,vat_amount,total_amount,created_at");
-  if (error) throw new Error(error.message);
+  const { invoices: rows } = await loadRevenueSnapshot(supabase);
 
-  const rows = invoices ?? [];
-  const taxable = rows.filter((row) => Number(row.vat_amount) > 0);
+  const taxable = rows.filter((row) => Number(row.vat_amount ?? 0) > 0);
   const taxableTotal = taxable.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
   const vatTotal = taxable.reduce((sum, row) => sum + Number(row.vat_amount ?? 0), 0);
   const vatPaid = taxable.filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.vat_amount ?? 0), 0);

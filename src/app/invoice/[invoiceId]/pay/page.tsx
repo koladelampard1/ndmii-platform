@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira, invoicePaymentStatusClasses, type InvoicePaymentStatus } from "@/lib/data/invoicing";
+import { filterPayloadByColumns, getTableColumns, logInvoiceEvent } from "@/lib/data/commercial-ops";
 
 function resolveInvoiceStatusFromPayment(paymentStatus: InvoicePaymentStatus) {
   if (paymentStatus === "success") return "paid";
@@ -25,50 +26,47 @@ async function simulatePaymentAction(formData: FormData) {
     .eq("id", invoiceId)
     .maybeSingle();
 
-  if (invoiceError) {
+  if (invoiceError || !invoice) {
     console.error("[invoice-payment-sim:error:invoice-load]", invoiceError);
-    throw new Error(invoiceError.message);
+    redirect(`/invoice/${invoiceId}/status`);
   }
-  if (!invoice) throw new Error("Invoice not found.");
 
   const paymentReference = `SIM-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const paymentStatus: InvoicePaymentStatus = result;
   const paidAt = paymentStatus === "success" ? new Date().toISOString() : null;
 
-  const { error: paymentError } = await supabase.from("invoice_payments").insert({
-    invoice_id: invoiceId,
-    payment_reference: paymentReference,
-    payment_method: method,
-    payment_status: paymentStatus,
-    amount: invoice.total_amount,
-    paid_at: paidAt,
-  });
+  const paymentColumns = await getTableColumns(supabase, "invoice_payments");
+  if (paymentColumns.has("invoice_id")) {
+    const { error: paymentError } = await supabase.from("invoice_payments").insert(filterPayloadByColumns({
+      invoice_id: invoiceId,
+      payment_reference: paymentReference,
+      payment_method: method,
+      payment_status: paymentStatus,
+      amount: invoice.total_amount,
+      paid_at: paidAt,
+    }, paymentColumns));
 
-  if (paymentError) {
-    console.error("[invoice-payment-sim:error:payment-insert]", paymentError);
-    throw new Error(paymentError.message);
+    if (paymentError) console.error("[invoice-payment-sim:error:payment-insert]", paymentError);
   }
 
   const nextInvoiceStatus = resolveInvoiceStatusFromPayment(paymentStatus);
+  const invoiceColumns = await getTableColumns(supabase, "invoices");
   const { error: updateError } = await supabase
     .from("invoices")
-    .update({
+    .update(filterPayloadByColumns({
       status: nextInvoiceStatus,
       paid_at: paidAt,
       updated_at: new Date().toISOString(),
-    })
+    }, invoiceColumns))
     .eq("id", invoiceId);
 
-  if (updateError) {
-    console.error("[invoice-payment-sim:error:invoice-update]", updateError);
-    throw new Error(updateError.message);
-  }
+  if (updateError) console.error("[invoice-payment-sim:error:invoice-update]", updateError);
 
-  const { error: eventError } = await supabase.from("invoice_events").insert({
-    invoice_id: invoiceId,
-    event_type: paymentStatus === "success" ? "payment_success" : paymentStatus === "failed" ? "payment_failed" : `payment_${paymentStatus}`,
-    actor_role: "public",
-    actor_id: null,
+  await logInvoiceEvent(supabase, {
+    invoiceId,
+    eventType: paymentStatus === "success" ? "payment_success" : paymentStatus === "failed" ? "payment_failed" : `payment_${paymentStatus}`,
+    actorRole: "public",
+    actorId: null,
     metadata: {
       payment_reference: paymentReference,
       payment_status: paymentStatus,
@@ -76,11 +74,6 @@ async function simulatePaymentAction(formData: FormData) {
       invoice_number: invoice.invoice_number,
     },
   });
-
-  if (eventError) {
-    console.error("[invoice-payment-sim:error:event-insert]", eventError);
-    throw new Error(eventError.message);
-  }
 
   console.info("[invoice-payment-sim:complete]", {
     invoiceId,
