@@ -319,6 +319,22 @@ async function attachProviderProfileMetadata(rows: any[]) {
   });
 }
 
+
+function normalizeSearchTerm(value: string | undefined) {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function logMarketplaceSearchDebug(payload: {
+  raw_search_term: string;
+  normalized_search_term: string;
+  query_fields_used: string[];
+  result_count: number;
+  first_three_matched_slugs: string[];
+}) {
+  if (!DEV_MODE) return;
+  console.info("[marketplace-search]", payload);
+}
+
 function safeNumber(value: unknown, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -431,13 +447,17 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
   const supabase = await createServiceRoleSupabaseClient();
   const allowedStatuses = normalizeVerificationFilter(filters.verification);
 
+  const hasSearchTerm = Boolean(filters.q?.trim());
+  const normalizedSearchTerm = normalizeSearchTerm(filters.q);
+  const providerSearchFields = ["provider_profiles.display_name", "provider_profiles.public_slug", "provider_profiles.msme_id"];
+  const queryFieldsUsed = [...providerSearchFields, "business_name(optional_joined_data)"];
+
   let query = supabase
     .from("marketplace_provider_search")
     .select("*")
     .in("verification_status", allowedStatuses)
-    .limit(limit);
+    .limit(hasSearchTerm ? Math.max(limit * 6, 120) : limit);
 
-  if (filters.q) query = query.ilike("search_text", `%${filters.q}%`);
   if (filters.category) query = query.eq("category_name", filters.category);
   if (filters.specialization) query = query.ilike("specialization", `%${filters.specialization}%`);
   if (filters.state) query = query.eq("state", filters.state);
@@ -447,7 +467,39 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
   const { data, error } = await query;
   if (error) throw error;
   const hydrated = await attachProviderProfileMetadata(data ?? []);
-  return applySort(hydrated.map(toCard).filter((provider): provider is ProviderCard => Boolean(provider)), filters.sort);
+
+  const searchedRows = !hasSearchTerm
+    ? hydrated
+    : hydrated.filter((row: any) => {
+        const candidateText = [
+          row?.provider_display_name,
+          row?.display_name,
+          row?.provider_public_slug,
+          row?.public_slug,
+          row?.provider_profile_msme_id,
+          row?.msme_id,
+          row?.business_name,
+        ]
+          .filter((value) => typeof value === "string" && value.trim().length > 0)
+          .map((value: string) => value.toLowerCase())
+          .join(" ")
+          .replace(/\s+/g, " ");
+
+        return candidateText.includes(normalizedSearchTerm);
+      });
+
+  const cards = searchedRows.map(toCard).filter((provider): provider is ProviderCard => Boolean(provider));
+  const sorted = applySort(cards, filters.sort).slice(0, limit);
+
+  logMarketplaceSearchDebug({
+    raw_search_term: filters.q ?? "",
+    normalized_search_term: normalizedSearchTerm,
+    query_fields_used: queryFieldsUsed,
+    result_count: sorted.length,
+    first_three_matched_slugs: sorted.slice(0, 3).map((item) => item.public_slug),
+  });
+
+  return sorted;
 }
 
 async function getProvidersWithFallback(filters: SearchFilters = {}, limit = 24) {
