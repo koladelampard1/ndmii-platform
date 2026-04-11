@@ -31,10 +31,10 @@ function buildAdaptiveInsertPayload(
   rawPayload: Record<string, unknown>,
   requiredKeys: string[] = []
 ) {
-  if (columns.size === 0) {
-    return rawPayload;
-  }
-  const filteredPayload = filterPayloadByColumns(rawPayload, columns);
+  const filteredPayload =
+    columns.size > 0
+      ? filterPayloadByColumns(rawPayload, columns)
+      : Object.fromEntries(Object.entries(rawPayload).filter(([key]) => requiredKeys.includes(key)));
   for (const key of requiredKeys) {
     if (rawPayload[key] !== undefined) {
       filteredPayload[key] = rawPayload[key];
@@ -330,6 +330,10 @@ async function quoteWorkflowAction(formData: FormData) {
     }
 
     const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const invoiceColumnsList = Array.from(invoiceColumns).sort();
+    const quoteSummary = String(quote.request_summary ?? "").trim();
+    const quoteDetails = String(quote.request_details ?? "").trim();
+    const invoiceNotes = [quoteSummary, quoteDetails].filter(Boolean).join(" — ");
     const rawInvoicePayload = {
       provider_profile_id: workspace.provider.id,
       msme_id: selectedMsmeRef,
@@ -337,8 +341,8 @@ async function quoteWorkflowAction(formData: FormData) {
       customer_name: quote.requester_name,
       customer_email: quote.requester_email,
       customer_phone: quote.requester_phone,
-      description: quote.request_details,
-      notes: quote.request_summary,
+      title: quoteSummary || `Quote ${quote.id}`,
+      notes: invoiceNotes || null,
       currency: "NGN",
       vat_rate: 7.5,
       status: normalizeInvoiceStatus("draft"),
@@ -357,6 +361,7 @@ async function quoteWorkflowAction(formData: FormData) {
     devQuoteLog("convert:invoice_insert_attempt", {
       quoteId: quote.id,
       providerProfileId: workspace.provider.id,
+      availableInvoiceColumns: invoiceColumnsList,
       payload: invoicePayload,
       rawPayload: rawInvoicePayload,
       invoiceColumnsCount: invoiceColumns.size,
@@ -382,8 +387,8 @@ async function quoteWorkflowAction(formData: FormData) {
     const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
     const rawItemPayload = {
       invoice_id: invoice.id,
-      item_name: quote.request_summary,
-      description: `Auto-created from quote ${quote.id}`,
+      item_name: quoteSummary || `Quote ${quote.id}`,
+      description: quoteDetails || `Auto-created from quote ${quote.id}`,
       quantity: 1,
       unit_price: seededAmount,
       line_total: calculateLineTotal(1, seededAmount),
