@@ -137,6 +137,12 @@ const FALLBACK_REVIEWS: ProviderReview[] = [
 ];
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
+type CategoriesFailureCause =
+  | "missing_category_field"
+  | "null_values"
+  | "bad_aggregation_grouping"
+  | "unsupported_sorting_or_counting_logic"
+  | "unknown";
 
 export function slugifyCategory(category: string): string {
   return category
@@ -316,6 +322,15 @@ async function attachProviderProfileMetadata(rows: any[]) {
 function safeNumber(value: unknown, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function classifyCategoriesFailure(error: unknown): CategoriesFailureCause {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (message.includes("column") && message.includes("name")) return "missing_category_field";
+  if (message.includes("null")) return "null_values";
+  if (message.includes("group") || message.includes("aggregate")) return "bad_aggregation_grouping";
+  if (message.includes("order") || message.includes("sort") || message.includes("count")) return "unsupported_sorting_or_counting_logic";
+  return "unknown";
 }
 
 function calculateTrustScore(input: {
@@ -641,16 +656,57 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
   let categories: string[] = FALLBACK_CATEGORIES;
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true).order("name", { ascending: true });
+    const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true);
     if (error) throw error;
-    categories = (data ?? [])
-      .map((item: any) => (typeof item?.name === "string" ? item.name : ""))
-      .filter((name: string) => Boolean(name));
+
+    const counts = new Map<string, number>();
+    let skippedMissingField = 0;
+    let skippedNullOrInvalid = 0;
+
+    for (const row of data ?? []) {
+      if (!row || typeof row !== "object" || !("name" in row)) {
+        skippedMissingField += 1;
+        continue;
+      }
+      const rawName = (row as { name?: unknown }).name;
+      if (typeof rawName !== "string" || !rawName.trim()) {
+        skippedNullOrInvalid += 1;
+        continue;
+      }
+      const categoryName = rawName.trim();
+      counts.set(categoryName, (counts.get(categoryName) ?? 0) + 1);
+    }
+
+    try {
+      categories = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([name]) => name);
+    } catch (sortError) {
+      console.error("[homepage-marketplace] categories section failure", {
+        section: "categories",
+        cause: "unsupported_sorting_or_counting_logic" satisfies CategoriesFailureCause,
+        message: sortError instanceof Error ? sortError.message : String(sortError),
+        stack: sortError instanceof Error ? sortError.stack : null,
+        raw: sortError,
+      });
+      categories = [];
+    }
+
+    if (DEV_MODE && (skippedMissingField > 0 || skippedNullOrInvalid > 0)) {
+      console.info("[homepage-marketplace] categories section sanitization", {
+        section: "categories",
+        skippedMissingField,
+        skippedNullOrInvalid,
+      });
+    }
+
     if (!categories.length) {
       categories = FALLBACK_CATEGORIES;
     }
   } catch (error) {
     console.error("[homepage-marketplace] categories section failure", {
+      section: "categories",
+      cause: classifyCategoriesFailure(error),
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : null,
       raw: error,
