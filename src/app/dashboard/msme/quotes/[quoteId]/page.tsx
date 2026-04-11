@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { calculateLineTotal, generateInvoiceNumber } from "@/lib/data/invoicing";
 import {
@@ -18,6 +19,83 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
 function devQuoteLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[quote-workflow] ${message}`, payload);
+}
+
+function isUuidLike(value: string | null | undefined) {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+function buildAdaptiveInsertPayload(
+  columns: Set<string>,
+  rawPayload: Record<string, unknown>,
+  requiredKeys: string[] = []
+) {
+  if (columns.size === 0) {
+    return rawPayload;
+  }
+  const filteredPayload = filterPayloadByColumns(rawPayload, columns);
+  for (const key of requiredKeys) {
+    if (rawPayload[key] !== undefined) {
+      filteredPayload[key] = rawPayload[key];
+    }
+  }
+  return filteredPayload;
+}
+
+async function resolveInvoiceMsmeRef(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  params: {
+    workspaceMsmeId: string | null;
+    workspaceMsmePublicId: string | null;
+    providerProfileId: string;
+    providerMsmeId: string | null;
+    linkedMsmeId: string | null;
+  }
+) {
+  const { data: columnMeta } = await supabase
+    .from("information_schema.columns")
+    .select("data_type,udt_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "invoices")
+    .eq("column_name", "msme_id")
+    .maybeSingle();
+
+  const msmeIdDataType = String((columnMeta as { data_type?: string | null })?.data_type ?? "").toLowerCase();
+  const msmeIdUdt = String((columnMeta as { udt_name?: string | null })?.udt_name ?? "").toLowerCase();
+  const expectsUuid = msmeIdDataType.includes("uuid") || msmeIdUdt === "uuid";
+
+  const { data: providerRow, error: providerLookupError } = await supabase
+    .from("provider_profiles")
+    .select("id,msme_id")
+    .eq("id", params.providerProfileId)
+    .maybeSingle();
+
+  const providerDbMsmeId = providerRow?.msme_id ? String(providerRow.msme_id) : null;
+  const rawCandidates = [
+    params.workspaceMsmeId,
+    params.workspaceMsmePublicId,
+    params.providerMsmeId,
+    providerDbMsmeId,
+    params.linkedMsmeId,
+  ].filter((value): value is string => Boolean(value && String(value).trim().length > 0));
+  const uniqueCandidates = Array.from(new Set(rawCandidates.map((value) => value.trim())));
+
+  const selectedCandidate = expectsUuid
+    ? uniqueCandidates.find((value) => isUuidLike(value)) ?? null
+    : uniqueCandidates.find((value) => !isUuidLike(value)) ?? uniqueCandidates[0] ?? null;
+
+  devQuoteLog("convert:msme_ref_resolution", {
+    msmeIdColumnType: msmeIdDataType || null,
+    msmeIdColumnUdt: msmeIdUdt || null,
+    expectsUuid,
+    providerLookupError: providerLookupError?.message ?? null,
+    providerDbMsmeId,
+    candidates: uniqueCandidates,
+    selectedCandidate,
+  });
+
+  return { selectedMsmeRef: selectedCandidate, expectsUuid, msmeIdDataType, msmeIdUdt, providerDbMsmeId };
 }
 
 async function updateQuoteStatus(
@@ -200,6 +278,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "convert_invoice") {
+    const currentUserCtx = await getCurrentUserContext();
     const normalizedQuoteStatus = String(quote.status ?? "").toLowerCase();
     const canConvert = normalizedQuoteStatus === "accepted";
     devQuoteLog("convert:gate", {
@@ -212,43 +291,105 @@ async function quoteWorkflowAction(formData: FormData) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
-    const invoiceColumns = await getTableColumns(supabase, "invoices");
-    const invoicePayload = filterPayloadByColumns(
-      {
-        provider_profile_id: workspace.provider.id,
-        msme_id: workspace.msme.id,
-        invoice_number: generateInvoiceNumber(),
-        customer_name: quote.requester_name,
-        customer_email: quote.requester_email,
-        customer_phone: quote.requester_phone,
-        description: quote.request_details,
-        notes: quote.request_summary,
-        currency: "NGN",
-        vat_rate: 7.5,
-        status: normalizeInvoiceStatus("draft"),
-        updated_at: new Date().toISOString(),
-        quote_id: quote.id,
+    const { selectedMsmeRef, expectsUuid, msmeIdDataType, msmeIdUdt, providerDbMsmeId } = await resolveInvoiceMsmeRef(supabase, {
+      workspaceMsmeId: workspace.msme.id ?? null,
+      workspaceMsmePublicId: workspace.msme.msme_id ?? null,
+      providerProfileId: workspace.provider.id,
+      providerMsmeId: workspace.provider.msme_id ?? null,
+      linkedMsmeId: currentUserCtx.linkedMsmeId ?? null,
+    });
+
+    devQuoteLog("convert:context", {
+      quoteId: quote.id,
+      providerProfileId: workspace.provider.id,
+      providerMsmeId: workspace.provider.msme_id ?? null,
+      workspaceLinkedMsmeId: currentUserCtx.linkedMsmeId ?? null,
+      workspaceMsmeId: workspace.msme.id ?? null,
+      workspaceMsmePublicId: workspace.msme.msme_id ?? null,
+      quoteRow: {
+        id: quote.id,
+        status: quote.status,
+        requester_name: quote.requester_name,
+        requester_email: quote.requester_email,
+        requester_phone: quote.requester_phone,
+        request_summary: quote.request_summary,
+        budget_min: quote.budget_min,
+        budget_max: quote.budget_max,
       },
-      invoiceColumns
-    );
+      invoiceMsmeResolution: {
+        selectedMsmeRef,
+        expectsUuid,
+        msmeIdDataType,
+        msmeIdUdt,
+        providerDbMsmeId,
+      },
+    });
+
+    if (!selectedMsmeRef) {
+      throw new Error("Invoice creation from quote failed: unable to resolve non-null invoices.msme_id.");
+    }
+
+    const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const rawInvoicePayload = {
+      provider_profile_id: workspace.provider.id,
+      msme_id: selectedMsmeRef,
+      invoice_number: generateInvoiceNumber(),
+      customer_name: quote.requester_name,
+      customer_email: quote.requester_email,
+      customer_phone: quote.requester_phone,
+      description: quote.request_details,
+      notes: quote.request_summary,
+      currency: "NGN",
+      vat_rate: 7.5,
+      status: normalizeInvoiceStatus("draft"),
+      updated_at: new Date().toISOString(),
+      quote_id: quote.id,
+    };
+    const invoicePayload = buildAdaptiveInsertPayload(invoiceColumns, rawInvoicePayload, [
+      "provider_profile_id",
+      "msme_id",
+      "invoice_number",
+      "customer_name",
+      "currency",
+      "vat_rate",
+      "status",
+    ]);
+    devQuoteLog("convert:invoice_insert_attempt", {
+      quoteId: quote.id,
+      providerProfileId: workspace.provider.id,
+      payload: invoicePayload,
+      rawPayload: rawInvoicePayload,
+      invoiceColumnsCount: invoiceColumns.size,
+      hasMsmeId: "msme_id" in invoicePayload && Boolean(invoicePayload.msme_id),
+    });
 
     const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
+    devQuoteLog("convert:invoice_insert_result", {
+      quoteId: quote.id,
+      invoiceId: invoice?.id ?? null,
+      error: invoiceError
+        ? {
+            message: invoiceError.message,
+            code: invoiceError.code ?? null,
+            details: invoiceError.details ?? null,
+            hint: invoiceError.hint ?? null,
+          }
+        : null,
+    });
     if (invoiceError || !invoice) throw new Error(`Invoice creation from quote failed: ${invoiceError?.message ?? "unknown"}`);
 
     const itemColumns = await getTableColumns(supabase, "invoice_items");
     const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
-    const itemPayload = filterPayloadByColumns(
-      {
-        invoice_id: invoice.id,
-        item_name: quote.request_summary,
-        description: `Auto-created from quote ${quote.id}`,
-        quantity: 1,
-        unit_price: seededAmount,
-        line_total: calculateLineTotal(1, seededAmount),
-        vat_applicable: true,
-      },
-      itemColumns
-    );
+    const rawItemPayload = {
+      invoice_id: invoice.id,
+      item_name: quote.request_summary,
+      description: `Auto-created from quote ${quote.id}`,
+      quantity: 1,
+      unit_price: seededAmount,
+      line_total: calculateLineTotal(1, seededAmount),
+      vat_applicable: true,
+    };
+    const itemPayload = buildAdaptiveInsertPayload(itemColumns, rawItemPayload, ["invoice_id", "item_name", "quantity", "unit_price", "line_total", "vat_applicable"]);
     if (Object.keys(itemPayload).length > 0) {
       const { error: itemError } = await supabase.from("invoice_items").insert(itemPayload);
       if (itemError) throw new Error(`Invoice item creation from quote failed: ${itemError.message}`);
@@ -257,7 +398,17 @@ async function quoteWorkflowAction(formData: FormData) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     const canLinkQuoteInvoice = linkColumns.has("quote_id") && linkColumns.has("invoice_id");
     if (canLinkQuoteInvoice) {
-      await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
+      const { error: linkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
+      if (linkError) {
+        devQuoteLog("convert:quote_invoice_link_error", {
+          quoteId: quote.id,
+          invoiceId: invoice.id,
+          message: linkError.message,
+          code: linkError.code ?? null,
+          details: linkError.details ?? null,
+        });
+        throw new Error(`Invoice link creation from quote failed: ${linkError.message}`);
+      }
     } else {
       await logActivityEvent(supabase, {
         action: "quote_invoice_link_fallback",
@@ -306,7 +457,9 @@ export default async function MsmeQuoteDetailPage({
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
-  const [{ data: quote, error: quoteError }, { data: links, error: linkError }] = await Promise.all([
+  const invoiceColumns = await getTableColumns(supabase, "invoices");
+  const canQueryInvoiceQuoteId = invoiceColumns.has("quote_id");
+  const [{ data: quote, error: quoteError }, { data: links, error: linkError }, { data: linkedByQuoteId, error: quoteIdLinkError }] = await Promise.all([
     supabase
       .from("provider_quotes")
       .select("id,requester_name,requester_email,requester_phone,request_summary,request_details,budget_min,budget_max,status,created_at")
@@ -314,16 +467,39 @@ export default async function MsmeQuoteDetailPage({
       .eq("provider_profile_id", workspace.provider.id)
       .maybeSingle(),
     supabase.from("quote_invoice_links").select("invoice_id,created_at").eq("quote_id", quoteId).order("created_at", { ascending: false }),
+    canQueryInvoiceQuoteId
+      ? supabase
+          .from("invoices")
+          .select("id,created_at")
+          .eq("quote_id", quoteId)
+          .eq("provider_profile_id", workspace.provider.id)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (quoteError) throw new Error(quoteError.message);
   if (linkError) {
     console.info("[quote-invoice-links:fallback]", linkError.message);
   }
+  if (quoteIdLinkError) {
+    console.info("[quote-invoice-links:quote-id-fallback-error]", quoteIdLinkError.message);
+  }
   if (!quote) redirect("/dashboard/msme/quotes");
 
+  const linkRows = (links ?? []).map((link: { invoice_id: string; created_at: string }) => ({
+    invoice_id: link.invoice_id,
+    created_at: link.created_at,
+  }));
+  const quoteIdRows = (linkedByQuoteId ?? []).map((invoice: { id: string; created_at: string }) => ({
+    invoice_id: invoice.id,
+    created_at: invoice.created_at,
+  }));
+  const linkedInvoices = Array.from(
+    new Map([...linkRows, ...quoteIdRows].map((row) => [row.invoice_id, row])).values()
+  ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
   const normalizedStatus = String(quote.status ?? "").toLowerCase();
-  const linkedInvoiceCount = (links ?? []).length;
+  const linkedInvoiceCount = linkedInvoices.length;
   const isConverted = normalizedStatus === "converted";
   const isAccepted = normalizedStatus === "accepted";
   const isDeclined = normalizedStatus === "declined";
@@ -414,8 +590,8 @@ export default async function MsmeQuoteDetailPage({
       <article className="rounded-xl border bg-white p-4">
         <h3 className="font-semibold">Linked invoices</h3>
         <div className="mt-3 space-y-2">
-          {(links ?? []).length === 0 && <p className="text-sm text-slate-500">No invoices linked yet.</p>}
-          {(links ?? []).map((link: { invoice_id: string; created_at: string }) => (
+          {linkedInvoices.length === 0 && <p className="text-sm text-slate-500">No invoices linked yet.</p>}
+          {linkedInvoices.map((link: { invoice_id: string; created_at: string }) => (
             <p key={`${link.invoice_id}-${link.created_at}`} className="text-sm">
               <Link className="text-indigo-700 hover:underline" href={`/dashboard/msme/invoices/${link.invoice_id}`}>
                 Invoice {link.invoice_id}
