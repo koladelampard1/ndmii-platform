@@ -16,7 +16,8 @@ async function updateQuoteStatus(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   quoteId: string,
   providerId: string,
-  nextStatus: "in_review" | "quoted" | "declined" | "converted",
+  previousStatus: string,
+  nextStatus: "in_review" | "accepted" | "declined" | "converted",
   lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at"
 ) {
   const nowIso = new Date().toISOString();
@@ -30,7 +31,32 @@ async function updateQuoteStatus(
     columns
   );
 
-  const { error } = await supabase.from("provider_quotes").update(payload).eq("id", quoteId).eq("provider_profile_id", providerId);
+  console.info("[quote-workflow:update:attempt]", {
+    table: "provider_quotes",
+    quoteId,
+    providerId,
+    previousStatus,
+    nextStatus,
+    lifecycleColumn: lifecycleColumn ?? null,
+    updatePayload: payload,
+  });
+
+  const { data: updatedQuote, error } = await supabase
+    .from("provider_quotes")
+    .update(payload)
+    .eq("id", quoteId)
+    .eq("provider_profile_id", providerId)
+    .select("id,status,accepted_at,reviewed_at,declined_at,updated_at")
+    .maybeSingle();
+
+  console.info("[quote-workflow:update:result]", {
+    quoteId,
+    providerId,
+    previousStatus,
+    nextStatus,
+    returnedRow: updatedQuote ?? null,
+  });
+
   if (error) throw new Error(`Quote status update failed: ${error.message}`);
 }
 
@@ -45,7 +71,7 @@ async function quoteWorkflowAction(formData: FormData) {
 
   const { data: quote, error: quoteLoadError } = await supabase
     .from("provider_quotes")
-    .select("id,status,provider_profile_id,request_summary,requester_name,requester_email,requester_phone,budget_min,budget_max")
+    .select("id,status,provider_profile_id,request_summary,request_details,requester_name,requester_email,requester_phone,budget_min,budget_max")
     .eq("id", quoteId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
@@ -53,7 +79,7 @@ async function quoteWorkflowAction(formData: FormData) {
   if (quoteLoadError || !quote) throw new Error("Quote not found for this provider.");
 
   if (action === "mark_reviewed") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "in_review", "reviewed_at");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "in_review", "reviewed_at");
     await logActivityEvent(supabase, {
       action: "quote_reviewed",
       entityType: "provider_quote",
@@ -67,7 +93,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "accept") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "quoted", "accepted_at");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "accepted", "accepted_at");
     await logActivityEvent(supabase, {
       action: "quote_accepted",
       entityType: "provider_quote",
@@ -81,7 +107,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "decline") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "declined", "declined_at");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "declined", "declined_at");
     await logActivityEvent(supabase, {
       action: "quote_declined",
       entityType: "provider_quote",
@@ -95,7 +121,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "convert_invoice") {
-    if (quote.status !== "quoted") {
+    if (!["accepted", "quoted"].includes(String(quote.status ?? "").toLowerCase())) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
@@ -108,6 +134,8 @@ async function quoteWorkflowAction(formData: FormData) {
         customer_name: quote.requester_name,
         customer_email: quote.requester_email,
         customer_phone: quote.requester_phone,
+        description: quote.request_details,
+        notes: quote.request_summary,
         currency: "NGN",
         vat_rate: 7.5,
         status: normalizeInvoiceStatus("draft"),
@@ -153,7 +181,7 @@ async function quoteWorkflowAction(formData: FormData) {
       });
     }
 
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, "converted");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "converted");
 
     await logInvoiceEvent(supabase, {
       invoiceId: invoice.id,
@@ -210,7 +238,7 @@ export default async function MsmeQuoteDetailPage({
   const normalizedStatus = String(quote.status ?? "").toLowerCase();
   const linkedInvoiceCount = (links ?? []).length;
   const isConverted = normalizedStatus === "converted";
-  const isAccepted = normalizedStatus === "quoted" || normalizedStatus === "accepted";
+  const isAccepted = normalizedStatus === "accepted";
   const isDeclined = normalizedStatus === "declined";
   const isPendingReview = ["new", "submitted", "pending_reviewed", "in_review"].includes(normalizedStatus);
   const uiBranch = isConverted ? "converted" : isAccepted ? "accepted" : isDeclined ? "declined" : isPendingReview ? "pending" : "other";

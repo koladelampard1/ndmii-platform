@@ -90,7 +90,7 @@ export default async function NewMsmeInvoicePage() {
     .from("provider_quotes")
     .select("id,requester_name,request_summary,status")
     .eq("provider_profile_id", workspace.provider.id)
-    .in("status", ["new", "in_review", "quoted"])
+    .in("status", ["new", "in_review", "accepted", "quoted"])
     .order("created_at", { ascending: false })
     .limit(20);
 

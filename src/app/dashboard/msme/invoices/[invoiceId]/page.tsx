@@ -180,6 +180,24 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
 
   if (itemError) throw new Error(itemError.message);
 
+  const publicInvoiceUrl = `/invoice/${invoice.id}`;
+  const publicInvoiceAbsoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${publicInvoiceUrl}`;
+  const emailSubject = encodeURIComponent(`Invoice ${invoice.invoice_number} from ${workspace.provider.display_name}`);
+  const emailBody = encodeURIComponent(
+    [
+      `Hello ${invoice.customer_name},`,
+      "",
+      `Your invoice ${invoice.invoice_number} is ready.`,
+      `View invoice: ${publicInvoiceAbsoluteUrl}`,
+      `Amount due: ${formatNaira(invoice.total_amount)}`,
+    ].join("\n")
+  );
+  const phoneDigits = String(invoice.customer_phone ?? "").replace(/\D/g, "");
+  const whatsappBody = encodeURIComponent(
+    `Hello ${invoice.customer_name}, your invoice ${invoice.invoice_number} is ready: ${publicInvoiceAbsoluteUrl}`
+  );
+  const whatsappHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${whatsappBody}` : null;
+
   return (
     <section className="space-y-4">
       <header className="rounded-xl border bg-white p-4">
@@ -191,7 +209,7 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
           </div>
           <span className={`rounded-full px-3 py-1 text-xs uppercase ${invoiceStatusClasses(String(invoice.status ?? "draft"))}`}>{invoice.status}</span>
         </div>
-        <p className="mt-2 text-sm text-slate-500">Public link: <Link className="text-indigo-700 hover:underline" href={`/invoice/${invoice.id}`}>/invoice/{invoice.id}</Link></p>
+        <p className="mt-2 text-sm text-slate-500">Public link: <Link className="text-indigo-700 hover:underline" href={publicInvoiceUrl}>{publicInvoiceUrl}</Link></p>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -260,6 +278,30 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
             <input type="hidden" name="invoice_id" value={invoice.id} />
             <button className="w-full rounded border border-red-300 px-3 py-2 text-sm text-red-700">Cancel invoice</button>
           </form>
+
+          <div className="space-y-2 rounded border border-slate-200 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Send invoice</p>
+            <a
+              href={invoice.customer_email ? `mailto:${invoice.customer_email}?subject=${emailSubject}&body=${emailBody}` : "#"}
+              className={`block w-full rounded px-3 py-2 text-center text-sm ${
+                invoice.customer_email ? "bg-indigo-900 text-white" : "cursor-not-allowed bg-slate-100 text-slate-400"
+              }`}
+              aria-disabled={!invoice.customer_email}
+            >
+              Send via email
+            </a>
+            <a
+              href={whatsappHref ?? "#"}
+              target={whatsappHref ? "_blank" : undefined}
+              rel={whatsappHref ? "noreferrer" : undefined}
+              className={`block w-full rounded px-3 py-2 text-center text-sm ${
+                whatsappHref ? "bg-emerald-700 text-white" : "cursor-not-allowed bg-slate-100 text-slate-400"
+              }`}
+              aria-disabled={!whatsappHref}
+            >
+              Send via WhatsApp
+            </a>
+          </div>
         </aside>
       </div>
     </section>
