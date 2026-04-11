@@ -43,6 +43,29 @@ function buildAdaptiveInsertPayload(
   return filteredPayload;
 }
 
+
+async function getFreshTableColumns(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  tableName: string
+) {
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", tableName);
+
+  if (error) {
+    devQuoteLog("schema:fresh_lookup_error", {
+      tableName,
+      message: error.message,
+      code: error.code ?? null,
+      details: error.details ?? null,
+    });
+    return getTableColumns(supabase, tableName);
+  }
+
+  return new Set((data ?? []).map((row) => String(row.column_name)));
+}
 async function resolveInvoiceMsmeRef(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   params: {
@@ -329,8 +352,8 @@ async function quoteWorkflowAction(formData: FormData) {
       throw new Error("Invoice creation from quote failed: unable to resolve non-null invoices.msme_id.");
     }
 
-    const invoiceColumns = await getTableColumns(supabase, "invoices");
-    const invoiceColumnsList = Array.from(invoiceColumns).sort();
+    const availableInvoicesColumnsSet = await getFreshTableColumns(supabase, "invoices");
+    const availableInvoicesColumns = Array.from(availableInvoicesColumnsSet).sort();
     const quoteSummary = String(quote.request_summary ?? "").trim();
     const quoteDetails = String(quote.request_details ?? "").trim();
     const invoiceNotes = [quoteSummary, quoteDetails].filter(Boolean).join(" — ");
@@ -349,7 +372,7 @@ async function quoteWorkflowAction(formData: FormData) {
       updated_at: new Date().toISOString(),
       quote_id: quote.id,
     };
-    const invoicePayload = buildAdaptiveInsertPayload(invoiceColumns, rawInvoicePayload, [
+    const finalInvoiceInsertPayload = buildAdaptiveInsertPayload(availableInvoicesColumnsSet, rawInvoicePayload, [
       "provider_profile_id",
       "msme_id",
       "invoice_number",
@@ -358,35 +381,44 @@ async function quoteWorkflowAction(formData: FormData) {
       "vat_rate",
       "status",
     ]);
+    if (!availableInvoicesColumnsSet.has("description") && "description" in finalInvoiceInsertPayload) {
+      delete finalInvoiceInsertPayload.description;
+    }
+
     devQuoteLog("convert:invoice_insert_attempt", {
       quoteId: quote.id,
       providerProfileId: workspace.provider.id,
-      availableInvoiceColumns: invoiceColumnsList,
-      payload: invoicePayload,
-      rawPayload: rawInvoicePayload,
-      invoiceColumnsCount: invoiceColumns.size,
-      hasMsmeId: "msme_id" in invoicePayload && Boolean(invoicePayload.msme_id),
+      availableInvoicesColumns,
+      finalInvoiceInsertPayload,
+      rawInvoicePayload,
+      invoiceColumnsCount: availableInvoicesColumnsSet.size,
+      hasMsmeId: "msme_id" in finalInvoiceInsertPayload && Boolean(finalInvoiceInsertPayload.msme_id),
     });
 
-    const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
+    const { data: invoiceInsertData, error: invoiceInsertError } = await supabase
+      .from("invoices")
+      .insert(finalInvoiceInsertPayload)
+      .select("id")
+      .single();
+
     devQuoteLog("convert:invoice_insert_result", {
       quoteId: quote.id,
-      invoiceId: invoice?.id ?? null,
-      error: invoiceError
+      invoiceInsertError: invoiceInsertError
         ? {
-            message: invoiceError.message,
-            code: invoiceError.code ?? null,
-            details: invoiceError.details ?? null,
-            hint: invoiceError.hint ?? null,
+            message: invoiceInsertError.message,
+            code: invoiceInsertError.code ?? null,
+            details: invoiceInsertError.details ?? null,
+            hint: invoiceInsertError.hint ?? null,
           }
         : null,
+      invoiceInsertData,
     });
-    if (invoiceError || !invoice) throw new Error(`Invoice creation from quote failed: ${invoiceError?.message ?? "unknown"}`);
+    if (invoiceInsertError || !invoiceInsertData) throw new Error(`Invoice creation from quote failed: ${invoiceInsertError?.message ?? "unknown"}`);
 
     const itemColumns = await getTableColumns(supabase, "invoice_items");
     const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
     const rawItemPayload = {
-      invoice_id: invoice.id,
+      invoice_id: invoiceInsertData.id,
       item_name: quoteSummary || `Quote ${quote.id}`,
       description: quoteDetails || `Auto-created from quote ${quote.id}`,
       quantity: 1,
@@ -403,11 +435,11 @@ async function quoteWorkflowAction(formData: FormData) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     const canLinkQuoteInvoice = linkColumns.has("quote_id") && linkColumns.has("invoice_id");
     if (canLinkQuoteInvoice) {
-      const { error: linkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
+      const { error: linkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoiceInsertData.id });
       if (linkError) {
         devQuoteLog("convert:quote_invoice_link_error", {
           quoteId: quote.id,
-          invoiceId: invoice.id,
+          invoiceId: invoiceInsertData.id,
           message: linkError.message,
           code: linkError.code ?? null,
           details: linkError.details ?? null,
@@ -418,7 +450,7 @@ async function quoteWorkflowAction(formData: FormData) {
       await logActivityEvent(supabase, {
         action: "quote_invoice_link_fallback",
         entityType: "invoice",
-        entityId: invoice.id,
+        entityId: invoiceInsertData.id,
         actorUserId: workspace.appUserId,
         metadata: { quote_id: quote.id, link_mode: "metadata_only" },
       });
@@ -427,7 +459,7 @@ async function quoteWorkflowAction(formData: FormData) {
     await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "converted");
 
     await logInvoiceEvent(supabase, {
-      invoiceId: invoice.id,
+      invoiceId: invoiceInsertData.id,
       eventType: "invoice_created",
       actorRole: workspace.role,
       actorId: workspace.msme.id,
@@ -437,7 +469,7 @@ async function quoteWorkflowAction(formData: FormData) {
     await logActivityEvent(supabase, {
       action: "invoice_created_from_quote",
       entityType: "invoice",
-      entityId: invoice.id,
+      entityId: invoiceInsertData.id,
       actorUserId: workspace.appUserId,
       metadata: { quote_id: quote.id, provider_profile_id: workspace.provider.id },
     });
@@ -445,7 +477,7 @@ async function quoteWorkflowAction(formData: FormData) {
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     revalidatePath("/dashboard/msme/invoices");
-    redirect(`/dashboard/msme/invoices/${invoice.id}`);
+    redirect(`/dashboard/msme/invoices/${invoiceInsertData.id}`);
   }
 }
 
