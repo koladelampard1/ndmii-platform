@@ -814,7 +814,16 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
     const supabase = await createServiceRoleSupabaseClient();
     const possibleCategoryFields = ["name", "category_name", "title", "label"];
     const { data, error } = await supabase.from("service_categories").select("*").eq("is_active", true).limit(200);
-    if (error) throw error;
+    if (error) {
+      if (DEV_MODE) {
+        console.warn("[homepage-marketplace] categories query failed", {
+          section: "categories",
+          cause: classifyCategoriesFailure(error),
+          message: error.message,
+        });
+      }
+      categories = [];
+    }
 
     const counts = new Map<string, number>();
     let skippedMissingField = 0;
@@ -868,9 +877,16 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
         .limit(200);
 
       if (providerRowsError) {
-        throw providerRowsError;
+        if (DEV_MODE) {
+          console.warn("[homepage-marketplace] categories fallback query failed", {
+            section: "categories",
+            cause: classifyCategoriesFailure(providerRowsError),
+            message: providerRowsError.message,
+          });
+        }
+      } else {
+        categories = [...new Set((providerRows ?? []).map((row: any) => row?.category_name).filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0))];
       }
-      categories = [...new Set((providerRows ?? []).map((row: any) => row?.category_name).filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0))];
     }
 
     if (!categories.length) {
@@ -885,13 +901,14 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
       first_result_sample: categories[0] ?? null,
     });
   } catch (error) {
-    console.error("[homepage-marketplace] categories section failure", {
-      section: "categories",
-      cause: classifyCategoriesFailure(error),
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : null,
-      raw: error,
-    });
+    if (DEV_MODE) {
+      console.warn("[homepage-marketplace] categories section failure", {
+        section: "categories",
+        cause: classifyCategoriesFailure(error),
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null,
+      });
+    }
     categories = FALLBACK_CATEGORIES;
   }
 
