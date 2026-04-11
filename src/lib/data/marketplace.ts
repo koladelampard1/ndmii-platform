@@ -99,13 +99,6 @@ export type MarketplaceLandingData = {
 
 type HomepageSectionKey = "top-rated" | "featured" | "recently-trusted";
 
-type HomepageProviderProfileRow = {
-  id: string | null;
-  msme_id: string | null;
-  public_slug: string | null;
-  display_name: string | null;
-};
-
 type UsableHomepageProviderProfileRow = {
   id: string;
   msme_id: string;
@@ -227,8 +220,9 @@ function logHomepageSectionDebug(payload: {
   select_fields: string[];
   filters: Record<string, unknown>;
   rows_returned: number;
-  discarded_rows: Array<{ reason: string; row: Partial<HomepageProviderProfileRow> }>;
+  mapped_rows_count: number;
   first_three_mapped_rows: Array<Pick<ProviderCard, "id" | "msme_id" | "public_slug" | "business_name">>;
+  error: string | null;
 }) {
   if (!DEV_MODE) return;
   console.info("[homepage-marketplace]", payload);
@@ -471,112 +465,110 @@ async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
   }
 }
 
-async function queryHomepageSectionProviders(section: HomepageSectionKey, limit = 6): Promise<ProviderCard[]> {
+async function fetchHomepageProviderProfiles(orderBy: "display_name" | "created_at" | "updated_at"): Promise<UsableHomepageProviderProfileRow[]> {
   const supabase = await createServiceRoleSupabaseClient();
   const selectFields = ["id", "msme_id", "public_slug", "display_name"];
-  const baseFilters = {
-    public_slug: "not null",
-    msme_id: "not null",
+
+  try {
+    const { data, error } = await supabase
+      .from("provider_profiles")
+      .select(selectFields.join(","))
+      .not("public_slug", "is", null)
+      .not("msme_id", "is", null)
+      .order(orderBy, { ascending: orderBy === "display_name" })
+      .limit(18);
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as any[];
+    return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
+  } catch {
+    if (orderBy === "display_name") throw new Error("display_name query failed");
+
+    const { data, error } = await supabase
+      .from("provider_profiles")
+      .select(selectFields.join(","))
+      .not("public_slug", "is", null)
+      .not("msme_id", "is", null)
+      .order("display_name", { ascending: true })
+      .limit(18);
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as any[];
+    return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
+  }
+}
+
+function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): ProviderCard {
+  const metrics = seededMetrics(row.msme_id);
+  return {
+    id: row.id,
+    msme_id: row.msme_id,
+    public_slug: row.public_slug,
+    display_name: row.display_name,
+    ndmii_id: null,
+    business_name: row.display_name ?? `MSME ${row.msme_id}`,
+    logo_url: null,
+    category: "Professional Services",
+    specialization: null,
+    state: "Nigeria",
+    lga: null,
+    short_description: "Verified NDMII provider listed in the national marketplace directory.",
+    verification_status: "verified",
+    trust_score: metrics.trust_score,
+    avg_rating: metrics.avg_rating,
+    review_count: metrics.review_count,
+    is_featured: false,
   };
+}
 
-  const { data, error } = await supabase
-    .from("provider_profiles")
-    .select(selectFields.join(","))
-    .not("public_slug", "is", null)
-    .not("msme_id", "is", null)
-    .order("id", { ascending: false })
-    .limit(Math.max(limit * 3, 18));
+async function queryHomepageSectionProviders(section: HomepageSectionKey, limit = 6): Promise<ProviderCard[]> {
+  const orderBy = section === "top-rated" ? "display_name" : section === "featured" ? "created_at" : "updated_at";
+  const startIndex = section === "top-rated" ? 0 : section === "featured" ? 6 : 12;
 
-  if (error) throw error;
+  try {
+    const rawRows = await fetchHomepageProviderProfiles(orderBy);
+    const mappedRows = rawRows.map(mapHomepageProviderProfile);
+    const finalRows = mappedRows.slice(startIndex, startIndex + limit);
 
-  const rows = (data ?? []) as any[];
-  const discardedRows: Array<{ reason: string; row: Partial<HomepageProviderProfileRow> }> = [];
+    logHomepageSectionDebug({
+      section,
+      query: "provider_profiles",
+      select_fields: ["id", "msme_id", "public_slug", "display_name"],
+      filters: { order_by: orderBy, fallback_order_by: "display_name", limit },
+      rows_returned: rawRows.length,
+      mapped_rows_count: mappedRows.length,
+      first_three_mapped_rows: finalRows.slice(0, 3).map((item) => ({
+        id: item.id,
+        msme_id: item.msme_id,
+        public_slug: item.public_slug,
+        business_name: item.business_name,
+      })),
+      error: null,
+    });
 
-  const usableProfiles = rows.filter((row): row is UsableHomepageProviderProfileRow => {
-    if (!row.id) {
-      discardedRows.push({ reason: "missing id", row: { id: row.id, msme_id: row.msme_id, public_slug: row.public_slug } });
-      return false;
-    }
-    if (!row.msme_id) {
-      discardedRows.push({ reason: "missing msme_id", row: { id: row.id, msme_id: row.msme_id, public_slug: row.public_slug } });
-      return false;
-    }
-    if (!row.public_slug) {
-      discardedRows.push({ reason: "missing public_slug", row: { id: row.id, msme_id: row.msme_id, public_slug: row.public_slug } });
-      return false;
-    }
-    return true;
-  });
-
-  const msmeIds = [...new Set(usableProfiles.map((row) => row.msme_id))];
-  const { data: msmeRows } = msmeIds.length
-    ? await supabase
-        .from("msmes")
-        .select("msme_id,business_name,state,lga,sector,verification_status,passport_photo_url")
-        .in("msme_id", msmeIds)
-    : { data: [] as any[] };
-
-  const msmeByMsmeId = new Map((msmeRows ?? []).map((row: any) => [row.msme_id as string, row]));
-
-  const mapped = usableProfiles.map((row) => {
-    const msme = msmeByMsmeId.get(row.msme_id);
-    const metrics = seededMetrics(row.msme_id);
-    const featuredSeed = scoreFromString(row.msme_id) % 3 === 0;
-    return {
-      id: row.id,
-      msme_id: row.msme_id,
-      public_slug: row.public_slug,
-      display_name: row.display_name,
-      ndmii_id: null,
-      business_name: row.display_name ?? msme?.business_name ?? `MSME ${row.msme_id}`,
-      logo_url: msme?.passport_photo_url ?? null,
-      category: msme?.sector ? categoryFromSector(msme.sector) : "Professional Services",
-      specialization: msme?.sector ? specializationFromSector(msme.sector) : "Specialized MSME business services",
-      state: msme?.state ?? "Nigeria",
-      lga: msme?.lga ?? null,
-      short_description: `Verified NDMII provider listed in the national marketplace directory.`,
-      verification_status: msme?.verification_status ?? "verified",
-      trust_score: metrics.trust_score,
-      avg_rating: metrics.avg_rating,
-      review_count: metrics.review_count,
-      is_featured: featuredSeed,
-    } as ProviderCard;
-  });
-
-  const ranked = (() => {
-    if (section === "top-rated") {
-      return [...mapped].sort((a, b) => b.avg_rating - a.avg_rating || b.review_count - a.review_count || b.trust_score - a.trust_score);
-    }
-    if (section === "featured") {
-      return [...mapped].sort((a, b) => Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)) || b.trust_score - a.trust_score);
-    }
-    return [...mapped].sort((a, b) => b.id.localeCompare(a.id));
-  })();
-
-  const finalRows = ranked.slice(0, limit);
-  logHomepageSectionDebug({
-    section,
-    query: "provider_profiles",
-    select_fields: selectFields,
-    filters: baseFilters,
-    rows_returned: rows.length,
-    discarded_rows: discardedRows,
-    first_three_mapped_rows: finalRows.slice(0, 3).map((item) => ({
-      id: item.id,
-      msme_id: item.msme_id,
-      public_slug: item.public_slug,
-      business_name: item.business_name,
-    })),
-  });
-
-  return finalRows;
+    return finalRows;
+  } catch (error) {
+    logHomepageSectionDebug({
+      section,
+      query: "provider_profiles",
+      select_fields: ["id", "msme_id", "public_slug", "display_name"],
+      filters: { order_by: orderBy, fallback_order_by: "display_name", limit },
+      rows_returned: 0,
+      mapped_rows_count: 0,
+      first_three_mapped_rows: [],
+      error: error instanceof Error ? error.message : "Unknown homepage query error",
+    });
+    return [];
+  }
 }
 
 export async function getMarketplaceLandingData(): Promise<MarketplaceLandingData> {
   try {
-    const [topRated, featured, recentlyTrusted, categoriesRaw] = await Promise.all([
+    const [topRatedRaw, featuredRaw, recentlyTrustedRaw, categoriesRaw] = await Promise.all([
       queryHomepageSectionProviders("top-rated", 6),
-      queryHomepageSectionProviders("featured", 12),
+      queryHomepageSectionProviders("featured", 6),
       queryHomepageSectionProviders("recently-trusted", 6),
       (async () => {
         const supabase = await createServiceRoleSupabaseClient();
@@ -586,18 +578,27 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
       })(),
     ]);
 
+    const combinedUnique = [...topRatedRaw, ...featuredRaw, ...recentlyTrustedRaw].filter(
+      (provider, index, arr) => arr.findIndex((candidate) => candidate.id === provider.id) === index,
+    );
+
+    const fillSection = (section: ProviderCard[]) => {
+      if (section.length > 0) return section;
+      return combinedUnique.slice(0, 6);
+    };
+
     return {
-      topRated: topRated.slice(0, 3),
-      featured: featured.slice(0, 6),
-      recentlyTrusted: recentlyTrusted.slice(0, 3),
+      topRated: fillSection(topRatedRaw),
+      featured: fillSection(featuredRaw),
+      recentlyTrusted: fillSection(recentlyTrustedRaw),
       categories: (categoriesRaw as Array<{ name: string }>).map((c) => c.name),
     };
   } catch {
-    const seeded = await getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 6);
+    const seeded = await getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 18);
     return {
-      topRated: seeded.slice(0, 3),
-      featured: seeded.slice(0, 6),
-      recentlyTrusted: seeded.slice(0, 3),
+      topRated: seeded.slice(0, 6),
+      featured: seeded.slice(6, 12).length ? seeded.slice(6, 12) : seeded.slice(0, 6),
+      recentlyTrusted: seeded.slice(12, 18).length ? seeded.slice(12, 18) : seeded.slice(0, 6),
       categories: FALLBACK_CATEGORIES,
     };
   }
