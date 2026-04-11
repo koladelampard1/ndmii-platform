@@ -5,11 +5,12 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 const STATUS_OPTIONS = ["new", "in_review", "accepted", "converted", "closed", "declined"] as const;
 
 function statusClasses(status: string) {
-  if (status === "new") return "bg-blue-100 text-blue-700";
-  if (status === "in_review") return "bg-amber-100 text-amber-700";
-  if (status === "accepted" || status === "quoted") return "bg-emerald-100 text-emerald-700";
-  if (status === "converted") return "bg-violet-100 text-violet-700";
-  if (status === "declined") return "bg-rose-100 text-rose-700";
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === "new") return "bg-blue-100 text-blue-700";
+  if (normalizedStatus === "in_review") return "bg-amber-100 text-amber-700";
+  if (normalizedStatus === "accepted") return "bg-emerald-100 text-emerald-700";
+  if (normalizedStatus === "converted") return "bg-violet-100 text-violet-700";
+  if (normalizedStatus === "declined") return "bg-rose-100 text-rose-700";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -73,8 +74,10 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
                 </td>
               </tr>
             )}
-            {(quotes ?? []).map((quote) => (
-              <tr key={quote.id} className="border-t">
+            {(quotes ?? []).map((quote) => {
+              const normalizedStatus = String(quote.status ?? "").toLowerCase();
+              return (
+                <tr key={quote.id} className="border-t">
                 <td className="px-3 py-3">
                   <p className="font-medium">{quote.requester_name}</p>
                   <p className="text-xs text-slate-500">{quote.requester_email ?? quote.requester_phone ?? "No contact"}</p>
@@ -87,15 +90,16 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
                   ₦{Number(quote.budget_min ?? 0).toLocaleString()} - ₦{Number(quote.budget_max ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-3">
-                  <span className={`rounded-full px-2 py-1 text-xs uppercase ${statusClasses(quote.status)}`}>{quote.status}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs uppercase ${statusClasses(normalizedStatus)}`}>{normalizedStatus}</span>
                 </td>
                 <td className="px-3 py-3">
                   <Link href={`/dashboard/msme/quotes/${quote.id}`} className="text-indigo-700 hover:underline">
                     Open workflow
                   </Link>
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
