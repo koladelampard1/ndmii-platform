@@ -66,6 +66,21 @@ async function getFreshTableColumns(
 
   return new Set((data ?? []).map((row) => String(row.column_name)));
 }
+
+function buildProviderQuoteOwnershipFilters(
+  columns: Set<string>,
+  providerProfileId: string,
+  providerMsmeId: string | null | undefined
+) {
+  const filters: string[] = [];
+  if (columns.has("provider_profile_id")) {
+    filters.push(`provider_profile_id.eq.${providerProfileId}`);
+  }
+  if (columns.has("provider_id") && providerMsmeId) {
+    filters.push(`provider_id.eq.${providerMsmeId}`);
+  }
+  return filters;
+}
 async function resolveInvoiceMsmeRef(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   params: {
@@ -153,6 +168,7 @@ async function updateQuoteStatus(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   quoteId: string,
   providerId: string,
+  providerMsmeId: string | null,
   previousStatus: string,
   nextStatus: "in_review" | "accepted" | "declined" | "converted",
   lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at"
@@ -184,11 +200,11 @@ async function updateQuoteStatus(
     updatePayload: payload,
   });
 
-  const updateQuery = supabase
-    .from("provider_quotes")
-    .update(payload)
-    .eq("id", quoteId)
-    .eq("provider_profile_id", providerId);
+  const ownershipFilters = buildProviderQuoteOwnershipFilters(columns, providerId, providerMsmeId);
+  let updateQuery = supabase.from("provider_quotes").update(payload).eq("id", quoteId);
+  if (ownershipFilters.length > 0) {
+    updateQuery = updateQuery.or(ownershipFilters.join(","));
+  }
 
   const { data: updatedQuote, error } = updateSelect.length
     ? await updateQuery.select(updateSelect.join(",")).maybeSingle()
@@ -209,12 +225,11 @@ async function updateQuoteStatus(
   }
 
   const readBackSelect = updateSelect.length ? updateSelect.join(",") : "id,status";
-  const { data: readBackRow, error: readBackError } = await supabase
-    .from("provider_quotes")
-    .select(readBackSelect)
-    .eq("id", quoteId)
-    .eq("provider_profile_id", providerId)
-    .maybeSingle();
+  let readBackQuery = supabase.from("provider_quotes").select(readBackSelect).eq("id", quoteId);
+  if (ownershipFilters.length > 0) {
+    readBackQuery = readBackQuery.or(ownershipFilters.join(","));
+  }
+  const { data: readBackRow, error: readBackError } = await readBackQuery.maybeSingle();
 
   if (readBackError) {
     devQuoteLog("update:readback_error", {
@@ -272,17 +287,47 @@ async function quoteWorkflowAction(formData: FormData) {
   const quoteId = String(formData.get("quote_id") ?? "");
   const action = String(formData.get("action") ?? "");
 
-  const { data: quote, error: quoteLoadError } = await supabase
-    .from("provider_quotes")
-    .select("id,status,provider_profile_id,msme_id,request_summary,request_details,requester_name,requester_email,requester_phone,budget_min,budget_max")
-    .eq("id", quoteId)
-    .eq("provider_profile_id", workspace.provider.id)
-    .maybeSingle();
+  const quoteColumns = await getTableColumns(supabase, "provider_quotes");
+  const quoteSelectFields = [
+    "id",
+    "status",
+    "provider_profile_id",
+    "msme_id",
+    "request_summary",
+    "request_details",
+    "requester_name",
+    "requester_email",
+    "requester_phone",
+    "budget_min",
+    "budget_max",
+    ...(quoteColumns.has("provider_id") ? ["provider_id"] : []),
+  ];
+  const ownershipFilters = buildProviderQuoteOwnershipFilters(quoteColumns, workspace.provider.id, workspace.provider.msme_id ?? null);
+  let quoteLoadQuery: any = supabase.from("provider_quotes").select(quoteSelectFields.join(",")).eq("id", quoteId);
+  if (ownershipFilters.length > 0) {
+    quoteLoadQuery = quoteLoadQuery.or(ownershipFilters.join(","));
+  }
+
+  devQuoteLog("quote_lookup_context", {
+    quoteId,
+    provider_profile_id: workspace.provider.id,
+    provider_profiles_msme_id: workspace.provider.msme_id ?? null,
+    provider_quote_filters: ownershipFilters,
+  });
+
+  const { data: quote, error: quoteLoadError }: { data: any; error: any } = await quoteLoadQuery.maybeSingle();
+
+  devQuoteLog("quote_lookup_row", {
+    quoteId,
+    provider_profile_id: workspace.provider.id,
+    provider_profiles_msme_id: workspace.provider.msme_id ?? null,
+    provider_quotes_provider_id: (quote as { provider_id?: string | null } | null)?.provider_id ?? null,
+  });
 
   if (quoteLoadError || !quote) throw new Error("Quote not found for this provider.");
 
   if (action === "mark_reviewed") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "in_review", "reviewed_at");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "in_review", "reviewed_at");
     await logActivityEvent(supabase, {
       action: "quote_reviewed",
       entityType: "provider_quote",
@@ -296,7 +341,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "accept") {
-    const updatedRow = await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "accepted", "accepted_at");
+    const updatedRow = await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "accepted", "accepted_at");
     devQuoteLog("accept:verified_status", {
       quoteId: quote.id,
       oldStatus: String(quote.status ?? ""),
@@ -315,7 +360,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "decline") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "declined", "declined_at");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "declined", "declined_at");
     await logActivityEvent(supabase, {
       action: "quote_declined",
       entityType: "provider_quote",
@@ -488,7 +533,7 @@ async function quoteWorkflowAction(formData: FormData) {
       });
     }
 
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "converted");
+    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "converted");
 
     await logInvoiceEvent(supabase, {
       invoiceId: invoiceInsertData.id,
@@ -526,15 +571,35 @@ export default async function MsmeQuoteDetailPage({
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
+  const quoteColumns = await getTableColumns(supabase, "provider_quotes");
+  const quoteSelectFields = [
+    "id",
+    "requester_name",
+    "requester_email",
+    "requester_phone",
+    "request_summary",
+    "request_details",
+    "budget_min",
+    "budget_max",
+    "status",
+    "created_at",
+    ...(quoteColumns.has("provider_id") ? ["provider_id"] : []),
+  ];
+  const ownershipFilters = buildProviderQuoteOwnershipFilters(quoteColumns, workspace.provider.id, workspace.provider.msme_id ?? null);
+  const quoteLookup: any = supabase.from("provider_quotes").select(quoteSelectFields.join(",")).eq("id", quoteId);
+  const quoteQuery: any = ownershipFilters.length > 0 ? quoteLookup.or(ownershipFilters.join(",")) : quoteLookup;
+
+  devQuoteLog("quote_detail_lookup_context", {
+    quoteId,
+    provider_profile_id: workspace.provider.id,
+    provider_profiles_msme_id: workspace.provider.msme_id ?? null,
+    provider_quote_filters: ownershipFilters,
+  });
+
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const canQueryInvoiceQuoteId = invoiceColumns.has("quote_id");
   const [{ data: quote, error: quoteError }, { data: links, error: linkError }, { data: linkedByQuoteId, error: quoteIdLinkError }] = await Promise.all([
-    supabase
-      .from("provider_quotes")
-      .select("id,requester_name,requester_email,requester_phone,request_summary,request_details,budget_min,budget_max,status,created_at")
-      .eq("id", quoteId)
-      .eq("provider_profile_id", workspace.provider.id)
-      .maybeSingle(),
+    quoteQuery.maybeSingle(),
     supabase.from("quote_invoice_links").select("invoice_id,created_at").eq("quote_id", quoteId).order("created_at", { ascending: false }),
     canQueryInvoiceQuoteId
       ? supabase
@@ -553,6 +618,12 @@ export default async function MsmeQuoteDetailPage({
   if (quoteIdLinkError) {
     console.info("[quote-invoice-links:quote-id-fallback-error]", quoteIdLinkError.message);
   }
+  devQuoteLog("quote_detail_lookup_row", {
+    quoteId,
+    provider_profile_id: workspace.provider.id,
+    provider_profiles_msme_id: workspace.provider.msme_id ?? null,
+    provider_quotes_provider_id: (quote as { provider_id?: string | null } | null)?.provider_id ?? null,
+  });
   if (!quote) redirect("/dashboard/msme/quotes");
 
   const linkRows = (links ?? []).map((link: { invoice_id: string; created_at: string }) => ({
