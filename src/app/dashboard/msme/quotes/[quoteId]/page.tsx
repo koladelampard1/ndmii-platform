@@ -6,10 +6,59 @@ import { calculateLineTotal, generateInvoiceNumber } from "@/lib/data/invoicing"
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
+let providerQuoteColumnsCache: Set<string> | null = null;
 
 function devQuoteWorkflowLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[provider-quote-workflow] ${message}`, payload);
+}
+
+async function getProviderQuoteColumns(supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>) {
+  if (providerQuoteColumnsCache) return providerQuoteColumnsCache;
+
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "provider_quotes");
+
+  if (error) {
+    devQuoteWorkflowLog("provider_quote_columns_lookup_error", {
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+      code: error.code ?? null,
+    });
+    providerQuoteColumnsCache = new Set();
+    return providerQuoteColumnsCache;
+  }
+
+  providerQuoteColumnsCache = new Set((data ?? []).map((row) => row.column_name));
+  devQuoteWorkflowLog("provider_quote_columns_detected", {
+    columns: [...providerQuoteColumnsCache].sort(),
+  });
+  return providerQuoteColumnsCache;
+}
+
+function buildProviderQuoteStatusPayload(params: {
+  nextStatus: "in_review" | "quoted" | "declined" | "converted";
+  lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at";
+  nowIso: string;
+  columns: Set<string>;
+}) {
+  const payload: Record<string, unknown> = { status: params.nextStatus };
+  const columnsAttempted = ["status"];
+
+  if (params.lifecycleColumn && params.columns.has(params.lifecycleColumn)) {
+    payload[params.lifecycleColumn] = params.nowIso;
+    columnsAttempted.push(params.lifecycleColumn);
+  }
+  if (params.columns.has("updated_at")) {
+    payload.updated_at = params.nowIso;
+    columnsAttempted.push("updated_at");
+  }
+
+  return { payload, columnsAttempted };
 }
 
 async function quoteWorkflowAction(formData: FormData) {
@@ -32,39 +81,120 @@ async function quoteWorkflowAction(formData: FormData) {
   if (!quote) throw new Error("Quote not found for this provider.");
 
   if (action === "mark_reviewed") {
+    const nowIso = new Date().toISOString();
+    const columns = await getProviderQuoteColumns(supabase);
+    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
+      nextStatus: "in_review",
+      lifecycleColumn: "reviewed_at",
+      nowIso,
+      columns,
+    });
+    devQuoteWorkflowLog("quote_status_update_attempt", {
+      action,
+      quoteId: quote.id,
+      payload,
+      columnsAttempted,
+    });
+
     const { error } = await supabase
       .from("provider_quotes")
-      .update({ status: "in_review", reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", quote.id)
       .eq("provider_profile_id", workspace.provider.id);
 
-    if (error) throw new Error(`Quote review update failed: ${error.message}`);
+    if (error) {
+      devQuoteWorkflowLog("quote_status_update_error", {
+        action,
+        quoteId: quote.id,
+        payload,
+        columnsAttempted,
+        message: error.message ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+        code: error.code ?? null,
+      });
+      throw new Error(`Quote review update failed: ${error.message}`);
+    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
   }
 
   if (action === "accept") {
+    const nowIso = new Date().toISOString();
+    const columns = await getProviderQuoteColumns(supabase);
+    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
+      nextStatus: "quoted",
+      lifecycleColumn: "accepted_at",
+      nowIso,
+      columns,
+    });
+    devQuoteWorkflowLog("quote_status_update_attempt", {
+      action,
+      quoteId: quote.id,
+      payload,
+      columnsAttempted,
+    });
+
     const { error } = await supabase
       .from("provider_quotes")
-      .update({ status: "quoted", accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", quote.id)
       .eq("provider_profile_id", workspace.provider.id);
 
-    if (error) throw new Error(`Quote acceptance update failed: ${error.message}`);
+    if (error) {
+      devQuoteWorkflowLog("quote_status_update_error", {
+        action,
+        quoteId: quote.id,
+        payload,
+        columnsAttempted,
+        message: error.message ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+        code: error.code ?? null,
+      });
+      throw new Error(`Quote acceptance update failed: ${error.message}`);
+    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
   }
 
   if (action === "decline") {
+    const nowIso = new Date().toISOString();
+    const columns = await getProviderQuoteColumns(supabase);
+    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
+      nextStatus: "declined",
+      lifecycleColumn: "declined_at",
+      nowIso,
+      columns,
+    });
+    devQuoteWorkflowLog("quote_status_update_attempt", {
+      action,
+      quoteId: quote.id,
+      payload,
+      columnsAttempted,
+    });
+
     const { error } = await supabase
       .from("provider_quotes")
-      .update({ status: "declined", declined_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", quote.id)
       .eq("provider_profile_id", workspace.provider.id);
 
-    if (error) throw new Error(`Quote decline update failed: ${error.message}`);
+    if (error) {
+      devQuoteWorkflowLog("quote_status_update_error", {
+        action,
+        quoteId: quote.id,
+        payload,
+        columnsAttempted,
+        message: error.message ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+        code: error.code ?? null,
+      });
+      throw new Error(`Quote decline update failed: ${error.message}`);
+    }
     revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
     revalidatePath("/dashboard/msme/quotes");
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
@@ -111,13 +241,39 @@ async function quoteWorkflowAction(formData: FormData) {
     const { error: linkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quote.id, invoice_id: invoice.id });
     if (linkError) throw new Error(`Quote/invoice linking failed: ${linkError.message}`);
 
+    const nowIso = new Date().toISOString();
+    const columns = await getProviderQuoteColumns(supabase);
+    const { payload, columnsAttempted } = buildProviderQuoteStatusPayload({
+      nextStatus: "converted",
+      nowIso,
+      columns,
+    });
+    devQuoteWorkflowLog("quote_status_update_attempt", {
+      action,
+      quoteId: quote.id,
+      payload,
+      columnsAttempted,
+    });
+
     const { error: statusError } = await supabase
       .from("provider_quotes")
-      .update({ status: "converted", updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", quote.id)
       .eq("provider_profile_id", workspace.provider.id);
 
-    if (statusError) throw new Error(`Quote conversion status update failed: ${statusError.message}`);
+    if (statusError) {
+      devQuoteWorkflowLog("quote_status_update_error", {
+        action,
+        quoteId: quote.id,
+        payload,
+        columnsAttempted,
+        message: statusError.message ?? null,
+        details: statusError.details ?? null,
+        hint: statusError.hint ?? null,
+        code: statusError.code ?? null,
+      });
+      throw new Error(`Quote conversion status update failed: ${statusError.message}`);
+    }
 
     devQuoteWorkflowLog("quote_converted_to_invoice", {
       quoteId: quote.id,
