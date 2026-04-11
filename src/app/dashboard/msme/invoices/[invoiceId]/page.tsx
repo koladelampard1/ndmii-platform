@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
+import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent, normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
 
 async function invoiceMutationAction(formData: FormData) {
   "use server";
@@ -12,30 +13,35 @@ async function invoiceMutationAction(formData: FormData) {
 
   const invoiceId = String(formData.get("invoice_id") ?? "");
   const action = String(formData.get("action") ?? "");
+  const nowIso = new Date().toISOString();
 
   const { data: invoice, error: loadError } = await supabase
     .from("invoices")
-    .select("id,provider_profile_id,status")
+    .select("id,provider_profile_id,status,total_amount")
     .eq("id", invoiceId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
 
-  if (loadError) throw new Error(loadError.message);
-  if (!invoice) throw new Error("Invoice not found for this provider.");
+  if (loadError || !invoice) throw new Error("Invoice not found for this provider.");
 
   if (action === "add_item") {
     const quantity = Number(formData.get("quantity") ?? 1);
     const unitPrice = Number(formData.get("unit_price") ?? 0);
     const lineTotal = calculateLineTotal(quantity, unitPrice);
-    const { error } = await supabase.from("invoice_items").insert({
-      invoice_id: invoiceId,
-      item_name: String(formData.get("item_name") ?? "").trim(),
-      description: String(formData.get("description") ?? "").trim() || null,
-      quantity,
-      unit_price: unitPrice,
-      line_total: lineTotal,
-      vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
-    });
+    const itemColumns = await getTableColumns(supabase, "invoice_items");
+    const payload = filterPayloadByColumns(
+      {
+        invoice_id: invoiceId,
+        item_name: String(formData.get("item_name") ?? "").trim(),
+        description: String(formData.get("description") ?? "").trim() || null,
+        quantity,
+        unit_price: unitPrice,
+        line_total: lineTotal,
+        vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
+      },
+      itemColumns
+    );
+    const { error } = await supabase.from("invoice_items").insert(payload);
     if (error) throw new Error(error.message);
   }
 
@@ -44,18 +50,19 @@ async function invoiceMutationAction(formData: FormData) {
     const quantity = Number(formData.get("quantity") ?? 1);
     const unitPrice = Number(formData.get("unit_price") ?? 0);
     const lineTotal = calculateLineTotal(quantity, unitPrice);
-    const { error } = await supabase
-      .from("invoice_items")
-      .update({
+    const itemColumns = await getTableColumns(supabase, "invoice_items");
+    const payload = filterPayloadByColumns(
+      {
         item_name: String(formData.get("item_name") ?? "").trim(),
         description: String(formData.get("description") ?? "").trim() || null,
         quantity,
         unit_price: unitPrice,
         line_total: lineTotal,
         vat_applicable: String(formData.get("vat_applicable") ?? "") === "on",
-      })
-      .eq("id", itemId)
-      .eq("invoice_id", invoiceId);
+      },
+      itemColumns
+    );
+    const { error } = await supabase.from("invoice_items").update(payload).eq("id", itemId).eq("invoice_id", invoiceId);
     if (error) throw new Error(error.message);
   }
 
@@ -65,31 +72,82 @@ async function invoiceMutationAction(formData: FormData) {
     if (error) throw new Error(error.message);
   }
 
-  if (action === "issue_invoice") {
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: "issued", issued_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", invoiceId)
-      .eq("provider_profile_id", workspace.provider.id);
+  if (action === "issue_invoice" || action === "cancel_invoice") {
+    const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const payload = filterPayloadByColumns(
+      {
+        status: normalizeInvoiceStatus(action === "issue_invoice" ? "issued" : "cancelled"),
+        issued_at: action === "issue_invoice" ? nowIso : undefined,
+        updated_at: nowIso,
+      },
+      invoiceColumns
+    );
+    const { error } = await supabase.from("invoices").update(payload).eq("id", invoiceId).eq("provider_profile_id", workspace.provider.id);
     if (error) throw new Error(error.message);
   }
 
-  if (action === "cancel_invoice") {
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("id", invoiceId)
-      .eq("provider_profile_id", workspace.provider.id);
-    if (error) throw new Error(error.message);
+  if (action === "mark_paid") {
+    const paidReference = String(formData.get("payment_reference") ?? "").trim() || `MANUAL-${Date.now()}`;
+    const paidDate = String(formData.get("payment_date") ?? "").trim();
+    const paidNote = String(formData.get("payment_note") ?? "").trim() || null;
+    const paidAtIso = paidDate ? new Date(paidDate).toISOString() : nowIso;
+
+    const paymentColumns = await getTableColumns(supabase, "invoice_payments");
+    if (paymentColumns.has("invoice_id")) {
+      const paymentPayload = filterPayloadByColumns(
+        {
+          invoice_id: invoiceId,
+          payment_reference: paidReference,
+          payment_method: "manual_provider_confirmation",
+          payment_status: "success",
+          amount: Number(invoice.total_amount ?? 0),
+          paid_at: paidAtIso,
+          note: paidNote,
+          metadata: paidNote ? { note: paidNote } : undefined,
+          created_at: nowIso,
+        },
+        paymentColumns
+      );
+      const { error: paymentError } = await supabase.from("invoice_payments").insert(paymentPayload);
+      if (paymentError) console.info("[invoice-mark-paid:payment-fallback]", paymentError.message);
+    }
+
+    const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const invoiceUpdate = filterPayloadByColumns(
+      {
+        status: "paid",
+        paid_at: paidAtIso,
+        updated_at: nowIso,
+      },
+      invoiceColumns
+    );
+    const { error: updateError } = await supabase.from("invoices").update(invoiceUpdate).eq("id", invoiceId).eq("provider_profile_id", workspace.provider.id);
+    if (updateError) throw new Error(updateError.message);
+
+    await logInvoiceEvent(supabase, {
+      invoiceId,
+      eventType: "invoice_marked_paid",
+      actorRole: workspace.role,
+      actorId: workspace.msme.id,
+      metadata: { payment_reference: paidReference, payment_date: paidAtIso, note: paidNote },
+    });
+
+    await logActivityEvent(supabase, {
+      action: "invoice_marked_paid",
+      entityType: "invoice",
+      entityId: invoiceId,
+      actorUserId: workspace.appUserId,
+      metadata: { payment_reference: paidReference },
+    });
   }
 
   await recalculateInvoiceTotals(invoiceId);
 
-  await supabase.from("invoice_events").insert({
-    invoice_id: invoiceId,
-    event_type: action,
-    actor_role: workspace.role,
-    actor_id: workspace.msme.id,
+  await logInvoiceEvent(supabase, {
+    invoiceId,
+    eventType: action,
+    actorRole: workspace.role,
+    actorId: workspace.msme.id,
     metadata: {},
   });
 
@@ -131,7 +189,7 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
             <h2 className="text-xl font-semibold">{invoice.invoice_number}</h2>
             <p className="text-sm text-slate-600">{invoice.customer_name} · {invoice.customer_email ?? "No email"}</p>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs uppercase ${invoiceStatusClasses(invoice.status)}`}>{invoice.status}</span>
+          <span className={`rounded-full px-3 py-1 text-xs uppercase ${invoiceStatusClasses(String(invoice.status ?? "draft"))}`}>{invoice.status}</span>
         </div>
         <p className="mt-2 text-sm text-slate-500">Public link: <Link className="text-indigo-700 hover:underline" href={`/invoice/${invoice.id}`}>/invoice/{invoice.id}</Link></p>
       </header>
@@ -152,7 +210,7 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
                 <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} />VAT</label>
                 <button className="rounded border px-2 py-1 text-xs">Save</button>
               </div>
-              <p className="md:col-span-4 text-xs text-slate-500">Line total: {formatNaira(item.line_total)}</p>
+              <p className="text-xs text-slate-500 md:col-span-4">Line total: {formatNaira(item.line_total)}</p>
             </form>
           ))}
 
@@ -188,6 +246,14 @@ export default async function MsmeInvoiceDetailPage({ params }: { params: Promis
             <input type="hidden" name="action" value="issue_invoice" />
             <input type="hidden" name="invoice_id" value={invoice.id} />
             <button className="w-full rounded bg-indigo-900 px-3 py-2 text-sm text-white">Issue invoice</button>
+          </form>
+          <form action={invoiceMutationAction} className="space-y-2 rounded border p-2">
+            <input type="hidden" name="action" value="mark_paid" />
+            <input type="hidden" name="invoice_id" value={invoice.id} />
+            <input name="payment_reference" placeholder="Payment reference" className="w-full rounded border px-2 py-1 text-xs" />
+            <input name="payment_date" type="date" className="w-full rounded border px-2 py-1 text-xs" />
+            <input name="payment_note" placeholder="Optional payment note" className="w-full rounded border px-2 py-1 text-xs" />
+            <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Mark invoice paid</button>
           </form>
           <form action={invoiceMutationAction}>
             <input type="hidden" name="action" value="cancel_invoice" />

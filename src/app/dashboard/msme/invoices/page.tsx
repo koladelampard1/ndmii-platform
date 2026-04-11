@@ -2,15 +2,19 @@ import Link from "next/link";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira, invoiceStatusClasses } from "@/lib/data/invoicing";
+import { getTableColumns, normalizeInvoiceStatus, pickExistingColumns } from "@/lib/data/commercial-ops";
 
 export default async function MsmeInvoicesPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
 
+  const invoiceColumns = await getTableColumns(supabase, "invoices");
+  const invoiceSelect = pickExistingColumns(invoiceColumns, ["id", "invoice_number", "customer_name", "due_date", "total_amount", "status", "issued_at", "created_at", "provider_profile_id"]).join(",");
+
   let query = supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,due_date,total_amount,status,issued_at,created_at")
+    .select(invoiceSelect || "id")
     .eq("provider_profile_id", workspace.provider.id)
     .order("created_at", { ascending: false });
 
@@ -62,7 +66,7 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
                 <td className="px-3 py-3">{invoice.customer_name}</td>
                 <td className="px-3 py-3">{invoice.due_date ?? '—'}</td>
                 <td className="px-3 py-3 font-medium">{formatNaira(invoice.total_amount)}</td>
-                <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs uppercase ${invoiceStatusClasses(invoice.status)}`}>{invoice.status}</span></td>
+                <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs uppercase ${invoiceStatusClasses(normalizeInvoiceStatus((invoice as any).status))}`}>{normalizeInvoiceStatus((invoice as any).status)}</span></td>
                 <td className="px-3 py-3">
                   <Link href={`/dashboard/msme/invoices/${invoice.id}`} className="text-indigo-700 hover:underline">Open</Link>
                 </td>
