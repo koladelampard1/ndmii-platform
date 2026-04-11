@@ -477,25 +477,27 @@ async function fetchHomepageProviderProfiles(): Promise<UsableHomepageProviderPr
     .from("provider_profiles")
     .select(selectFields.join(","))
     .not("public_slug", "is", null)
-    .not("display_name", "is", null)
     .order("display_name", { ascending: true })
     .limit(54);
 
   if (error) throw error;
 
   const rows = (data ?? []) as any[];
-  return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug && row?.display_name));
+  return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
 }
 
 function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): ProviderCard {
-  const metrics = seededMetrics(row.msme_id);
+  const safeMsmeId = typeof row?.msme_id === "string" && row.msme_id ? row.msme_id : `UNKNOWN-${row?.id ?? "ROW"}`;
+  const safeDisplayName = typeof row?.display_name === "string" && row.display_name.trim() ? row.display_name.trim() : null;
+  const safePublicSlug = typeof row?.public_slug === "string" && row.public_slug ? row.public_slug : `provider-${row?.id ?? "unknown"}`;
+  const metrics = seededMetrics(safeMsmeId);
   return {
     id: row.id,
-    msme_id: row.msme_id,
-    public_slug: row.public_slug,
-    display_name: row.display_name,
+    msme_id: safeMsmeId,
+    public_slug: safePublicSlug,
+    display_name: safeDisplayName,
     ndmii_id: null,
-    business_name: row.display_name ?? `MSME ${row.msme_id}`,
+    business_name: safeDisplayName ?? `MSME ${safeMsmeId}`,
     logo_url: null,
     category: "Professional Services",
     specialization: null,
@@ -550,43 +552,139 @@ async function queryHomepageBaseProviders(): Promise<ProviderCard[]> {
       first_three_mapped_rows: [],
       error: error instanceof Error ? error.message : "Unknown homepage query error",
     });
-    if (DEV_MODE) {
-      console.error("[homepage-marketplace] caught error", error);
-    }
+    console.error("[homepage-marketplace] landing base query error", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
     return [];
   }
 }
 
 export async function getMarketplaceLandingData(): Promise<MarketplaceLandingData> {
-  try {
-    const [baseProviders, categoriesRaw] = await Promise.all([
-      queryHomepageBaseProviders(),
-      (async () => {
-        const supabase = await createServiceRoleSupabaseClient();
-        const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true).order("name", { ascending: true });
-        if (error) throw error;
-        return data ?? [];
-      })(),
-    ]);
-
-    return {
-      topRated: baseProviders.slice(0, 6),
-      featured: baseProviders.slice(6, 12),
-      recentlyTrusted: baseProviders.slice(12, 18),
-      categories: (categoriesRaw as Array<{ name: string }>).map((c) => c.name),
-    };
-  } catch (error) {
-    if (DEV_MODE) {
-      console.error("[homepage-marketplace] landing data error", error);
-    }
-    const seeded = await getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 18);
-    return {
-      topRated: seeded.slice(0, 6),
-      featured: seeded.slice(6, 12).length ? seeded.slice(6, 12) : seeded.slice(0, 6),
-      recentlyTrusted: seeded.slice(12, 18).length ? seeded.slice(12, 18) : seeded.slice(0, 6),
-      categories: FALLBACK_CATEGORIES,
-    };
+  if (DEV_MODE) {
+    console.info("[homepage-marketplace] getMarketplaceLandingData:start");
   }
+
+  let baseProviders: ProviderCard[] = [];
+  try {
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:base_provider_query:start");
+    }
+    baseProviders = await queryHomepageBaseProviders();
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:base_provider_query:done", { count: baseProviders.length });
+    }
+  } catch (error) {
+    console.error("[homepage-marketplace] landing data error", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
+    baseProviders = [];
+  }
+
+  let topRated: ProviderCard[] = [];
+  try {
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:top_rated_section_build:start");
+    }
+    topRated = baseProviders.slice(0, 6);
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:top_rated_section_build:done", { count: topRated.length });
+    }
+  } catch (error) {
+    console.error("[homepage-marketplace] top rated section failure", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
+    topRated = [];
+  }
+
+  let featured: ProviderCard[] = [];
+  try {
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:featured_section_build:start");
+    }
+    featured = baseProviders.slice(6, 12);
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:featured_section_build:done", { count: featured.length });
+    }
+  } catch (error) {
+    console.error("[homepage-marketplace] featured section failure", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
+    featured = [];
+  }
+
+  let recentlyTrusted: ProviderCard[] = [];
+  try {
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:recent_section_build:start");
+    }
+    recentlyTrusted = baseProviders.slice(12, 18);
+    if (DEV_MODE) {
+      console.info("[homepage-marketplace] getMarketplaceLandingData:recent_section_build:done", { count: recentlyTrusted.length });
+    }
+  } catch (error) {
+    console.error("[homepage-marketplace] recent section failure", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
+    recentlyTrusted = [];
+  }
+
+  let categories: string[] = FALLBACK_CATEGORIES;
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true).order("name", { ascending: true });
+    if (error) throw error;
+    categories = (data ?? [])
+      .map((item: any) => (typeof item?.name === "string" ? item.name : ""))
+      .filter((name: string) => Boolean(name));
+    if (!categories.length) {
+      categories = FALLBACK_CATEGORIES;
+    }
+  } catch (error) {
+    console.error("[homepage-marketplace] categories section failure", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+      raw: error,
+    });
+    categories = FALLBACK_CATEGORIES;
+  }
+
+  if (!topRated.length && baseProviders.length) {
+    topRated = baseProviders.slice(0, 6);
+  }
+  if (!featured.length && baseProviders.length) {
+    featured = baseProviders.slice(6, 12).length ? baseProviders.slice(6, 12) : baseProviders.slice(0, 6);
+  }
+  if (!recentlyTrusted.length && baseProviders.length) {
+    recentlyTrusted = baseProviders.slice(12, 18).length ? baseProviders.slice(12, 18) : baseProviders.slice(0, 6);
+  }
+
+  const payload: MarketplaceLandingData = {
+    topRated,
+    featured,
+    recentlyTrusted,
+    categories,
+  };
+
+  if (DEV_MODE) {
+    console.info("[homepage-marketplace] getMarketplaceLandingData:return_payload", {
+      topRatedCount: payload.topRated.length,
+      featuredCount: payload.featured.length,
+      recentlyTrustedCount: payload.recentlyTrusted.length,
+      categoryCount: payload.categories.length,
+    });
+  }
+
+  return payload;
 }
 
 export async function searchMarketplaceProviders(filters: SearchFilters): Promise<ProviderCard[]> {
