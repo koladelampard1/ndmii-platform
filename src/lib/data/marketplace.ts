@@ -97,8 +97,6 @@ export type MarketplaceLandingData = {
   categories: string[];
 };
 
-type HomepageSectionKey = "top-rated" | "featured" | "recently-trusted";
-
 type UsableHomepageProviderProfileRow = {
   id: string;
   msme_id: string;
@@ -215,13 +213,19 @@ function scoreFromString(value: string) {
 }
 
 function logHomepageSectionDebug(payload: {
-  section: HomepageSectionKey;
+  section: "base";
   query: string;
   select_fields: string[];
   filters: Record<string, unknown>;
   rows_returned: number;
   mapped_rows_count: number;
-  first_three_mapped_rows: Array<Pick<ProviderCard, "id" | "msme_id" | "public_slug" | "business_name">>;
+  first_three_mapped_rows: Array<{
+    id: string;
+    msme_id: string;
+    public_slug: string;
+    display_name: string | null;
+    business_name: string;
+  }>;
   error: string | null;
 }) {
   if (!DEV_MODE) return;
@@ -465,39 +469,22 @@ async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
   }
 }
 
-async function fetchHomepageProviderProfiles(orderBy: "display_name" | "created_at" | "updated_at"): Promise<UsableHomepageProviderProfileRow[]> {
+async function fetchHomepageProviderProfiles(): Promise<UsableHomepageProviderProfileRow[]> {
   const supabase = await createServiceRoleSupabaseClient();
   const selectFields = ["id", "msme_id", "public_slug", "display_name"];
 
-  try {
-    const { data, error } = await supabase
-      .from("provider_profiles")
-      .select(selectFields.join(","))
-      .not("public_slug", "is", null)
-      .not("msme_id", "is", null)
-      .order(orderBy, { ascending: orderBy === "display_name" })
-      .limit(18);
+  const { data, error } = await supabase
+    .from("provider_profiles")
+    .select(selectFields.join(","))
+    .not("public_slug", "is", null)
+    .not("display_name", "is", null)
+    .order("display_name", { ascending: true })
+    .limit(54);
 
-    if (error) throw error;
+  if (error) throw error;
 
-    const rows = (data ?? []) as any[];
-    return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
-  } catch {
-    if (orderBy === "display_name") throw new Error("display_name query failed");
-
-    const { data, error } = await supabase
-      .from("provider_profiles")
-      .select(selectFields.join(","))
-      .not("public_slug", "is", null)
-      .not("msme_id", "is", null)
-      .order("display_name", { ascending: true })
-      .limit(18);
-
-    if (error) throw error;
-
-    const rows = (data ?? []) as any[];
-    return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug));
-  }
+  const rows = (data ?? []) as any[];
+  return rows.filter((row: any): row is UsableHomepageProviderProfileRow => Boolean(row?.id && row?.msme_id && row?.public_slug && row?.display_name));
 }
 
 function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): ProviderCard {
@@ -523,53 +510,57 @@ function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): Prov
   };
 }
 
-async function queryHomepageSectionProviders(section: HomepageSectionKey, limit = 6): Promise<ProviderCard[]> {
-  const orderBy = section === "top-rated" ? "display_name" : section === "featured" ? "created_at" : "updated_at";
-  const startIndex = section === "top-rated" ? 0 : section === "featured" ? 6 : 12;
-
+async function queryHomepageBaseProviders(): Promise<ProviderCard[]> {
   try {
-    const rawRows = await fetchHomepageProviderProfiles(orderBy);
+    const rawRows = await fetchHomepageProviderProfiles();
     const mappedRows = rawRows.map(mapHomepageProviderProfile);
-    const finalRows = mappedRows.slice(startIndex, startIndex + limit);
 
     logHomepageSectionDebug({
-      section,
+      section: "base",
       query: "provider_profiles",
       select_fields: ["id", "msme_id", "public_slug", "display_name"],
-      filters: { order_by: orderBy, fallback_order_by: "display_name", limit },
+      filters: {
+        required_fields: ["public_slug", "display_name"],
+        order_by: "display_name",
+      },
       rows_returned: rawRows.length,
       mapped_rows_count: mappedRows.length,
-      first_three_mapped_rows: finalRows.slice(0, 3).map((item) => ({
+      first_three_mapped_rows: mappedRows.slice(0, 3).map((item) => ({
         id: item.id,
         msme_id: item.msme_id,
         public_slug: item.public_slug,
+        display_name: item.display_name,
         business_name: item.business_name,
       })),
       error: null,
     });
 
-    return finalRows;
+    return mappedRows;
   } catch (error) {
     logHomepageSectionDebug({
-      section,
+      section: "base",
       query: "provider_profiles",
       select_fields: ["id", "msme_id", "public_slug", "display_name"],
-      filters: { order_by: orderBy, fallback_order_by: "display_name", limit },
+      filters: {
+        required_fields: ["public_slug", "display_name"],
+        order_by: "display_name",
+      },
       rows_returned: 0,
       mapped_rows_count: 0,
       first_three_mapped_rows: [],
       error: error instanceof Error ? error.message : "Unknown homepage query error",
     });
+    if (DEV_MODE) {
+      console.error("[homepage-marketplace] caught error", error);
+    }
     return [];
   }
 }
 
 export async function getMarketplaceLandingData(): Promise<MarketplaceLandingData> {
   try {
-    const [topRatedRaw, featuredRaw, recentlyTrustedRaw, categoriesRaw] = await Promise.all([
-      queryHomepageSectionProviders("top-rated", 6),
-      queryHomepageSectionProviders("featured", 6),
-      queryHomepageSectionProviders("recently-trusted", 6),
+    const [baseProviders, categoriesRaw] = await Promise.all([
+      queryHomepageBaseProviders(),
       (async () => {
         const supabase = await createServiceRoleSupabaseClient();
         const { data, error } = await supabase.from("service_categories").select("name").eq("is_active", true).order("name", { ascending: true });
@@ -578,22 +569,16 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
       })(),
     ]);
 
-    const combinedUnique = [...topRatedRaw, ...featuredRaw, ...recentlyTrustedRaw].filter(
-      (provider, index, arr) => arr.findIndex((candidate) => candidate.id === provider.id) === index,
-    );
-
-    const fillSection = (section: ProviderCard[]) => {
-      if (section.length > 0) return section;
-      return combinedUnique.slice(0, 6);
-    };
-
     return {
-      topRated: fillSection(topRatedRaw),
-      featured: fillSection(featuredRaw),
-      recentlyTrusted: fillSection(recentlyTrustedRaw),
+      topRated: baseProviders.slice(0, 6),
+      featured: baseProviders.slice(6, 12),
+      recentlyTrusted: baseProviders.slice(12, 18),
       categories: (categoriesRaw as Array<{ name: string }>).map((c) => c.name),
     };
-  } catch {
+  } catch (error) {
+    if (DEV_MODE) {
+      console.error("[homepage-marketplace] landing data error", error);
+    }
     const seeded = await getProvidersWithFallback({ sort: "top-rated", verification: "verified_or_approved" }, 18);
     return {
       topRated: seeded.slice(0, 6),
