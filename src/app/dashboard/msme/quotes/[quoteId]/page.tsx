@@ -30,15 +30,20 @@ async function updateQuoteStatus(
 ) {
   const nowIso = new Date().toISOString();
   const columns = await getTableColumns(supabase, "provider_quotes");
-  const lifecycleKey = lifecycleColumn ?? "";
-  const payload = filterPayloadByColumns(
+  const adaptivePayload = filterPayloadByColumns(
     {
       status: nextStatus,
-      [lifecycleKey]: lifecycleColumn ? nowIso : undefined,
+      [lifecycleColumn ?? ""]: lifecycleColumn ? nowIso : undefined,
       updated_at: nowIso,
     },
     columns
   );
+  const payload: Record<string, unknown> = { status: nextStatus };
+  if (columns.has("updated_at")) payload.updated_at = nowIso;
+  if (lifecycleColumn && columns.has(lifecycleColumn)) payload[lifecycleColumn] = nowIso;
+  if (Object.keys(adaptivePayload).length > 0) {
+    Object.assign(payload, adaptivePayload);
+  }
   const updateSelect = pickExistingColumns(columns, ["id", "status", "accepted_at", "reviewed_at", "declined_at", "converted_at", "updated_at"]);
 
   devQuoteLog("update:attempt", {
@@ -74,13 +79,59 @@ async function updateQuoteStatus(
     throw new Error(`Quote status update failed: ${error.message}`);
   }
 
+  const readBackSelect = updateSelect.length ? updateSelect.join(",") : "id,status";
+  const { data: readBackRow, error: readBackError } = await supabase
+    .from("provider_quotes")
+    .select(readBackSelect)
+    .eq("id", quoteId)
+    .eq("provider_profile_id", providerId)
+    .maybeSingle();
+
+  if (readBackError) {
+    devQuoteLog("update:readback_error", {
+      quoteId,
+      providerId,
+      previousStatus,
+      nextStatus,
+      message: readBackError.message,
+      code: readBackError.code ?? null,
+    });
+    throw new Error(`Quote status read-back failed: ${readBackError.message}`);
+  }
+
   devQuoteLog("update:result", {
     quoteId,
     providerId,
     previousStatus,
     nextStatus,
+    updatePayload: payload,
     returnedRow: updatedQuote ?? null,
+    readBackRow: readBackRow ?? null,
   });
+
+  if (!readBackRow) {
+    throw new Error("Quote status update failed: quote row not found after update.");
+  }
+
+  const readBackStatus = String((readBackRow as { status?: string | null }).status ?? "").toLowerCase();
+  if (readBackStatus !== nextStatus) {
+    devQuoteLog("update:status_mismatch", {
+      quoteId,
+      providerId,
+      previousStatus,
+      nextStatus,
+      readBackStatus,
+      diagnostics: [
+        "possible_wrong_filter_or_quote_id",
+        "possible_provider_profile_mismatch",
+        "possible_rls_or_permissions_mismatch",
+        "possible_stale_or_non_updating_query",
+      ],
+    });
+    throw new Error(`Quote status update mismatch: expected ${nextStatus} but got ${readBackStatus || "empty"}.`);
+  }
+
+  return readBackRow;
 }
 
 async function quoteWorkflowAction(formData: FormData) {
@@ -116,7 +167,12 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "accept") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "accepted", "accepted_at");
+    const updatedRow = await updateQuoteStatus(supabase, quote.id, workspace.provider.id, String(quote.status ?? ""), "accepted", "accepted_at");
+    devQuoteLog("accept:verified_status", {
+      quoteId: quote.id,
+      oldStatus: String(quote.status ?? ""),
+      renderedStatus: String((updatedRow as { status?: string | null }).status ?? ""),
+    });
     await logActivityEvent(supabase, {
       action: "quote_accepted",
       entityType: "provider_quote",
@@ -144,7 +200,15 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "convert_invoice") {
-    if (String(quote.status ?? "").toLowerCase() !== "accepted") {
+    const normalizedQuoteStatus = String(quote.status ?? "").toLowerCase();
+    const canConvert = normalizedQuoteStatus === "accepted";
+    devQuoteLog("convert:gate", {
+      quoteId: quote.id,
+      renderedStatus: String(quote.status ?? ""),
+      normalizedStatus: normalizedQuoteStatus,
+      canConvert,
+    });
+    if (!canConvert) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
@@ -270,8 +334,10 @@ export default async function MsmeQuoteDetailPage({
   console.info("[quote-detail:ui-state]", {
     quoteId: quote.id,
     status: quote.status,
+    renderedStatus: normalizedStatus,
     linkedInvoiceCount,
     uiBranch,
+    canConvertToInvoice: isAccepted,
   });
 
   return (
