@@ -8,11 +8,9 @@ import { getMarketplaceLandingData } from "@/lib/data/marketplace";
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
 function HomepageProviderSection({
-  sectionName,
   providers,
   className,
 }: {
-  sectionName: string;
   providers: Parameters<typeof ProviderCard>[0]["provider"][];
   className: string;
 }) {
@@ -20,11 +18,6 @@ function HomepageProviderSection({
 
   return (
     <>
-      {DEV_MODE && (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-          <strong>Debug:</strong> {sectionName} • rows={providers.length} • first_public_slug={providers[0]?.public_slug ?? "n/a"}
-        </div>
-      )}
       <div className={className}>
         {providers.map((provider) => (
           <ProviderCard key={provider.id} provider={provider} />
@@ -116,7 +109,7 @@ export default async function LandingPage() {
           </div>
           <Link href="/search?sort=top-rated&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
         </div>
-        <HomepageProviderSection sectionName="Top-rated providers" providers={topRated} className="grid gap-4 md:grid-cols-3" />
+        <HomepageProviderSection providers={topRated} className="grid gap-4 md:grid-cols-3" />
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-16">
@@ -127,7 +120,7 @@ export default async function LandingPage() {
           </div>
           <Link href="/search?sort=featured&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all</Link>
         </div>
-        <HomepageProviderSection sectionName="Featured providers" providers={featured} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" />
+        <HomepageProviderSection providers={featured} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" />
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-16">
@@ -138,7 +131,7 @@ export default async function LandingPage() {
           </div>
           <Link href="/search?sort=featured&verification=verified_or_approved" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">Explore providers</Link>
         </div>
-        <HomepageProviderSection sectionName="Recently trusted providers" providers={recentlyTrusted} className="grid gap-4 md:grid-cols-3" />
+        <HomepageProviderSection providers={recentlyTrusted} className="grid gap-4 md:grid-cols-3" />
       </section>
     </main>
   );

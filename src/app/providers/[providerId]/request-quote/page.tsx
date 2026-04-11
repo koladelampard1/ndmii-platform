@@ -2,7 +2,6 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderProfileHref } from "@/lib/provider-links";
@@ -13,9 +12,6 @@ function devQuoteLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[public-quote] ${message}`, payload);
 }
-
-const PROVIDER_PROFILE_SELECT = "id,msme_id,public_slug,display_name";
-
 
 async function submitProviderQuoteRequest(formData: FormData) {
   "use server";
@@ -133,7 +129,7 @@ export default async function PublicProviderRequestQuotePage({
   }
   devQuoteLog("provider_lookup_query_target", {
     table: "provider_profiles",
-    select: PROVIDER_PROFILE_SELECT,
+    select: "id,msme_id,public_slug,display_name",
     filter: `public_slug.eq.${providerSlug}`,
   });
   const providerId = resolvedByPublicSlug.provider?.id ?? null;
@@ -164,38 +160,23 @@ export default async function PublicProviderRequestQuotePage({
     );
   }
 
-  const provider = await getProviderPublicProfile(providerId);
-  devQuoteLog("provider_profile_loaded", { providerSlug, providerId, found: Boolean(provider) });
-  if (!provider) {
-    return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <Navbar />
-        <section className="mx-auto max-w-3xl px-6 py-14">
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Provider not found</p>
-            <h1 className="mt-2 text-2xl font-semibold text-amber-900">This provider profile could not be loaded</h1>
-            <p className="mt-2 text-sm text-amber-800">Please reopen the provider profile and try again.</p>
-            <Link href="/search" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
-              Return to provider search
-            </Link>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  const resolvedProviderProfileRow = await resolvePublicProviderProfile({
-    providerRouteParam: providerSlug,
-  });
-
   devQuoteLog("provider_profile_row_for_quote_loaded", {
     providerSlug,
     providerId,
-    found: Boolean(resolvedProviderProfileRow.provider?.id),
-    providerProfileId: resolvedProviderProfileRow.provider?.id ?? null,
-    providerProfileMsmeId: resolvedProviderProfileRow.provider?.msme_id ?? null,
-    providerProfilePublicSlug: resolvedProviderProfileRow.provider?.public_slug ?? null,
+    found: Boolean(resolvedByPublicSlug.provider?.id),
+    providerProfileId: resolvedByPublicSlug.provider?.id ?? null,
+    providerProfileMsmeId: resolvedByPublicSlug.provider?.msme_id ?? null,
+    providerProfilePublicSlug: resolvedByPublicSlug.provider?.public_slug ?? null,
   });
+
+  const providerForQuote = {
+    id: resolvedByPublicSlug.provider?.id ?? providerId,
+    msme_id: resolvedByPublicSlug.provider?.msme_id ?? "Unknown",
+    public_slug: resolvedByPublicSlug.provider?.public_slug ?? providerSlug,
+    business_name: resolvedByPublicSlug.provider?.display_name ?? "Verified provider",
+    state: "Nigeria",
+    lga: null as string | null,
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -203,9 +184,9 @@ export default async function PublicProviderRequestQuotePage({
       <section className="mx-auto max-w-3xl px-6 py-10">
         <Link
           href={buildProviderProfileHref({
-            id: provider.id,
-            msme_id: provider.msme_id,
-            public_slug: provider.public_slug,
+            id: providerForQuote.id,
+            msme_id: providerForQuote.msme_id,
+            public_slug: providerForQuote.public_slug,
           })}
           className="text-sm font-medium text-indigo-700 hover:underline"
         >
@@ -214,12 +195,12 @@ export default async function PublicProviderRequestQuotePage({
 
         <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">NDMII marketplace</p>
-          <h1 className="mt-2 text-3xl font-semibold">Request a quote from {provider.business_name}</h1>
+          <h1 className="mt-2 text-3xl font-semibold">Request a quote from {providerForQuote.business_name}</h1>
           <p className="mt-2 text-sm text-slate-600">Share your project scope and budget range. The provider receives this instantly in their operations quote workspace.</p>
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            <p><span className="font-semibold">Provider:</span> {provider.business_name}</p>
-            <p><span className="font-semibold">MSME ID:</span> {provider.msme_id}</p>
-            <p><span className="font-semibold">Location:</span> {provider.state}{provider.lga ? `, ${provider.lga}` : ""}</p>
+            <p><span className="font-semibold">Provider:</span> {providerForQuote.business_name}</p>
+            <p><span className="font-semibold">MSME ID:</span> {providerForQuote.msme_id}</p>
+            <p><span className="font-semibold">Location:</span> {providerForQuote.state}{providerForQuote.lga ? `, ${providerForQuote.lga}` : ""}</p>
           </div>
 
           {query.error && (
@@ -234,15 +215,15 @@ export default async function PublicProviderRequestQuotePage({
             </div>
           )}
 
-          {!resolvedProviderProfileRow.provider ? (
+          {!resolvedByPublicSlug.provider ? (
             <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               This provider is visible publicly but has no provider profile row yet.
             </div>
           ) : (
             <form action={submitProviderQuoteRequest} className="mt-5 grid gap-4">
               <input type="hidden" name="provider_path_segment" value={providerSlug} />
-              <input type="hidden" name="provider_profile_id" value={resolvedProviderProfileRow.provider.id} />
-              <input type="hidden" name="provider_msme_id" value={resolvedProviderProfileRow.provider.msme_id} />
+              <input type="hidden" name="provider_profile_id" value={resolvedByPublicSlug.provider.id} />
+              <input type="hidden" name="provider_msme_id" value={resolvedByPublicSlug.provider.msme_id} />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">
