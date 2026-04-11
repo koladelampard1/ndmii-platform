@@ -207,6 +207,22 @@ export default async function MsmeQuoteDetailPage({
   }
   if (!quote) redirect("/dashboard/msme/quotes");
 
+  const normalizedStatus = String(quote.status ?? "").toLowerCase();
+  const linkedInvoiceCount = (links ?? []).length;
+  const isConverted = normalizedStatus === "converted";
+  const isAccepted = normalizedStatus === "quoted" || normalizedStatus === "accepted";
+  const isDeclined = normalizedStatus === "declined";
+  const isPendingReview = ["new", "submitted", "pending_reviewed", "in_review"].includes(normalizedStatus);
+  const uiBranch = isConverted ? "converted" : isAccepted ? "accepted" : isDeclined ? "declined" : isPendingReview ? "pending" : "other";
+  const showNotAcceptedWarning = query.error === "quote_not_accepted" && !isAccepted && !isConverted;
+
+  console.info("[quote-detail:ui-state]", {
+    quoteId: quote.id,
+    status: quote.status,
+    linkedInvoiceCount,
+    uiBranch,
+  });
+
   return (
     <section className="space-y-4">
       <header className="rounded-xl border bg-white p-4">
@@ -216,8 +232,11 @@ export default async function MsmeQuoteDetailPage({
       </header>
 
       {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Quote action saved.</p>}
-      {query.error === "quote_not_accepted" && (
+      {showNotAcceptedWarning && (
         <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">Only accepted quotes can be converted into invoices.</p>
+      )}
+      {isConverted && (
+        <p className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">This quote has already been converted into an invoice.</p>
       )}
 
       <article className="rounded-xl border bg-white p-4">
@@ -231,26 +250,48 @@ export default async function MsmeQuoteDetailPage({
       </article>
 
       <div className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-4">
-        <form action={quoteWorkflowAction}>
-          <input type="hidden" name="quote_id" value={quote.id} />
-          <input type="hidden" name="action" value="mark_reviewed" />
-          <button className="w-full rounded border px-3 py-2 text-sm">Mark reviewed</button>
-        </form>
-        <form action={quoteWorkflowAction}>
-          <input type="hidden" name="quote_id" value={quote.id} />
-          <input type="hidden" name="action" value="accept" />
-          <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Accept quote</button>
-        </form>
-        <form action={quoteWorkflowAction}>
-          <input type="hidden" name="quote_id" value={quote.id} />
-          <input type="hidden" name="action" value="decline" />
-          <button className="w-full rounded border border-rose-300 px-3 py-2 text-sm text-rose-700">Decline quote</button>
-        </form>
-        <form action={quoteWorkflowAction}>
-          <input type="hidden" name="quote_id" value={quote.id} />
-          <input type="hidden" name="action" value="convert_invoice" />
-          <button className="w-full rounded bg-indigo-900 px-3 py-2 text-sm text-white">Convert to invoice</button>
-        </form>
+        {isPendingReview && (
+          <>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="mark_reviewed" />
+              <button className="w-full rounded border px-3 py-2 text-sm">Mark reviewed</button>
+            </form>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="accept" />
+              <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Accept quote</button>
+            </form>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="decline" />
+              <button className="w-full rounded border border-rose-300 px-3 py-2 text-sm text-rose-700">Decline quote</button>
+            </form>
+          </>
+        )}
+
+        {isAccepted && (
+          <>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="decline" />
+              <button className="w-full rounded border border-rose-300 px-3 py-2 text-sm text-rose-700">Decline quote</button>
+            </form>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="convert_invoice" />
+              <button className="w-full rounded bg-indigo-900 px-3 py-2 text-sm text-white">Convert to invoice</button>
+            </form>
+          </>
+        )}
+
+        {(isConverted || isDeclined) && (
+          <p className="text-sm text-slate-600 md:col-span-4">
+            {isConverted
+              ? "No further quote actions are available because this quote is already converted."
+              : "No further quote actions are available because this quote has been declined."}
+          </p>
+        )}
       </div>
 
       <article className="rounded-xl border bg-white p-4">
