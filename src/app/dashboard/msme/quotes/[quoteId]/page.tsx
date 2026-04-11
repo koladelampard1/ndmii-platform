@@ -8,9 +8,17 @@ import {
   getTableColumns,
   logActivityEvent,
   logInvoiceEvent,
+  pickExistingColumns,
   normalizeInvoiceStatus,
 } from "@/lib/data/commercial-ops";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+
+const DEV_MODE = process.env.NODE_ENV !== "production";
+
+function devQuoteLog(message: string, payload: Record<string, unknown>) {
+  if (!DEV_MODE) return;
+  console.info(`[quote-workflow] ${message}`, payload);
+}
 
 async function updateQuoteStatus(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
@@ -22,17 +30,18 @@ async function updateQuoteStatus(
 ) {
   const nowIso = new Date().toISOString();
   const columns = await getTableColumns(supabase, "provider_quotes");
+  const lifecycleKey = lifecycleColumn ?? "";
   const payload = filterPayloadByColumns(
     {
       status: nextStatus,
-      [lifecycleColumn ?? ""]: lifecycleColumn ? nowIso : undefined,
+      [lifecycleKey]: lifecycleColumn ? nowIso : undefined,
       updated_at: nowIso,
     },
     columns
   );
+  const updateSelect = pickExistingColumns(columns, ["id", "status", "accepted_at", "reviewed_at", "declined_at", "converted_at", "updated_at"]);
 
-  console.info("[quote-workflow:update:attempt]", {
-    table: "provider_quotes",
+  devQuoteLog("update:attempt", {
     quoteId,
     providerId,
     previousStatus,
@@ -41,23 +50,37 @@ async function updateQuoteStatus(
     updatePayload: payload,
   });
 
-  const { data: updatedQuote, error } = await supabase
+  const updateQuery = supabase
     .from("provider_quotes")
     .update(payload)
     .eq("id", quoteId)
-    .eq("provider_profile_id", providerId)
-    .select("id,status,accepted_at,reviewed_at,declined_at,updated_at")
-    .maybeSingle();
+    .eq("provider_profile_id", providerId);
 
-  console.info("[quote-workflow:update:result]", {
+  const { data: updatedQuote, error } = updateSelect.length
+    ? await updateQuery.select(updateSelect.join(",")).maybeSingle()
+    : await updateQuery.select("id,status").maybeSingle();
+
+  if (error) {
+    devQuoteLog("update:error", {
+      quoteId,
+      providerId,
+      previousStatus,
+      nextStatus,
+      code: error.code ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+      message: error.message,
+    });
+    throw new Error(`Quote status update failed: ${error.message}`);
+  }
+
+  devQuoteLog("update:result", {
     quoteId,
     providerId,
     previousStatus,
     nextStatus,
     returnedRow: updatedQuote ?? null,
   });
-
-  if (error) throw new Error(`Quote status update failed: ${error.message}`);
 }
 
 async function quoteWorkflowAction(formData: FormData) {
@@ -121,7 +144,7 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "convert_invoice") {
-    if (!["accepted", "quoted"].includes(String(quote.status ?? "").toLowerCase())) {
+    if (String(quote.status ?? "").toLowerCase() !== "accepted") {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
