@@ -32,7 +32,10 @@ export async function recalculateInvoiceTotals(invoiceId: string) {
   }
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").select(invoiceSelect).eq("id", invoiceId).maybeSingle();
-  if (invoiceError || !invoice) return { subtotal: 0, vatAmount: 0, totalAmount: 0 };
+  if (invoiceError || !invoice) {
+    console.info("[invoice-totals:invoice-load-failed]", { invoiceId, error: invoiceError?.message ?? "missing_invoice" });
+    throw new Error(invoiceError?.message ?? "Unable to load invoice for totals recalculation.");
+  }
 
   const itemSelectColumns = ["line_total", "vat_applicable"].filter((column) => itemColumns.has(column));
   const { data: items, error: itemError } = await supabase
@@ -40,7 +43,10 @@ export async function recalculateInvoiceTotals(invoiceId: string) {
     .select(itemSelectColumns.length ? itemSelectColumns.join(",") : "id")
     .eq("invoice_id", invoiceId);
 
-  if (itemError) return { subtotal: 0, vatAmount: 0, totalAmount: 0 };
+  if (itemError) {
+    console.info("[invoice-totals:items-load-failed]", { invoiceId, error: itemError.message });
+    throw new Error(itemError.message);
+  }
 
   const subtotal = Number((items ?? []).reduce((sum, item) => sum + Number((item as any).line_total ?? 0), 0).toFixed(2));
   const vatBase = Number(
@@ -57,8 +63,14 @@ export async function recalculateInvoiceTotals(invoiceId: string) {
     { subtotal, vat_amount: vatAmount, total_amount: totalAmount, updated_at: new Date().toISOString() },
     invoiceColumns
   );
+  console.info("[invoice-totals:computed]", { invoiceId, subtotal, vatAmount, totalAmount, itemCount: (items ?? []).length });
+
   if (Object.keys(payload).length > 0) {
-    await supabase.from("invoices").update(payload).eq("id", invoiceId);
+    const { error: updateError } = await supabase.from("invoices").update(payload).eq("id", invoiceId);
+    if (updateError) {
+      console.info("[invoice-totals:update-failed]", { invoiceId, payload, error: updateError.message });
+      throw new Error(updateError.message);
+    }
   }
 
   return { subtotal, vatAmount, totalAmount };
