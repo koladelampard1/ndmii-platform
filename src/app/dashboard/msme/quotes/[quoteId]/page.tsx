@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { getOwnedProviderQuoteIdsForWorkspace, getProviderQuoteOwnershipColumns, isUuidLike } from "@/lib/data/provider-quote-ownership";
+import { isUuidLike } from "@/lib/data/provider-quote-ownership";
 import { calculateLineTotal, generateInvoiceNumber } from "@/lib/data/invoicing";
 import {
   filterPayloadByColumns,
@@ -70,10 +70,8 @@ async function loadQuoteForCurrentProvider(
   quoteId: string,
   requiredSelectFields: string[]
 ): Promise<{ quote: any; quoteColumns: Set<string> }> {
-  const currentUser = await getCurrentUserContext();
   const quoteColumns = await getTableColumns(supabase, "provider_quotes");
-  const ownershipColumns = getProviderQuoteOwnershipColumns(quoteColumns);
-  const selectFields = Array.from(new Set([...requiredSelectFields, ...ownershipColumns]));
+  const selectFields = Array.from(new Set([...requiredSelectFields, "provider_profile_id"]));
   const selectClause = selectFields.join(",");
 
   devQuoteLog("[quote-ownership] quote_load:context", {
@@ -88,23 +86,8 @@ async function loadQuoteForCurrentProvider(
         id: workspace.msme.id ?? null,
         msme_id: workspace.msme.msme_id ?? null,
       },
-      linkedMsmeId: currentUser.linkedMsmeId ?? null,
     },
     available_provider_quotes_columns: Array.from(quoteColumns).sort(),
-  });
-
-  const idProbeSelect = ownershipColumns.length > 0 ? `id,${ownershipColumns.join(",")}` : "id";
-  const { data: quoteByIdOnly, error: quoteByIdOnlyError }: { data: any; error: any } = await supabase
-    .from("provider_quotes")
-    .select(idProbeSelect)
-    .eq("id", quoteId)
-    .maybeSingle();
-
-  devQuoteLog("[quote-ownership] quote_load:id_probe", {
-    quoteId,
-    exists_by_id_only: Boolean(quoteByIdOnly),
-    id_probe_error: quoteByIdOnlyError?.message ?? null,
-    quote_row: quoteByIdOnly ?? null,
   });
 
   const { data: quote, error: quoteLoadError }: { data: any; error: any } = await supabase
@@ -122,34 +105,33 @@ async function loadQuoteForCurrentProvider(
     throw new Error("Quote not found for this provider.");
   }
 
-  const ownership = getOwnedProviderQuoteIdsForWorkspace([((quote ?? {}) as Record<string, unknown>)], workspace, {
-    quoteColumns,
-    linkedMsmeId: currentUser.linkedMsmeId ?? null,
-    linkedProviderId: currentUser.linkedProviderId ?? null,
-  });
-  const quoteOwnership = ownership.resolutionByQuoteId.get(String(quote.id ?? ""));
+  const quoteOwnership = {
+    isOwned: quote.provider_profile_id === workspace.provider.id,
+    matchReason: quote.provider_profile_id === workspace.provider.id ? "provider_profile_id === workspace.provider.id" : "provider_profile_id_mismatch",
+    quoteKeys: { provider_profile_id: quote.provider_profile_id ?? null },
+    workspaceKeys: { provider_id: workspace.provider.id ?? null },
+  };
   devQuoteLog("[quote-ownership] summary", {
     quoteId,
-    matched: quoteOwnership?.isOwned ?? false,
-    matchReason: quoteOwnership?.matchReason ?? "missing_resolution",
-    quoteKeys: quoteOwnership?.quoteKeys ?? null,
-    workspaceKeys: quoteOwnership?.workspaceKeys ?? null,
-    checks: quoteOwnership?.checks ?? [],
+    matched: quoteOwnership.isOwned,
+    matchReason: quoteOwnership.matchReason,
+    quoteKeys: quoteOwnership.quoteKeys,
+    workspaceKeys: quoteOwnership.workspaceKeys,
     quoteRow: quote,
     quoteColumns: Array.from(quoteColumns).sort(),
   });
   if (DEV_MODE) {
     console.info("[quote-detail-ownership]", {
       quoteId,
-      visibleInList: quoteOwnership?.isCheckable ? quoteOwnership.isOwned : null,
+      visibleInList: quoteOwnership.isOwned,
       quoteRow: quote,
-      workspaceKeys: quoteOwnership?.workspaceKeys ?? null,
-      matchReason: quoteOwnership?.matchReason ?? "missing_resolution",
-      isOwned: quoteOwnership?.isOwned ?? false,
+      workspaceKeys: quoteOwnership.workspaceKeys,
+      matchReason: quoteOwnership.matchReason,
+      isOwned: quoteOwnership.isOwned,
     });
   }
 
-  if (!quoteOwnership?.isOwned) {
+  if (!quoteOwnership.isOwned) {
     throw new Error("Quote not found for this provider.");
   }
 
