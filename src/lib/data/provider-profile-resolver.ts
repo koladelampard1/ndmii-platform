@@ -7,6 +7,14 @@ export type NormalizedProviderProfile = {
   display_name: string | null;
 };
 
+export type ProviderPublicContext = {
+  provider: NormalizedProviderProfile | null;
+  provider_profile_id: string | null;
+  provider_profile_msme_id: string | null;
+  association_id: string | null;
+  redirectToCanonicalSlug: string | null;
+};
+
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const PROVIDER_PROFILE_SELECT = "id,msme_id,public_slug,display_name";
 let providerProfilesHasLegacySlugColumn: boolean | null = null;
@@ -151,5 +159,46 @@ export async function resolvePublicProviderProfile(params: {
     provider,
     redirectToCanonicalSlug:
       provider.public_slug && provider.public_slug !== providerRouteParam ? provider.public_slug : null,
+  };
+}
+
+export async function resolveProviderPublicContext(params: {
+  providerRouteParam: string;
+}): Promise<ProviderPublicContext> {
+  const resolved = await resolvePublicProviderProfile(params);
+  if (!resolved.provider?.id) {
+    return {
+      provider: null,
+      provider_profile_id: null,
+      provider_profile_msme_id: null,
+      association_id: null,
+      redirectToCanonicalSlug: resolved.redirectToCanonicalSlug,
+    };
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data: linkedMsmeAssociation, error: associationLookupError } = await supabase
+    .from("msmes")
+    .select("association_id")
+    .eq("id", resolved.provider.msme_id)
+    .maybeSingle();
+
+  if (associationLookupError) {
+    logResolver("provider_context_association_lookup_failed", {
+      providerId: resolved.provider.id,
+      providerMsmeId: resolved.provider.msme_id,
+      message: associationLookupError.message ?? null,
+      details: associationLookupError.details ?? null,
+      hint: associationLookupError.hint ?? null,
+      code: associationLookupError.code ?? null,
+    });
+  }
+
+  return {
+    provider: resolved.provider,
+    provider_profile_id: resolved.provider.id,
+    provider_profile_msme_id: resolved.provider.msme_id,
+    association_id: linkedMsmeAssociation?.association_id ?? null,
+    redirectToCanonicalSlug: resolved.redirectToCanonicalSlug,
   };
 }
