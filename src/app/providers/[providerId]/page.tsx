@@ -7,6 +7,7 @@ import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marke
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
+import { createComplaintStatusHistory, emitComplaintEvent, generateComplaintReference } from "@/lib/data/complaints";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -84,8 +85,8 @@ function resolveRegulatorTarget(category: string, requestedTarget: string) {
 async function submitPublicComplaint(formData: FormData) {
   "use server";
 
-  const providerId = String(formData.get("provider_id") ?? "");
-  if (!providerId) {
+  const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
+  if (!providerPathSegment) {
     redirect("/search?complaint=missing_provider");
   }
 
@@ -102,31 +103,35 @@ async function submitPublicComplaint(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
 
   if (!description || !summary) {
-    redirect(`/providers/${providerId}?reported_error=missing_fields`);
+    redirect(`/providers/${providerPathSegment}?reported_error=missing_fields`);
   }
 
   const supabase = await createServiceRoleSupabaseClient();
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
-  devLog("regulator_target_chosen", { providerId, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
+  devLog("regulator_target_chosen", { providerPathSegment, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
   const providerProfile = await resolvePublicProviderProfile({
-    providerRouteParam: providerId,
+    providerRouteParam: providerPathSegment,
   });
-  devLog("provider_profile_lookup", { providerId, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
+  devLog("provider_resolution_on_submit", { providerPathSegment, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
+
+  if (!providerProfile.provider?.id) {
+    redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
+  }
 
   let linkedMsmeId = providerProfile.provider?.msme_id ?? null;
 
   if (!linkedMsmeId && fallbackMsmePublicId) {
     const { data: fallbackMsme } = await supabase.from("msmes").select("id").eq("msme_id", fallbackMsmePublicId).maybeSingle();
     linkedMsmeId = fallbackMsme?.id ?? null;
-    devLog("linked_msme_fallback_from_public_id", { providerId, fallbackMsmePublicId, found: Boolean(fallbackMsme) });
+    devLog("linked_msme_fallback_from_public_id", { providerPathSegment, fallbackMsmePublicId, found: Boolean(fallbackMsme) });
   }
 
-  if (!linkedMsmeId && providerId.startsWith("msme-")) {
-    const projectedMsmeId = providerId.slice(5).toUpperCase();
+  if (!linkedMsmeId && providerPathSegment.startsWith("msme-")) {
+    const projectedMsmeId = providerPathSegment.slice(5).toUpperCase();
     const { data: projectedMsme } = await supabase.from("msmes").select("id").eq("msme_id", projectedMsmeId).maybeSingle();
     linkedMsmeId = projectedMsme?.id ?? null;
-    devLog("linked_msme_fallback_from_projected_provider", { providerId, projectedMsmeId, found: Boolean(projectedMsme) });
+    devLog("linked_msme_fallback_from_projected_provider", { providerPathSegment, projectedMsmeId, found: Boolean(projectedMsme) });
   }
 
   if (!linkedMsmeId && fallbackBusinessName) {
@@ -136,7 +141,7 @@ async function submitPublicComplaint(formData: FormData) {
     const { data: businessMatchedMsme } = await msmeQuery.maybeSingle();
     linkedMsmeId = businessMatchedMsme?.id ?? null;
     devLog("linked_msme_fallback_from_business_name", {
-      providerId,
+      providerPathSegment,
       fallbackBusinessName,
       fallbackState,
       fallbackSector,
@@ -146,12 +151,12 @@ async function submitPublicComplaint(formData: FormData) {
 
   const providerProfileExists = Boolean(providerProfile.provider?.id);
   if (!linkedMsmeId && providerProfileExists) {
-    devLog("linked_msme_lookup_incomplete_provider_profile", { providerId, note: "Continuing with complaint creation while retaining provider linkage." });
+    devLog("linked_msme_lookup_incomplete_provider_profile", { providerPathSegment, note: "Continuing with complaint creation while retaining provider linkage." });
   }
 
   if (!linkedMsmeId && !providerProfileExists) {
-    devLog("linked_msme_lookup_failed_no_provider_profile", { providerId });
-    redirect(`/providers/${providerId}?reported_error=provider_not_found`);
+    devLog("linked_msme_lookup_failed_no_provider_profile", { providerPathSegment });
+    redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
   }
 
   const resolvedProviderProfileId = providerProfile.provider?.id ?? null;
@@ -167,7 +172,7 @@ async function submitPublicComplaint(formData: FormData) {
     null;
 
   devLog("linked_msme_lookup_result", {
-    providerId,
+    providerPathSegment,
     linkedMsmeId,
     providerProfileId: resolvedProviderProfileId,
     resolvedBusinessName,
@@ -176,16 +181,37 @@ async function submitPublicComplaint(formData: FormData) {
   });
 
 
+  const complaintReference = generateComplaintReference();
+
+  const { data: linkedMsmeAssociation } = linkedMsmeId
+    ? await supabase.from("msmes").select("association_id").eq("id", linkedMsmeId).maybeSingle()
+    : { data: null };
+  devLog("association_lookup_result", {
+    providerPathSegment,
+    linkedMsmeId,
+    associationId: linkedMsmeAssociation?.association_id ?? null,
+  });
+
   const complaintInsertPayload: Record<string, unknown> = {
+    complaint_reference: complaintReference,
     msme_id: linkedMsmeId,
+    provider_msme_id: linkedMsmeId,
+    association_id: linkedMsmeAssociation?.association_id ?? null,
     provider_profile_id: resolvedProviderProfileId,
     provider_id: resolvedProviderProfileId,
     provider_business_name: resolvedBusinessName,
+    complainant_name: reporterName,
+    complainant_email: reporterEmail || null,
+    complainant_phone: String(formData.get("reporter_phone") ?? "").trim() || null,
+    category: complaintCategory,
     complaint_category: complaintCategory,
     complaint_type: complaintCategory,
+    title: summary || `Public report for ${resolvedBusinessName}`,
     summary: summary || `Public report for ${resolvedBusinessName}`,
     description,
-    status: "open",
+    preferred_contact_method: String(formData.get("preferred_contact_method") ?? "email").trim() || "email",
+    status: "submitted",
+    priority: severity,
     severity,
     regulator_target: chosenRegulator,
     state: resolvedState,
@@ -196,29 +222,53 @@ async function submitPublicComplaint(formData: FormData) {
     created_at: new Date().toISOString(),
   };
 
-  const { error, data } = await insertComplaintWithSchemaAdaptation(supabase, complaintInsertPayload, providerId);
+  devLog("complaint_insert_payload_final", {
+    providerPathSegment,
+    providerProfileId: resolvedProviderProfileId,
+    providerMsmeId: linkedMsmeId,
+    payload: complaintInsertPayload,
+  });
+  const { error, data } = await insertComplaintWithSchemaAdaptation(supabase, complaintInsertPayload, providerPathSegment);
 
   if (error) {
     devLog("complaint_insert_failed_final", {
-      providerId,
+      providerPathSegment,
       message: error.message ?? null,
       details: "details" in error ? (error as { details?: string }).details ?? null : null,
       hint: "hint" in error ? (error as { hint?: string }).hint ?? null : null,
       code: "code" in error ? (error as { code?: string }).code ?? null : null,
     });
-    redirect(`/providers/${providerId}?reported_error=submit_failed`);
+    redirect(`/providers/${providerPathSegment}?reported_error=submit_failed`);
   }
   devLog("complaint_insert_complete", {
-    providerId,
+    providerPathSegment,
     complaintId: data?.id ?? null,
+    complaintReference,
     linkedMsmeId,
     providerProfileId: resolvedProviderProfileId,
     businessName: resolvedBusinessName,
     chosenRegulator,
   });
 
-  revalidatePath(`/providers/${providerId}`);
-  redirect(`/providers/${providerId}?reported=1`);
+  if (data?.id) {
+    await createComplaintStatusHistory({
+      complaintId: data.id,
+      fromStatus: null,
+      toStatus: "submitted",
+      changedByUserId: null,
+      changedByRole: "public",
+      note: "Public complaint submitted from marketplace profile",
+    });
+  }
+  await emitComplaintEvent("complaint_submitted", {
+    complaintId: data?.id ?? null,
+    complaintReference,
+    providerProfileId: resolvedProviderProfileId,
+    providerMsmeId: linkedMsmeId,
+  });
+
+  revalidatePath(`/providers/${providerPathSegment}`);
+  redirect(`/providers/${providerPathSegment}/complaints/success?ref=${encodeURIComponent(complaintReference)}`);
 }
 
 
@@ -238,6 +288,12 @@ export default async function ProviderPublicPage({
   const query = await searchParams;
   const resolvedRoute = await resolvePublicProviderProfile({
     providerRouteParam: providerSlug,
+  });
+  devLog("provider_resolution_on_form_load", {
+    providerSlug,
+    resolvedProviderId: resolvedRoute.provider?.id ?? null,
+    resolvedProviderMsmeId: resolvedRoute.provider?.msme_id ?? null,
+    canonicalSlug: resolvedRoute.redirectToCanonicalSlug,
   });
 
   if (resolvedRoute.redirectToCanonicalSlug && resolvedRoute.redirectToCanonicalSlug !== providerSlug) {
@@ -453,7 +509,7 @@ export default async function ProviderPublicPage({
           <aside className="space-y-4">
             {query.reported === "1" && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                Report submitted. The issue has been logged for FCCPC regulator triage.
+                Report submitted. The issue has been logged for regulator triage.
               </div>
             )}
             {query.quote === "1" && (
@@ -495,13 +551,18 @@ export default async function ProviderPublicPage({
               <h3 className="text-base font-semibold">Report this provider</h3>
               <p className="mt-1 text-xs text-slate-500">For service quality, fraud, counterfeit products, pricing abuse, or delivery disputes.</p>
               <form action={submitPublicComplaint} className="mt-3 space-y-2">
-                <input type="hidden" name="provider_id" value={providerView.id} />
+                <input type="hidden" name="provider_path_segment" value={providerSlug} />
                 <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
                 <input type="hidden" name="provider_business_name" value={providerView.business_name} />
                 <input type="hidden" name="provider_state" value={providerView.state} />
                 <input type="hidden" name="provider_sector" value={providerView.category} />
                 <input name="reporter_name" placeholder="Your name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <input name="reporter_email" type="email" placeholder="Email (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <input name="reporter_phone" placeholder="Phone (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <select name="preferred_contact_method" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <option value="email">Email</option>
+                  <option value="phone">Phone</option>
+                </select>
                 <select name="complaint_category" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="marketplace_report">General marketplace report</option>
                   <option value="service_quality">Service quality issue</option>

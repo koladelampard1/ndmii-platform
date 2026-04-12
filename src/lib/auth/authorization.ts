@@ -169,6 +169,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/reviews", label: "Reviewer Workflow" },
     { href: "/dashboard/compliance", label: "KYC Simulation" },
     { href: "/dashboard/fccpc", label: "FCCPC Workspace" },
+    { href: "/dashboard/executive/complaints", label: "Complaint Monitor" },
     { href: "/dashboard/nrs", label: "NRS Operations" },
     { href: "/dashboard/associations", label: "Associations" },
     { href: "/dashboard/manufacturers", label: "Manufacturers" },
@@ -199,6 +200,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
   ],
   association_officer: [
     { href: "/dashboard/associations", label: "Association Workspace" },
+    { href: "/dashboard/associations/complaints", label: "Complaints Desk" },
     { href: "/dashboard/associations/bulk-upload", label: "Bulk Member Onboarding" },
     { href: "/dashboard/reports", label: "Association Exports" },
     { href: "/verify", label: "Public Verification" },
