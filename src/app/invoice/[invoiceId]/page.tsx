@@ -16,6 +16,14 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
 
   if (error) throw new Error(error.message);
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
+  console.info("[public-invoice:header-totals]", {
+    invoiceId,
+    subtotal: Number(invoice.subtotal ?? 0),
+    vatRate: Number(invoice.vat_rate ?? 0),
+    vatAmount: Number(invoice.vat_amount ?? 0),
+    totalAmount: Number(invoice.total_amount ?? 0),
+    source: "invoices_table",
+  });
 
   const { data: items, error: itemError } = await supabase
     .from("invoice_items")
@@ -24,6 +32,14 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     .order("created_at", { ascending: true });
 
   if (itemError) throw new Error(itemError.message);
+  const itemDerivedSubtotal = Number((items ?? []).reduce((sum, item) => sum + Number(item.line_total ?? 0), 0).toFixed(2));
+  console.info("[public-invoice:item-totals]", {
+    invoiceId,
+    itemCount: (items ?? []).length,
+    itemDerivedSubtotal,
+    source: "invoice_items_table",
+    displayTotalsSource: "invoices_table_columns",
+  });
 
   const provider = invoice.provider_profiles as { display_name?: string; contact_email?: string; contact_phone?: string } | null;
 
