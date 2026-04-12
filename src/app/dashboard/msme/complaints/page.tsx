@@ -8,29 +8,31 @@ export default async function MsmeComplaintsPage() {
 
   const { data: complaints } = await supabase
     .from("complaints")
-    .select("id,summary,severity,status,created_at,reporter_name")
+    .select("id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
     .or(`provider_profile_id.eq.${workspace.provider.id},provider_id.eq.${workspace.provider.id}`)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(50);
 
   return (
     <section className="rounded-xl border bg-white p-4">
       <h2 className="text-lg font-semibold">Provider complaint log</h2>
-      <p className="mt-1 text-sm text-slate-500">Read-only visibility into public complaints routed to regulators.</p>
+      <p className="mt-1 text-sm text-slate-500">Track complaints raised against your provider profile and respond to move cases forward.</p>
       <div className="mt-3 overflow-hidden rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left text-slate-600"><tr><th className="px-3 py-2">Summary</th><th className="px-3 py-2">Reporter</th><th className="px-3 py-2">Severity</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Date</th></tr></thead>
+          <thead className="bg-slate-100 text-left text-slate-600"><tr><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Title</th><th className="px-3 py-2">Complainant</th><th className="px-3 py-2">Priority</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Action</th></tr></thead>
           <tbody>
             {(complaints ?? []).map((item) => (
               <tr key={item.id} className="border-t">
-                <td className="px-3 py-2">{item.summary ?? "Complaint report"}</td>
-                <td className="px-3 py-2">{item.reporter_name ?? "Public user"}</td>
-                <td className="px-3 py-2 uppercase">{item.severity ?? "medium"}</td>
-                <td className="px-3 py-2">{item.status ?? "open"}</td>
+                <td className="px-3 py-2 text-xs font-semibold">{item.complaint_reference ?? String(item.id).slice(0, 8)}</td>
+                <td className="px-3 py-2">{item.title ?? item.summary ?? "Complaint report"}</td>
+                <td className="px-3 py-2">{item.complainant_name ?? item.reporter_name ?? "Public user"}</td>
+                <td className="px-3 py-2 uppercase">{item.priority ?? "medium"}</td>
+                <td className="px-3 py-2">{item.status ?? "submitted"}</td>
                 <td className="px-3 py-2 text-xs">{item.created_at ? new Date(item.created_at).toLocaleDateString() : "-"}</td>
+                <td className="px-3 py-2"><Link href={`/dashboard/msme/complaints/${item.id}`} className="text-indigo-700 hover:underline">Open</Link></td>
               </tr>
             ))}
-            {(!complaints || complaints.length === 0) && <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={5}>No complaints currently linked to this provider profile.</td></tr>}
+            {(!complaints || complaints.length === 0) && <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={7}>No complaints currently linked to this provider profile.</td></tr>}
           </tbody>
         </table>
       </div>

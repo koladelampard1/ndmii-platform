@@ -10,6 +10,7 @@ export type NormalizedProviderProfile = {
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const PROVIDER_PROFILE_SELECT = "id,msme_id,public_slug,display_name";
 let providerProfilesHasLegacySlugColumn: boolean | null = null;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function logResolver(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
@@ -30,34 +31,41 @@ export async function resolvePublicProviderProfile(params: {
 
   const supabase = await createServiceRoleSupabaseClient();
 
-  const primaryField = "public_slug";
-  logResolver("provider_lookup_query", {
-    table: "provider_profiles",
-    select: PROVIDER_PROFILE_SELECT,
-    query_field: primaryField,
-    filter: `${primaryField}.eq.${providerRouteParam}`,
-  });
+  let data: { id: string; msme_id: string; public_slug: string; display_name: string | null } | null = null;
+  let queryFieldUsed = "public_slug";
 
-  const { data: dataByPublicSlug, error: publicSlugError } = await supabase
-    .from("provider_profiles")
-    .select(PROVIDER_PROFILE_SELECT)
-    .eq(primaryField, providerRouteParam)
-    .maybeSingle();
-
-  if (publicSlugError) {
-    logResolver("provider_lookup_error", {
-      query_field: primaryField,
-      filter: `${primaryField}.eq.${providerRouteParam}`,
-      message: publicSlugError.message ?? null,
-      details: publicSlugError.details ?? null,
-      hint: publicSlugError.hint ?? null,
-      code: publicSlugError.code ?? null,
+  const attemptLookup = async (field: string, value: string) => {
+    logResolver("provider_lookup_query", {
+      table: "provider_profiles",
+      select: PROVIDER_PROFILE_SELECT,
+      query_field: field,
+      filter: `${field}.eq.${value}`,
     });
-    return { provider: null, redirectToCanonicalSlug: null };
-  }
+    const { data: candidate, error } = await supabase
+      .from("provider_profiles")
+      .select(PROVIDER_PROFILE_SELECT)
+      .eq(field, value)
+      .maybeSingle();
 
-  let data = dataByPublicSlug;
-  let queryFieldUsed = primaryField;
+    if (error) {
+      logResolver("provider_lookup_error", {
+        query_field: field,
+        filter: `${field}.eq.${value}`,
+        message: error.message ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+        code: error.code ?? null,
+      });
+      return null;
+    }
+    if (candidate?.id) {
+      queryFieldUsed = field;
+      return candidate;
+    }
+    return null;
+  };
+
+  data = await attemptLookup("public_slug", providerRouteParam);
 
   if (!data?.id) {
     if (providerProfilesHasLegacySlugColumn === null) {
@@ -80,35 +88,34 @@ export async function resolvePublicProviderProfile(params: {
     }
 
     if (providerProfilesHasLegacySlugColumn) {
-      const fallbackField = "slug";
-      logResolver("provider_lookup_query", {
-        table: "provider_profiles",
-        select: PROVIDER_PROFILE_SELECT,
-        query_field: fallbackField,
-        filter: `${fallbackField}.eq.${providerRouteParam}`,
+      data = await attemptLookup("slug", providerRouteParam);
+    }
+  }
+
+  if (!data?.id && UUID_PATTERN.test(providerRouteParam)) {
+    data = await attemptLookup("id", providerRouteParam);
+  }
+
+  if (!data?.id && UUID_PATTERN.test(providerRouteParam)) {
+    data = await attemptLookup("msme_id", providerRouteParam);
+  }
+
+  if (!data?.id) {
+    const { data: msmeByPublicId, error: msmeLookupError } = await supabase
+      .from("msmes")
+      .select("id")
+      .eq("msme_id", providerRouteParam.toUpperCase())
+      .maybeSingle();
+    if (msmeLookupError) {
+      logResolver("provider_lookup_msme_public_id_error", {
+        query_field: "msmes.msme_id",
+        filter: `msme_id.eq.${providerRouteParam.toUpperCase()}`,
+        message: msmeLookupError.message ?? null,
       });
-      const { data: dataByLegacySlug, error: legacySlugError } = await supabase
-        .from("provider_profiles")
-        .select(PROVIDER_PROFILE_SELECT)
-        .eq(fallbackField, providerRouteParam)
-        .maybeSingle();
-
-      if (legacySlugError) {
-        logResolver("provider_lookup_error", {
-          query_field: fallbackField,
-          filter: `${fallbackField}.eq.${providerRouteParam}`,
-          message: legacySlugError.message ?? null,
-          details: legacySlugError.details ?? null,
-          hint: legacySlugError.hint ?? null,
-          code: legacySlugError.code ?? null,
-        });
-        return { provider: null, redirectToCanonicalSlug: null };
-      }
-
-      if (dataByLegacySlug?.id) {
-        data = dataByLegacySlug;
-        queryFieldUsed = fallbackField;
-      }
+    }
+    if (msmeByPublicId?.id) {
+      data = await attemptLookup("msme_id", msmeByPublicId.id);
+      if (data?.id) queryFieldUsed = "msmes.msme_id";
     }
   }
 
@@ -140,5 +147,9 @@ export async function resolvePublicProviderProfile(params: {
     error: null,
   });
 
-  return { provider, redirectToCanonicalSlug: null };
+  return {
+    provider,
+    redirectToCanonicalSlug:
+      provider.public_slug && provider.public_slug !== providerRouteParam ? provider.public_slug : null,
+  };
 }
