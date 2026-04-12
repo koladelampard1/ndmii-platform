@@ -86,8 +86,6 @@ async function submitPublicComplaint(formData: FormData) {
   "use server";
 
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
-  const submittedProviderProfileId = String(formData.get("provider_profile_id") ?? "").trim();
-  const submittedProviderMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   if (!providerPathSegment) {
     redirect("/search?complaint=missing_provider");
   }
@@ -111,22 +109,11 @@ async function submitPublicComplaint(formData: FormData) {
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
   devLog("regulator_target_chosen", { providerPathSegment, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
-  const providerLookupCandidates = [providerPathSegment, submittedProviderProfileId, submittedProviderMsmePublicId].filter(Boolean);
-  const providerContext =
-    (await (async () => {
-      for (const candidate of providerLookupCandidates) {
-        const resolved = await resolveProviderPublicContext({
-          providerRouteParam: candidate,
-        });
-        if (resolved.provider_profile_id && resolved.provider_profile_msme_id) return resolved;
-      }
-      return await resolveProviderPublicContext({
-        providerRouteParam: providerPathSegment,
-      });
-    })());
+  const providerContext = await resolveProviderPublicContext({
+    providerRouteParam: providerPathSegment,
+  });
   devLog("provider_resolution_on_submit", {
     providerPathSegment,
-    providerLookupCandidates,
     found: Boolean(providerContext.provider),
     providerProfile: providerContext.provider,
     resolvedProviderProfileId: providerContext.provider_profile_id,
@@ -196,6 +183,12 @@ async function submitPublicComplaint(formData: FormData) {
     source_channel: "marketplace_public_profile",
     created_at: new Date().toISOString(),
   };
+
+  console.log("[complaint-submit]", {
+    provider_profile_id: resolvedProviderProfileId,
+    provider_profile_msme_id: resolvedProviderMsmeId,
+    association_id: resolvedAssociationId ?? null,
+  });
 
   devLog("complaint_insert_payload_final", {
     providerPathSegment,
@@ -302,15 +295,6 @@ export default async function ProviderPublicPage({
 
   const providerId = resolvedRoute.provider.id;
   const provider = await getProviderPublicProfile(providerId);
-  if (!provider) {
-    devLog("provider_profile_full_load_failed_falling_back_to_minimal", {
-      providerSlug,
-      providerId,
-      resolvedPublicSlug: resolvedRoute.provider.public_slug,
-      resolvedMsmeId: resolvedRoute.provider.msme_id,
-      resolvedDisplayName: resolvedRoute.provider.display_name,
-    });
-  }
 
   const providerView: ProviderProfile = provider ?? {
     id: resolvedRoute.provider.id,
