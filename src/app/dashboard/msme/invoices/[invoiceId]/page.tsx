@@ -52,9 +52,11 @@ async function invoiceMutationAction(formData: FormData) {
     console.info("[invoice-mutation:add-item:payload]", {
       invoiceId,
       payload,
+      selectedItemColumns: Array.from(itemColumns).sort(),
       quantity,
       unitPrice,
       vatApplicable: String(formData.get("vat_applicable") ?? "on") === "on",
+      computedLineTotal: lineTotal,
     });
     const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
     console.info("[invoice-mutation:add-item:totals-before]", beforeTotals);
@@ -84,9 +86,11 @@ async function invoiceMutationAction(formData: FormData) {
       invoiceId,
       itemId,
       payload,
+      selectedItemColumns: Array.from(itemColumns).sort(),
       quantity,
       unitPrice,
       vatApplicable: String(formData.get("vat_applicable") ?? "") === "on",
+      computedLineTotal: lineTotal,
     });
     const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
     console.info("[invoice-mutation:update-item:totals-before]", beforeTotals);
@@ -102,6 +106,8 @@ async function invoiceMutationAction(formData: FormData) {
 
   if (action === "remove_item") {
     const itemId = String(formData.get("item_id") ?? "");
+    const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
+    console.info("[invoice-mutation:remove-item:totals-before]", beforeTotals);
     const { error } = await supabase.from("invoice_items").delete().eq("id", itemId).eq("invoice_id", invoiceId);
     if (error) throw new Error(error.message);
   }
