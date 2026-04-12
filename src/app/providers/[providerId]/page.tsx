@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marketplace";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
+import { resolveProviderPublicContext, resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
 import { createComplaintStatusHistory, emitComplaintEvent, generateComplaintReference } from "@/lib/data/complaints";
 
@@ -95,7 +95,6 @@ async function submitPublicComplaint(formData: FormData) {
   const complaintCategory = String(formData.get("complaint_category") ?? "marketplace_report");
   const severity = String(formData.get("severity") ?? "medium");
   const regulatorTarget = String(formData.get("regulator_target") ?? "fccpc");
-  const fallbackMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   const fallbackBusinessName = String(formData.get("provider_business_name") ?? "").trim();
   const fallbackState = String(formData.get("provider_state") ?? "").trim();
   const fallbackSector = String(formData.get("provider_sector") ?? "").trim();
@@ -110,58 +109,27 @@ async function submitPublicComplaint(formData: FormData) {
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
   devLog("regulator_target_chosen", { providerPathSegment, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
-  const providerProfile = await resolvePublicProviderProfile({
+  const providerContext = await resolveProviderPublicContext({
     providerRouteParam: providerPathSegment,
   });
-  devLog("provider_resolution_on_submit", { providerPathSegment, found: Boolean(providerProfile.provider), providerProfile: providerProfile.provider });
+  devLog("provider_resolution_on_submit", {
+    providerPathSegment,
+    found: Boolean(providerContext.provider),
+    providerProfile: providerContext.provider,
+    resolvedProviderProfileId: providerContext.provider_profile_id,
+    resolvedProviderMsmeId: providerContext.provider_profile_msme_id,
+    resolvedAssociationId: providerContext.association_id,
+  });
 
-  if (!providerProfile.provider?.id) {
+  if (!providerContext.provider_profile_id || !providerContext.provider_profile_msme_id) {
     redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
   }
 
-  let linkedMsmeId = providerProfile.provider?.msme_id ?? null;
-
-  if (!linkedMsmeId && fallbackMsmePublicId) {
-    const { data: fallbackMsme } = await supabase.from("msmes").select("id").eq("msme_id", fallbackMsmePublicId).maybeSingle();
-    linkedMsmeId = fallbackMsme?.id ?? null;
-    devLog("linked_msme_fallback_from_public_id", { providerPathSegment, fallbackMsmePublicId, found: Boolean(fallbackMsme) });
-  }
-
-  if (!linkedMsmeId && providerPathSegment.startsWith("msme-")) {
-    const projectedMsmeId = providerPathSegment.slice(5).toUpperCase();
-    const { data: projectedMsme } = await supabase.from("msmes").select("id").eq("msme_id", projectedMsmeId).maybeSingle();
-    linkedMsmeId = projectedMsme?.id ?? null;
-    devLog("linked_msme_fallback_from_projected_provider", { providerPathSegment, projectedMsmeId, found: Boolean(projectedMsme) });
-  }
-
-  if (!linkedMsmeId && fallbackBusinessName) {
-    let msmeQuery = supabase.from("msmes").select("id,business_name,state,sector").ilike("business_name", fallbackBusinessName).limit(1);
-    if (fallbackState) msmeQuery = msmeQuery.eq("state", fallbackState);
-    if (fallbackSector) msmeQuery = msmeQuery.eq("sector", fallbackSector);
-    const { data: businessMatchedMsme } = await msmeQuery.maybeSingle();
-    linkedMsmeId = businessMatchedMsme?.id ?? null;
-    devLog("linked_msme_fallback_from_business_name", {
-      providerPathSegment,
-      fallbackBusinessName,
-      fallbackState,
-      fallbackSector,
-      found: Boolean(businessMatchedMsme),
-    });
-  }
-
-  const providerProfileExists = Boolean(providerProfile.provider?.id);
-  if (!linkedMsmeId && providerProfileExists) {
-    devLog("linked_msme_lookup_incomplete_provider_profile", { providerPathSegment, note: "Continuing with complaint creation while retaining provider linkage." });
-  }
-
-  if (!linkedMsmeId && !providerProfileExists) {
-    devLog("linked_msme_lookup_failed_no_provider_profile", { providerPathSegment });
-    redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
-  }
-
-  const resolvedProviderProfileId = providerProfile.provider?.id ?? null;
+  const resolvedProviderProfileId = providerContext.provider_profile_id;
+  const resolvedProviderMsmeId = providerContext.provider_profile_msme_id;
+  const resolvedAssociationId = providerContext.association_id;
   const resolvedBusinessName =
-    providerProfile.provider?.display_name ??
+    providerContext.provider?.display_name ??
     fallbackBusinessName ??
     "Unknown business";
   const resolvedState =
@@ -173,8 +141,9 @@ async function submitPublicComplaint(formData: FormData) {
 
   devLog("linked_msme_lookup_result", {
     providerPathSegment,
-    linkedMsmeId,
+    linkedMsmeId: resolvedProviderMsmeId,
     providerProfileId: resolvedProviderProfileId,
+    associationId: resolvedAssociationId,
     resolvedBusinessName,
     resolvedState,
     resolvedSector,
@@ -183,20 +152,12 @@ async function submitPublicComplaint(formData: FormData) {
 
   const complaintReference = generateComplaintReference();
 
-  const { data: linkedMsmeAssociation } = linkedMsmeId
-    ? await supabase.from("msmes").select("association_id").eq("id", linkedMsmeId).maybeSingle()
-    : { data: null };
-  devLog("association_lookup_result", {
-    providerPathSegment,
-    linkedMsmeId,
-    associationId: linkedMsmeAssociation?.association_id ?? null,
-  });
-
   const complaintInsertPayload: Record<string, unknown> = {
     complaint_reference: complaintReference,
-    msme_id: linkedMsmeId,
-    provider_msme_id: linkedMsmeId,
-    association_id: linkedMsmeAssociation?.association_id ?? null,
+    msme_id: resolvedProviderMsmeId,
+    provider_profile_msme_id: resolvedProviderMsmeId,
+    provider_msme_id: resolvedProviderMsmeId,
+    association_id: resolvedAssociationId,
     provider_profile_id: resolvedProviderProfileId,
     provider_id: resolvedProviderProfileId,
     provider_business_name: resolvedBusinessName,
@@ -224,8 +185,10 @@ async function submitPublicComplaint(formData: FormData) {
 
   devLog("complaint_insert_payload_final", {
     providerPathSegment,
-    providerProfileId: resolvedProviderProfileId,
-    providerMsmeId: linkedMsmeId,
+    resolvedProviderProfileId,
+    resolvedProviderMsmeId,
+    resolvedAssociationId,
+    complaintPayload: complaintInsertPayload,
     payload: complaintInsertPayload,
   });
   const { error, data } = await insertComplaintWithSchemaAdaptation(supabase, complaintInsertPayload, providerPathSegment);
@@ -244,7 +207,7 @@ async function submitPublicComplaint(formData: FormData) {
     providerPathSegment,
     complaintId: data?.id ?? null,
     complaintReference,
-    linkedMsmeId,
+    linkedMsmeId: resolvedProviderMsmeId,
     providerProfileId: resolvedProviderProfileId,
     businessName: resolvedBusinessName,
     chosenRegulator,
@@ -264,11 +227,11 @@ async function submitPublicComplaint(formData: FormData) {
     complaintId: data?.id ?? null,
     complaintReference,
     providerProfileId: resolvedProviderProfileId,
-    providerMsmeId: linkedMsmeId,
+    providerMsmeId: resolvedProviderMsmeId,
   });
 
   revalidatePath(`/providers/${providerPathSegment}`);
-  redirect(`/providers/${providerPathSegment}/complaints/success?ref=${encodeURIComponent(complaintReference)}`);
+  redirect(`/providers/${providerPathSegment}?notice=complaint_submitted`);
 }
 
 
@@ -282,7 +245,7 @@ export default async function ProviderPublicPage({
   searchParams,
 }: {
   params: Promise<{ providerId: string }>;
-  searchParams: Promise<{ reported?: string; reported_error?: string; quote?: string; quote_error?: string }>;
+  searchParams: Promise<{ reported?: string; reported_error?: string; quote?: string; quote_error?: string; notice?: string }>;
 }) {
   const { providerId: providerSlug } = await params;
   const query = await searchParams;
@@ -515,6 +478,11 @@ export default async function ProviderPublicPage({
             {query.quote === "1" && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 Quote request submitted. This provider can respond from their MSME quote inbox.
+              </div>
+            )}
+            {query.notice === "complaint_submitted" && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                Complaint submitted successfully. The provider and relevant oversight body have been notified.
               </div>
             )}
             {query.quote_error && (
