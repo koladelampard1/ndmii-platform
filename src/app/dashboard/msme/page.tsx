@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { fetchProviderQuoteInboxCount } from "@/lib/data/provider-quote-queries";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MsmePage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const quoteCountPromise = fetchProviderQuoteInboxCount(supabase, workspace.provider.id);
 
-  const [{ count: serviceCount }, { count: galleryCount }, { count: quoteCount }, { count: openComplaintCount }] = await Promise.all([
+  const [{ count: serviceCount }, { count: galleryCount }, quoteCount, { count: openComplaintCount }] = await Promise.all([
     supabase.from("provider_services").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
     supabase.from("provider_gallery").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
-    supabase.from("provider_quotes").select("id", { count: "exact", head: true }).eq("provider_profile_id", workspace.provider.id),
+    quoteCountPromise,
     supabase
       .from("complaints")
       .select("id", { count: "exact", head: true })
