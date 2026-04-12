@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { getCurrentUserContext } from "@/lib/auth/session";
+import { getTableColumns } from "@/lib/data/commercial-ops";
+import { getOwnedProviderQuoteIdsForWorkspace, getProviderQuoteOwnershipColumns } from "@/lib/data/provider-quote-ownership";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -16,21 +19,59 @@ function statusClasses(status: string) {
 
 export default async function MsmeQuotesPage({ searchParams }: { searchParams: Promise<{ status?: string; saved?: string }> }) {
   const params = await searchParams;
+  const currentUser = await getCurrentUserContext();
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
+  const quoteColumns = await getTableColumns(supabase, "provider_quotes");
+  const ownershipColumns = getProviderQuoteOwnershipColumns(quoteColumns);
+  const selectFields = Array.from(
+    new Set([
+      "id",
+      "requester_name",
+      "requester_email",
+      "requester_phone",
+      "request_summary",
+      "budget_min",
+      "budget_max",
+      "status",
+      "created_at",
+      ...ownershipColumns,
+    ])
+  );
 
   let query = supabase
     .from("provider_quotes")
-    .select("id,requester_name,requester_email,requester_phone,request_summary,budget_min,budget_max,status,created_at")
-    .eq("provider_profile_id", workspace.provider.id)
+    .select(selectFields.join(","))
     .order("created_at", { ascending: false });
 
   if (params.status && STATUS_OPTIONS.includes(params.status as (typeof STATUS_OPTIONS)[number])) {
     query = query.eq("status", params.status);
   }
 
-  const { data: quotes, error } = await query;
+  const { data: fetchedQuotes, error } = await query;
   if (error) throw new Error(error.message);
+  const quoteRows = ((fetchedQuotes ?? []) as unknown) as Array<Record<string, unknown>>;
+  const ownership = getOwnedProviderQuoteIdsForWorkspace(quoteRows, workspace, {
+    quoteColumns,
+    linkedMsmeId: currentUser.linkedMsmeId ?? null,
+    linkedProviderId: currentUser.linkedProviderId ?? null,
+  });
+  const quotes = quoteRows.filter((quote) => ownership.ownedIds.has(String(quote.id ?? ""))) as Array<any>;
+
+  if (process.env.NODE_ENV !== "production") {
+    for (const quote of quotes) {
+      const quoteId = String(quote.id ?? "");
+      const resolution = ownership.resolutionByQuoteId.get(quoteId);
+      console.info("[quote-list-ownership]", {
+        quoteId,
+        quoteRow: quote,
+        workspaceKeys: resolution?.workspaceKeys ?? null,
+        quoteKeys: resolution?.quoteKeys ?? null,
+        matchReason: resolution?.matchReason ?? "missing_resolution",
+        isOwned: resolution?.isOwned ?? false,
+      });
+    }
+  }
 
   return (
     <section className="space-y-4">
