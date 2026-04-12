@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { getCurrentUserContext } from "@/lib/auth/session";
-import { getTableColumns } from "@/lib/data/commercial-ops";
-import { getOwnedProviderQuoteIdsForWorkspace, getProviderQuoteOwnershipColumns } from "@/lib/data/provider-quote-ownership";
+import { applyProviderQuoteOwnership, fetchProviderQuoteInboxCount, PROVIDER_QUOTE_OWNERSHIP_FIELD } from "@/lib/data/provider-quote-queries";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -19,47 +17,9 @@ function statusClasses(status: string) {
 
 export default async function MsmeQuotesPage({ searchParams }: { searchParams: Promise<{ status?: string; saved?: string }> }) {
   const params = await searchParams;
-  const currentUser = await getCurrentUserContext();
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
-  const quoteColumns = await getTableColumns(supabase, "provider_quotes");
-  const ownershipColumns = getProviderQuoteOwnershipColumns(quoteColumns);
-
-  if (quoteColumns.has("provider_profile_id")) {
-    const legacySelectFields = [
-      "id",
-      "provider_profile_id",
-      quoteColumns.has("provider_id") ? "provider_id" : null,
-      quoteColumns.has("provider_msme_id") ? "provider_msme_id" : null,
-      quoteColumns.has("msme_id") ? "msme_id" : null,
-    ].filter(Boolean) as string[];
-
-    const { data: maybeLegacyQuotes } = await supabase.from("provider_quotes").select(legacySelectFields.join(","));
-    const msmeCandidates = new Set(
-      [workspace.provider.msme_id, workspace.msme.id, workspace.msme.msme_id, currentUser.linkedMsmeId]
-        .filter((value): value is string => Boolean(value))
-        .map((value) => value.trim())
-    );
-
-    const quoteIdsToBackfill = (maybeLegacyQuotes ?? [])
-      .filter((quote: any) => {
-        if (quote.provider_profile_id) return false;
-        if (quote.provider_id && quote.provider_id === workspace.provider.id) return true;
-        if (quote.provider_msme_id && msmeCandidates.has(String(quote.provider_msme_id))) return true;
-        if (quote.msme_id && msmeCandidates.has(String(quote.msme_id))) return true;
-        return false;
-      })
-      .map((quote: any) => String(quote.id))
-      .filter(Boolean);
-
-    if (quoteIdsToBackfill.length > 0) {
-      await supabase
-        .from("provider_quotes")
-        .update({ provider_profile_id: workspace.provider.id })
-        .in("id", quoteIdsToBackfill)
-        .is("provider_profile_id", null);
-    }
-  }
+  const quoteCount = await fetchProviderQuoteInboxCount(supabase, workspace.provider.id);
 
   const selectFields = Array.from(
     new Set([
@@ -72,40 +32,38 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
       "budget_max",
       "status",
       "created_at",
-      ...ownershipColumns,
+      PROVIDER_QUOTE_OWNERSHIP_FIELD,
     ])
   );
 
-  let query = supabase
-    .from("provider_quotes")
-    .select(selectFields.join(","))
-    .eq("provider_profile_id", workspace.provider.id)
-    .order("created_at", { ascending: false });
+  let query = applyProviderQuoteOwnership(
+    supabase
+      .from("provider_quotes")
+      .select(selectFields.join(","))
+      .order("created_at", { ascending: false }),
+    workspace.provider.id
+  );
 
   if (params.status && STATUS_OPTIONS.includes(params.status as (typeof STATUS_OPTIONS)[number])) {
-    query = query.eq("status", params.status);
+    query = query.ilike("status", params.status);
   }
 
   const { data: fetchedQuotes, error } = await query;
   if (error) throw new Error(error.message);
-  const quoteRows = ((fetchedQuotes ?? []) as unknown) as Array<Record<string, unknown>>;
-  const ownership = getOwnedProviderQuoteIdsForWorkspace(quoteRows, workspace, { quoteColumns });
-  const quotes = quoteRows.filter((quote) => ownership.ownedIds.has(String(quote.id ?? ""))) as Array<any>;
+  const quotes = (fetchedQuotes ?? []) as Array<any>;
 
-  if (process.env.NODE_ENV !== "production") {
-    for (const quote of quotes) {
-      const quoteId = String(quote.id ?? "");
-      const resolution = ownership.resolutionByQuoteId.get(quoteId);
-      console.info("[quote-list-ownership]", {
-        quoteId,
-        quoteRow: quote,
-        workspaceKeys: resolution?.workspaceKeys ?? null,
-        quoteKeys: resolution?.quoteKeys ?? null,
-        matchReason: resolution?.matchReason ?? "missing_resolution",
-        isOwned: resolution?.isOwned ?? false,
-      });
-    }
-  }
+  console.info("[quote-list-debug]", {
+    workspaceProviderId: workspace.provider.id,
+    workspaceMsmeId: workspace.msme.id,
+    quoteCountQueryResult: quoteCount,
+    quoteTableFilter: {
+      ownershipField: PROVIDER_QUOTE_OWNERSHIP_FIELD,
+      ownershipValue: workspace.provider.id,
+      status: params.status && STATUS_OPTIONS.includes(params.status as (typeof STATUS_OPTIONS)[number]) ? params.status : "all",
+    },
+    quoteTableRowCount: quotes.length,
+    statusesReturned: Array.from(new Set(quotes.map((quote) => String(quote.status ?? "").toLowerCase()))),
+  });
 
   return (
     <section className="space-y-4">
@@ -153,25 +111,25 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
               const normalizedStatus = String(quote.status ?? "").toLowerCase();
               return (
                 <tr key={quote.id} className="border-t">
-                <td className="px-3 py-3">
-                  <p className="font-medium">{quote.requester_name}</p>
-                  <p className="text-xs text-slate-500">{quote.requester_email ?? quote.requester_phone ?? "No contact"}</p>
-                </td>
-                <td className="px-3 py-3">
-                  <p className="font-medium">{quote.request_summary}</p>
-                  <p className="text-xs text-slate-500">{new Date(quote.created_at).toLocaleString("en-NG")}</p>
-                </td>
-                <td className="px-3 py-3 text-xs text-slate-600">
-                  ₦{Number(quote.budget_min ?? 0).toLocaleString()} - ₦{Number(quote.budget_max ?? 0).toLocaleString()}
-                </td>
-                <td className="px-3 py-3">
-                  <span className={`rounded-full px-2 py-1 text-xs uppercase ${statusClasses(normalizedStatus)}`}>{normalizedStatus}</span>
-                </td>
-                <td className="px-3 py-3">
-                  <Link href={`/dashboard/msme/quotes/${quote.id}`} className="text-indigo-700 hover:underline">
-                    Open workflow
-                  </Link>
-                </td>
+                  <td className="px-3 py-3">
+                    <p className="font-medium">{quote.requester_name}</p>
+                    <p className="text-xs text-slate-500">{quote.requester_email ?? quote.requester_phone ?? "No contact"}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="font-medium">{quote.request_summary}</p>
+                    <p className="text-xs text-slate-500">{new Date(quote.created_at).toLocaleString("en-NG")}</p>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-600">
+                    ₦{Number(quote.budget_min ?? 0).toLocaleString()} - ₦{Number(quote.budget_max ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs uppercase ${statusClasses(normalizedStatus)}`}>{normalizedStatus}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <Link href={`/dashboard/msme/quotes/${quote.id}`} className="text-indigo-700 hover:underline">
+                      Open workflow
+                    </Link>
+                  </td>
                 </tr>
               );
             })}
