@@ -73,45 +73,91 @@ function toComparableValue(value: unknown) {
   return normalized.length > 0 ? normalized : null;
 }
 
-function buildQuoteOwnershipCandidates(workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>) {
-  const providerProfileIds = new Set([workspace.provider.id].map(toComparableValue).filter((value): value is string => Boolean(value)));
-  const msmeIds = new Set(
-    [workspace.provider.msme_id, workspace.msme.id, workspace.msme.msme_id].map(toComparableValue).filter((value): value is string => Boolean(value))
-  );
-  const universalCandidates = new Set([...providerProfileIds, ...msmeIds]);
-  return { providerProfileIds, msmeIds, universalCandidates };
+function valuesComparableForOwnership(left: string | null, right: string | null) {
+  if (!left || !right) return false;
+  const leftIsUuid = isUuidLike(left);
+  const rightIsUuid = isUuidLike(right);
+  if (leftIsUuid !== rightIsUuid) return false;
+  return left === right;
 }
 
-function quoteBelongsToWorkspaceProvider(
+type QuoteOwnershipResolution = {
+  isOwned: boolean;
+  matchReason: string;
+  checks: Array<{
+    check: string;
+    quoteValue: string | null;
+    workspaceValue: string | null;
+    matched: boolean;
+  }>;
+  quoteKeys: Record<string, string | null>;
+  workspaceKeys: Record<string, string | null>;
+};
+
+function resolveQuoteOwnership(
   quote: Record<string, unknown>,
   quoteColumns: Set<string>,
-  workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>
+  workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>,
+  options?: { linkedMsmeId?: string | null }
 ) {
-  const { providerProfileIds, msmeIds, universalCandidates } = buildQuoteOwnershipCandidates(workspace);
-  const checks: Array<{ column: string; quoteValue: string | null; matched: boolean }> = [];
-
-  const checkColumn = (column: string, candidates: Set<string>) => {
-    if (!quoteColumns.has(column)) return;
-    const quoteValue = toComparableValue(quote[column]);
-    const matched = Boolean(quoteValue && candidates.has(quoteValue));
-    checks.push({ column, quoteValue, matched });
+  const quoteKeys = {
+    provider_profile_id: quoteColumns.has("provider_profile_id") ? toComparableValue(quote.provider_profile_id) : null,
+    provider_id: quoteColumns.has("provider_id") ? toComparableValue(quote.provider_id) : null,
+    msme_id: quoteColumns.has("msme_id") ? toComparableValue(quote.msme_id) : null,
+    provider_msme_id: quoteColumns.has("provider_msme_id") ? toComparableValue(quote.provider_msme_id) : null,
+  };
+  const workspaceKeys = {
+    provider_id: toComparableValue(workspace.provider.id),
+    provider_msme_id: toComparableValue(workspace.provider.msme_id),
+    provider_public_slug: toComparableValue((workspace.provider as { public_slug?: string | null }).public_slug),
+    linked_msme_id: toComparableValue(options?.linkedMsmeId ?? null),
+    workspace_msme_id: toComparableValue(workspace.msme.id),
+    workspace_msme_public_id: toComparableValue(workspace.msme.msme_id),
   };
 
-  checkColumn("provider_profile_id", providerProfileIds);
-  checkColumn("provider_id", universalCandidates);
-  checkColumn("msme_id", msmeIds);
-  checkColumn("provider_msme_id", msmeIds);
+  const checks: QuoteOwnershipResolution["checks"] = [];
+  const runCheck = (check: string, quoteValue: string | null, workspaceValue: string | null) => {
+    const matched = valuesComparableForOwnership(quoteValue, workspaceValue);
+    checks.push({ check, quoteValue, workspaceValue, matched });
+  };
 
-  const hasOwnershipColumns = checks.length > 0;
-  const isOwned = hasOwnershipColumns && checks.some((check) => check.matched);
+  runCheck("provider_profile_id === workspace.provider.id", quoteKeys.provider_profile_id, workspaceKeys.provider_id);
+  runCheck("provider_id === workspace.provider.id", quoteKeys.provider_id, workspaceKeys.provider_id);
+  runCheck("msme_id === workspace.provider.msme_id", quoteKeys.msme_id, workspaceKeys.provider_msme_id);
+  runCheck("provider_msme_id === workspace.provider.msme_id", quoteKeys.provider_msme_id, workspaceKeys.provider_msme_id);
+
+  if (workspaceKeys.linked_msme_id) {
+    const quoteMsmeColumns = [
+      { column: "msme_id", value: quoteKeys.msme_id },
+      { column: "provider_msme_id", value: quoteKeys.provider_msme_id },
+    ];
+    for (const quoteMsmeColumn of quoteMsmeColumns) {
+      if (!quoteMsmeColumn.value) continue;
+      if (!isUuidLike(quoteMsmeColumn.value)) continue;
+      runCheck(`${quoteMsmeColumn.column} (uuid) === linkedMsmeId`, quoteMsmeColumn.value, workspaceKeys.linked_msme_id);
+    }
+  }
+
+  if (workspaceKeys.workspace_msme_id) {
+    const quoteMsmeColumns = [
+      { column: "msme_id", value: quoteKeys.msme_id },
+      { column: "provider_msme_id", value: quoteKeys.provider_msme_id },
+    ];
+    for (const quoteMsmeColumn of quoteMsmeColumns) {
+      if (!quoteMsmeColumn.value) continue;
+      if (!isUuidLike(quoteMsmeColumn.value)) continue;
+      runCheck(`${quoteMsmeColumn.column} (uuid) === workspace.msme.id`, quoteMsmeColumn.value, workspaceKeys.workspace_msme_id);
+    }
+  }
+
+  const matchedCheck = checks.find((check) => check.matched);
 
   return {
-    isOwned,
-    hasOwnershipColumns,
+    isOwned: Boolean(matchedCheck),
+    matchReason: matchedCheck?.check ?? "no_ownership_match",
     checks,
-    providerProfileCandidates: Array.from(providerProfileIds),
-    msmeCandidates: Array.from(msmeIds),
-    universalCandidates: Array.from(universalCandidates),
+    quoteKeys,
+    workspaceKeys,
   };
 }
 
@@ -121,23 +167,27 @@ async function loadQuoteForCurrentProvider(
   quoteId: string,
   requiredSelectFields: string[]
 ): Promise<{ quote: any; quoteColumns: Set<string> }> {
+  const currentUser = await getCurrentUserContext();
   const quoteColumns = await getTableColumns(supabase, "provider_quotes");
   const ownershipColumns = ["provider_profile_id", "provider_id", "msme_id", "provider_msme_id"].filter((column) => quoteColumns.has(column));
   const selectFields = Array.from(new Set([...requiredSelectFields, ...ownershipColumns]));
   const selectClause = selectFields.join(",");
 
-  devQuoteLog("quote_load:context", {
+  devQuoteLog("[quote-ownership] quote_load:context", {
     quoteId,
-    workspace_provider_id: workspace.provider.id,
-    workspace_provider_msme_id: workspace.provider.msme_id ?? null,
-    workspace_provider_public_slug: (workspace.provider as { public_slug?: string | null }).public_slug ?? null,
-    available_provider_quotes_columns: Array.from(quoteColumns).sort(),
-    ownership_columns_in_use: ownershipColumns,
-    filters_applied: {
-      strategy: "id_only_load_then_schema_aware_ownership_validation",
-      quote_id_filter: `id.eq.${quoteId}`,
-      ownership_columns_checked: ownershipColumns,
+    workspace: {
+      provider: {
+        id: workspace.provider.id,
+        msme_id: workspace.provider.msme_id ?? null,
+        public_slug: (workspace.provider as { public_slug?: string | null }).public_slug ?? null,
+      },
+      msme: {
+        id: workspace.msme.id ?? null,
+        msme_id: workspace.msme.msme_id ?? null,
+      },
+      linkedMsmeId: currentUser.linkedMsmeId ?? null,
     },
+    available_provider_quotes_columns: Array.from(quoteColumns).sort(),
   });
 
   const idProbeSelect = ownershipColumns.length > 0 ? `id,${ownershipColumns.join(",")}` : "id";
@@ -147,11 +197,11 @@ async function loadQuoteForCurrentProvider(
     .eq("id", quoteId)
     .maybeSingle();
 
-  devQuoteLog("quote_load:id_probe", {
+  devQuoteLog("[quote-ownership] quote_load:id_probe", {
     quoteId,
     exists_by_id_only: Boolean(quoteByIdOnly),
     id_probe_error: quoteByIdOnlyError?.message ?? null,
-    row: quoteByIdOnly ?? null,
+    quote_row: quoteByIdOnly ?? null,
   });
 
   const { data: quote, error: quoteLoadError }: { data: any; error: any } = await supabase
@@ -169,11 +219,18 @@ async function loadQuoteForCurrentProvider(
     throw new Error("Quote not found for this provider.");
   }
 
-  const ownership = quoteBelongsToWorkspaceProvider((quote ?? {}) as Record<string, unknown>, quoteColumns, workspace);
-  devQuoteLog("quote_load:ownership_eval", {
+  const ownership = resolveQuoteOwnership((quote ?? {}) as Record<string, unknown>, quoteColumns, workspace, {
+    linkedMsmeId: currentUser.linkedMsmeId ?? null,
+  });
+  devQuoteLog("[quote-ownership] summary", {
     quoteId,
-    ...ownership,
-    quote_row: quote,
+    matched: ownership.isOwned,
+    matchReason: ownership.matchReason,
+    quoteKeys: ownership.quoteKeys,
+    workspaceKeys: ownership.workspaceKeys,
+    checks: ownership.checks,
+    quoteRow: quote,
+    quoteColumns: Array.from(quoteColumns).sort(),
   });
 
   if (!ownership.isOwned) {
