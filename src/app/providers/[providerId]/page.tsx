@@ -29,22 +29,22 @@ function parseMissingColumn(errorMessage: string) {
 async function insertComplaintWithSchemaAdaptation(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   payload: Record<string, unknown>,
-  providerId: string,
+  providerIdentifier: string,
 ) {
   const mutablePayload = { ...payload };
 
   for (let attempt = 1; attempt <= 10; attempt += 1) {
-    devLog("complaint_insert_payload", { providerId, attempt, payload: mutablePayload });
+    devLog("complaint_insert_payload", { providerIdentifier, attempt, payload: mutablePayload });
 
     const { data, error } = await supabase.from("complaints").insert(mutablePayload).select("id").maybeSingle();
 
     if (!error) {
-      devLog("complaint_insert_success", { providerId, attempt, complaintId: data?.id ?? null });
+      devLog("complaint_insert_success", { providerIdentifier, attempt, complaintId: data?.id ?? null });
       return { data, error: null };
     }
 
     devLog("complaint_insert_failed", {
-      providerId,
+      providerIdentifier,
       attempt,
       code: error.code ?? null,
       message: error.message ?? null,
@@ -57,7 +57,7 @@ async function insertComplaintWithSchemaAdaptation(
       return { data: null, error };
     }
 
-    devLog("complaint_insert_drop_unknown_column", { providerId, attempt, missingColumn });
+    devLog("complaint_insert_drop_unknown_column", { providerIdentifier, attempt, missingColumn });
     delete mutablePayload[missingColumn];
   }
 
@@ -86,6 +86,8 @@ async function submitPublicComplaint(formData: FormData) {
   "use server";
 
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
+  const submittedProviderProfileId = String(formData.get("provider_profile_id") ?? "").trim();
+  const submittedProviderMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   if (!providerPathSegment) {
     redirect("/search?complaint=missing_provider");
   }
@@ -109,11 +111,22 @@ async function submitPublicComplaint(formData: FormData) {
   const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
   devLog("regulator_target_chosen", { providerPathSegment, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
 
-  const providerContext = await resolveProviderPublicContext({
-    providerRouteParam: providerPathSegment,
-  });
+  const providerLookupCandidates = [providerPathSegment, submittedProviderProfileId, submittedProviderMsmePublicId].filter(Boolean);
+  const providerContext =
+    (await (async () => {
+      for (const candidate of providerLookupCandidates) {
+        const resolved = await resolveProviderPublicContext({
+          providerRouteParam: candidate,
+        });
+        if (resolved.provider_profile_id && resolved.provider_profile_msme_id) return resolved;
+      }
+      return await resolveProviderPublicContext({
+        providerRouteParam: providerPathSegment,
+      });
+    })());
   devLog("provider_resolution_on_submit", {
     providerPathSegment,
+    providerLookupCandidates,
     found: Boolean(providerContext.provider),
     providerProfile: providerContext.provider,
     resolvedProviderProfileId: providerContext.provider_profile_id,
@@ -128,6 +141,7 @@ async function submitPublicComplaint(formData: FormData) {
   const resolvedProviderProfileId = providerContext.provider_profile_id;
   const resolvedProviderMsmeId = providerContext.provider_profile_msme_id;
   const resolvedAssociationId = providerContext.association_id;
+  const resolvedProviderSlug = providerContext.provider?.public_slug ?? providerPathSegment;
   const resolvedBusinessName =
     providerContext.provider?.display_name ??
     fallbackBusinessName ??
@@ -231,7 +245,10 @@ async function submitPublicComplaint(formData: FormData) {
   });
 
   revalidatePath(`/providers/${providerPathSegment}`);
-  redirect(`/providers/${providerPathSegment}?notice=complaint_submitted`);
+  if (resolvedProviderSlug !== providerPathSegment) {
+    revalidatePath(`/providers/${resolvedProviderSlug}`);
+  }
+  redirect(`/providers/${resolvedProviderSlug}?notice=complaint_submitted`);
 }
 
 
@@ -520,6 +537,7 @@ export default async function ProviderPublicPage({
               <p className="mt-1 text-xs text-slate-500">For service quality, fraud, counterfeit products, pricing abuse, or delivery disputes.</p>
               <form action={submitPublicComplaint} className="mt-3 space-y-2">
                 <input type="hidden" name="provider_path_segment" value={providerSlug} />
+                <input type="hidden" name="provider_profile_id" value={providerView.id} />
                 <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
                 <input type="hidden" name="provider_business_name" value={providerView.business_name} />
                 <input type="hidden" name="provider_state" value={providerView.state} />
