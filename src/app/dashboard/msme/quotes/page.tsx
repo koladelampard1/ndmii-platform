@@ -24,6 +24,43 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
   const supabase = await createServiceRoleSupabaseClient();
   const quoteColumns = await getTableColumns(supabase, "provider_quotes");
   const ownershipColumns = getProviderQuoteOwnershipColumns(quoteColumns);
+
+  if (quoteColumns.has("provider_profile_id")) {
+    const legacySelectFields = [
+      "id",
+      "provider_profile_id",
+      quoteColumns.has("provider_id") ? "provider_id" : null,
+      quoteColumns.has("provider_msme_id") ? "provider_msme_id" : null,
+      quoteColumns.has("msme_id") ? "msme_id" : null,
+    ].filter(Boolean) as string[];
+
+    const { data: maybeLegacyQuotes } = await supabase.from("provider_quotes").select(legacySelectFields.join(","));
+    const msmeCandidates = new Set(
+      [workspace.provider.msme_id, workspace.msme.id, workspace.msme.msme_id, currentUser.linkedMsmeId]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.trim())
+    );
+
+    const quoteIdsToBackfill = (maybeLegacyQuotes ?? [])
+      .filter((quote: any) => {
+        if (quote.provider_profile_id) return false;
+        if (quote.provider_id && quote.provider_id === workspace.provider.id) return true;
+        if (quote.provider_msme_id && msmeCandidates.has(String(quote.provider_msme_id))) return true;
+        if (quote.msme_id && msmeCandidates.has(String(quote.msme_id))) return true;
+        return false;
+      })
+      .map((quote: any) => String(quote.id))
+      .filter(Boolean);
+
+    if (quoteIdsToBackfill.length > 0) {
+      await supabase
+        .from("provider_quotes")
+        .update({ provider_profile_id: workspace.provider.id })
+        .in("id", quoteIdsToBackfill)
+        .is("provider_profile_id", null);
+    }
+  }
+
   const selectFields = Array.from(
     new Set([
       "id",
@@ -42,6 +79,7 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
   let query = supabase
     .from("provider_quotes")
     .select(selectFields.join(","))
+    .eq("provider_profile_id", workspace.provider.id)
     .order("created_at", { ascending: false });
 
   if (params.status && STATUS_OPTIONS.includes(params.status as (typeof STATUS_OPTIONS)[number])) {
@@ -51,11 +89,7 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
   const { data: fetchedQuotes, error } = await query;
   if (error) throw new Error(error.message);
   const quoteRows = ((fetchedQuotes ?? []) as unknown) as Array<Record<string, unknown>>;
-  const ownership = getOwnedProviderQuoteIdsForWorkspace(quoteRows, workspace, {
-    quoteColumns,
-    linkedMsmeId: currentUser.linkedMsmeId ?? null,
-    linkedProviderId: currentUser.linkedProviderId ?? null,
-  });
+  const ownership = getOwnedProviderQuoteIdsForWorkspace(quoteRows, workspace, { quoteColumns });
   const quotes = quoteRows.filter((quote) => ownership.ownedIds.has(String(quote.id ?? ""))) as Array<any>;
 
   if (process.env.NODE_ENV !== "production") {

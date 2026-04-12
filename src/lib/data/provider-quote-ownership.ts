@@ -1,6 +1,6 @@
 import type { ProviderWorkspaceContext } from "@/lib/data/provider-operations";
 
-const OWNERSHIP_COLUMNS = ["provider_profile_id", "provider_id", "msme_id", "provider_msme_id"] as const;
+const OWNERSHIP_COLUMNS = ["provider_profile_id"] as const;
 
 type OwnershipColumn = (typeof OWNERSHIP_COLUMNS)[number];
 
@@ -19,11 +19,6 @@ export type QuoteOwnershipResolution = {
   quoteKeys: Record<OwnershipColumn, Comparable>;
   workspaceKeys: {
     provider_id: Comparable;
-    provider_msme_id: Comparable;
-    workspace_msme_id: Comparable;
-    workspace_msme_public_id: Comparable;
-    linked_msme_id: Comparable;
-    linked_provider_id: Comparable;
   };
 };
 
@@ -50,9 +45,6 @@ function extractQuoteKeys(quote: Record<string, unknown>, quoteColumns?: Set<str
   const hasColumn = (column: OwnershipColumn) => !quoteColumns || quoteColumns.has(column);
   return {
     provider_profile_id: hasColumn("provider_profile_id") ? toComparableValue(quote.provider_profile_id) : null,
-    provider_id: hasColumn("provider_id") ? toComparableValue(quote.provider_id) : null,
-    msme_id: hasColumn("msme_id") ? toComparableValue(quote.msme_id) : null,
-    provider_msme_id: hasColumn("provider_msme_id") ? toComparableValue(quote.provider_msme_id) : null,
   };
 }
 
@@ -65,11 +57,6 @@ function extractWorkspaceKeys(
 ) {
   return {
     provider_id: toComparableValue(workspace.provider.id),
-    provider_msme_id: toComparableValue(workspace.provider.msme_id),
-    workspace_msme_id: toComparableValue(workspace.msme.id),
-    workspace_msme_public_id: toComparableValue(workspace.msme.msme_id),
-    linked_msme_id: toComparableValue(options?.linkedMsmeId ?? null),
-    linked_provider_id: toComparableValue(options?.linkedProviderId ?? null),
   };
 }
 
@@ -95,18 +82,6 @@ export function resolveProviderQuoteOwnership(
   };
 
   runCheck("provider_profile_id === workspace.provider.id", quoteKeys.provider_profile_id, workspaceKeys.provider_id);
-  runCheck("provider_id === workspace.provider.id", quoteKeys.provider_id, workspaceKeys.provider_id);
-  runCheck("provider_profile_id === linked_provider_id", quoteKeys.provider_profile_id, workspaceKeys.linked_provider_id);
-  runCheck("provider_id === linked_provider_id", quoteKeys.provider_id, workspaceKeys.linked_provider_id);
-
-  runCheck("msme_id === workspace.provider.msme_id", quoteKeys.msme_id, workspaceKeys.provider_msme_id);
-  runCheck("provider_msme_id === workspace.provider.msme_id", quoteKeys.provider_msme_id, workspaceKeys.provider_msme_id);
-  runCheck("msme_id === workspace.msme.msme_id", quoteKeys.msme_id, workspaceKeys.workspace_msme_public_id);
-  runCheck("provider_msme_id === workspace.msme.msme_id", quoteKeys.provider_msme_id, workspaceKeys.workspace_msme_public_id);
-  runCheck("msme_id === workspace.msme.id", quoteKeys.msme_id, workspaceKeys.workspace_msme_id);
-  runCheck("provider_msme_id === workspace.msme.id", quoteKeys.provider_msme_id, workspaceKeys.workspace_msme_id);
-  runCheck("msme_id === linked_msme_id", quoteKeys.msme_id, workspaceKeys.linked_msme_id);
-  runCheck("provider_msme_id === linked_msme_id", quoteKeys.provider_msme_id, workspaceKeys.linked_msme_id);
 
   const matchedCheck = checks.find((check) => check.matched);
   const quoteHasOwnershipKey = Object.values(quoteKeys).some(Boolean);
