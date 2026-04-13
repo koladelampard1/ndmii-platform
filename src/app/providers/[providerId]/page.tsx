@@ -87,7 +87,9 @@ function buildComplaintInsertPayload(params: {
   complaintsColumns: Set<string>;
   complaintsMetadata: TableColumnMetadata[];
 }) {
-  const payload: Record<string, unknown> = {};
+  const payload: Record<string, unknown> = {
+    complaint_type: params.complaintCategory,
+  };
   const setColumnValue = (candidates: string[], value: unknown) => {
     const columnName = resolveFirstExistingColumn(params.complaintsColumns, candidates);
     if (columnName) payload[columnName] = value;
@@ -102,10 +104,7 @@ function buildComplaintInsertPayload(params: {
   setColumnValue(["complainant_email", "reporter_email", "email"], params.email || null);
   setColumnValue(["complainant_phone", "reporter_phone", "phone"], params.phone || null);
   setColumnValue(["preferred_contact_method", "contact_method"], params.preferredContactMethod);
-  setColumnValue(["complaint_type", "category", "complaint_category"], params.complaintCategory);
-  if (params.complaintsColumns.has("complaint_type")) {
-    payload.complaint_type = params.complaintCategory;
-  }
+  setColumnValue(["complaint_type"], params.complaintCategory);
   setColumnValue(["severity", "priority"], params.priority);
   setColumnValue(["summary", "title", "subject"], params.shortSummary);
   setColumnValue(["description", "details", "body"], params.description);
@@ -164,7 +163,8 @@ async function submitPublicComplaint(formData: FormData) {
   const complainant_email = String(formData.get("email") ?? "").trim();
   const complainant_phone = String(formData.get("phone") ?? "").trim();
   const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
-  const complaintType = String(formData.get("complaint_type") ?? "").trim();
+  const complaintTypeRaw = formData.get("complaint_type");
+  const complaintType = typeof complaintTypeRaw === "string" ? complaintTypeRaw.trim() : "";
   const priority = String(formData.get("priority") ?? "").trim();
   const normalizedPriority = priority || "medium";
   const summary = String(formData.get("short_summary") ?? "").trim();
@@ -213,7 +213,7 @@ async function submitPublicComplaint(formData: FormData) {
       resolvedProviderMsmeId,
     });
 
-    console.log("[complaint-submit] rawFormValues", {
+    console.log("[complaint-submit] rawFormData", {
       complaint_type: formData.get("complaint_type"),
       priority: formData.get("priority"),
       summary: formData.get("summary"),
@@ -281,14 +281,13 @@ async function submitPublicComplaint(formData: FormData) {
     });
 
     console.log("[complaint-submit] normalizedPayload", insertPayload);
+    console.log("[complaint-submit] insertPayload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
       .insert(insertPayload)
       .select()
       .single();
-
-    console.log("[complaint-submit] insertPayload", insertPayload);
     console.log("[complaint-submit] insertErrorFull", complaintInsertError);
 
     if (complaintInsertError || !complaintRow) {
@@ -613,13 +612,13 @@ export default async function ProviderPublicPage({
                   <option value="phone">Phone</option>
                   <option value="sms">SMS</option>
                 </select>
-                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required>
                   <option value="general_marketplace_report">General marketplace report</option>
-                  <option value="fraud">Fraud</option>
-                  <option value="delivery_dispute">Delivery dispute</option>
-                  <option value="pricing_abuse">Pricing abuse</option>
-                  <option value="counterfeit_products">Counterfeit products</option>
                   <option value="service_quality">Service quality</option>
+                  <option value="fraud">Fraud</option>
+                  <option value="counterfeit_products">Counterfeit products</option>
+                  <option value="pricing_abuse">Pricing abuse</option>
+                  <option value="delivery_dispute">Delivery dispute</option>
                 </select>
                 <select name="priority" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="low">Low</option>
