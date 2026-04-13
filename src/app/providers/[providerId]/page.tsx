@@ -71,13 +71,13 @@ async function getTableColumnMetadata(
 }
 
 function buildComplaintInsertPayload(params: {
-  fullName: string;
-  email: string;
-  phone: string;
+  complainantName: string;
+  complainantEmail: string;
+  complainantPhone: string;
   preferredContactMethod: string;
-  complaintCategory: string;
-  severity: string;
-  shortSummary: string;
+  complaintType: string;
+  priority: string;
+  summary: string;
   description: string;
   evidenceNote: string;
   relatedReference: string;
@@ -98,18 +98,18 @@ function buildComplaintInsertPayload(params: {
   setColumnValue(["provider_msme_id", "provider_public_id", "provider_msme_public_id"], params.providerMsmePublicId);
   setColumnValue(["provider_slug"], params.providerSlug);
 
-  setColumnValue(["complainant_name", "reporter_name", "full_name"], params.fullName);
-  setColumnValue(["complainant_email", "reporter_email", "email"], params.email || null);
-  setColumnValue(["complainant_phone", "reporter_phone", "phone"], params.phone || null);
+  setColumnValue(["complainant_name", "reporter_name", "full_name"], params.complainantName);
+  setColumnValue(["complainant_email", "reporter_email", "email"], params.complainantEmail || null);
+  setColumnValue(["complainant_phone", "reporter_phone", "phone"], params.complainantPhone || null);
   setColumnValue(["preferred_contact_method", "contact_method"], params.preferredContactMethod);
-  setColumnValue(["complaint_type", "category", "complaint_category"], params.complaintCategory);
-  setColumnValue(["severity", "priority"], params.severity);
-  setColumnValue(["summary", "title", "subject"], params.shortSummary);
+  setColumnValue(["complaint_type", "category", "complaint_category"], params.complaintType);
+  setColumnValue(["priority", "severity"], params.priority);
+  setColumnValue(["summary", "title", "subject"], params.summary);
   setColumnValue(["description", "details", "body"], params.description);
   setColumnValue(["evidence_note", "attachment_note", "evidence_url"], params.evidenceNote || null);
   setColumnValue(["quote_id", "invoice_id", "reference_code", "related_reference"], params.relatedReference || null);
 
-  setColumnValue(["status"], "submitted");
+  setColumnValue(["status"], "open");
   setColumnValue(["source", "source_channel"], "public_provider_page");
 
   // TODO(complaint-workflow): extend mapper with assigned_to/escalation_target/regulator_status/provider_response/resolution_note once workflow handlers are enabled.
@@ -125,7 +125,7 @@ function buildComplaintInsertPayload(params: {
     if (mappedColumns.has(requiredColumn.column_name)) continue;
 
     if (requiredColumn.column_name === "complaint_type") {
-      payload[requiredColumn.column_name] = params.complaintCategory;
+      payload[requiredColumn.column_name] = params.complaintType;
       continue;
     }
     if (requiredColumn.column_name === "description") {
@@ -133,7 +133,7 @@ function buildComplaintInsertPayload(params: {
       continue;
     }
     if (requiredColumn.column_name === "summary" || requiredColumn.column_name === "title" || requiredColumn.column_name === "subject") {
-      payload[requiredColumn.column_name] = params.shortSummary;
+      payload[requiredColumn.column_name] = params.summary;
       continue;
     }
     if (requiredColumn.column_name === "provider_profile_id") {
@@ -157,13 +157,13 @@ async function submitPublicComplaint(formData: FormData) {
     redirect("/search?complaint=missing_provider");
   }
 
-  const complainant_name = String(formData.get("full_name") ?? "").trim();
-  const complainant_email = String(formData.get("email") ?? "").trim();
-  const complainant_phone = String(formData.get("phone") ?? "").trim();
+  const complainant_name = String(formData.get("complainant_name") ?? "").trim();
+  const complainant_email = String(formData.get("complainant_email") ?? "").trim();
+  const complainant_phone = String(formData.get("complainant_phone") ?? "").trim();
   const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
-  const complaint_type = String(formData.get("complaint_category") ?? "marketplace_report").trim() || "marketplace_report";
-  const severity = String(formData.get("severity") ?? "medium");
-  const summary = String(formData.get("short_summary") ?? "").trim();
+  const complaint_type = String(formData.get("complaint_type") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "medium").trim() || "medium";
+  const summary = String(formData.get("summary") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const evidence_url_or_attachment_note = String(formData.get("evidence_url_or_attachment_note") ?? "").trim();
   const related_reference = String(formData.get("related_reference") ?? "").trim();
@@ -174,6 +174,9 @@ async function submitPublicComplaint(formData: FormData) {
 
   if (!complainant_name || !description || !summary || !consent_confirmation) {
     redirect(`/providers/${providerPathSegment}?reported_error=missing_fields`);
+  }
+  if (!complaint_type) {
+    redirect(`/providers/${providerPathSegment}?reported_error=missing_complaint_type`);
   }
 
   const supabase = await createServiceRoleSupabaseClient();
@@ -211,7 +214,7 @@ async function submitPublicComplaint(formData: FormData) {
       complainant_phone,
       preferred_contact_method,
       complaint_type,
-      severity,
+      priority,
       summary,
       description,
       evidence_url_or_attachment_note,
@@ -248,13 +251,13 @@ async function submitPublicComplaint(formData: FormData) {
     const resolvedProviderMsmePublicId = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
 
     const insertPayload = buildComplaintInsertPayload({
-      fullName: complainant_name,
-      email: complainant_email,
-      phone: complainant_phone,
+      complainantName: complainant_name,
+      complainantEmail: complainant_email,
+      complainantPhone: complainant_phone,
       preferredContactMethod: preferred_contact_method,
-      complaintCategory: complaint_type,
-      severity,
-      shortSummary: summary,
+      complaintType: complaint_type,
+      priority,
+      summary,
       description,
       evidenceNote: evidence_url_or_attachment_note,
       relatedReference: related_reference,
@@ -265,7 +268,7 @@ async function submitPublicComplaint(formData: FormData) {
       complaintsMetadata,
     });
 
-    console.log("[complaint-submit] final_payload", insertPayload);
+    console.log("[complaint-submit] normalizedPayload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -563,6 +566,8 @@ export default async function ProviderPublicPage({
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                 {query.reported_error === "missing_fields"
                   ? "Please complete all required complaint fields and confirm consent before submitting."
+                  : query.reported_error === "missing_complaint_type"
+                    ? "Please select a report category before submitting your complaint."
                   : query.reported_error === "provider_not_found"
                     ? "Provider profile could not be resolved. Please reopen this provider page and try again."
                   : "We could not submit your complaint right now. Please retry."}
@@ -590,15 +595,16 @@ export default async function ProviderPublicPage({
                 <input type="hidden" name="provider_profile_id" value={providerView.id} />
                 <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
                 <input type="hidden" name="provider_slug" value={providerView.public_slug ?? providerSlug} />
-                <input name="full_name" placeholder="Full name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <input name="email" type="email" placeholder="Email address" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <input name="phone" placeholder="Phone number" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
+                <input name="complainant_name" placeholder="Full name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
+                <input name="complainant_email" type="email" placeholder="Email address" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
+                <input name="complainant_phone" placeholder="Phone number" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <select name="preferred_contact_method" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="email">Email</option>
                   <option value="phone">Phone</option>
                   <option value="sms">SMS</option>
                 </select>
-                <select name="complaint_category" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required>
+                  <option value="">Select report category</option>
                   <option value="marketplace_report">General marketplace complaint</option>
                   <option value="service_quality">Service quality issue</option>
                   <option value="fraud">Fraud or misrepresentation</option>
@@ -606,12 +612,12 @@ export default async function ProviderPublicPage({
                   <option value="pricing_dispute">Pricing or billing dispute</option>
                   <option value="identity_concern">Identity or trust concern</option>
                 </select>
-                <select name="severity" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="priority" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                 </select>
-                <input name="short_summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
+                <input name="summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <textarea name="description" placeholder="Describe the issue" className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <input
                   name="evidence_url_or_attachment_note"
