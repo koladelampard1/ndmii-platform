@@ -27,7 +27,7 @@ async function submitPublicComplaint(formData: FormData) {
   const complainant_email = String(formData.get("email") ?? "").trim();
   const complainant_phone = String(formData.get("phone") ?? "").trim();
   const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
-  const complaintType = String(formData.get("complaint_type") ?? "").trim();
+  const complaintTypeFromForm = String(formData.get("complaint_type") ?? "").trim();
   const priority = String(formData.get("priority") ?? "").trim();
   const normalizedPriority = priority || "medium";
   const summary = String(formData.get("short_summary") ?? "").trim();
@@ -39,9 +39,10 @@ async function submitPublicComplaint(formData: FormData) {
   const providerMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   const formProviderSlug = String(formData.get("provider_slug") ?? "").trim();
 
-  if (!complaintType) {
+  if (!complaintTypeFromForm) {
     throw new Error("complaint_type missing from form submission");
   }
+  const complaint_type = complaintTypeFromForm;
 
   if (!complainant_name || !description || !summary || !consent_confirmation) {
     redirect(`/providers/${providerPathSegment}?reported_error=missing_fields`);
@@ -88,7 +89,7 @@ async function submitPublicComplaint(formData: FormData) {
       complainant_email,
       complainant_phone,
       preferred_contact_method,
-      complaint_type: complaintType,
+      complaint_type,
       priority: normalizedPriority,
       summary,
       description,
@@ -106,26 +107,30 @@ async function submitPublicComplaint(formData: FormData) {
     });
 
     const resolvedProviderProfileId = providerContext.provider_profile_id ?? providerProfileId;
-    const resolvedProviderMsmePublicId = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
+    const resolvedProviderMsmeUuid = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
 
     const insertPayload = {
+      msme_id: resolvedProviderMsmeUuid,
       provider_profile_id: resolvedProviderProfileId,
-      provider_msme_id: resolvedProviderMsmePublicId,
-      provider_slug: resolvedPublicSlug,
+      provider_msme_id: resolvedProviderMsmeUuid,
       complainant_name,
       complainant_email: complainant_email || null,
       complainant_phone: complainant_phone || null,
+      reporter_name: complainant_name,
+      reporter_email: complainant_email || null,
       preferred_contact_method,
-      complaint_type: complaintType,
+      complaint_type,
+      complaint_category: complaint_type,
+      category: complaint_type,
+      title: summary,
       priority: normalizedPriority,
+      severity: normalizedPriority,
       summary,
       description,
-      evidence_note: evidence_url_or_attachment_note || null,
-      related_reference: related_reference || null,
       status: "open",
-      source: "public_provider_page",
+      source_channel: "public_provider_page",
     };
-    console.log("[complaint-submit] finalInsertPayload", insertPayload);
+    devLog("complaint_insert_payload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -133,10 +138,12 @@ async function submitPublicComplaint(formData: FormData) {
       .select()
       .single();
 
-    console.log("[complaint-submit] insertPayload", insertPayload);
-    console.log("[complaint-submit] insertErrorFull", complaintInsertError);
-
     if (complaintInsertError || !complaintRow) {
+      console.error("[complaint-submit] complaint_insert_failure", {
+        providerPathSegment,
+        insertPayload,
+        complaintInsertError,
+      });
       throw new Error(
         `[complaint-submit] complaint_insert_failed:
 ${complaintInsertError?.message}
