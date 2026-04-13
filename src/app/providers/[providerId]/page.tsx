@@ -7,7 +7,7 @@ import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marke
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderPublicContext, resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
-import { createComplaintStatusHistory, emitComplaintEvent, generateComplaintReference } from "@/lib/data/complaints";
+import { getTableColumns } from "@/lib/data/commercial-ops";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -16,70 +16,11 @@ function devLog(message: string, payload?: Record<string, unknown>) {
   console.info(`[public-complaint] ${message}`, payload ?? {});
 }
 
-function parseMissingColumn(errorMessage: string) {
-  const postgrestMatch = errorMessage.match(/Could not find the '([^']+)' column/i);
-  if (postgrestMatch?.[1]) return postgrestMatch[1];
-
-  const postgresMatch = errorMessage.match(/column \"([^\"]+)\"/i);
-  if (postgresMatch?.[1]) return postgresMatch[1];
-
+function resolveFirstExistingColumn(columns: Set<string>, candidates: string[]) {
+  for (const candidate of candidates) {
+    if (columns.has(candidate)) return candidate;
+  }
   return null;
-}
-
-async function insertComplaintWithSchemaAdaptation(
-  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
-  payload: Record<string, unknown>,
-  providerIdentifier: string,
-) {
-  const mutablePayload = { ...payload };
-
-  for (let attempt = 1; attempt <= 10; attempt += 1) {
-    devLog("complaint_insert_payload", { providerIdentifier, attempt, payload: mutablePayload });
-
-    const { data, error } = await supabase.from("complaints").insert(mutablePayload).select("id").maybeSingle();
-
-    if (!error) {
-      devLog("complaint_insert_success", { providerIdentifier, attempt, complaintId: data?.id ?? null });
-      return { data, error: null };
-    }
-
-    devLog("complaint_insert_failed", {
-      providerIdentifier,
-      attempt,
-      code: error.code ?? null,
-      message: error.message ?? null,
-      details: error.details ?? null,
-      hint: error.hint ?? null,
-    });
-
-    const missingColumn = parseMissingColumn(error.message ?? "");
-    if (!missingColumn || !(missingColumn in mutablePayload)) {
-      return { data: null, error };
-    }
-
-    devLog("complaint_insert_drop_unknown_column", { providerIdentifier, attempt, missingColumn });
-    delete mutablePayload[missingColumn];
-  }
-
-  return {
-    data: null,
-    error: { message: "Exceeded complaint insert retries while adapting to schema." } as { message: string },
-  };
-}
-
-function resolveRegulatorTarget(category: string, requestedTarget: string) {
-  const normalizedCategory = category.trim().toLowerCase();
-  const normalizedRequested = requestedTarget.trim().toLowerCase();
-
-  if (normalizedRequested === "fccpc" || normalizedRequested === "firs") {
-    return normalizedRequested;
-  }
-
-  if (["service_quality", "pricing_dispute", "identity_concern", "marketplace_report"].includes(normalizedCategory)) {
-    return "fccpc";
-  }
-
-  return "fccpc";
 }
 
 async function submitPublicComplaint(formData: FormData) {
@@ -90,14 +31,12 @@ async function submitPublicComplaint(formData: FormData) {
     redirect("/search?complaint=missing_provider");
   }
 
-  const reporterName = String(formData.get("reporter_name") ?? "Anonymous User").trim() || "Anonymous User";
-  const reporterEmail = String(formData.get("reporter_email") ?? "").trim();
-  const complaintCategory = String(formData.get("complaint_category") ?? "marketplace_report");
+  const complainant_name = String(formData.get("reporter_name") ?? "Anonymous User").trim() || "Anonymous User";
+  const complainant_email = String(formData.get("reporter_email") ?? "").trim();
+  const complainant_phone = String(formData.get("reporter_phone") ?? "").trim();
+  const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
+  const complaint_type = String(formData.get("complaint_category") ?? "marketplace_report");
   const severity = String(formData.get("severity") ?? "medium");
-  const regulatorTarget = String(formData.get("regulator_target") ?? "fccpc");
-  const fallbackBusinessName = String(formData.get("provider_business_name") ?? "").trim();
-  const fallbackState = String(formData.get("provider_state") ?? "").trim();
-  const fallbackSector = String(formData.get("provider_sector") ?? "").trim();
   const summary = String(formData.get("summary") ?? "Provider complaint report").trim();
   const description = String(formData.get("description") ?? "").trim();
 
@@ -106,142 +45,112 @@ async function submitPublicComplaint(formData: FormData) {
   }
 
   const supabase = await createServiceRoleSupabaseClient();
-  const chosenRegulator = resolveRegulatorTarget(complaintCategory, regulatorTarget);
-  devLog("regulator_target_chosen", { providerPathSegment, complaintCategory, requested: regulatorTarget, chosen: chosenRegulator });
-
-  const providerContext = await resolveProviderPublicContext({
-    providerRouteParam: providerPathSegment,
-  });
-  devLog("provider_resolution_on_submit", {
-    providerPathSegment,
-    found: Boolean(providerContext.provider),
-    providerProfile: providerContext.provider,
-    resolvedProviderProfileId: providerContext.provider_profile_id,
-    resolvedProviderMsmeId: providerContext.provider_profile_msme_id,
-    resolvedAssociationId: providerContext.association_id,
-  });
-
-  if (!providerContext.provider_profile_id || !providerContext.provider_profile_msme_id) {
-    redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
-  }
-
-  const resolvedProviderProfileId = providerContext.provider_profile_id;
-  const resolvedProviderMsmeId = providerContext.provider_profile_msme_id;
-  const resolvedAssociationId = providerContext.association_id;
-  const resolvedProviderSlug = providerContext.provider?.public_slug ?? providerPathSegment;
-  const resolvedBusinessName =
-    providerContext.provider?.display_name ??
-    fallbackBusinessName ??
-    "Unknown business";
-  const resolvedState =
-    fallbackState ??
-    null;
-  const resolvedSector =
-    fallbackSector ??
-    null;
-
-  devLog("linked_msme_lookup_result", {
-    providerPathSegment,
-    linkedMsmeId: resolvedProviderMsmeId,
-    providerProfileId: resolvedProviderProfileId,
-    associationId: resolvedAssociationId,
-    resolvedBusinessName,
-    resolvedState,
-    resolvedSector,
-  });
-
-
-  const complaintReference = generateComplaintReference();
-
-  const complaintInsertPayload: Record<string, unknown> = {
-    complaint_reference: complaintReference,
-    msme_id: resolvedProviderMsmeId,
-    provider_profile_msme_id: resolvedProviderMsmeId,
-    provider_msme_id: resolvedProviderMsmeId,
-    association_id: resolvedAssociationId,
-    provider_profile_id: resolvedProviderProfileId,
-    provider_id: resolvedProviderProfileId,
-    provider_business_name: resolvedBusinessName,
-    complainant_name: reporterName,
-    complainant_email: reporterEmail || null,
-    complainant_phone: String(formData.get("reporter_phone") ?? "").trim() || null,
-    category: complaintCategory,
-    complaint_category: complaintCategory,
-    complaint_type: complaintCategory,
-    title: summary || `Public report for ${resolvedBusinessName}`,
-    summary: summary || `Public report for ${resolvedBusinessName}`,
-    description,
-    preferred_contact_method: String(formData.get("preferred_contact_method") ?? "email").trim() || "email",
-    status: "submitted",
-    priority: severity,
-    severity,
-    regulator_target: chosenRegulator,
-    state: resolvedState,
-    sector: resolvedSector,
-    reporter_name: reporterName,
-    reporter_email: reporterEmail || null,
-    source_channel: "marketplace_public_profile",
-    created_at: new Date().toISOString(),
-  };
-
-  console.log("[complaint-submit]", {
-    provider_profile_id: resolvedProviderProfileId,
-    provider_profile_msme_id: resolvedProviderMsmeId,
-    association_id: resolvedAssociationId ?? null,
-  });
-
-  devLog("complaint_insert_payload_final", {
-    providerPathSegment,
-    resolvedProviderProfileId,
-    resolvedProviderMsmeId,
-    resolvedAssociationId,
-    complaintPayload: complaintInsertPayload,
-    payload: complaintInsertPayload,
-  });
-  const { error, data } = await insertComplaintWithSchemaAdaptation(supabase, complaintInsertPayload, providerPathSegment);
-
-  if (error) {
-    devLog("complaint_insert_failed_final", {
-      providerPathSegment,
-      message: error.message ?? null,
-      details: "details" in error ? (error as { details?: string }).details ?? null : null,
-      hint: "hint" in error ? (error as { hint?: string }).hint ?? null : null,
-      code: "code" in error ? (error as { code?: string }).code ?? null : null,
+  try {
+    const providerContext = await resolveProviderPublicContext({
+      providerRouteParam: providerPathSegment,
     });
+    devLog("provider_resolution_on_submit", {
+      providerPathSegment,
+      found: Boolean(providerContext.provider),
+      providerProfile: providerContext.provider,
+      resolvedProviderProfileId: providerContext.provider_profile_id,
+      resolvedProviderMsmeId: providerContext.provider_profile_msme_id,
+      resolvedAssociationId: providerContext.association_id,
+    });
+
+    if (!providerContext.provider_profile_id || !providerContext.provider_profile_msme_id) {
+      redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
+    }
+
+    const resolvedProviderId = providerContext.provider_profile_id;
+    const resolvedProviderMsmeId = providerContext.provider_profile_msme_id;
+    const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
+    const resolvedPublicSlug = canonicalSlug;
+
+    console.log("[complaint-submit] resolved_context", {
+      providerSlug: providerPathSegment,
+      resolvedProviderId,
+      resolvedProviderMsmeId,
+      canonicalSlug,
+    });
+
+    console.log("[complaint-submit] payload", {
+      complainant_name,
+      complainant_email,
+      complainant_phone,
+      preferred_contact_method,
+      complaint_type,
+      severity,
+      summary,
+      description,
+    });
+
+    const complaintColumns = await getTableColumns(supabase, "complaints");
+    const insertPayload: Record<string, unknown> = {};
+    const addMappedField = (candidates: string[], value: unknown) => {
+      const columnName =
+        complaintColumns.size > 0 ? resolveFirstExistingColumn(complaintColumns, candidates) : candidates[0] ?? null;
+      if (columnName) {
+        insertPayload[columnName] = value;
+      }
+    };
+
+    addMappedField(["provider_profile_id"], resolvedProviderId);
+    addMappedField(["provider_profile_msme_id"], resolvedProviderMsmeId);
+    addMappedField(["complainant_name", "reporter_name"], complainant_name);
+    addMappedField(["complainant_email", "reporter_email"], complainant_email || null);
+    addMappedField(["complainant_phone", "reporter_phone"], complainant_phone || null);
+    addMappedField(["preferred_contact_method"], preferred_contact_method);
+    addMappedField(["complaint_type", "category"], complaint_type);
+    addMappedField(["severity", "priority"], severity);
+    addMappedField(["summary", "title"], summary);
+    addMappedField(["description", "details", "body"], description);
+    addMappedField(["status"], "submitted");
+
+    console.log("[complaint-submit] insertPayload", insertPayload);
+
+    const { data: complaintRow, error: complaintInsertError } = await supabase
+      .from("complaints")
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    console.log("[complaint-submit] complaint_insert_result", {
+      complaintRow,
+      complaintInsertError,
+    });
+
+    if (complaintInsertError || !complaintRow) {
+      throw new Error(
+        `[complaint-submit] complaint_insert_failed: ${
+          complaintInsertError?.message ?? "unknown"
+        }`
+      );
+    }
+
+    console.log("[complaint-submit] complaint_pipeline_related_records_skipped", {
+      assignmentRouting: "skipped",
+      providerNotification: "skipped",
+      associationEscalation: "skipped",
+      adminOrFccpcVisibility: "skipped",
+      reason: "temporary simplification until main complaint insert is stable",
+    });
+
+    revalidatePath(`/providers/${providerPathSegment}`);
+    if (resolvedPublicSlug !== providerPathSegment) {
+      revalidatePath(`/providers/${resolvedPublicSlug}`);
+    }
+    redirect(`/providers/${resolvedPublicSlug}?notice=complaint_submitted`);
+  } catch (error) {
+    console.error("[complaint-submit] submit_pipeline_error", {
+      providerPathSegment,
+      error,
+    });
+    if (process.env.NODE_ENV !== "production") {
+      throw error;
+    }
     redirect(`/providers/${providerPathSegment}?reported_error=submit_failed`);
   }
-  devLog("complaint_insert_complete", {
-    providerPathSegment,
-    complaintId: data?.id ?? null,
-    complaintReference,
-    linkedMsmeId: resolvedProviderMsmeId,
-    providerProfileId: resolvedProviderProfileId,
-    businessName: resolvedBusinessName,
-    chosenRegulator,
-  });
-
-  if (data?.id) {
-    await createComplaintStatusHistory({
-      complaintId: data.id,
-      fromStatus: null,
-      toStatus: "submitted",
-      changedByUserId: null,
-      changedByRole: "public",
-      note: "Public complaint submitted from marketplace profile",
-    });
-  }
-  await emitComplaintEvent("complaint_submitted", {
-    complaintId: data?.id ?? null,
-    complaintReference,
-    providerProfileId: resolvedProviderProfileId,
-    providerMsmeId: resolvedProviderMsmeId,
-  });
-
-  revalidatePath(`/providers/${providerPathSegment}`);
-  if (resolvedProviderSlug !== providerPathSegment) {
-    revalidatePath(`/providers/${resolvedProviderSlug}`);
-  }
-  redirect(`/providers/${resolvedProviderSlug}?notice=complaint_submitted`);
 }
 
 
@@ -483,7 +392,7 @@ export default async function ProviderPublicPage({
             )}
             {query.notice === "complaint_submitted" && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                Complaint submitted successfully. The provider and relevant oversight body have been notified.
+                Complaint submitted successfully. The matter has been logged for follow-up.
               </div>
             )}
             {query.quote_error && (
