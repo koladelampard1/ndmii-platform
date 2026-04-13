@@ -23,6 +23,57 @@ function resolveFirstExistingColumn(columns: Set<string>, candidates: string[]) 
   return null;
 }
 
+async function getFreshTableColumns(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  tableName: string
+) {
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", tableName);
+
+  if (error) {
+    return getTableColumns(supabase, tableName);
+  }
+
+  return new Set((data ?? []).map((row) => String(row.column_name)));
+}
+
+function buildComplaintInsertPayload(params: {
+  providerProfileId: string;
+  providerProfileMsmeId: string;
+  reporterName: string;
+  reporterEmail: string;
+  reporterPhone: string;
+  contactMethod: string;
+  complaintType: string;
+  severity: string;
+  summary: string;
+  description: string;
+  complaintsColumns: Set<string>;
+}) {
+  const payload: Record<string, unknown> = {};
+  const mapField = (candidates: string[], value: unknown) => {
+    const columnName = resolveFirstExistingColumn(params.complaintsColumns, candidates);
+    if (columnName) payload[columnName] = value;
+  };
+
+  mapField(["provider_profile_id"], params.providerProfileId);
+  mapField(["provider_profile_msme_id"], params.providerProfileMsmeId);
+  mapField(["complainant_name", "reporter_name"], params.reporterName);
+  mapField(["complainant_email", "reporter_email"], params.reporterEmail || null);
+  mapField(["complainant_phone", "reporter_phone"], params.reporterPhone || null);
+  mapField(["preferred_contact_method"], params.contactMethod);
+  mapField(["complaint_type", "category"], params.complaintType);
+  mapField(["severity", "priority"], params.severity);
+  mapField(["summary", "title"], params.summary);
+  mapField(["description", "details", "body"], params.description);
+  mapField(["status"], "submitted");
+
+  return payload;
+}
+
 async function submitPublicComplaint(formData: FormData) {
   "use server";
 
@@ -85,33 +136,28 @@ async function submitPublicComplaint(formData: FormData) {
       description,
     });
 
-    const complaintColumns = await getTableColumns(supabase, "complaints");
-    const insertPayload: Record<string, unknown> = {};
-    const addMappedField = (candidates: string[], value: unknown) => {
-      const columnName =
-        complaintColumns.size > 0 ? resolveFirstExistingColumn(complaintColumns, candidates) : candidates[0] ?? null;
-      if (columnName) {
-        insertPayload[columnName] = value;
-      }
-    };
+    const complaintsColumns = await getFreshTableColumns(supabase, "complaints");
+    console.log("[complaint-submit] complaints_table_columns", Array.from(complaintsColumns).sort());
 
-    addMappedField(["provider_profile_id"], resolvedProviderId);
-    addMappedField(["provider_profile_msme_id"], resolvedProviderMsmeId);
-    addMappedField(["complainant_name", "reporter_name"], complainant_name);
-    addMappedField(["complainant_email", "reporter_email"], complainant_email || null);
-    addMappedField(["complainant_phone", "reporter_phone"], complainant_phone || null);
-    addMappedField(["preferred_contact_method"], preferred_contact_method);
-    addMappedField(["complaint_type", "category"], complaint_type);
-    addMappedField(["severity", "priority"], severity);
-    addMappedField(["summary", "title"], summary);
-    addMappedField(["description", "details", "body"], description);
-    addMappedField(["status"], "submitted");
+    const complaintInsertPayload = buildComplaintInsertPayload({
+      providerProfileId: resolvedProviderId,
+      providerProfileMsmeId: resolvedProviderMsmeId,
+      reporterName: complainant_name,
+      reporterEmail: complainant_email,
+      reporterPhone: complainant_phone,
+      contactMethod: preferred_contact_method,
+      complaintType: complaint_type,
+      severity,
+      summary,
+      description,
+      complaintsColumns,
+    });
 
-    console.log("[complaint-submit] insertPayload", insertPayload);
+    console.log("[complaint-submit] final_insert_payload", complaintInsertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(insertPayload)
+      .insert(complaintInsertPayload)
       .select()
       .single();
 
@@ -120,12 +166,12 @@ async function submitPublicComplaint(formData: FormData) {
       complaintInsertError,
     });
 
-    if (complaintInsertError || !complaintRow) {
-      throw new Error(
-        `[complaint-submit] complaint_insert_failed: ${
-          complaintInsertError?.message ?? "unknown"
-        }`
-      );
+    if (complaintInsertError) {
+      throw complaintInsertError;
+    }
+
+    if (!complaintRow) {
+      throw new Error("[complaint-submit] complaint_insert_failed: no row returned");
     }
 
     console.log("[complaint-submit] complaint_pipeline_related_records_skipped", {
