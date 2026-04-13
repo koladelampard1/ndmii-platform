@@ -168,8 +168,8 @@ async function submitPublicComplaint(formData: FormData) {
   const evidence_url_or_attachment_note = String(formData.get("evidence_url_or_attachment_note") ?? "").trim();
   const related_reference = String(formData.get("related_reference") ?? "").trim();
   const consent_confirmation = String(formData.get("consent_confirmation") ?? "").trim();
-  const formProviderProfileId = String(formData.get("provider_profile_id") ?? "").trim();
-  const formProviderMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
+  const providerProfileId = String(formData.get("provider_profile_id") ?? "").trim();
+  const providerMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   const formProviderSlug = String(formData.get("provider_slug") ?? "").trim();
 
   if (!complainant_name || !description || !summary || !consent_confirmation) {
@@ -217,22 +217,37 @@ async function submitPublicComplaint(formData: FormData) {
       evidence_url_or_attachment_note,
       related_reference,
       consent_confirmation,
-      hidden_provider_profile_id: formProviderProfileId,
-      hidden_provider_msme_public_id: formProviderMsmePublicId,
+      hidden_provider_profile_id: providerProfileId,
+      hidden_provider_msme_public_id: providerMsmePublicId,
       hidden_provider_slug: formProviderSlug,
     });
 
+    console.log("[complaint-submit] hiddenInputs", {
+      providerProfileId,
+      providerMsmePublicId,
+    });
+
+    const complaintsColumns = await getTableColumns(supabase, "complaints");
+    console.log("[complaint-submit] complaintsColumns", complaintsColumns);
+
     const complaintsColumnSet = await getFreshTableColumns(supabase, "complaints");
     const complaintsMetadata = await getTableColumnMetadata(supabase, "complaints");
-    const complaintsColumns = complaintsMetadata.map((column) => ({
+    const complaintsColumnsDetailed = complaintsMetadata.map((column) => ({
       column_name: column.column_name,
       is_nullable: column.is_nullable,
       column_default: column.column_default,
       is_identity: column.is_identity,
     }));
-    console.log("[complaint-submit] complaints_columns", complaintsColumns);
+    console.log("[complaint-submit] complaints_columns", complaintsColumnsDetailed);
+    const requiredComplaintFields = complaintsMetadata
+      .filter((column) => column.is_nullable === "NO" && !column.column_default && column.is_identity !== "YES")
+      .map((column) => column.column_name);
+    console.log("[complaint-submit] requiredComplaintFields", requiredComplaintFields);
 
-    const complaintInsertPayload = buildComplaintInsertPayload({
+    const resolvedProviderProfileId = providerContext.provider_profile_id ?? providerProfileId;
+    const resolvedProviderMsmePublicId = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
+
+    const insertPayload = buildComplaintInsertPayload({
       fullName: complainant_name,
       email: complainant_email,
       phone: complainant_phone,
@@ -243,32 +258,31 @@ async function submitPublicComplaint(formData: FormData) {
       description,
       evidenceNote: evidence_url_or_attachment_note,
       relatedReference: related_reference,
-      providerProfileId: resolvedProviderId,
-      providerMsmePublicId: resolvedProviderMsmeId,
+      providerProfileId: resolvedProviderProfileId,
+      providerMsmePublicId: resolvedProviderMsmePublicId,
       providerSlug: resolvedPublicSlug,
       complaintsColumns: complaintsColumnSet,
       complaintsMetadata,
     });
 
-    console.log("[complaint-submit] final_payload", complaintInsertPayload);
+    console.log("[complaint-submit] final_payload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(complaintInsertPayload)
+      .insert(insertPayload)
       .select()
       .single();
 
-    console.log("[complaint-submit] complaint_insert_result", {
-      complaintRow,
-      complaintInsertError,
-    });
+    console.log("[complaint-submit] insertPayload", insertPayload);
+    console.log("[complaint-submit] insertErrorFull", complaintInsertError);
 
-    if (complaintInsertError) {
-      throw complaintInsertError;
-    }
-
-    if (!complaintRow) {
-      throw new Error("[complaint-submit] complaint_insert_failed: no row returned");
+    if (complaintInsertError || !complaintRow) {
+      throw new Error(
+        `[complaint-submit] complaint_insert_failed:
+${complaintInsertError?.message}
+column=${complaintInsertError?.details}
+hint=${complaintInsertError?.hint}`
+      );
     }
 
     console.log("[complaint-submit] complaint_pipeline_related_records_skipped", {
