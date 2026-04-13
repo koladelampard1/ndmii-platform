@@ -7,149 +7,12 @@ import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marke
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderPublicContext, resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
-import { getTableColumns } from "@/lib/data/commercial-ops";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
 function devLog(message: string, payload?: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[public-complaint] ${message}`, payload ?? {});
-}
-
-function resolveFirstExistingColumn(columns: Set<string>, candidates: string[]) {
-  for (const candidate of candidates) {
-    if (columns.has(candidate)) return candidate;
-  }
-  return null;
-}
-
-type TableColumnMetadata = {
-  column_name: string;
-  is_nullable: "YES" | "NO";
-  column_default: string | null;
-  is_identity: "YES" | "NO";
-};
-
-async function getFreshTableColumns(
-  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
-  tableName: string
-) {
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName);
-
-  if (error) {
-    return getTableColumns(supabase, tableName);
-  }
-
-  return new Set((data ?? []).map((row) => String(row.column_name)));
-}
-
-async function getTableColumnMetadata(
-  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
-  tableName: string
-): Promise<TableColumnMetadata[]> {
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name,is_nullable,column_default,is_identity")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName);
-
-  if (error) {
-    devLog("complaints_column_metadata_unavailable", { tableName, error });
-    return [];
-  }
-
-  return (data ?? []).map((row) => ({
-    column_name: String(row.column_name),
-    is_nullable: row.is_nullable === "NO" ? "NO" : "YES",
-    column_default: row.column_default ? String(row.column_default) : null,
-    is_identity: row.is_identity === "YES" ? "YES" : "NO",
-  }));
-}
-
-function buildComplaintInsertPayload(params: {
-  fullName: string;
-  email: string;
-  phone: string;
-  preferredContactMethod: string;
-  complaintCategory: string;
-  priority: string;
-  shortSummary: string;
-  description: string;
-  evidenceNote: string;
-  relatedReference: string;
-  providerProfileId: string;
-  providerMsmePublicId: string;
-  providerSlug: string;
-  complaintsColumns: Set<string>;
-  complaintsMetadata: TableColumnMetadata[];
-}) {
-  const payload: Record<string, unknown> = {};
-  const setColumnValue = (candidates: string[], value: unknown) => {
-    const columnName = resolveFirstExistingColumn(params.complaintsColumns, candidates);
-    if (columnName) payload[columnName] = value;
-    return columnName;
-  };
-
-  setColumnValue(["provider_profile_id"], params.providerProfileId);
-  setColumnValue(["provider_msme_id", "provider_public_id", "provider_msme_public_id"], params.providerMsmePublicId);
-  setColumnValue(["provider_slug"], params.providerSlug);
-
-  setColumnValue(["complainant_name", "reporter_name", "full_name"], params.fullName);
-  setColumnValue(["complainant_email", "reporter_email", "email"], params.email || null);
-  setColumnValue(["complainant_phone", "reporter_phone", "phone"], params.phone || null);
-  setColumnValue(["preferred_contact_method", "contact_method"], params.preferredContactMethod);
-  setColumnValue(["complaint_type", "category", "complaint_category"], params.complaintCategory);
-  if (params.complaintsColumns.has("complaint_type")) {
-    payload.complaint_type = params.complaintCategory;
-  }
-  setColumnValue(["severity", "priority"], params.priority);
-  setColumnValue(["summary", "title", "subject"], params.shortSummary);
-  setColumnValue(["description", "details", "body"], params.description);
-  setColumnValue(["evidence_note", "attachment_note", "evidence_url"], params.evidenceNote || null);
-  setColumnValue(["quote_id", "invoice_id", "reference_code", "related_reference"], params.relatedReference || null);
-
-  setColumnValue(["status"], "submitted");
-  setColumnValue(["source", "source_channel"], "public_provider_page");
-
-  // TODO(complaint-workflow): extend mapper with assigned_to/escalation_target/regulator_status/provider_response/resolution_note once workflow handlers are enabled.
-
-  const requiredColumns = params.complaintsMetadata.filter((column) => (
-    column.is_nullable === "NO" &&
-    !column.column_default &&
-    column.is_identity !== "YES"
-  ));
-  const mappedColumns = new Set(Object.keys(payload));
-
-  for (const requiredColumn of requiredColumns) {
-    if (mappedColumns.has(requiredColumn.column_name)) continue;
-
-    if (requiredColumn.column_name === "complaint_type") {
-      payload[requiredColumn.column_name] = params.complaintCategory;
-      continue;
-    }
-    if (requiredColumn.column_name === "description") {
-      payload[requiredColumn.column_name] = params.description;
-      continue;
-    }
-    if (requiredColumn.column_name === "summary" || requiredColumn.column_name === "title" || requiredColumn.column_name === "subject") {
-      payload[requiredColumn.column_name] = params.shortSummary;
-      continue;
-    }
-    if (requiredColumn.column_name === "provider_profile_id") {
-      payload[requiredColumn.column_name] = params.providerProfileId;
-      continue;
-    }
-    if (requiredColumn.column_name === "provider_msme_id" || requiredColumn.column_name === "provider_msme_public_id" || requiredColumn.column_name === "provider_public_id") {
-      payload[requiredColumn.column_name] = params.providerMsmePublicId;
-      continue;
-    }
-  }
-
-  return payload;
 }
 
 async function submitPublicComplaint(formData: FormData) {
@@ -216,7 +79,7 @@ async function submitPublicComplaint(formData: FormData) {
     console.log("[complaint-submit] rawFormValues", {
       complaint_type: formData.get("complaint_type"),
       priority: formData.get("priority"),
-      summary: formData.get("summary"),
+      short_summary: formData.get("short_summary"),
       description: formData.get("description"),
     });
 
@@ -242,45 +105,27 @@ async function submitPublicComplaint(formData: FormData) {
       providerMsmePublicId,
     });
 
-    const complaintsColumns = await getTableColumns(supabase, "complaints");
-    console.log("[complaint-submit] complaintsColumns", complaintsColumns);
-
-    const complaintsColumnSet = await getFreshTableColumns(supabase, "complaints");
-    const complaintsMetadata = await getTableColumnMetadata(supabase, "complaints");
-    const complaintsColumnsDetailed = complaintsMetadata.map((column) => ({
-      column_name: column.column_name,
-      is_nullable: column.is_nullable,
-      column_default: column.column_default,
-      is_identity: column.is_identity,
-    }));
-    console.log("[complaint-submit] complaints_columns", complaintsColumnsDetailed);
-    const requiredComplaintFields = complaintsMetadata
-      .filter((column) => column.is_nullable === "NO" && !column.column_default && column.is_identity !== "YES")
-      .map((column) => column.column_name);
-    console.log("[complaint-submit] requiredComplaintFields", requiredComplaintFields);
-
     const resolvedProviderProfileId = providerContext.provider_profile_id ?? providerProfileId;
     const resolvedProviderMsmePublicId = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
 
-    const insertPayload = buildComplaintInsertPayload({
-      fullName: complainant_name,
-      email: complainant_email,
-      phone: complainant_phone,
-      preferredContactMethod: preferred_contact_method,
-      complaintCategory: complaintType,
+    const insertPayload = {
+      provider_profile_id: resolvedProviderProfileId,
+      provider_msme_id: resolvedProviderMsmePublicId,
+      provider_slug: resolvedPublicSlug,
+      complainant_name,
+      complainant_email: complainant_email || null,
+      complainant_phone: complainant_phone || null,
+      preferred_contact_method,
+      complaint_type: complaintType,
       priority: normalizedPriority,
-      shortSummary: summary,
+      summary,
       description,
-      evidenceNote: evidence_url_or_attachment_note,
-      relatedReference: related_reference,
-      providerProfileId: resolvedProviderProfileId,
-      providerMsmePublicId: resolvedProviderMsmePublicId,
-      providerSlug: resolvedPublicSlug,
-      complaintsColumns: complaintsColumnSet,
-      complaintsMetadata,
-    });
-
-    console.log("[complaint-submit] normalizedPayload", insertPayload);
+      evidence_note: evidence_url_or_attachment_note || null,
+      related_reference: related_reference || null,
+      status: "open",
+      source: "public_provider_page",
+    };
+    console.log("[complaint-submit] finalInsertPayload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
