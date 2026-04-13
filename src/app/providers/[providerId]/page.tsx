@@ -76,7 +76,7 @@ function buildComplaintInsertPayload(params: {
   phone: string;
   preferredContactMethod: string;
   complaintCategory: string;
-  severity: string;
+  priority: string;
   shortSummary: string;
   description: string;
   evidenceNote: string;
@@ -103,7 +103,10 @@ function buildComplaintInsertPayload(params: {
   setColumnValue(["complainant_phone", "reporter_phone", "phone"], params.phone || null);
   setColumnValue(["preferred_contact_method", "contact_method"], params.preferredContactMethod);
   setColumnValue(["complaint_type", "category", "complaint_category"], params.complaintCategory);
-  setColumnValue(["severity", "priority"], params.severity);
+  if (params.complaintsColumns.has("complaint_type")) {
+    payload.complaint_type = params.complaintCategory;
+  }
+  setColumnValue(["severity", "priority"], params.priority);
   setColumnValue(["summary", "title", "subject"], params.shortSummary);
   setColumnValue(["description", "details", "body"], params.description);
   setColumnValue(["evidence_note", "attachment_note", "evidence_url"], params.evidenceNote || null);
@@ -161,8 +164,9 @@ async function submitPublicComplaint(formData: FormData) {
   const complainant_email = String(formData.get("email") ?? "").trim();
   const complainant_phone = String(formData.get("phone") ?? "").trim();
   const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
-  const complaint_type = String(formData.get("complaint_category") ?? "marketplace_report").trim() || "marketplace_report";
-  const severity = String(formData.get("severity") ?? "medium");
+  const complaintType = String(formData.get("complaint_type") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "").trim();
+  const normalizedPriority = priority || "medium";
   const summary = String(formData.get("short_summary") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const evidence_url_or_attachment_note = String(formData.get("evidence_url_or_attachment_note") ?? "").trim();
@@ -171,6 +175,10 @@ async function submitPublicComplaint(formData: FormData) {
   const providerProfileId = String(formData.get("provider_profile_id") ?? "").trim();
   const providerMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   const formProviderSlug = String(formData.get("provider_slug") ?? "").trim();
+
+  if (!complaintType) {
+    throw new Error("complaint_type missing from form submission");
+  }
 
   if (!complainant_name || !description || !summary || !consent_confirmation) {
     redirect(`/providers/${providerPathSegment}?reported_error=missing_fields`);
@@ -205,13 +213,20 @@ async function submitPublicComplaint(formData: FormData) {
       resolvedProviderMsmeId,
     });
 
+    console.log("[complaint-submit] rawFormValues", {
+      complaint_type: formData.get("complaint_type"),
+      priority: formData.get("priority"),
+      summary: formData.get("summary"),
+      description: formData.get("description"),
+    });
+
     console.log("[complaint-submit] payload", {
       complainant_name,
       complainant_email,
       complainant_phone,
       preferred_contact_method,
-      complaint_type,
-      severity,
+      complaint_type: complaintType,
+      priority: normalizedPriority,
       summary,
       description,
       evidence_url_or_attachment_note,
@@ -252,8 +267,8 @@ async function submitPublicComplaint(formData: FormData) {
       email: complainant_email,
       phone: complainant_phone,
       preferredContactMethod: preferred_contact_method,
-      complaintCategory: complaint_type,
-      severity,
+      complaintCategory: complaintType,
+      priority: normalizedPriority,
       shortSummary: summary,
       description,
       evidenceNote: evidence_url_or_attachment_note,
@@ -265,7 +280,7 @@ async function submitPublicComplaint(formData: FormData) {
       complaintsMetadata,
     });
 
-    console.log("[complaint-submit] final_payload", insertPayload);
+    console.log("[complaint-submit] normalizedPayload", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -598,15 +613,15 @@ export default async function ProviderPublicPage({
                   <option value="phone">Phone</option>
                   <option value="sms">SMS</option>
                 </select>
-                <select name="complaint_category" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <option value="marketplace_report">General marketplace complaint</option>
-                  <option value="service_quality">Service quality issue</option>
-                  <option value="fraud">Fraud or misrepresentation</option>
-                  <option value="counterfeit">Counterfeit or unsafe goods</option>
-                  <option value="pricing_dispute">Pricing or billing dispute</option>
-                  <option value="identity_concern">Identity or trust concern</option>
+                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <option value="general_marketplace_report">General marketplace report</option>
+                  <option value="fraud">Fraud</option>
+                  <option value="delivery_dispute">Delivery dispute</option>
+                  <option value="pricing_abuse">Pricing abuse</option>
+                  <option value="counterfeit_products">Counterfeit products</option>
+                  <option value="service_quality">Service quality</option>
                 </select>
-                <select name="severity" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <select name="priority" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
