@@ -1,5 +1,6 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
+import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
 
 export type ProviderCard = {
   id: string;
@@ -149,6 +150,7 @@ const FALLBACK_REVIEWS: ProviderReview[] = [
 ];
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type CategoriesFailureCause =
   | "missing_category_field"
   | "null_values"
@@ -1151,10 +1153,67 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
   try {
     const supabase = await createServiceRoleSupabaseClient();
+    const tableName = "provider_services";
+    const requestedSelectColumns = [
+      "id",
+      "category",
+      "specialization",
+      "title",
+      "short_description",
+      "pricing_mode",
+      "min_price",
+      "max_price",
+      "turnaround_time",
+      "vat_applicable",
+      "availability_status",
+    ];
+    const tableColumns = await getTableColumns(supabase, tableName);
+    const selectedColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
+    const linkColumn = tableColumns.has("provider_profile_id")
+      ? "provider_profile_id"
+      : tableColumns.has("provider_id")
+        ? "provider_id"
+        : tableColumns.has("msme_id")
+          ? "msme_id"
+          : null;
+
+    if (!linkColumn || selectedColumns.length === 0) {
+      if (DEV_MODE) {
+        console.error("[provider-public-page][services_load_failed]", {
+          providerId,
+          table: tableName,
+          selectedColumns,
+          filters: null,
+          reason: "missing_required_link_or_select_columns",
+        });
+      }
+      return [];
+    }
+
+    let filterValue = providerId;
+    if (linkColumn === "msme_id" && UUID_PATTERN.test(providerId)) {
+      const { data: provider } = await supabase.from("provider_profiles").select("msme_id").eq("id", providerId).maybeSingle();
+      if (!provider?.msme_id) return [];
+      filterValue = provider.msme_id;
+    } else if ((linkColumn === "provider_id" || linkColumn === "provider_profile_id") && !UUID_PATTERN.test(providerId)) {
+      const resolved = await resolvePublicProviderProfile({ providerRouteParam: providerId });
+      if (!resolved.provider?.id) return [];
+      filterValue = resolved.provider.id;
+    }
+
+    if (DEV_MODE) {
+      console.info("[provider-public-page][services_query]", {
+        providerId,
+        table: tableName,
+        filters: { [linkColumn]: filterValue },
+        select: selectedColumns,
+      });
+    }
+
     const { data, error } = await supabase
-      .from("provider_services")
-      .select("id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status")
-      .eq("provider_id", providerId)
+      .from(tableName)
+      .select(selectedColumns.join(","))
+      .eq(linkColumn, filterValue)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -1170,10 +1229,17 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
     }
 
     return (data ?? []).map((service: any) => ({
-      ...service,
+      id: String(service.id ?? ""),
+      category: String(service.category ?? "General Services"),
+      specialization: service.specialization == null ? null : String(service.specialization),
+      title: String(service.title ?? "Service offering"),
+      short_description: String(service.short_description ?? "Verified provider service"),
+      pricing_mode: String(service.pricing_mode ?? "range"),
       min_price: service.min_price == null ? null : Number(service.min_price),
       max_price: service.max_price == null ? null : Number(service.max_price),
+      turnaround_time: service.turnaround_time == null ? null : String(service.turnaround_time),
       vat_applicable: Boolean(service.vat_applicable),
+      availability_status: String(service.availability_status ?? "available"),
     })) as ProviderService[];
   } catch (error) {
     if (DEV_MODE) {
@@ -1189,10 +1255,64 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
 export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
   try {
     const supabase = await createServiceRoleSupabaseClient();
+    const tableName = "reviews";
+    const requestedSelectColumns = [
+      "id",
+      "reviewer_name",
+      "rating",
+      "review_title",
+      "review_body",
+      "provider_reply",
+      "provider_reply_at",
+      "created_at",
+    ];
+    const tableColumns = await getTableColumns(supabase, tableName);
+    const selectedColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
+    const linkColumn = tableColumns.has("provider_profile_id")
+      ? "provider_profile_id"
+      : tableColumns.has("provider_id")
+        ? "provider_id"
+        : tableColumns.has("msme_id")
+          ? "msme_id"
+          : null;
+
+    if (!linkColumn || selectedColumns.length === 0) {
+      if (DEV_MODE) {
+        console.error("[provider-public-page][reviews_load_failed]", {
+          providerId,
+          table: tableName,
+          selectedColumns,
+          filters: null,
+          reason: "missing_required_link_or_select_columns",
+        });
+      }
+      return [];
+    }
+
+    let filterValue = providerId;
+    if (linkColumn === "msme_id" && UUID_PATTERN.test(providerId)) {
+      const { data: provider } = await supabase.from("provider_profiles").select("msme_id").eq("id", providerId).maybeSingle();
+      if (!provider?.msme_id) return [];
+      filterValue = provider.msme_id;
+    } else if ((linkColumn === "provider_id" || linkColumn === "provider_profile_id") && !UUID_PATTERN.test(providerId)) {
+      const resolved = await resolvePublicProviderProfile({ providerRouteParam: providerId });
+      if (!resolved.provider?.id) return [];
+      filterValue = resolved.provider.id;
+    }
+
+    if (DEV_MODE) {
+      console.info("[provider-public-page][reviews_query]", {
+        providerId,
+        table: tableName,
+        filters: { [linkColumn]: filterValue },
+        select: selectedColumns,
+      });
+    }
+
     const { data, error } = await supabase
-      .from("reviews")
-      .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
-      .eq("provider_id", providerId)
+      .from(tableName)
+      .select(selectedColumns.join(","))
+      .eq(linkColumn, filterValue)
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -1208,7 +1328,16 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
       return [];
     }
 
-    return (data ?? []) as ProviderReview[];
+    return (data ?? []).map((review: any) => ({
+      id: String(review.id ?? ""),
+      reviewer_name: String(review.reviewer_name ?? "Anonymous"),
+      rating: Number(review.rating ?? 0),
+      review_title: String(review.review_title ?? "Customer review"),
+      review_body: String(review.review_body ?? ""),
+      provider_reply: review.provider_reply == null ? null : String(review.provider_reply),
+      provider_reply_at: review.provider_reply_at == null ? null : String(review.provider_reply_at),
+      created_at: String(review.created_at ?? new Date().toISOString()),
+    })) as ProviderReview[];
   } catch (error) {
     if (DEV_MODE) {
       console.error("[provider-public-page][reviews_load_failed_exception]", {
