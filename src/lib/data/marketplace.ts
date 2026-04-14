@@ -1148,6 +1148,120 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
   }
 }
 
+export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("provider_services")
+      .select("id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      if (DEV_MODE) {
+        console.error("[provider-public-page][services_load_failed]", {
+          providerId,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+      }
+      return [];
+    }
+
+    return (data ?? []).map((service: any) => ({
+      ...service,
+      min_price: service.min_price == null ? null : Number(service.min_price),
+      max_price: service.max_price == null ? null : Number(service.max_price),
+      vat_applicable: Boolean(service.vat_applicable),
+    })) as ProviderService[];
+  } catch (error) {
+    if (DEV_MODE) {
+      console.error("[provider-public-page][services_load_failed_exception]", {
+        providerId,
+        error,
+      });
+    }
+    return [];
+  }
+}
+
+export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      if (DEV_MODE) {
+        console.error("[provider-public-page][reviews_load_failed]", {
+          providerId,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+      }
+      return [];
+    }
+
+    return (data ?? []) as ProviderReview[];
+  } catch (error) {
+    if (DEV_MODE) {
+      console.error("[provider-public-page][reviews_load_failed_exception]", {
+        providerId,
+        error,
+      });
+    }
+    return [];
+  }
+}
+
+export async function getProviderComplaintFormContext(providerId: string): Promise<{
+  active_complaint_count: number;
+  association_name: string | null;
+}> {
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+
+    const [{ count }, { data: providerProfile }] = await Promise.all([
+      supabase.from("complaints").select("id", { count: "exact", head: true }).eq("provider_profile_id", providerId).neq("status", "closed"),
+      supabase.from("provider_profiles").select("msme_id").eq("id", providerId).maybeSingle(),
+    ]);
+
+    const providerMsmeId = providerProfile?.msme_id ?? null;
+    let associationName: string | null = null;
+
+    if (providerMsmeId) {
+      const { data: msmeRow } = await supabase
+        .from("msmes")
+        .select("associations(name)")
+        .eq("id", providerMsmeId)
+        .maybeSingle();
+      associationName = (msmeRow?.associations as { name?: string } | null)?.name ?? null;
+    }
+
+    return {
+      active_complaint_count: count ?? 0,
+      association_name: associationName,
+    };
+  } catch (error) {
+    if (DEV_MODE) {
+      console.error("[provider-public-page][complaint_context_load_failed]", {
+        providerId,
+        error,
+      });
+    }
+    return {
+      active_complaint_count: 0,
+      association_name: null,
+    };
+  }
+}
+
 export async function resolveProviderPublicId(providerSlugOrId: string): Promise<string | null> {
   const value = providerSlugOrId.trim();
   if (!value) return null;
