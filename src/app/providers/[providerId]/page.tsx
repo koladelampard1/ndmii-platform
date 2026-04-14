@@ -15,6 +15,8 @@ function devLog(message: string, payload?: Record<string, unknown>) {
   console.info(`[public-complaint] ${message}`, payload ?? {});
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function submitPublicComplaint(formData: FormData) {
   "use server";
 
@@ -32,7 +34,7 @@ async function submitPublicComplaint(formData: FormData) {
   const normalizedPriority = priority || "medium";
   const summary = String(formData.get("short_summary") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const evidence_url_or_attachment_note = String(formData.get("evidence_url_or_attachment_note") ?? "").trim();
+  const evidenceAttachment = formData.get("evidence_attachment");
   const related_reference = String(formData.get("related_reference") ?? "").trim();
   const consent_confirmation = String(formData.get("consent_confirmation") ?? "").trim();
   const providerProfileId = String(formData.get("provider_profile_id") ?? "").trim();
@@ -62,19 +64,58 @@ async function submitPublicComplaint(formData: FormData) {
       resolvedAssociationId: providerContext.association_id,
     });
 
-    if (!providerContext.provider_profile_id || !providerContext.provider_profile_msme_id) {
+    if (!providerContext.provider_profile_id) {
       redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
     }
 
     const resolvedProviderId = providerContext.provider_profile_id;
-    const resolvedProviderMsmeId = providerContext.provider_profile_msme_id;
     const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
     const resolvedPublicSlug = canonicalSlug;
+    const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
+    const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
+
+    let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
+
+    if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
+      if (UUID_PATTERN.test(providerPublicMsmeId)) {
+        resolvedInternalMsmeUuid = providerPublicMsmeId;
+      } else {
+        const { data: resolvedMsme, error: msmeResolveError } = await supabase
+          .from("msmes")
+          .select("id")
+          .eq("msme_id", providerPublicMsmeId.toUpperCase())
+          .maybeSingle();
+
+        if (msmeResolveError) {
+          console.error("[complaint-submit] msme_resolution_error", {
+            providerPathSegment,
+            providerPublicMsmeId,
+            message: msmeResolveError.message,
+            details: msmeResolveError.details,
+            hint: msmeResolveError.hint,
+          });
+        }
+        resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
+      }
+    }
+
+    console.log("complaint submit resolved IDs", {
+      providerId: providerPathSegment,
+      providerPublicSlug,
+      providerPublicMsmeId,
+      resolvedInternalMsmeUuid,
+    });
+
+    if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
+      throw new Error(
+        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} publicMsmeId=${providerPublicMsmeId ?? "n/a"}`
+      );
+    }
 
     console.log("[complaint-submit] provider_resolution", {
       providerSlug: providerPathSegment,
       resolvedProviderId,
-      resolvedProviderMsmeId,
+      resolvedProviderMsmeUuid: resolvedInternalMsmeUuid,
     });
 
     console.log("[complaint-submit] rawFormValues", {
@@ -93,7 +134,6 @@ async function submitPublicComplaint(formData: FormData) {
       priority: normalizedPriority,
       summary,
       description,
-      evidence_url_or_attachment_note,
       related_reference,
       consent_confirmation,
       hidden_provider_profile_id: providerProfileId,
@@ -106,19 +146,47 @@ async function submitPublicComplaint(formData: FormData) {
       providerMsmePublicId,
     });
 
-    const resolvedProviderMsmeUuid = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
-
     if (!complaint_type) {
       throw new Error("complaint_type is required before insert");
     }
 
+    const evidenceAttachmentMetadata =
+      evidenceAttachment instanceof File && evidenceAttachment.size > 0
+        ? {
+            original_name: evidenceAttachment.name,
+            size_bytes: evidenceAttachment.size,
+            mime_type: evidenceAttachment.type || null,
+            upload_status: "pending_storage_integration",
+          }
+        : null;
+
     const payload = {
-      msme_id: resolvedProviderMsmeUuid,
+      msme_id: resolvedInternalMsmeUuid,
+      provider_profile_id: resolvedProviderId,
       complaint_type,
       description,
       status: "open",
+      complainant_name,
+      complainant_email: complainant_email || null,
+      complainant_phone: complainant_phone || null,
+      preferred_contact_method,
+      related_reference: related_reference || null,
+      title: summary,
       summary,
+      priority: normalizedPriority,
       severity: normalizedPriority,
+      metadata: {
+        provider_public_slug: providerPublicSlug,
+        provider_public_msme_code: providerPublicMsmeId,
+        quote_invoice_order_reference: related_reference || null,
+        complaint_contact: {
+          full_name: complainant_name,
+          email: complainant_email || null,
+          phone: complainant_phone || null,
+          preferred_contact_method,
+        },
+        evidence_attachment: evidenceAttachmentMetadata,
+      },
       state: null,
       sector: null,
     };
@@ -445,7 +513,7 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Submit a complaint case</h3>
               <p className="mt-1 text-xs text-slate-500">Share complaint details for review, provider response, and possible regulatory escalation.</p>
-              <form action={submitPublicComplaint} className="mt-3 space-y-2">
+              <form action={submitPublicComplaint} className="mt-3 space-y-2" encType="multipart/form-data">
                 <input type="hidden" name="provider_path_segment" value={providerSlug} />
                 <input type="hidden" name="provider_profile_id" value={providerView.id} />
                 <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
@@ -473,11 +541,15 @@ export default async function ProviderPublicPage({
                 </select>
                 <input name="short_summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
                 <textarea name="description" placeholder="Describe the issue" className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <input
-                  name="evidence_url_or_attachment_note"
-                  placeholder="Evidence URL or attachment note (temporary)"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <label className="block text-xs font-medium text-slate-600">
+                  Evidence attachment (optional)
+                  <input
+                    name="evidence_attachment"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs file:font-medium"
+                  />
+                </label>
                 <input name="related_reference" placeholder="Quote, invoice, or order reference (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                   <input type="checkbox" name="consent_confirmation" value="yes" className="mt-0.5" required />
