@@ -37,19 +37,13 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
   }
 
   const complainant_name = String(payload.full_name ?? "").trim();
-  const complainant_email = String(payload.email ?? "").trim();
-  const complainant_phone = String(payload.phone ?? "").trim();
-  const preferred_contact_method = String(payload.preferred_contact_method ?? "email").trim() || "email";
   const complaint_type = String(payload.complaint_type ?? "").trim();
   const priority = String(payload.priority ?? "").trim();
   const normalizedPriority = priority || "medium";
   const summary = String(payload.short_summary ?? "").trim();
   const description = String(payload.description ?? "").trim();
-  const related_reference = String(payload.related_reference ?? "").trim();
   const consent_confirmation = String(payload.consent_confirmation ?? "").trim();
-  const providerProfileId = String(payload.provider_profile_id ?? "").trim();
   const providerMsmePublicId = String(payload.provider_msme_public_id ?? "").trim();
-  const formProviderSlug = String(payload.provider_slug ?? "").trim();
 
   if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
     return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=missing_fields` };
@@ -68,7 +62,6 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
 
     const resolvedProviderId = providerContext.provider_profile_id;
     const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
-    const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
     const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
 
     let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
@@ -102,53 +95,50 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       );
     }
 
-    const evidenceUrl = payload.evidence_url?.trim() || null;
-
-    const insertPayload = {
+    const mappedComplaintPayload = {
       msme_id: resolvedInternalMsmeUuid,
-      provider_profile_id: resolvedProviderId,
       complaint_type,
       description,
       status: "open",
-      complainant_name,
-      complainant_email: complainant_email || null,
-      complainant_phone: complainant_phone || null,
-      preferred_contact_method,
-      related_reference: related_reference || null,
-      title: summary,
+      created_at: new Date().toISOString(),
       summary,
-      priority: normalizedPriority,
       severity: normalizedPriority,
-      metadata: {
-        provider_public_slug: providerPublicSlug,
-        provider_public_msme_code: providerPublicMsmeId,
-        quote_invoice_order_reference: related_reference || null,
-        complaint_contact: {
-          full_name: complainant_name,
-          email: complainant_email || null,
-          phone: complainant_phone || null,
-          preferred_contact_method,
-        },
-        evidence_url: evidenceUrl,
-        evidence_attachment: evidenceUrl
-          ? {
-              public_url: evidenceUrl,
-              storage_path: payload.evidence_storage_path ?? null,
-              bucket: payload.evidence_bucket ?? null,
-              original_name: payload.evidence_original_name ?? null,
-              size_bytes: payload.evidence_size_bytes ?? null,
-              mime_type: payload.evidence_mime_type ?? null,
-              upload_status: "uploaded",
-            }
-          : null,
-      },
+      assigned_officer_user_id: null,
       state: null,
       sector: null,
+      investigation_notes: payload.evidence_url
+        ? `Evidence: ${payload.evidence_url}${payload.evidence_storage_path ? ` (path: ${payload.evidence_storage_path})` : ""}`
+        : null,
+      closed_at: null,
+    };
+
+    const evidenceUploadResult = payload.evidence_url
+      ? {
+          public_url: payload.evidence_url,
+          storage_path: payload.evidence_storage_path ?? null,
+          bucket: payload.evidence_bucket ?? null,
+          original_name: payload.evidence_original_name ?? null,
+          size_bytes: payload.evidence_size_bytes ?? null,
+          mime_type: payload.evidence_mime_type ?? null,
+        }
+      : null;
+
+    console.info("[complaint-submit][pre_insert]", {
+      resolved_provider_id: resolvedProviderId,
+      resolved_provider_public_msme_id: providerPublicMsmeId,
+      mapped_complaint_payload: mappedComplaintPayload,
+      evidence_upload_result: evidenceUploadResult,
+      complaint_insert_payload: mappedComplaintPayload,
+    });
+
+    const complaintInsertPayload = {
+      ...mappedComplaintPayload,
+      msme_id: UUID_PATTERN.test(mappedComplaintPayload.msme_id) ? mappedComplaintPayload.msme_id : null,
     };
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(insertPayload)
+      .insert(complaintInsertPayload)
       .select("id")
       .single();
 

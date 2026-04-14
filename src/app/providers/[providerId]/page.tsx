@@ -2,7 +2,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
-import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marketplace";
+import {
+  getProviderComplaintFormContext,
+  getProviderPublicProfile,
+  getProviderPublicReviews,
+  getProviderPublicServices,
+  type ProviderProfile,
+} from "@/lib/data/marketplace";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
 import { PublicComplaintForm } from "./public-complaint-form";
@@ -63,9 +69,16 @@ export default async function ProviderPublicPage({
   }
 
   const providerId = resolvedRoute.provider.id;
-  const provider = await getProviderPublicProfile(providerId);
+  const [providerResult, servicesResult, reviewsResult, complaintContextResult] = await Promise.allSettled([
+    getProviderPublicProfile(providerId),
+    getProviderPublicServices(providerId),
+    getProviderPublicReviews(providerId),
+    getProviderComplaintFormContext(providerId),
+  ]);
 
-  const providerView: ProviderProfile = provider ?? {
+  const provider = providerResult.status === "fulfilled" ? providerResult.value : null;
+
+  const providerViewBase: ProviderProfile = provider ?? {
     id: resolvedRoute.provider.id,
     public_slug: resolvedRoute.provider.public_slug,
     msme_id: resolvedRoute.provider.msme_id,
@@ -97,6 +110,26 @@ export default async function ProviderPublicPage({
     ],
     active_complaint_count: 0,
     association_name: null,
+  };
+
+  const providerView: ProviderProfile = {
+    ...providerViewBase,
+    services:
+      servicesResult.status === "fulfilled"
+        ? servicesResult.value
+        : providerViewBase.services,
+    reviews:
+      reviewsResult.status === "fulfilled"
+        ? reviewsResult.value
+        : providerViewBase.reviews,
+    active_complaint_count:
+      complaintContextResult.status === "fulfilled"
+        ? complaintContextResult.value.active_complaint_count
+        : providerViewBase.active_complaint_count,
+    association_name:
+      complaintContextResult.status === "fulfilled"
+        ? complaintContextResult.value.association_name
+        : providerViewBase.association_name,
   };
 
   const breakdownRows = [
@@ -236,6 +269,11 @@ export default async function ProviderPublicPage({
                   )}
                 </article>
               ))}
+              {providerView.reviews.length === 0 && (
+                <article className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">
+                  No reviews published yet.
+                </article>
+              )}
             </div>
           </div>
 
