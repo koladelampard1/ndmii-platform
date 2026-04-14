@@ -1,11 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marketplace";
-import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { resolveProviderPublicContext, resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
+import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
@@ -14,230 +12,6 @@ function devLog(message: string, payload?: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[public-complaint] ${message}`, payload ?? {});
 }
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-async function submitPublicComplaint(formData: FormData) {
-  "use server";
-
-  const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
-  if (!providerPathSegment) {
-    redirect("/search?complaint=missing_provider");
-  }
-
-  const complainant_name = String(formData.get("full_name") ?? "").trim();
-  const complainant_email = String(formData.get("email") ?? "").trim();
-  const complainant_phone = String(formData.get("phone") ?? "").trim();
-  const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
-  const complaintTypeFromForm = String(formData.get("complaint_type") ?? "").trim();
-  const priority = String(formData.get("priority") ?? "").trim();
-  const normalizedPriority = priority || "medium";
-  const summary = String(formData.get("short_summary") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-  const evidenceAttachment = formData.get("evidence_attachment");
-  const related_reference = String(formData.get("related_reference") ?? "").trim();
-  const consent_confirmation = String(formData.get("consent_confirmation") ?? "").trim();
-  const providerProfileId = String(formData.get("provider_profile_id") ?? "").trim();
-  const providerMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
-  const formProviderSlug = String(formData.get("provider_slug") ?? "").trim();
-
-  if (!complaintTypeFromForm) {
-    throw new Error("complaint_type missing from form submission");
-  }
-  const complaint_type = complaintTypeFromForm;
-
-  if (!complainant_name || !description || !summary || !consent_confirmation) {
-    redirect(`/providers/${providerPathSegment}?reported_error=missing_fields`);
-  }
-
-  const supabase = await createServiceRoleSupabaseClient();
-  try {
-    const providerContext = await resolveProviderPublicContext({
-      providerRouteParam: providerPathSegment,
-    });
-    devLog("provider_resolution_on_submit", {
-      providerPathSegment,
-      found: Boolean(providerContext.provider),
-      providerProfile: providerContext.provider,
-      resolvedProviderProfileId: providerContext.provider_profile_id,
-      resolvedProviderMsmeId: providerContext.provider_profile_msme_id,
-      resolvedAssociationId: providerContext.association_id,
-    });
-
-    if (!providerContext.provider_profile_id) {
-      redirect(`/providers/${providerPathSegment}?reported_error=provider_not_found`);
-    }
-
-    const resolvedProviderId = providerContext.provider_profile_id;
-    const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
-    const resolvedPublicSlug = canonicalSlug;
-    const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
-    const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
-
-    let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
-
-    if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
-      if (UUID_PATTERN.test(providerPublicMsmeId)) {
-        resolvedInternalMsmeUuid = providerPublicMsmeId;
-      } else {
-        const { data: resolvedMsme, error: msmeResolveError } = await supabase
-          .from("msmes")
-          .select("id")
-          .eq("msme_id", providerPublicMsmeId.toUpperCase())
-          .maybeSingle();
-
-        if (msmeResolveError) {
-          console.error("[complaint-submit] msme_resolution_error", {
-            providerPathSegment,
-            providerPublicMsmeId,
-            message: msmeResolveError.message,
-            details: msmeResolveError.details,
-            hint: msmeResolveError.hint,
-          });
-        }
-        resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
-      }
-    }
-
-    console.log("complaint submit resolved IDs", {
-      providerId: providerPathSegment,
-      providerPublicSlug,
-      providerPublicMsmeId,
-      resolvedInternalMsmeUuid,
-    });
-
-    if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
-      throw new Error(
-        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} publicMsmeId=${providerPublicMsmeId ?? "n/a"}`
-      );
-    }
-
-    console.log("[complaint-submit] provider_resolution", {
-      providerSlug: providerPathSegment,
-      resolvedProviderId,
-      resolvedProviderMsmeUuid: resolvedInternalMsmeUuid,
-    });
-
-    console.log("[complaint-submit] rawFormValues", {
-      complaint_type: formData.get("complaint_type"),
-      priority: formData.get("priority"),
-      short_summary: formData.get("short_summary"),
-      description: formData.get("description"),
-    });
-
-    console.log("[complaint-submit] payload", {
-      complainant_name,
-      complainant_email,
-      complainant_phone,
-      preferred_contact_method,
-      complaint_type,
-      priority: normalizedPriority,
-      summary,
-      description,
-      related_reference,
-      consent_confirmation,
-      hidden_provider_profile_id: providerProfileId,
-      hidden_provider_msme_public_id: providerMsmePublicId,
-      hidden_provider_slug: formProviderSlug,
-    });
-
-    console.log("[complaint-submit] hiddenInputs", {
-      providerProfileId,
-      providerMsmePublicId,
-    });
-
-    if (!complaint_type) {
-      throw new Error("complaint_type is required before insert");
-    }
-
-    const evidenceAttachmentMetadata =
-      evidenceAttachment instanceof File && evidenceAttachment.size > 0
-        ? {
-            original_name: evidenceAttachment.name,
-            size_bytes: evidenceAttachment.size,
-            mime_type: evidenceAttachment.type || null,
-            upload_status: "pending_storage_integration",
-          }
-        : null;
-
-    const payload = {
-      msme_id: resolvedInternalMsmeUuid,
-      provider_profile_id: resolvedProviderId,
-      complaint_type,
-      description,
-      status: "open",
-      complainant_name,
-      complainant_email: complainant_email || null,
-      complainant_phone: complainant_phone || null,
-      preferred_contact_method,
-      related_reference: related_reference || null,
-      title: summary,
-      summary,
-      priority: normalizedPriority,
-      severity: normalizedPriority,
-      metadata: {
-        provider_public_slug: providerPublicSlug,
-        provider_public_msme_code: providerPublicMsmeId,
-        quote_invoice_order_reference: related_reference || null,
-        complaint_contact: {
-          full_name: complainant_name,
-          email: complainant_email || null,
-          phone: complainant_phone || null,
-          preferred_contact_method,
-        },
-        evidence_attachment: evidenceAttachmentMetadata,
-      },
-      state: null,
-      sector: null,
-    };
-    console.log("complaint payload:", payload);
-    devLog("complaint_insert_payload", payload);
-
-    const { data: complaintRow, error: complaintInsertError } = await supabase
-      .from("complaints")
-      .insert(payload)
-      .select()
-      .single();
-
-    if (complaintInsertError || !complaintRow) {
-      console.error("[complaint-submit] complaint_insert_failure", {
-        providerPathSegment,
-        payload,
-        complaintInsertError,
-      });
-      throw new Error(
-        `[complaint-submit] complaint_insert_failed:
-${complaintInsertError?.message}
-column=${complaintInsertError?.details}
-hint=${complaintInsertError?.hint}`
-      );
-    }
-
-    console.log("[complaint-submit] complaint_pipeline_related_records_skipped", {
-      assignmentRouting: "skipped",
-      providerNotification: "skipped",
-      associationEscalation: "skipped",
-      adminOrFccpcVisibility: "skipped",
-      reason: "temporary simplification until main complaint insert is stable",
-    });
-
-    revalidatePath(`/providers/${providerPathSegment}`);
-    if (resolvedPublicSlug !== providerPathSegment) {
-      revalidatePath(`/providers/${resolvedPublicSlug}`);
-    }
-    redirect(`/providers/${resolvedPublicSlug}?notice=complaint_submitted`);
-  } catch (error) {
-    console.error("[complaint-submit] submit_pipeline_error", {
-      providerPathSegment,
-      error,
-    });
-    if (process.env.NODE_ENV !== "production") {
-      throw error;
-    }
-    redirect(`/providers/${providerPathSegment}?reported_error=submit_failed`);
-  }
-}
-
 
 function ratingPercent(count: number, total: number) {
   if (!total) return 0;
@@ -491,6 +265,10 @@ export default async function ProviderPublicPage({
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                 {query.reported_error === "missing_fields"
                   ? "Please complete all required complaint fields and confirm consent before submitting."
+                  : query.reported_error === "file_too_large"
+                    ? "Evidence file is too large. Maximum allowed size is 5 MB."
+                  : query.reported_error === "unsupported_file_type"
+                    ? "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX."
                   : query.reported_error === "provider_not_found"
                     ? "Provider profile could not be resolved. Please reopen this provider page and try again."
                   : "We could not submit your complaint right now. Please retry."}
@@ -513,7 +291,7 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Submit a complaint case</h3>
               <p className="mt-1 text-xs text-slate-500">Share complaint details for review, provider response, and possible regulatory escalation.</p>
-              <form action={submitPublicComplaint} className="mt-3 space-y-2" encType="multipart/form-data">
+              <form action="/api/public-complaints" method="post" encType="multipart/form-data" className="mt-3 space-y-2">
                 <input type="hidden" name="provider_path_segment" value={providerSlug} />
                 <input type="hidden" name="provider_profile_id" value={providerView.id} />
                 <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
