@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { getProviderPublicProfile, type ProviderProfile } from "@/lib/data/marketplace";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderQuoteHref } from "@/lib/provider-links";
+import { PublicComplaintForm } from "./public-complaint-form";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
@@ -266,7 +267,7 @@ export default async function ProviderPublicPage({
                 {query.reported_error === "missing_fields"
                   ? "Please complete all required complaint fields and confirm consent before submitting."
                   : query.reported_error === "file_too_large"
-                    ? "Evidence file is too large. Maximum allowed size is 5 MB."
+                    ? "Evidence file is too large. Maximum allowed size is 10 MB."
                   : query.reported_error === "unsupported_file_type"
                     ? "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX."
                   : query.reported_error === "provider_not_found"
@@ -291,50 +292,11 @@ export default async function ProviderPublicPage({
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Submit a complaint case</h3>
               <p className="mt-1 text-xs text-slate-500">Share complaint details for review, provider response, and possible regulatory escalation.</p>
-              <form action="/api/public-complaints" method="post" encType="multipart/form-data" className="mt-3 space-y-2">
-                <input type="hidden" name="provider_path_segment" value={providerSlug} />
-                <input type="hidden" name="provider_profile_id" value={providerView.id} />
-                <input type="hidden" name="provider_msme_public_id" value={providerView.msme_id} />
-                <input type="hidden" name="provider_slug" value={providerView.public_slug ?? providerSlug} />
-                <input name="full_name" placeholder="Full name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <input name="email" type="email" placeholder="Email address" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <input name="phone" placeholder="Phone number" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <select name="preferred_contact_method" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <option value="email">Email</option>
-                  <option value="phone">Phone</option>
-                  <option value="sms">SMS</option>
-                </select>
-                <select name="complaint_type" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <option value="general_marketplace_report">General marketplace report</option>
-                  <option value="fraud">Fraud</option>
-                  <option value="delivery_dispute">Delivery dispute</option>
-                  <option value="pricing_abuse">Pricing abuse</option>
-                  <option value="counterfeit_products">Counterfeit products</option>
-                  <option value="service_quality">Service quality</option>
-                </select>
-                <select name="priority" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-                <input name="short_summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <textarea name="description" placeholder="Describe the issue" className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
-                <label className="block text-xs font-medium text-slate-600">
-                  Evidence attachment (optional)
-                  <input
-                    name="evidence_attachment"
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs file:font-medium"
-                  />
-                </label>
-                <input name="related_reference" placeholder="Quote, invoice, or order reference (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <input type="checkbox" name="consent_confirmation" value="yes" className="mt-0.5" required />
-                  <span>I confirm that the information provided is accurate and may be used for complaint investigation and case management.</span>
-                </label>
-                <button className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Submit complaint</button>
-              </form>
+              <PublicComplaintForm
+                providerSlug={providerSlug}
+                providerProfileId={providerView.id}
+                providerMsmePublicId={providerView.msme_id}
+              />
             </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-base font-semibold">Complaint posture</h3>

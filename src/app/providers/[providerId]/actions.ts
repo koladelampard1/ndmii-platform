@@ -1,0 +1,174 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { resolveProviderPublicContext } from "@/lib/data/provider-profile-resolver";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type SubmitPublicComplaintInput = {
+  provider_path_segment: string;
+  provider_profile_id?: string;
+  provider_msme_public_id?: string;
+  provider_slug?: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  preferred_contact_method: string;
+  complaint_type: string;
+  priority: string;
+  short_summary: string;
+  description: string;
+  related_reference?: string;
+  consent_confirmation: string;
+  evidence_url?: string;
+  evidence_storage_path?: string;
+  evidence_bucket?: string;
+  evidence_original_name?: string;
+  evidence_size_bytes?: number;
+  evidence_mime_type?: string;
+};
+
+export async function submitPublicComplaint(payload: SubmitPublicComplaintInput) {
+  const providerPathSegment = String(payload.provider_path_segment ?? "").trim();
+
+  if (!providerPathSegment) {
+    return { ok: false as const, redirectPath: "/search?complaint=missing_provider" };
+  }
+
+  const complainant_name = String(payload.full_name ?? "").trim();
+  const complainant_email = String(payload.email ?? "").trim();
+  const complainant_phone = String(payload.phone ?? "").trim();
+  const preferred_contact_method = String(payload.preferred_contact_method ?? "email").trim() || "email";
+  const complaint_type = String(payload.complaint_type ?? "").trim();
+  const priority = String(payload.priority ?? "").trim();
+  const normalizedPriority = priority || "medium";
+  const summary = String(payload.short_summary ?? "").trim();
+  const description = String(payload.description ?? "").trim();
+  const related_reference = String(payload.related_reference ?? "").trim();
+  const consent_confirmation = String(payload.consent_confirmation ?? "").trim();
+  const providerProfileId = String(payload.provider_profile_id ?? "").trim();
+  const providerMsmePublicId = String(payload.provider_msme_public_id ?? "").trim();
+  const formProviderSlug = String(payload.provider_slug ?? "").trim();
+
+  if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
+    return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=missing_fields` };
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+
+  try {
+    const providerContext = await resolveProviderPublicContext({
+      providerRouteParam: providerPathSegment,
+    });
+
+    if (!providerContext.provider_profile_id) {
+      return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=provider_not_found` };
+    }
+
+    const resolvedProviderId = providerContext.provider_profile_id;
+    const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
+    const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
+    const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
+
+    let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
+
+    if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
+      if (UUID_PATTERN.test(providerPublicMsmeId)) {
+        resolvedInternalMsmeUuid = providerPublicMsmeId;
+      } else {
+        const { data: resolvedMsme, error: msmeResolveError } = await supabase
+          .from("msmes")
+          .select("id")
+          .eq("msme_id", providerPublicMsmeId.toUpperCase())
+          .maybeSingle();
+
+        if (msmeResolveError) {
+          console.error("[complaint-submit][msme_resolution_error]", {
+            providerPathSegment,
+            providerPublicMsmeId,
+            message: msmeResolveError.message,
+            details: msmeResolveError.details,
+            hint: msmeResolveError.hint,
+          });
+        }
+        resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
+      }
+    }
+
+    if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
+      throw new Error(
+        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} publicMsmeId=${providerPublicMsmeId ?? "n/a"}`
+      );
+    }
+
+    const evidenceUrl = payload.evidence_url?.trim() || null;
+
+    const insertPayload = {
+      msme_id: resolvedInternalMsmeUuid,
+      provider_profile_id: resolvedProviderId,
+      complaint_type,
+      description,
+      status: "open",
+      complainant_name,
+      complainant_email: complainant_email || null,
+      complainant_phone: complainant_phone || null,
+      preferred_contact_method,
+      related_reference: related_reference || null,
+      title: summary,
+      summary,
+      priority: normalizedPriority,
+      severity: normalizedPriority,
+      metadata: {
+        provider_public_slug: providerPublicSlug,
+        provider_public_msme_code: providerPublicMsmeId,
+        quote_invoice_order_reference: related_reference || null,
+        complaint_contact: {
+          full_name: complainant_name,
+          email: complainant_email || null,
+          phone: complainant_phone || null,
+          preferred_contact_method,
+        },
+        evidence_url: evidenceUrl,
+        evidence_attachment: evidenceUrl
+          ? {
+              public_url: evidenceUrl,
+              storage_path: payload.evidence_storage_path ?? null,
+              bucket: payload.evidence_bucket ?? null,
+              original_name: payload.evidence_original_name ?? null,
+              size_bytes: payload.evidence_size_bytes ?? null,
+              mime_type: payload.evidence_mime_type ?? null,
+              upload_status: "uploaded",
+            }
+          : null,
+      },
+      state: null,
+      sector: null,
+    };
+
+    const { data: complaintRow, error: complaintInsertError } = await supabase
+      .from("complaints")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+
+    if (complaintInsertError || !complaintRow) {
+      throw new Error(
+        `[complaint-submit] complaint_insert_failed: ${complaintInsertError?.message ?? "Unknown insert error"}`
+      );
+    }
+
+    revalidatePath(`/providers/${providerPathSegment}`);
+    if (canonicalSlug !== providerPathSegment) {
+      revalidatePath(`/providers/${canonicalSlug}`);
+    }
+
+    return { ok: true as const, redirectPath: `/providers/${canonicalSlug}?notice=complaint_submitted` };
+  } catch (error) {
+    console.error("[complaint-submit][submit_pipeline_error]", {
+      providerPathSegment,
+      error,
+    });
+    return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed` };
+  }
+}
