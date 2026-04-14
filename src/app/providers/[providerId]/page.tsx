@@ -106,42 +106,35 @@ async function submitPublicComplaint(formData: FormData) {
       providerMsmePublicId,
     });
 
-    const resolvedProviderProfileId = providerContext.provider_profile_id ?? providerProfileId;
     const resolvedProviderMsmeUuid = providerContext.provider_profile_msme_id ?? providerMsmePublicId;
 
-    const insertPayload = {
+    if (!complaint_type) {
+      throw new Error("complaint_type is required before insert");
+    }
+
+    const payload = {
       msme_id: resolvedProviderMsmeUuid,
-      provider_profile_id: resolvedProviderProfileId,
-      provider_msme_id: resolvedProviderMsmeUuid,
-      complainant_name,
-      complainant_email: complainant_email || null,
-      complainant_phone: complainant_phone || null,
-      reporter_name: complainant_name,
-      reporter_email: complainant_email || null,
-      preferred_contact_method,
       complaint_type,
-      complaint_category: complaint_type,
-      category: complaint_type,
-      title: summary,
-      priority: normalizedPriority,
-      severity: normalizedPriority,
-      summary,
       description,
       status: "open",
-      source_channel: "public_provider_page",
+      summary,
+      severity: normalizedPriority,
+      state: null,
+      sector: null,
     };
-    devLog("complaint_insert_payload", insertPayload);
+    console.log("complaint payload:", payload);
+    devLog("complaint_insert_payload", payload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(insertPayload)
+      .insert(payload)
       .select()
       .single();
 
     if (complaintInsertError || !complaintRow) {
       console.error("[complaint-submit] complaint_insert_failure", {
         providerPathSegment,
-        insertPayload,
+        payload,
         complaintInsertError,
       });
       throw new Error(
