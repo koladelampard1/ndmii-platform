@@ -34,11 +34,28 @@ export function PublicComplaintForm({
           let uploadResult: Awaited<ReturnType<typeof uploadPublicComplaintEvidence>> | null = null;
 
           if (evidenceFile instanceof File && evidenceFile.size > 0) {
-            uploadResult = await uploadPublicComplaintEvidence({
-              file: evidenceFile,
-              providerProfileId,
-              providerMsmePublicId,
-            });
+            try {
+              uploadResult = await uploadPublicComplaintEvidence({
+                file: evidenceFile,
+                providerProfileId,
+                providerMsmePublicId,
+              });
+            } catch (error) {
+              if (error instanceof Error && (error.message === "file_too_large" || error.message === "unsupported_file_type")) {
+                throw error;
+              }
+              console.error("[public-complaint][evidence_upload_failed_optional]", {
+                providerSlug,
+                providerProfileId,
+                providerMsmePublicId,
+                fileName: evidenceFile.name,
+                fileSize: evidenceFile.size,
+                fileType: evidenceFile.type,
+                trace: error instanceof Error ? error.message : "unknown_evidence_upload_failure",
+                error,
+              });
+              uploadResult = null;
+            }
           }
 
           const result = await submitPublicComplaint({

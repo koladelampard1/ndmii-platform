@@ -95,17 +95,14 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       );
     }
 
-    const mappedComplaintPayload = {
+    const complaintInsertPayload = {
       msme_id: resolvedInternalMsmeUuid,
       provider_id: resolvedProviderId,
       provider_profile_id: resolvedProviderId,
-      provider_msme_id: resolvedInternalMsmeUuid,
       complaint_type,
       category: complaint_type,
       description,
       status: "submitted",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       summary,
       title: summary,
       complaint_reference: `CMP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
@@ -115,14 +112,10 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       complainant_email: String(payload.email ?? "").trim() || null,
       complainant_phone: String(payload.phone ?? "").trim() || null,
       preferred_contact_method: String(payload.preferred_contact_method ?? "").trim() || "email",
-      assigned_officer_user_id: null,
-      state: null,
-      sector: null,
       source_channel: "marketplace_public_profile",
       investigation_notes: payload.evidence_url
         ? `Evidence: ${payload.evidence_url}${payload.evidence_storage_path ? ` (path: ${payload.evidence_storage_path})` : ""}`
         : null,
-      closed_at: null,
     };
 
     const evidenceUploadResult = payload.evidence_url
@@ -139,15 +132,9 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
     console.info("[complaint-submit][pre_insert]", {
       resolved_provider_id: resolvedProviderId,
       resolved_provider_public_msme_id: providerPublicMsmeId,
-      mapped_complaint_payload: mappedComplaintPayload,
+      complaint_insert_payload: complaintInsertPayload,
       evidence_upload_result: evidenceUploadResult,
-      complaint_insert_payload: mappedComplaintPayload,
     });
-
-    const complaintInsertPayload = {
-      ...mappedComplaintPayload,
-      msme_id: UUID_PATTERN.test(mappedComplaintPayload.msme_id) ? mappedComplaintPayload.msme_id : null,
-    };
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -156,7 +143,9 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       .single();
 
     if (complaintInsertError || !complaintRow) {
+      const trace = `complaints.insert failed table=complaints filter=n/a provider_id=${resolvedProviderId} code=${complaintInsertError?.code ?? "n/a"} message=${complaintInsertError?.message ?? "unknown"}`;
       console.error("[complaint-submit][insert_failed]", {
+        trace,
         providerPathSegment,
         canonicalSlug,
         resolved_provider_id: resolvedProviderId,
@@ -171,7 +160,7 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
           : null,
         insert_row: complaintRow ?? null,
       });
-      return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed` };
+      return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed&reported_trace=${encodeURIComponent(trace)}` };
     }
 
     revalidatePath(`/providers/${providerPathSegment}`);
@@ -181,10 +170,12 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
 
     return { ok: true as const, redirectPath: `/providers/${canonicalSlug}?notice=complaint_submitted` };
   } catch (error) {
+    const trace = error instanceof Error ? error.message : "unknown_submit_pipeline_error";
     console.error("[complaint-submit][submit_pipeline_error]", {
       providerPathSegment,
+      trace,
       error,
     });
-    return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed` };
+    return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed&reported_trace=${encodeURIComponent(trace)}` };
   }
 }

@@ -1,6 +1,5 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
-import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
 
 export type ProviderCard = {
   id: string;
@@ -990,26 +989,6 @@ export async function getCategoryBySlug(slug: string): Promise<string | null> {
 }
 
 
-async function resolveProviderLinkValue(
-  supabase: any,
-  providerId: string,
-  linkColumn: string
-): Promise<string | null> {
-  if (linkColumn === "msme_id") {
-    if (!UUID_PATTERN.test(providerId)) return providerId;
-    const { data: provider } = await supabase.from("provider_profiles").select("msme_id").eq("id", providerId).maybeSingle();
-    return provider?.msme_id ? String(provider.msme_id) : null;
-  }
-
-  if (linkColumn === "provider_id" || linkColumn === "provider_profile_id") {
-    if (UUID_PATTERN.test(providerId)) return providerId;
-    const resolved = await resolvePublicProviderProfile({ providerRouteParam: providerId });
-    return resolved.provider?.id ? String(resolved.provider.id) : null;
-  }
-
-  return null;
-}
-
 function mapServiceRowToPublicService(service: any, columns: Set<string>): ProviderService {
   return {
     id: String(service.id ?? ""),
@@ -1029,109 +1008,39 @@ function mapServiceRowToPublicService(service: any, columns: Set<string>): Provi
 }
 
 async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
-  try {
-    const supabase = await createServiceRoleSupabaseClient();
-    const tableName = "provider_gallery";
-    const tableColumns = await getTableColumns(supabase, tableName);
-    if (!tableColumns.size) {
-      if (DEV_MODE) {
-        console.info("[provider-public-page][portfolio_schema_probe]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          reason: "table_schema_not_discovered",
-        });
-      }
-      return [];
-    }
+  const supabase = await createServiceRoleSupabaseClient();
+  const query = {
+    table: "provider_gallery",
+    select: "id,asset_url,caption,is_featured,sort_order,created_at",
+    filters: { provider_id: providerId },
+  };
+  const { data, error } = await supabase
+    .from("provider_gallery")
+    .select(query.select)
+    .eq("provider_id", providerId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .limit(30);
 
-    const linkColumn = ["provider_id", "provider_profile_id", "msme_id"].find((column) => tableColumns.has(column));
-    if (!linkColumn) {
-      if (DEV_MODE) {
-        console.info("[provider-public-page][portfolio_schema_probe]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          reason: "no_supported_link_column",
-        });
-      }
-      return [];
-    }
-
-    const filterValue = await resolveProviderLinkValue(supabase, providerId, linkColumn);
-    if (!filterValue) {
-      if (DEV_MODE) {
-        console.info("[provider-public-page][portfolio_filter_resolution]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          link_column: linkColumn,
-          reason: "link_value_not_resolved",
-        });
-      }
-      return [];
-    }
-
-    const selectColumns = pickExistingColumns(tableColumns, ["id", "asset_url", "caption", "is_featured"]);
-    if (!selectColumns.includes("id") || !selectColumns.includes("asset_url")) {
-      if (DEV_MODE) {
-        console.info("[provider-public-page][portfolio_schema_probe]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          link_column: linkColumn,
-          selected_columns: selectColumns,
-          reason: "required_columns_missing",
-        });
-      }
-      return [];
-    }
-
-    const orderColumn = tableColumns.has("sort_order") ? "sort_order" : tableColumns.has("created_at") ? "created_at" : "id";
-
-    if (DEV_MODE) {
-      console.info("[provider-public-page][portfolio_query]", {
-        provider_identifier_received: providerId,
-        resolved_table_name: tableName,
-        filters: { [linkColumn]: filterValue },
-        select: selectColumns,
-      });
-    }
-
-    const { data, error } = await supabase
-      .from(tableName)
-      .select(selectColumns.join(","))
-      .eq(linkColumn, filterValue)
-      .order(orderColumn, { ascending: true })
-      .limit(30);
-
-    if (error) {
-      if (DEV_MODE) {
-        console.error("[provider-public-page][portfolio_load_failed]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          link_column: linkColumn,
-          selected_columns: selectColumns,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-      }
-      return [];
-    }
-
-    return (data ?? []).map((item: any) => ({
-      id: String(item.id ?? ""),
-      asset_url: String(item.asset_url ?? ""),
-      caption: item.caption == null ? null : String(item.caption),
-      is_featured: tableColumns.has("is_featured") ? Boolean(item.is_featured) : null,
-    }));
-  } catch (error) {
-    if (DEV_MODE) {
-      console.error("[provider-public-page][portfolio_load_failed_exception]", {
-        providerId,
-        error,
-      });
-    }
-    return [];
+  if (error) {
+    const trace = `provider-public-page.portfolio.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    console.error("[provider-public-page][portfolio_load_failed]", {
+      trace,
+      query,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(trace);
   }
+
+  return (data ?? []).map((item: any) => ({
+    id: String(item.id ?? ""),
+    asset_url: String(item.asset_url ?? ""),
+    caption: item.caption == null ? null : String(item.caption),
+    is_featured: Boolean(item.is_featured),
+  }));
 }
 
 export async function getProviderPublicProfile(providerId: string): Promise<ProviderProfile | null> {
@@ -1146,10 +1055,12 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       .maybeSingle();
 
     if (!error && row) {
-      const [gallery, services, reviews, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
-        getProviderPublicPortfolio(providerId),
-        getProviderPublicServices(providerId),
-        getProviderPublicReviews(providerId),
+      const [profileSectionsSettled, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
+        Promise.allSettled([
+          getProviderPublicPortfolio(providerId),
+          getProviderPublicServices(providerId),
+          getProviderPublicReviews(providerId),
+        ]),
         supabase
           .from("msmes")
           .select("owner_name,review_status,association_id,associations(name)")
@@ -1167,22 +1078,51 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           .neq("status", "closed"),
       ]);
 
+      const [gallerySettled, servicesSettled, reviewsSettled] = profileSectionsSettled;
+      const msmeRow: any = msme as any;
+      const metricsRow: any = metrics as any;
+      if (gallerySettled.status === "rejected") {
+        console.error("[provider-public-page][profile_gallery_load_failed]", {
+          providerId,
+          trace: gallerySettled.reason instanceof Error ? gallerySettled.reason.message : "gallery_load_failed",
+          error: gallerySettled.reason,
+        });
+      }
+      if (servicesSettled.status === "rejected") {
+        console.error("[provider-public-page][profile_services_load_failed]", {
+          providerId,
+          trace: servicesSettled.reason instanceof Error ? servicesSettled.reason.message : "services_load_failed",
+          error: servicesSettled.reason,
+        });
+      }
+      if (reviewsSettled.status === "rejected") {
+        console.error("[provider-public-page][profile_reviews_load_failed]", {
+          providerId,
+          trace: reviewsSettled.reason instanceof Error ? reviewsSettled.reason.message : "reviews_load_failed",
+          error: reviewsSettled.reason,
+        });
+      }
+
+      const gallery = gallerySettled.status === "fulfilled" ? gallerySettled.value : [];
+      const services = servicesSettled.status === "fulfilled" ? servicesSettled.value : [];
+      const reviews = reviewsSettled.status === "fulfilled" ? reviewsSettled.value : [];
+
       const [hydratedRow] = await attachProviderProfileMetadata([row]);
       const base = toCard(hydratedRow);
       if (!base) return null;
       const breakdown: RatingBreakdown = {
-        five: metrics?.five_star_count ?? 0,
-        four: metrics?.four_star_count ?? 0,
-        three: metrics?.three_star_count ?? 0,
-        two: metrics?.two_star_count ?? 0,
-        one: metrics?.one_star_count ?? 0,
+        five: metricsRow?.five_star_count ?? 0,
+        four: metricsRow?.four_star_count ?? 0,
+        three: metricsRow?.three_star_count ?? 0,
+        two: metricsRow?.two_star_count ?? 0,
+        one: metricsRow?.one_star_count ?? 0,
       };
 
-      const associationName = (msme?.associations as { name?: string } | null)?.name ?? null;
+      const associationName = (msmeRow?.associations as { name?: string } | null)?.name ?? null;
       const openCount = openComplaintCount ?? 0;
       const trustScore = calculateTrustScore({
         verification_status: row.verification_status,
-        review_status: msme?.review_status,
+        review_status: msmeRow?.review_status,
         avg_rating: safeNumber(row.avg_rating),
         review_count: safeNumber(row.review_count),
         open_complaints: openCount,
@@ -1191,7 +1131,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
       const trustFactors: ProviderProfile["trust_factors"] = [
         { label: "Verification status", value: row.verification_status === "approved" ? "Approved" : "Verified", impact: "positive" },
-        { label: "Validation workflow", value: msme?.review_status ?? "Under review", impact: msme?.review_status === "approved" ? "positive" : "neutral" },
+        { label: "Validation workflow", value: msmeRow?.review_status ?? "Under review", impact: msmeRow?.review_status === "approved" ? "positive" : "neutral" },
         { label: "Public reviews", value: `${safeNumber(row.avg_rating).toFixed(1)} from ${safeNumber(row.review_count)} reviews`, impact: "positive" },
         { label: "Active complaints", value: openCount === 0 ? "No active complaint" : `${openCount} open complaint(s)`, impact: openCount === 0 ? "positive" : "neutral" },
         { label: "Association linkage", value: associationName ?? "Not linked", impact: associationName ? "positive" : "neutral" },
@@ -1200,7 +1140,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       return {
         ...base,
         trust_score: trustScore,
-        owner_name: msme?.owner_name ?? "Verified MSME Owner",
+        owner_name: msmeRow?.owner_name ?? "Verified MSME Owner",
         long_description: row.long_description ?? `${row.business_name} is a verified NDMII provider serving ${row.state}.`,
         gallery,
         services,
@@ -1212,8 +1152,12 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
         association_name: associationName,
       };
     }
-  } catch {
-    // fall through to projected profile fallback
+  } catch (error) {
+    console.error("[provider-public-page][profile_primary_query_failed]", {
+      providerId,
+      trace: error instanceof Error ? error.message : "unknown_profile_primary_query_failure",
+      error,
+    });
   }
 
   try {
@@ -1280,229 +1224,86 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       active_complaint_count: 0,
       association_name: "Demo association",
     };
-  } catch {
+  } catch (error) {
+    console.error("[provider-public-page][profile_projected_fallback_failed]", {
+      providerId,
+      trace: error instanceof Error ? error.message : "unknown_profile_projected_fallback_failure",
+      error,
+    });
     return null;
   }
 }
 
 export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
-  try {
-    const supabase = await createServiceRoleSupabaseClient();
-    const requestedSelectColumns = [
-      "id",
-      "category",
-      "specialization",
-      "title",
-      "short_description",
-      "pricing_mode",
-      "min_price",
-      "max_price",
-      "turnaround_time",
-      "vat_applicable",
-      "availability_status",
-    ];
-    const tableCandidates = ["provider_services", "services"] as const;
+  const supabase = await createServiceRoleSupabaseClient();
+  const query = {
+    table: "provider_services",
+    select: "id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status,created_at",
+    filters: { provider_id: providerId },
+  };
 
-    for (const tableName of tableCandidates) {
-      const tableColumns = await getTableColumns(supabase, tableName);
-      if (!tableColumns.size) continue;
+  const { data, error } = await supabase
+    .from("provider_services")
+    .select(query.select)
+    .eq("provider_id", providerId)
+    .order("created_at", { ascending: false })
+    .limit(50);
 
-      const linkColumn = ["provider_profile_id", "provider_id", "msme_id"].find((column) => tableColumns.has(column));
-      const selectColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
-      const requiredColumns = ["id", "title"];
-      const hasRequiredColumns = requiredColumns.every((column) => selectColumns.includes(column));
-
-      if (DEV_MODE) {
-        console.info("[provider-public-page][services_loader_schema_probe]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          resolved_link_column: linkColumn ?? null,
-          selected_columns_used: selectColumns,
-          schema_discovered: tableColumns.size > 0,
-        });
-      }
-
-      if (!linkColumn || !hasRequiredColumns) continue;
-
-      const filterValue = await resolveProviderLinkValue(supabase, providerId, linkColumn);
-      if (!filterValue) {
-        if (DEV_MODE) {
-          console.info("[provider-public-page][services_loader_filter_resolution]", {
-            provider_identifier_received: providerId,
-            resolved_table_name: tableName,
-            link_column: linkColumn,
-            reason: "link_value_not_resolved",
-          });
-        }
-        continue;
-      }
-
-      const orderColumn = tableColumns.has("created_at") ? "created_at" : "id";
-
-      if (DEV_MODE) {
-        console.info("[provider-public-page][services_query]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          filters: { [linkColumn]: filterValue },
-          select: selectColumns,
-        });
-      }
-
-      const { data, error } = await supabase
-        .from(tableName)
-        .select(selectColumns.join(","))
-        .eq(linkColumn, filterValue)
-        .order(orderColumn, { ascending: false })
-        .limit(50);
-
-      if (error) {
-        if (DEV_MODE) {
-          console.error("[provider-public-page][services_load_failed]", {
-            provider_identifier_received: providerId,
-            resolved_table_name: tableName,
-            link_column: linkColumn,
-            selected_columns: selectColumns,
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          });
-        }
-        continue;
-      }
-
-      return (data ?? []).map((service: any) => mapServiceRowToPublicService(service, tableColumns));
-    }
-
-    if (DEV_MODE) {
-      console.info("[provider-public-page][services_load_empty]", {
-        provider_identifier_received: providerId,
-        reason: "no_schema_safe_table_match",
-      });
-    }
-    return [];
-  } catch (error) {
-    if (DEV_MODE) {
-      console.error("[provider-public-page][services_load_failed_exception]", {
-        providerId,
-        error,
-      });
-    }
-    return [];
+  if (error) {
+    const trace = `provider-public-page.services.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    console.error("[provider-public-page][services_load_failed]", {
+      trace,
+      query,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(trace);
   }
+
+  return (data ?? []).map((service: any) => mapServiceRowToPublicService(service, new Set(Object.keys(service ?? {}))));
 }
 
 export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
-  try {
-    const supabase = await createServiceRoleSupabaseClient();
-    const requestedSelectColumns = [
-      "id",
-      "reviewer_name",
-      "rating",
-      "review_title",
-      "review_body",
-      "provider_reply",
-      "provider_reply_at",
-      "created_at",
-    ];
-    const tableCandidates = ["reviews", "provider_reviews"] as const;
+  const supabase = await createServiceRoleSupabaseClient();
+  const query = {
+    table: "reviews",
+    select: "id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,is_featured,created_at",
+    filters: { provider_id: providerId },
+  };
 
-    for (const tableName of tableCandidates) {
-      const tableColumns = await getTableColumns(supabase, tableName);
-      if (!tableColumns.size) continue;
+  const { data, error } = await supabase
+    .from("reviews")
+    .select(query.select)
+    .eq("provider_id", providerId)
+    .order("is_featured", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20);
 
-      const linkColumn = ["provider_profile_id", "provider_id", "msme_id"].find((column) => tableColumns.has(column));
-      const selectColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
-      const requiredColumns = ["id", "rating"];
-      const hasRequiredColumns = requiredColumns.every((column) => selectColumns.includes(column));
-
-      if (DEV_MODE) {
-        console.info("[provider-public-page][reviews_loader_schema_probe]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          resolved_link_column: linkColumn ?? null,
-          selected_columns_used: selectColumns,
-          schema_discovered: tableColumns.size > 0,
-        });
-      }
-
-      if (!linkColumn || !hasRequiredColumns) continue;
-
-      const filterValue = await resolveProviderLinkValue(supabase, providerId, linkColumn);
-      if (!filterValue) {
-        if (DEV_MODE) {
-          console.info("[provider-public-page][reviews_loader_filter_resolution]", {
-            provider_identifier_received: providerId,
-            resolved_table_name: tableName,
-            link_column: linkColumn,
-            reason: "link_value_not_resolved",
-          });
-        }
-        continue;
-      }
-
-      const orderColumn = tableColumns.has("created_at") ? "created_at" : "id";
-
-      if (DEV_MODE) {
-        console.info("[provider-public-page][reviews_query]", {
-          provider_identifier_received: providerId,
-          resolved_table_name: tableName,
-          filters: { [linkColumn]: filterValue },
-          select: selectColumns,
-        });
-      }
-
-      const { data, error } = await supabase
-        .from(tableName)
-        .select(selectColumns.join(","))
-        .eq(linkColumn, filterValue)
-        .order(orderColumn, { ascending: false })
-        .limit(20);
-
-      if (error) {
-        if (DEV_MODE) {
-          console.error("[provider-public-page][reviews_load_failed]", {
-            provider_identifier_received: providerId,
-            resolved_table_name: tableName,
-            link_column: linkColumn,
-            selected_columns: selectColumns,
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          });
-        }
-        continue;
-      }
-
-      return (data ?? []).map((review: any) => ({
-        id: String(review.id ?? ""),
-        reviewer_name: tableColumns.has("reviewer_name") ? String(review.reviewer_name ?? "Anonymous") : "Anonymous",
-        rating: Number(review.rating ?? 0),
-        review_title: tableColumns.has("review_title") ? String(review.review_title ?? "Customer review") : "Customer review",
-        review_body: tableColumns.has("review_body") ? String(review.review_body ?? "") : "",
-        provider_reply: tableColumns.has("provider_reply") && review.provider_reply != null ? String(review.provider_reply) : null,
-        provider_reply_at: tableColumns.has("provider_reply_at") && review.provider_reply_at != null ? String(review.provider_reply_at) : null,
-        created_at: tableColumns.has("created_at") ? String(review.created_at ?? new Date().toISOString()) : new Date().toISOString(),
-      }));
-    }
-
-    if (DEV_MODE) {
-      console.info("[provider-public-page][reviews_load_empty]", {
-        provider_identifier_received: providerId,
-        reason: "no_schema_safe_table_match",
-      });
-    }
-    return [];
-  } catch (error) {
-    if (DEV_MODE) {
-      console.error("[provider-public-page][reviews_load_failed_exception]", {
-        providerId,
-        error,
-      });
-    }
-    return [];
+  if (error) {
+    const trace = `provider-public-page.reviews.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    console.error("[provider-public-page][reviews_load_failed]", {
+      trace,
+      query,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(trace);
   }
+
+  return (data ?? []).map((review: any) => ({
+    id: String(review.id ?? ""),
+    reviewer_name: String(review.reviewer_name ?? "Anonymous"),
+    rating: Number(review.rating ?? 0),
+    review_title: String(review.review_title ?? "Customer review"),
+    review_body: String(review.review_body ?? ""),
+    provider_reply: review.provider_reply != null ? String(review.provider_reply) : null,
+    provider_reply_at: review.provider_reply_at != null ? String(review.provider_reply_at) : null,
+    created_at: String(review.created_at ?? new Date().toISOString()),
+  }));
 }
 
 export async function getProviderComplaintFormContext(providerId: string): Promise<{
