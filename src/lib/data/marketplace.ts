@@ -969,6 +969,39 @@ async function getProviderPublicPortfolio(_providerId: string): Promise<Array<{ 
   return [];
 }
 
+async function loadProviderSectionsFailClosed(providerId: string) {
+  const [gallerySettled, servicesSettled, reviewsSettled] = await Promise.allSettled([
+    getProviderPublicPortfolio(providerId),
+    getProviderPublicServices(providerId),
+    getProviderPublicReviews(providerId),
+  ]);
+
+  if (gallerySettled.status === "rejected") {
+    console.error("[provider-public-page][profile_gallery_load_failed_closed]", {
+      providerId,
+      trace: gallerySettled.reason instanceof Error ? gallerySettled.reason.message : "gallery_load_failed",
+    });
+  }
+  if (servicesSettled.status === "rejected") {
+    console.error("[provider-public-page][profile_services_load_failed_closed]", {
+      providerId,
+      trace: servicesSettled.reason instanceof Error ? servicesSettled.reason.message : "services_load_failed",
+    });
+  }
+  if (reviewsSettled.status === "rejected") {
+    console.error("[provider-public-page][profile_reviews_load_failed_closed]", {
+      providerId,
+      trace: reviewsSettled.reason instanceof Error ? reviewsSettled.reason.message : "reviews_load_failed",
+    });
+  }
+
+  return {
+    gallery: gallerySettled.status === "fulfilled" ? gallerySettled.value : [],
+    services: servicesSettled.status === "fulfilled" ? servicesSettled.value : [],
+    reviews: reviewsSettled.status === "fulfilled" ? reviewsSettled.value : [],
+  };
+}
+
 export async function getProviderPublicProfile(providerId: string): Promise<ProviderProfile | null> {
   try {
     const supabase = await createServiceRoleSupabaseClient();
@@ -981,12 +1014,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       .maybeSingle();
 
     if (!error && row) {
-      const [profileSectionsSettled, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
-        Promise.allSettled([
-          getProviderPublicPortfolio(providerId),
-          getProviderPublicServices(providerId),
-          getProviderPublicReviews(providerId),
-        ]),
+      const [{ gallery, services, reviews }, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
+        loadProviderSectionsFailClosed(providerId),
         supabase
           .from("msmes")
           .select("owner_name,review_status,association_id,associations(name)")
@@ -1004,34 +1033,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           .neq("status", "closed"),
       ]);
 
-      const [gallerySettled, servicesSettled, reviewsSettled] = profileSectionsSettled;
       const msmeRow: any = msme as any;
       const metricsRow: any = metrics as any;
-      if (gallerySettled.status === "rejected") {
-        console.error("[provider-public-page][profile_gallery_load_failed]", {
-          providerId,
-          trace: gallerySettled.reason instanceof Error ? gallerySettled.reason.message : "gallery_load_failed",
-          error: gallerySettled.reason,
-        });
-      }
-      if (servicesSettled.status === "rejected") {
-        console.error("[provider-public-page][profile_services_load_failed]", {
-          providerId,
-          trace: servicesSettled.reason instanceof Error ? servicesSettled.reason.message : "services_load_failed",
-          error: servicesSettled.reason,
-        });
-      }
-      if (reviewsSettled.status === "rejected") {
-        console.error("[provider-public-page][profile_reviews_load_failed]", {
-          providerId,
-          trace: reviewsSettled.reason instanceof Error ? reviewsSettled.reason.message : "reviews_load_failed",
-          error: reviewsSettled.reason,
-        });
-      }
-
-      const gallery = gallerySettled.status === "fulfilled" ? gallerySettled.value : [];
-      const services = servicesSettled.status === "fulfilled" ? servicesSettled.value : [];
-      const reviews = reviewsSettled.status === "fulfilled" ? reviewsSettled.value : [];
 
       const [hydratedRow] = await attachProviderProfileMetadata([row]);
       const base = toCard(hydratedRow);

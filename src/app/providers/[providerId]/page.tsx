@@ -326,7 +326,7 @@ export default async function ProviderPublicPage({
               <PublicComplaintForm
                 providerSlug={providerSlug}
                 providerProfileId={providerView.id}
-                providerMsmePublicId={providerView.msme_id}
+                providerMsmeId={providerView.msme_id}
               />
             </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

@@ -8,11 +8,11 @@ import { uploadPublicComplaintEvidence } from "@/lib/complaints/public-complaint
 export function PublicComplaintForm({
   providerSlug,
   providerProfileId,
-  providerMsmePublicId,
+  providerMsmeId,
 }: {
   providerSlug: string;
   providerProfileId: string;
-  providerMsmePublicId: string;
+  providerMsmeId: string;
 }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +40,7 @@ export function PublicComplaintForm({
               uploadResult = await uploadPublicComplaintEvidence({
                 file: evidenceFile,
                 providerProfileId,
-                providerMsmePublicId,
+                providerMsmePublicId: providerMsmeId,
               });
             } catch (error) {
               if (error instanceof Error && (error.message === "file_too_large" || error.message === "unsupported_file_type")) {
@@ -49,7 +49,7 @@ export function PublicComplaintForm({
               console.error("[public-complaint][evidence_upload_failed_optional]", {
                 providerSlug,
                 providerProfileId,
-                providerMsmePublicId,
+                providerMsmeId,
                 fileName: evidenceFile.name,
                 fileSize: evidenceFile.size,
                 fileType: evidenceFile.type,
@@ -64,14 +64,14 @@ export function PublicComplaintForm({
           const result = await submitPublicComplaint({
             provider_path_segment: providerSlug,
             provider_profile_id: providerProfileId,
-            provider_msme_public_id: providerMsmePublicId,
+            provider_msme_public_id: providerMsmeId,
             provider_slug: providerSlug,
             full_name: String(formData.get("full_name") ?? ""),
             email: String(formData.get("email") ?? ""),
             phone: String(formData.get("phone") ?? ""),
             preferred_contact_method: String(formData.get("preferred_contact_method") ?? "email"),
             complaint_type: String(formData.get("complaint_type") ?? ""),
-            priority: String(formData.get("priority") ?? "medium"),
+            severity: String(formData.get("severity") ?? "medium"),
             short_summary: String(formData.get("short_summary") ?? ""),
             description: String(formData.get("description") ?? ""),
             related_reference: String(formData.get("related_reference") ?? ""),
@@ -101,7 +101,7 @@ export function PublicComplaintForm({
     >
       <input type="hidden" name="provider_path_segment" value={providerSlug} />
       <input type="hidden" name="provider_profile_id" value={providerProfileId} />
-      <input type="hidden" name="provider_msme_public_id" value={providerMsmePublicId} />
+      <input type="hidden" name="provider_msme_public_id" value={providerMsmeId} />
       <input type="hidden" name="provider_slug" value={providerSlug} />
       <input name="full_name" placeholder="Full name" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
       <input name="email" type="email" placeholder="Email address" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
@@ -119,7 +119,7 @@ export function PublicComplaintForm({
         <option value="counterfeit_products">Counterfeit products</option>
         <option value="service_quality">Service quality</option>
       </select>
-      <select name="priority" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+      <select name="severity" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>
