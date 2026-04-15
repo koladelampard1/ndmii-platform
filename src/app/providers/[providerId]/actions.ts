@@ -64,29 +64,63 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
     const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
     const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
 
-    let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
+    let resolvedInternalMsmeUuid: string | null = null;
+
+    const resolveMsmeUuidByPublicId = async (publicId: string) => {
+      const { data: resolvedMsme, error: msmeResolveError } = await supabase
+        .from("msmes")
+        .select("id")
+        .eq("msme_id", publicId.toUpperCase())
+        .maybeSingle();
+
+      if (msmeResolveError) {
+        console.error("[complaint-submit][msme_resolution_error]", {
+          providerPathSegment,
+          providerPublicMsmeId: publicId,
+          message: msmeResolveError.message,
+          details: msmeResolveError.details,
+          hint: msmeResolveError.hint,
+        });
+      }
+      return resolvedMsme?.id ?? null;
+    };
+
+    if (providerContext.provider_profile_msme_id) {
+      if (UUID_PATTERN.test(providerContext.provider_profile_msme_id)) {
+        resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
+      } else {
+        resolvedInternalMsmeUuid = await resolveMsmeUuidByPublicId(providerContext.provider_profile_msme_id);
+      }
+    }
+
+    if (!resolvedInternalMsmeUuid && resolvedProviderId) {
+      const { data: providerRow, error: providerRowError } = await supabase
+        .from("provider_profiles")
+        .select("msme_id")
+        .eq("id", resolvedProviderId)
+        .maybeSingle();
+
+      if (providerRowError) {
+        console.error("[complaint-submit][provider_msme_lookup_failed]", {
+          providerPathSegment,
+          resolvedProviderId,
+          message: providerRowError.message,
+          details: providerRowError.details,
+          hint: providerRowError.hint,
+          code: providerRowError.code ?? null,
+        });
+      } else if (providerRow?.msme_id) {
+        const providerMsmeId = String(providerRow.msme_id);
+        resolvedInternalMsmeUuid = UUID_PATTERN.test(providerMsmeId)
+          ? providerMsmeId
+          : await resolveMsmeUuidByPublicId(providerMsmeId);
+      }
+    }
 
     if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
-      if (UUID_PATTERN.test(providerPublicMsmeId)) {
-        resolvedInternalMsmeUuid = providerPublicMsmeId;
-      } else {
-        const { data: resolvedMsme, error: msmeResolveError } = await supabase
-          .from("msmes")
-          .select("id")
-          .eq("msme_id", providerPublicMsmeId.toUpperCase())
-          .maybeSingle();
-
-        if (msmeResolveError) {
-          console.error("[complaint-submit][msme_resolution_error]", {
-            providerPathSegment,
-            providerPublicMsmeId,
-            message: msmeResolveError.message,
-            details: msmeResolveError.details,
-            hint: msmeResolveError.hint,
-          });
-        }
-        resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
-      }
+      resolvedInternalMsmeUuid = UUID_PATTERN.test(providerPublicMsmeId)
+        ? providerPublicMsmeId
+        : await resolveMsmeUuidByPublicId(providerPublicMsmeId);
     }
 
     if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
