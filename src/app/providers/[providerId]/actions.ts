@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { resolveProviderPublicContext } from "@/lib/data/provider-profile-resolver";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -43,8 +42,6 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
   const summary = String(payload.short_summary ?? "").trim();
   const description = String(payload.description ?? "").trim();
   const consent_confirmation = String(payload.consent_confirmation ?? "").trim();
-  const providerMsmePublicId = String(payload.provider_msme_public_id ?? "").trim();
-
   if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
     return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=missing_fields` };
   }
@@ -52,80 +49,55 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
   const supabase = await createServiceRoleSupabaseClient();
 
   try {
-    const providerContext = await resolveProviderPublicContext({
-      providerRouteParam: providerPathSegment,
-    });
+    const { data: providerProfile, error: providerLookupError } = await supabase
+      .from("provider_profiles")
+      .select("id,msme_id,public_slug")
+      .eq("public_slug", providerPathSegment)
+      .maybeSingle();
 
-    if (!providerContext.provider_profile_id) {
+    if (providerLookupError || !providerProfile?.id) {
+      console.error("[complaint-submit][provider_lookup_failed]", {
+        providerPathSegment,
+        message: providerLookupError?.message ?? null,
+        details: providerLookupError?.details ?? null,
+        hint: providerLookupError?.hint ?? null,
+        code: providerLookupError?.code ?? null,
+      });
       return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=provider_not_found` };
     }
 
-    const resolvedProviderId = providerContext.provider_profile_id;
-    const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
-    const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
+    const resolvedProviderId = providerProfile.id;
+    const canonicalSlug = providerProfile.public_slug ?? providerPathSegment;
+    const providerMsmeIdRaw = String(providerProfile.msme_id ?? "").trim();
 
-    let resolvedInternalMsmeUuid: string | null = null;
+    let resolvedInternalMsmeUuid: string | null =
+      providerMsmeIdRaw && UUID_PATTERN.test(providerMsmeIdRaw) ? providerMsmeIdRaw : null;
 
-    const resolveMsmeUuidByPublicId = async (publicId: string) => {
+    if (!resolvedInternalMsmeUuid && providerMsmeIdRaw) {
       const { data: resolvedMsme, error: msmeResolveError } = await supabase
         .from("msmes")
         .select("id")
-        .eq("msme_id", publicId.toUpperCase())
+        .eq("msme_id", providerMsmeIdRaw.toUpperCase())
         .maybeSingle();
 
       if (msmeResolveError) {
-        console.error("[complaint-submit][msme_resolution_error]", {
+        console.error("[complaint-submit][provider_msme_resolution_failed]", {
           providerPathSegment,
-          providerPublicMsmeId: publicId,
+          resolvedProviderId,
+          providerMsmeIdRaw,
           message: msmeResolveError.message,
           details: msmeResolveError.details,
           hint: msmeResolveError.hint,
+          code: msmeResolveError.code ?? null,
         });
       }
-      return resolvedMsme?.id ?? null;
-    };
 
-    if (providerContext.provider_profile_msme_id) {
-      if (UUID_PATTERN.test(providerContext.provider_profile_msme_id)) {
-        resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
-      } else {
-        resolvedInternalMsmeUuid = await resolveMsmeUuidByPublicId(providerContext.provider_profile_msme_id);
-      }
-    }
-
-    if (!resolvedInternalMsmeUuid && resolvedProviderId) {
-      const { data: providerRow, error: providerRowError } = await supabase
-        .from("provider_profiles")
-        .select("msme_id")
-        .eq("id", resolvedProviderId)
-        .maybeSingle();
-
-      if (providerRowError) {
-        console.error("[complaint-submit][provider_msme_lookup_failed]", {
-          providerPathSegment,
-          resolvedProviderId,
-          message: providerRowError.message,
-          details: providerRowError.details,
-          hint: providerRowError.hint,
-          code: providerRowError.code ?? null,
-        });
-      } else if (providerRow?.msme_id) {
-        const providerMsmeId = String(providerRow.msme_id);
-        resolvedInternalMsmeUuid = UUID_PATTERN.test(providerMsmeId)
-          ? providerMsmeId
-          : await resolveMsmeUuidByPublicId(providerMsmeId);
-      }
-    }
-
-    if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
-      resolvedInternalMsmeUuid = UUID_PATTERN.test(providerPublicMsmeId)
-        ? providerPublicMsmeId
-        : await resolveMsmeUuidByPublicId(providerPublicMsmeId);
+      resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
     }
 
     if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
       throw new Error(
-        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} publicMsmeId=${providerPublicMsmeId ?? "n/a"}`
+        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} providerMsmeId=${providerMsmeIdRaw || "n/a"}`
       );
     }
 
@@ -134,17 +106,20 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       provider_id: resolvedProviderId,
       provider_profile_id: resolvedProviderId,
       complaint_type,
+      complaint_category: complaint_type,
       category: complaint_type,
-      description,
-      status: "submitted",
-      summary,
       title: summary,
+      summary,
+      description,
       complaint_reference: `CMP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
+      status: "submitted",
       severity: normalizedPriority,
       priority: normalizedPriority,
       complainant_name,
       complainant_email: String(payload.email ?? "").trim() || null,
       complainant_phone: String(payload.phone ?? "").trim() || null,
+      reporter_name: complainant_name,
+      reporter_email: String(payload.email ?? "").trim() || null,
       preferred_contact_method: String(payload.preferred_contact_method ?? "").trim() || "email",
       source_channel: "marketplace_public_profile",
       investigation_notes: payload.evidence_url
@@ -165,7 +140,7 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
 
     console.info("[complaint-submit][pre_insert]", {
       resolved_provider_id: resolvedProviderId,
-      resolved_provider_public_msme_id: providerPublicMsmeId,
+      resolved_provider_msme_id: resolvedInternalMsmeUuid,
       complaint_insert_payload: complaintInsertPayload,
       evidence_upload_result: evidenceUploadResult,
     });
