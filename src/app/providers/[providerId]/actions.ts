@@ -15,7 +15,7 @@ export type SubmitPublicComplaintInput = {
   phone: string;
   preferred_contact_method: string;
   complaint_type: string;
-  priority: string;
+  severity: string;
   short_summary: string;
   description: string;
   related_reference?: string;
@@ -37,8 +37,8 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
 
   const complainant_name = String(payload.full_name ?? "").trim();
   const complaint_type = String(payload.complaint_type ?? "").trim();
-  const priority = String(payload.priority ?? "").trim();
-  const normalizedPriority = priority || "medium";
+  const severity = String(payload.severity ?? "").trim();
+  const normalizedSeverity = severity || "medium";
   const summary = String(payload.short_summary ?? "").trim();
   const description = String(payload.description ?? "").trim();
   const consent_confirmation = String(payload.consent_confirmation ?? "").trim();
@@ -70,30 +70,8 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
     const canonicalSlug = providerProfile.public_slug ?? providerPathSegment;
     const providerMsmeIdRaw = String(providerProfile.msme_id ?? "").trim();
 
-    let resolvedInternalMsmeUuid: string | null =
+    const resolvedInternalMsmeUuid: string | null =
       providerMsmeIdRaw && UUID_PATTERN.test(providerMsmeIdRaw) ? providerMsmeIdRaw : null;
-
-    if (!resolvedInternalMsmeUuid && providerMsmeIdRaw) {
-      const { data: resolvedMsme, error: msmeResolveError } = await supabase
-        .from("msmes")
-        .select("id")
-        .eq("msme_id", providerMsmeIdRaw.toUpperCase())
-        .maybeSingle();
-
-      if (msmeResolveError) {
-        console.error("[complaint-submit][provider_msme_resolution_failed]", {
-          providerPathSegment,
-          resolvedProviderId,
-          providerMsmeIdRaw,
-          message: msmeResolveError.message,
-          details: msmeResolveError.details,
-          hint: msmeResolveError.hint,
-          code: msmeResolveError.code ?? null,
-        });
-      }
-
-      resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
-    }
 
     if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
       throw new Error(
@@ -101,48 +79,46 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       );
     }
 
-    const complaintInsertPayload = {
+    const { data: providerMsmeContext } = await supabase
+      .from("msmes")
+      .select("state,sector")
+      .eq("id", resolvedInternalMsmeUuid)
+      .maybeSingle();
+
+    const complaintInsertPayload: Record<string, string> = {
       msme_id: resolvedInternalMsmeUuid,
-      provider_id: resolvedProviderId,
-      provider_profile_id: resolvedProviderId,
       complaint_type,
-      complaint_category: complaint_type,
-      category: complaint_type,
-      title: summary,
       summary,
       description,
-      complaint_reference: `CMP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
-      status: "submitted",
-      severity: normalizedPriority,
-      priority: normalizedPriority,
-      complainant_name,
-      complainant_email: String(payload.email ?? "").trim() || null,
-      complainant_phone: String(payload.phone ?? "").trim() || null,
-      reporter_name: complainant_name,
-      reporter_email: String(payload.email ?? "").trim() || null,
-      preferred_contact_method: String(payload.preferred_contact_method ?? "").trim() || "email",
-      source_channel: "marketplace_public_profile",
-      investigation_notes: payload.evidence_url
-        ? `Evidence: ${payload.evidence_url}${payload.evidence_storage_path ? ` (path: ${payload.evidence_storage_path})` : ""}`
-        : null,
+      status: "open",
+      severity: normalizedSeverity,
     };
 
-    const evidenceUploadResult = payload.evidence_url
-      ? {
-          public_url: payload.evidence_url,
-          storage_path: payload.evidence_storage_path ?? null,
-          bucket: payload.evidence_bucket ?? null,
-          original_name: payload.evidence_original_name ?? null,
-          size_bytes: payload.evidence_size_bytes ?? null,
-          mime_type: payload.evidence_mime_type ?? null,
-        }
-      : null;
+    if (providerMsmeContext?.state && typeof providerMsmeContext.state === "string") {
+      complaintInsertPayload.state = providerMsmeContext.state;
+    }
+    if (providerMsmeContext?.sector && typeof providerMsmeContext.sector === "string") {
+      complaintInsertPayload.sector = providerMsmeContext.sector;
+    }
+
+    if (payload.evidence_url) {
+      console.info("[complaint-submit][evidence_metadata_received_optional]", {
+        providerPathSegment,
+        resolved_provider_id: resolvedProviderId,
+        resolved_provider_msme_id: resolvedInternalMsmeUuid,
+        evidence_url: payload.evidence_url,
+        evidence_storage_path: payload.evidence_storage_path ?? null,
+        evidence_bucket: payload.evidence_bucket ?? null,
+        evidence_original_name: payload.evidence_original_name ?? null,
+        evidence_size_bytes: payload.evidence_size_bytes ?? null,
+        evidence_mime_type: payload.evidence_mime_type ?? null,
+      });
+    }
 
     console.info("[complaint-submit][pre_insert]", {
       resolved_provider_id: resolvedProviderId,
       resolved_provider_msme_id: resolvedInternalMsmeUuid,
       complaint_insert_payload: complaintInsertPayload,
-      evidence_upload_result: evidenceUploadResult,
     });
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
