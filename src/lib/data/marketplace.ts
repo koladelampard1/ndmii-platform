@@ -1168,6 +1168,19 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
     ];
     const tableCandidates = ["provider_services", "services"] as const;
     const fallbackSelectColumns = requestedSelectColumns;
+    let lastDbFailure:
+      | {
+          providerId: string;
+          tableName: string;
+          linkColumn: string;
+          selectedColumns: string[];
+          finalQuery: string;
+          message: string;
+          details: string | null;
+          hint: string | null;
+          code: string | null;
+        }
+      | null = null;
 
     for (const tableName of tableCandidates) {
       const tableColumns = await getTableColumns(supabase, tableName);
@@ -1175,6 +1188,7 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
       const discoveredSelectColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
       const selectedColumns = discoveredSelectColumns.length > 0 ? discoveredSelectColumns : fallbackSelectColumns;
       const linkColumnsToTry = candidateLinkColumns.length > 0 ? candidateLinkColumns : ["provider_id", "provider_profile_id", "msme_id"];
+      const orderColumn = tableColumns.has("created_at") ? "created_at" : null;
 
       if (DEV_MODE) {
         console.info("[provider-public-page][services_loader_schema_probe]", {
@@ -1237,18 +1251,32 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
           .from(tableName)
           .select(selectedColumns.join(","))
           .eq(linkColumn, filterValue)
-          .order("created_at", { ascending: false });
+          .order(orderColumn ?? "id", { ascending: false });
+        const finalQuery = `${tableName}?select=${selectedColumns.join(",")}&${linkColumn}=eq.${filterValue}&order=${orderColumn ?? "id"}.desc`;
 
         if (error) {
+          lastDbFailure = {
+            providerId,
+            tableName,
+            linkColumn,
+            selectedColumns,
+            finalQuery,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          };
           if (DEV_MODE) {
             console.error("[provider-public-page][services_load_failed]", {
               provider_identifier_received: providerId,
               resolved_table_name: tableName,
               attempted_link_column: linkColumn,
               attempted_select_columns: selectedColumns,
+              final_query_attempted: finalQuery,
               message: error.message,
               details: error.details,
               hint: error.hint,
+              code: error.code,
             });
           }
           continue;
@@ -1268,6 +1296,78 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
           availability_status: String(service.availability_status ?? "available"),
         })) as ProviderService[];
       }
+    }
+
+    let providerUuid = providerId;
+    if (!UUID_PATTERN.test(providerUuid)) {
+      const resolved = await resolvePublicProviderProfile({ providerRouteParam: providerId });
+      providerUuid = resolved.provider?.id ?? "";
+    }
+    if (providerUuid) {
+      const fallbackTableName = "provider_services";
+      const fallbackLinkColumn = "provider_id";
+      const fallbackSelectColumns = ["id", "category", "specialization", "title", "short_description", "pricing_mode", "min_price", "max_price"];
+      const fallbackFinalQuery = `${fallbackTableName}?select=${fallbackSelectColumns.join(",")}&${fallbackLinkColumn}=eq.${providerUuid}&limit=50`;
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from(fallbackTableName)
+        .select(fallbackSelectColumns.join(","))
+        .eq(fallbackLinkColumn, providerUuid)
+        .limit(50);
+
+      if (fallbackError) {
+        lastDbFailure = {
+          providerId,
+          tableName: fallbackTableName,
+          linkColumn: fallbackLinkColumn,
+          selectedColumns: fallbackSelectColumns,
+          finalQuery: fallbackFinalQuery,
+          message: fallbackError.message,
+          details: fallbackError.details,
+          hint: fallbackError.hint,
+          code: fallbackError.code,
+        };
+        if (DEV_MODE) {
+          console.error("[provider-public-page][services_load_failed_fallback]", {
+            provider_identifier_received: providerId,
+            resolved_table_name: fallbackTableName,
+            attempted_link_column: fallbackLinkColumn,
+            attempted_select_columns: fallbackSelectColumns,
+            final_query_attempted: fallbackFinalQuery,
+            message: fallbackError.message,
+            details: fallbackError.details,
+            hint: fallbackError.hint,
+            code: fallbackError.code,
+          });
+        }
+      } else {
+        return (fallbackData ?? []).map((service: any) => ({
+          id: String(service.id ?? ""),
+          category: String(service.category ?? "General Services"),
+          specialization: service.specialization == null ? null : String(service.specialization),
+          title: String(service.title ?? "Service offering"),
+          short_description: String(service.short_description ?? "Verified provider service"),
+          pricing_mode: String(service.pricing_mode ?? "range"),
+          min_price: service.min_price == null ? null : Number(service.min_price),
+          max_price: service.max_price == null ? null : Number(service.max_price),
+          turnaround_time: null,
+          vat_applicable: false,
+          availability_status: "available",
+        })) as ProviderService[];
+      }
+    }
+
+    if (DEV_MODE && lastDbFailure) {
+      console.error("[provider-public-page][services_load_failed_final]", {
+        provider_identifier_received: lastDbFailure.providerId,
+        resolved_table_name: lastDbFailure.tableName,
+        attempted_link_column: lastDbFailure.linkColumn,
+        attempted_select_columns: lastDbFailure.selectedColumns,
+        final_query_attempted: lastDbFailure.finalQuery,
+        message: lastDbFailure.message,
+        details: lastDbFailure.details,
+        hint: lastDbFailure.hint,
+        code: lastDbFailure.code,
+      });
     }
 
     return [];
@@ -1297,6 +1397,19 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
     ];
     const tableCandidates = ["reviews", "provider_reviews"] as const;
     const fallbackSelectColumns = requestedSelectColumns;
+    let lastDbFailure:
+      | {
+          providerId: string;
+          tableName: string;
+          linkColumn: string;
+          selectedColumns: string[];
+          finalQuery: string;
+          message: string;
+          details: string | null;
+          hint: string | null;
+          code: string | null;
+        }
+      | null = null;
 
     for (const tableName of tableCandidates) {
       const tableColumns = await getTableColumns(supabase, tableName);
@@ -1304,6 +1417,7 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
       const discoveredSelectColumns = pickExistingColumns(tableColumns, requestedSelectColumns);
       const selectedColumns = discoveredSelectColumns.length > 0 ? discoveredSelectColumns : fallbackSelectColumns;
       const linkColumnsToTry = candidateLinkColumns.length > 0 ? candidateLinkColumns : ["provider_id", "provider_profile_id", "msme_id"];
+      const orderColumn = tableColumns.has("created_at") ? "created_at" : null;
 
       if (DEV_MODE) {
         console.info("[provider-public-page][reviews_loader_schema_probe]", {
@@ -1366,19 +1480,33 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
           .from(tableName)
           .select(selectedColumns.join(","))
           .eq(linkColumn, filterValue)
-          .order("created_at", { ascending: false })
+          .order(orderColumn ?? "id", { ascending: false })
           .limit(20);
+        const finalQuery = `${tableName}?select=${selectedColumns.join(",")}&${linkColumn}=eq.${filterValue}&order=${orderColumn ?? "id"}.desc&limit=20`;
 
         if (error) {
+          lastDbFailure = {
+            providerId,
+            tableName,
+            linkColumn,
+            selectedColumns,
+            finalQuery,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          };
           if (DEV_MODE) {
             console.error("[provider-public-page][reviews_load_failed]", {
               provider_identifier_received: providerId,
               resolved_table_name: tableName,
               attempted_link_column: linkColumn,
               attempted_select_columns: selectedColumns,
+              final_query_attempted: finalQuery,
               message: error.message,
               details: error.details,
               hint: error.hint,
+              code: error.code,
             });
           }
           continue;
@@ -1395,6 +1523,75 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
           created_at: String(review.created_at ?? new Date().toISOString()),
         })) as ProviderReview[];
       }
+    }
+
+    let providerUuid = providerId;
+    if (!UUID_PATTERN.test(providerUuid)) {
+      const resolved = await resolvePublicProviderProfile({ providerRouteParam: providerId });
+      providerUuid = resolved.provider?.id ?? "";
+    }
+    if (providerUuid) {
+      const fallbackTableName = "reviews";
+      const fallbackLinkColumn = "provider_id";
+      const fallbackSelectColumns = ["id", "reviewer_name", "rating", "review_title", "review_body", "created_at"];
+      const fallbackFinalQuery = `${fallbackTableName}?select=${fallbackSelectColumns.join(",")}&${fallbackLinkColumn}=eq.${providerUuid}&limit=20`;
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from(fallbackTableName)
+        .select(fallbackSelectColumns.join(","))
+        .eq(fallbackLinkColumn, providerUuid)
+        .limit(20);
+
+      if (fallbackError) {
+        lastDbFailure = {
+          providerId,
+          tableName: fallbackTableName,
+          linkColumn: fallbackLinkColumn,
+          selectedColumns: fallbackSelectColumns,
+          finalQuery: fallbackFinalQuery,
+          message: fallbackError.message,
+          details: fallbackError.details,
+          hint: fallbackError.hint,
+          code: fallbackError.code,
+        };
+        if (DEV_MODE) {
+          console.error("[provider-public-page][reviews_load_failed_fallback]", {
+            provider_identifier_received: providerId,
+            resolved_table_name: fallbackTableName,
+            attempted_link_column: fallbackLinkColumn,
+            attempted_select_columns: fallbackSelectColumns,
+            final_query_attempted: fallbackFinalQuery,
+            message: fallbackError.message,
+            details: fallbackError.details,
+            hint: fallbackError.hint,
+            code: fallbackError.code,
+          });
+        }
+      } else {
+        return (fallbackData ?? []).map((review: any) => ({
+          id: String(review.id ?? ""),
+          reviewer_name: String(review.reviewer_name ?? "Anonymous"),
+          rating: Number(review.rating ?? 0),
+          review_title: String(review.review_title ?? "Customer review"),
+          review_body: String(review.review_body ?? ""),
+          provider_reply: null,
+          provider_reply_at: null,
+          created_at: String(review.created_at ?? new Date().toISOString()),
+        })) as ProviderReview[];
+      }
+    }
+
+    if (DEV_MODE && lastDbFailure) {
+      console.error("[provider-public-page][reviews_load_failed_final]", {
+        provider_identifier_received: lastDbFailure.providerId,
+        resolved_table_name: lastDbFailure.tableName,
+        attempted_link_column: lastDbFailure.linkColumn,
+        attempted_select_columns: lastDbFailure.selectedColumns,
+        final_query_attempted: lastDbFailure.finalQuery,
+        message: lastDbFailure.message,
+        details: lastDbFailure.details,
+        hint: lastDbFailure.hint,
+        code: lastDbFailure.code,
+      });
     }
 
     return [];
