@@ -5,8 +5,6 @@ import { Navbar } from "@/components/layout/navbar";
 import {
   getProviderComplaintFormContext,
   getProviderPublicProfile,
-  getProviderPublicReviews,
-  getProviderPublicServices,
   type ProviderProfile,
 } from "@/lib/data/marketplace";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
@@ -69,10 +67,8 @@ export default async function ProviderPublicPage({
   }
 
   const providerId = resolvedRoute.provider.id;
-  const [providerResult, servicesResult, reviewsResult, complaintContextResult] = await Promise.allSettled([
+  const [providerResult, complaintContextResult] = await Promise.allSettled([
     getProviderPublicProfile(providerId),
-    getProviderPublicServices(providerId),
-    getProviderPublicReviews(providerId),
     getProviderComplaintFormContext(providerId),
   ]);
 
@@ -114,14 +110,6 @@ export default async function ProviderPublicPage({
 
   const providerView: ProviderProfile = {
     ...providerViewBase,
-    services:
-      servicesResult.status === "fulfilled"
-        ? servicesResult.value
-        : providerViewBase.services,
-    reviews:
-      reviewsResult.status === "fulfilled"
-        ? reviewsResult.value
-        : providerViewBase.reviews,
     active_complaint_count:
       complaintContextResult.status === "fulfilled"
         ? complaintContextResult.value.active_complaint_count

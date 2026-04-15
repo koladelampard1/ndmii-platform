@@ -17,7 +17,6 @@ export type ProviderPublicContext = {
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const PROVIDER_PROFILE_SELECT = "id,msme_id,public_slug,display_name";
-let providerProfilesHasLegacySlugColumn: boolean | null = null;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function logResolver(message: string, payload: Record<string, unknown>) {
@@ -74,31 +73,6 @@ export async function resolvePublicProviderProfile(params: {
   };
 
   data = await attemptLookup("public_slug", providerRouteParam);
-
-  if (!data?.id) {
-    if (providerProfilesHasLegacySlugColumn === null) {
-      const { data: columnRows, error: columnLookupError } = await supabase
-        .from("information_schema.columns")
-        .select("column_name")
-        .eq("table_schema", "public")
-        .eq("table_name", "provider_profiles")
-        .eq("column_name", "slug")
-        .limit(1);
-      if (columnLookupError) {
-        logResolver("provider_lookup_optional_slug_column_check_error", {
-          message: columnLookupError.message ?? null,
-          details: columnLookupError.details ?? null,
-          hint: columnLookupError.hint ?? null,
-          code: columnLookupError.code ?? null,
-        });
-      }
-      providerProfilesHasLegacySlugColumn = Boolean(columnRows?.length);
-    }
-
-    if (providerProfilesHasLegacySlugColumn) {
-      data = await attemptLookup("slug", providerRouteParam);
-    }
-  }
 
   if (!data?.id && UUID_PATTERN.test(providerRouteParam)) {
     data = await attemptLookup("id", providerRouteParam);

@@ -125,29 +125,6 @@ const FALLBACK_CATEGORIES = [
   "Repairs & Maintenance",
 ];
 
-const FALLBACK_REVIEWS: ProviderReview[] = [
-  {
-    id: "seed-1",
-    reviewer_name: "Ngozi A.",
-    rating: 5,
-    review_title: "Reliable and professional",
-    review_body: "Completed our request on schedule with verified quality standards.",
-    provider_reply: "Thank you for choosing our team. We appreciate your trust and look forward to serving your next project.",
-    provider_reply_at: "2026-01-16T09:00:00.000Z",
-    created_at: "2026-01-15T09:00:00.000Z",
-  },
-  {
-    id: "seed-2",
-    reviewer_name: "Musa K.",
-    rating: 4,
-    review_title: "Strong communication",
-    review_body: "Clear pricing, quick turnaround, and dependable delivery.",
-    provider_reply: "Appreciate the feedback. We are implementing tighter update schedules for every milestone.",
-    provider_reply_at: "2026-01-12T09:00:00.000Z",
-    created_at: "2026-01-11T09:00:00.000Z",
-  },
-];
-
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type CategoriesFailureCause =
@@ -156,14 +133,6 @@ type CategoriesFailureCause =
   | "bad_aggregation_grouping"
   | "unsupported_sorting_or_counting_logic"
   | "unknown";
-
-type DiscoveredSource = {
-  table: string;
-  linkColumn: string;
-  columns: Set<string>;
-};
-
-const tableColumnsCache = new Map<string, Set<string>>();
 
 export function slugifyCategory(category: string): string {
   return category
@@ -996,119 +965,8 @@ export async function getCategoryBySlug(slug: string): Promise<string | null> {
   return categories.find((item) => item.slug === slug)?.name ?? null;
 }
 
-async function getTableColumns(tableName: string): Promise<Set<string>> {
-  const cacheKey = tableName.toLowerCase();
-  const cached = tableColumnsCache.get(cacheKey);
-  if (cached) return cached;
-
-  const supabase = await createServiceRoleSupabaseClient();
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName);
-
-  if (error) {
-    console.error("[provider-public-page][schema_columns_lookup_failed]", {
-      tableName,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code ?? null,
-    });
-    return new Set<string>();
-  }
-
-  const columns = new Set((data ?? []).map((row: any) => String(row.column_name)));
-  tableColumnsCache.set(cacheKey, columns);
-  return columns;
-}
-
-async function discoverProviderLinkedSource(options: {
-  candidateTables: string[];
-  candidateLinkColumns: string[];
-  requiredColumns?: string[];
-}): Promise<DiscoveredSource | null> {
-  for (const table of options.candidateTables) {
-    const columns = await getTableColumns(table);
-    if (!columns.size) continue;
-    const linkColumn = options.candidateLinkColumns.find((column) => columns.has(column));
-    if (!linkColumn) continue;
-    if (options.requiredColumns?.length && !options.requiredColumns.every((column) => columns.has(column))) continue;
-    return { table, linkColumn, columns };
-  }
-  return null;
-}
-
-
-function mapServiceRowToPublicService(service: any, columns: Set<string>): ProviderService {
-  return {
-    id: String(service.id ?? ""),
-    category: columns.has("category") ? String(service.category ?? "General Services") : "General Services",
-    specialization: columns.has("specialization") && service.specialization != null ? String(service.specialization) : null,
-    title: columns.has("title") ? String(service.title ?? "Service offering") : "Service offering",
-    short_description: columns.has("short_description")
-      ? String(service.short_description ?? "Verified provider service")
-      : "Verified provider service",
-    pricing_mode: columns.has("pricing_mode") ? String(service.pricing_mode ?? "range") : "range",
-    min_price: columns.has("min_price") && service.min_price != null ? Number(service.min_price) : null,
-    max_price: columns.has("max_price") && service.max_price != null ? Number(service.max_price) : null,
-    turnaround_time: columns.has("turnaround_time") && service.turnaround_time != null ? String(service.turnaround_time) : null,
-    vat_applicable: columns.has("vat_applicable") ? Boolean(service.vat_applicable) : false,
-    availability_status: columns.has("availability_status") ? String(service.availability_status ?? "available") : "available",
-  };
-}
-
-async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
-  const supabase = await createServiceRoleSupabaseClient();
-  const source = await discoverProviderLinkedSource({
-    candidateTables: ["provider_gallery", "portfolio_gallery", "provider_portfolio"],
-    candidateLinkColumns: ["provider_id", "provider_profile_id"],
-    requiredColumns: ["id"],
-  });
-
-  if (!source) {
-    throw new Error(`provider-public-page.portfolio.source_not_found provider=${providerId}`);
-  }
-
-  const selectableColumns = ["id", "asset_url", "image_url", "caption", "is_featured", "sort_order", "created_at"].filter((column) =>
-    source.columns.has(column)
-  );
-
-  let queryBuilder = supabase
-    .from(source.table)
-    .select(selectableColumns.join(","))
-    .eq(source.linkColumn, providerId)
-    .limit(30);
-
-  if (source.columns.has("sort_order")) {
-    queryBuilder = queryBuilder.order("sort_order", { ascending: true });
-  }
-  if (source.columns.has("created_at")) {
-    queryBuilder = queryBuilder.order("created_at", { ascending: true });
-  }
-
-  const { data, error } = await queryBuilder;
-
-  if (error) {
-    const trace = `provider-public-page.portfolio.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
-    console.error("[provider-public-page][portfolio_load_failed]", {
-      trace,
-      source,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
-    throw new Error(trace);
-  }
-
-  return (data ?? []).map((item: any) => ({
-    id: String(item.id ?? ""),
-    asset_url: String(item.asset_url ?? item.image_url ?? ""),
-    caption: item.caption == null ? null : String(item.caption),
-    is_featured: Boolean(item.is_featured),
-  }));
+async function getProviderPublicPortfolio(_providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
+  return [];
 }
 
 export async function getProviderPublicProfile(providerId: string): Promise<ProviderProfile | null> {
@@ -1252,34 +1110,13 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     if (!providerProfile?.public_slug) return null;
     const card = projectMsmeToProvider(row, digitalId?.ndmii_id ?? null, providerProfile.public_slug);
 
-    return {
-      ...card,
-      owner_name: row.owner_name,
-      long_description: `${row.business_name} is a verified business in the NDMII marketplace with a validated identity profile and strong compliance records.`,
-      gallery: [
-        {
-          id: `${card.id}-gallery-1`,
-          asset_url: card.logo_url ?? "https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=900&q=80",
-          caption: "Verified business storefront",
-          is_featured: true,
-        },
-      ],
-      services: [
-        {
-          id: `${card.id}-service-1`,
-          category: card.category,
-          specialization: card.specialization,
-          title: `${card.business_name} Core Service`,
-          short_description: card.short_description,
-          pricing_mode: "range",
-          min_price: 50000,
-          max_price: 250000,
-          turnaround_time: "5-10 business days",
-          vat_applicable: true,
-          availability_status: "available",
-        },
-      ],
-      reviews: FALLBACK_REVIEWS,
+      return {
+        ...card,
+        owner_name: row.owner_name,
+        long_description: `${row.business_name} is a verified business in the NDMII marketplace with a validated identity profile and strong compliance records.`,
+        gallery: [],
+        services: [],
+        reviews: [],
       rating_breakdown: { five: 1, four: 1, three: 0, two: 0, one: 0 },
       trust_badge: badgeFromTrustScore(card.trust_score),
       trust_factors: [
@@ -1303,146 +1140,17 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 }
 
 export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
-  const supabase = await createServiceRoleSupabaseClient();
-  const source = await discoverProviderLinkedSource({
-    candidateTables: ["provider_services"],
-    candidateLinkColumns: ["provider_id", "provider_profile_id"],
-    requiredColumns: ["id", "title"],
-  });
-
-  if (!source) {
-    throw new Error(`provider-public-page.services.source_not_found provider=${providerId}`);
+  if (DEV_MODE) {
+    console.info("[provider-public-page][services_disabled_temporarily]", { providerId });
   }
-
-  const selectableColumns = [
-    "id",
-    "category",
-    "specialization",
-    "title",
-    "short_description",
-    "description",
-    "pricing_mode",
-    "min_price",
-    "max_price",
-    "turnaround_time",
-    "vat_applicable",
-    "availability_status",
-    "status",
-    "created_at",
-  ].filter((column) => source.columns.has(column));
-
-  let queryBuilder = supabase
-    .from(source.table)
-    .select(selectableColumns.join(","))
-    .eq(source.linkColumn, providerId)
-    .limit(50);
-
-  if (source.columns.has("created_at")) {
-    queryBuilder = queryBuilder.order("created_at", { ascending: false });
-  }
-
-  const { data, error } = await queryBuilder;
-
-  if (error) {
-    const trace = `provider-public-page.services.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
-    console.error("[provider-public-page][services_load_failed]", {
-      trace,
-      source,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
-    throw new Error(trace);
-  }
-
-  return (data ?? []).map((service: any) => {
-    const mapped = mapServiceRowToPublicService(service, new Set(Object.keys(service ?? {})));
-    if (!mapped.short_description && typeof service.description === "string") {
-      mapped.short_description = service.description;
-    }
-    if (!source.columns.has("availability_status") && source.columns.has("status")) {
-      mapped.availability_status = String(service.status ?? "available");
-    }
-    return mapped;
-  });
+  return [];
 }
 
 export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
-  const supabase = await createServiceRoleSupabaseClient();
-  const source = await discoverProviderLinkedSource({
-    candidateTables: ["provider_reviews", "reviews", "marketplace_reviews"],
-    candidateLinkColumns: ["provider_id", "provider_profile_id"],
-    requiredColumns: ["id", "rating"],
-  });
-
-  if (!source) {
-    throw new Error(`provider-public-page.reviews.source_not_found provider=${providerId}`);
+  if (DEV_MODE) {
+    console.info("[provider-public-page][reviews_disabled_temporarily]", { providerId });
   }
-
-  const selectableColumns = [
-    "id",
-    "reviewer_name",
-    "reviewer_full_name",
-    "rating",
-    "review_title",
-    "title",
-    "review_body",
-    "comment",
-    "provider_reply",
-    "provider_response",
-    "provider_reply_at",
-    "provider_response_at",
-    "is_featured",
-    "is_published",
-    "status",
-    "created_at",
-  ].filter((column) => source.columns.has(column));
-
-  let queryBuilder = supabase
-    .from(source.table)
-    .select(selectableColumns.join(","))
-    .eq(source.linkColumn, providerId)
-    .limit(20);
-
-  if (source.columns.has("is_published")) {
-    queryBuilder = queryBuilder.eq("is_published", true);
-  } else if (source.columns.has("status")) {
-    queryBuilder = queryBuilder.eq("status", "published");
-  }
-
-  if (source.columns.has("is_featured")) {
-    queryBuilder = queryBuilder.order("is_featured", { ascending: false });
-  }
-  if (source.columns.has("created_at")) {
-    queryBuilder = queryBuilder.order("created_at", { ascending: false });
-  }
-
-  const { data, error } = await queryBuilder;
-
-  if (error) {
-    const trace = `provider-public-page.reviews.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
-    console.error("[provider-public-page][reviews_load_failed]", {
-      trace,
-      source,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
-    throw new Error(trace);
-  }
-
-  return (data ?? []).map((review: any) => ({
-    id: String(review.id ?? ""),
-    reviewer_name: String(review.reviewer_name ?? review.reviewer_full_name ?? "Anonymous"),
-    rating: Number(review.rating ?? 0),
-    review_title: String(review.review_title ?? review.title ?? "Customer review"),
-    review_body: String(review.review_body ?? review.comment ?? ""),
-    provider_reply: review.provider_reply != null ? String(review.provider_reply) : review.provider_response != null ? String(review.provider_response) : null,
-    provider_reply_at: review.provider_reply_at != null ? String(review.provider_reply_at) : review.provider_response_at != null ? String(review.provider_response_at) : null,
-    created_at: String(review.created_at ?? new Date().toISOString()),
-  }));
+  return [];
 }
 
 export async function getProviderComplaintFormContext(providerId: string): Promise<{
