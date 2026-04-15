@@ -97,15 +97,28 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
 
     const mappedComplaintPayload = {
       msme_id: resolvedInternalMsmeUuid,
+      provider_id: resolvedProviderId,
+      provider_profile_id: resolvedProviderId,
+      provider_msme_id: resolvedInternalMsmeUuid,
       complaint_type,
+      category: complaint_type,
       description,
-      status: "open",
+      status: "submitted",
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       summary,
+      title: summary,
+      complaint_reference: `CMP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
       severity: normalizedPriority,
+      priority: normalizedPriority,
+      complainant_name,
+      complainant_email: String(payload.email ?? "").trim() || null,
+      complainant_phone: String(payload.phone ?? "").trim() || null,
+      preferred_contact_method: String(payload.preferred_contact_method ?? "").trim() || "email",
       assigned_officer_user_id: null,
       state: null,
       sector: null,
+      source_channel: "marketplace_public_profile",
       investigation_notes: payload.evidence_url
         ? `Evidence: ${payload.evidence_url}${payload.evidence_storage_path ? ` (path: ${payload.evidence_storage_path})` : ""}`
         : null,
@@ -143,9 +156,22 @@ export async function submitPublicComplaint(payload: SubmitPublicComplaintInput)
       .single();
 
     if (complaintInsertError || !complaintRow) {
-      throw new Error(
-        `[complaint-submit] complaint_insert_failed: ${complaintInsertError?.message ?? "Unknown insert error"}`
-      );
+      console.error("[complaint-submit][insert_failed]", {
+        providerPathSegment,
+        canonicalSlug,
+        resolved_provider_id: resolvedProviderId,
+        complaint_insert_payload: complaintInsertPayload,
+        insert_error: complaintInsertError
+          ? {
+              message: complaintInsertError.message,
+              details: complaintInsertError.details,
+              hint: complaintInsertError.hint,
+              code: complaintInsertError.code ?? null,
+            }
+          : null,
+        insert_row: complaintRow ?? null,
+      });
+      return { ok: false as const, redirectPath: `/providers/${providerPathSegment}?reported_error=submit_failed` };
     }
 
     revalidatePath(`/providers/${providerPathSegment}`);
