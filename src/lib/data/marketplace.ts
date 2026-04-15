@@ -157,6 +157,14 @@ type CategoriesFailureCause =
   | "unsupported_sorting_or_counting_logic"
   | "unknown";
 
+type DiscoveredSource = {
+  table: string;
+  linkColumn: string;
+  columns: Set<string>;
+};
+
+const tableColumnsCache = new Map<string, Set<string>>();
+
 export function slugifyCategory(category: string): string {
   return category
     .toLowerCase()
@@ -988,6 +996,50 @@ export async function getCategoryBySlug(slug: string): Promise<string | null> {
   return categories.find((item) => item.slug === slug)?.name ?? null;
 }
 
+async function getTableColumns(tableName: string): Promise<Set<string>> {
+  const cacheKey = tableName.toLowerCase();
+  const cached = tableColumnsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", tableName);
+
+  if (error) {
+    console.error("[provider-public-page][schema_columns_lookup_failed]", {
+      tableName,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code ?? null,
+    });
+    return new Set<string>();
+  }
+
+  const columns = new Set((data ?? []).map((row: any) => String(row.column_name)));
+  tableColumnsCache.set(cacheKey, columns);
+  return columns;
+}
+
+async function discoverProviderLinkedSource(options: {
+  candidateTables: string[];
+  candidateLinkColumns: string[];
+  requiredColumns?: string[];
+}): Promise<DiscoveredSource | null> {
+  for (const table of options.candidateTables) {
+    const columns = await getTableColumns(table);
+    if (!columns.size) continue;
+    const linkColumn = options.candidateLinkColumns.find((column) => columns.has(column));
+    if (!linkColumn) continue;
+    if (options.requiredColumns?.length && !options.requiredColumns.every((column) => columns.has(column))) continue;
+    return { table, linkColumn, columns };
+  }
+  return null;
+}
+
 
 function mapServiceRowToPublicService(service: any, columns: Set<string>): ProviderService {
   return {
@@ -1009,24 +1061,40 @@ function mapServiceRowToPublicService(service: any, columns: Set<string>): Provi
 
 async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
   const supabase = await createServiceRoleSupabaseClient();
-  const query = {
-    table: "provider_gallery",
-    select: "id,asset_url,caption,is_featured,sort_order,created_at",
-    filters: { provider_id: providerId },
-  };
-  const { data, error } = await supabase
-    .from("provider_gallery")
-    .select(query.select)
-    .eq("provider_id", providerId)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true })
+  const source = await discoverProviderLinkedSource({
+    candidateTables: ["provider_gallery", "portfolio_gallery", "provider_portfolio"],
+    candidateLinkColumns: ["provider_id", "provider_profile_id"],
+    requiredColumns: ["id"],
+  });
+
+  if (!source) {
+    throw new Error(`provider-public-page.portfolio.source_not_found provider=${providerId}`);
+  }
+
+  const selectableColumns = ["id", "asset_url", "image_url", "caption", "is_featured", "sort_order", "created_at"].filter((column) =>
+    source.columns.has(column)
+  );
+
+  let queryBuilder = supabase
+    .from(source.table)
+    .select(selectableColumns.join(","))
+    .eq(source.linkColumn, providerId)
     .limit(30);
 
+  if (source.columns.has("sort_order")) {
+    queryBuilder = queryBuilder.order("sort_order", { ascending: true });
+  }
+  if (source.columns.has("created_at")) {
+    queryBuilder = queryBuilder.order("created_at", { ascending: true });
+  }
+
+  const { data, error } = await queryBuilder;
+
   if (error) {
-    const trace = `provider-public-page.portfolio.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    const trace = `provider-public-page.portfolio.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
     console.error("[provider-public-page][portfolio_load_failed]", {
       trace,
-      query,
+      source,
       message: error.message,
       details: error.details,
       hint: error.hint,
@@ -1037,7 +1105,7 @@ async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ i
 
   return (data ?? []).map((item: any) => ({
     id: String(item.id ?? ""),
-    asset_url: String(item.asset_url ?? ""),
+    asset_url: String(item.asset_url ?? item.image_url ?? ""),
     caption: item.caption == null ? null : String(item.caption),
     is_featured: Boolean(item.is_featured),
   }));
@@ -1236,24 +1304,50 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
 export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
   const supabase = await createServiceRoleSupabaseClient();
-  const query = {
-    table: "provider_services",
-    select: "id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status,created_at",
-    filters: { provider_id: providerId },
-  };
+  const source = await discoverProviderLinkedSource({
+    candidateTables: ["provider_services"],
+    candidateLinkColumns: ["provider_id", "provider_profile_id"],
+    requiredColumns: ["id", "title"],
+  });
 
-  const { data, error } = await supabase
-    .from("provider_services")
-    .select(query.select)
-    .eq("provider_id", providerId)
-    .order("created_at", { ascending: false })
+  if (!source) {
+    throw new Error(`provider-public-page.services.source_not_found provider=${providerId}`);
+  }
+
+  const selectableColumns = [
+    "id",
+    "category",
+    "specialization",
+    "title",
+    "short_description",
+    "description",
+    "pricing_mode",
+    "min_price",
+    "max_price",
+    "turnaround_time",
+    "vat_applicable",
+    "availability_status",
+    "status",
+    "created_at",
+  ].filter((column) => source.columns.has(column));
+
+  let queryBuilder = supabase
+    .from(source.table)
+    .select(selectableColumns.join(","))
+    .eq(source.linkColumn, providerId)
     .limit(50);
 
+  if (source.columns.has("created_at")) {
+    queryBuilder = queryBuilder.order("created_at", { ascending: false });
+  }
+
+  const { data, error } = await queryBuilder;
+
   if (error) {
-    const trace = `provider-public-page.services.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    const trace = `provider-public-page.services.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
     console.error("[provider-public-page][services_load_failed]", {
       trace,
-      query,
+      source,
       message: error.message,
       details: error.details,
       hint: error.hint,
@@ -1262,30 +1356,75 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
     throw new Error(trace);
   }
 
-  return (data ?? []).map((service: any) => mapServiceRowToPublicService(service, new Set(Object.keys(service ?? {}))));
+  return (data ?? []).map((service: any) => {
+    const mapped = mapServiceRowToPublicService(service, new Set(Object.keys(service ?? {})));
+    if (!mapped.short_description && typeof service.description === "string") {
+      mapped.short_description = service.description;
+    }
+    if (!source.columns.has("availability_status") && source.columns.has("status")) {
+      mapped.availability_status = String(service.status ?? "available");
+    }
+    return mapped;
+  });
 }
 
 export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
   const supabase = await createServiceRoleSupabaseClient();
-  const query = {
-    table: "reviews",
-    select: "id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,is_featured,created_at",
-    filters: { provider_id: providerId },
-  };
+  const source = await discoverProviderLinkedSource({
+    candidateTables: ["provider_reviews", "reviews", "marketplace_reviews"],
+    candidateLinkColumns: ["provider_id", "provider_profile_id"],
+    requiredColumns: ["id", "rating"],
+  });
 
-  const { data, error } = await supabase
-    .from("reviews")
-    .select(query.select)
-    .eq("provider_id", providerId)
-    .order("is_featured", { ascending: false })
-    .order("created_at", { ascending: false })
+  if (!source) {
+    throw new Error(`provider-public-page.reviews.source_not_found provider=${providerId}`);
+  }
+
+  const selectableColumns = [
+    "id",
+    "reviewer_name",
+    "reviewer_full_name",
+    "rating",
+    "review_title",
+    "title",
+    "review_body",
+    "comment",
+    "provider_reply",
+    "provider_response",
+    "provider_reply_at",
+    "provider_response_at",
+    "is_featured",
+    "is_published",
+    "status",
+    "created_at",
+  ].filter((column) => source.columns.has(column));
+
+  let queryBuilder = supabase
+    .from(source.table)
+    .select(selectableColumns.join(","))
+    .eq(source.linkColumn, providerId)
     .limit(20);
 
+  if (source.columns.has("is_published")) {
+    queryBuilder = queryBuilder.eq("is_published", true);
+  } else if (source.columns.has("status")) {
+    queryBuilder = queryBuilder.eq("status", "published");
+  }
+
+  if (source.columns.has("is_featured")) {
+    queryBuilder = queryBuilder.order("is_featured", { ascending: false });
+  }
+  if (source.columns.has("created_at")) {
+    queryBuilder = queryBuilder.order("created_at", { ascending: false });
+  }
+
+  const { data, error } = await queryBuilder;
+
   if (error) {
-    const trace = `provider-public-page.reviews.query_failed table=${query.table} filter=provider_id.eq.${providerId} code=${error.code ?? "n/a"}`;
+    const trace = `provider-public-page.reviews.query_failed table=${source.table} filter=${source.linkColumn}.eq.${providerId} code=${error.code ?? "n/a"}`;
     console.error("[provider-public-page][reviews_load_failed]", {
       trace,
-      query,
+      source,
       message: error.message,
       details: error.details,
       hint: error.hint,
@@ -1296,12 +1435,12 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
 
   return (data ?? []).map((review: any) => ({
     id: String(review.id ?? ""),
-    reviewer_name: String(review.reviewer_name ?? "Anonymous"),
+    reviewer_name: String(review.reviewer_name ?? review.reviewer_full_name ?? "Anonymous"),
     rating: Number(review.rating ?? 0),
-    review_title: String(review.review_title ?? "Customer review"),
-    review_body: String(review.review_body ?? ""),
-    provider_reply: review.provider_reply != null ? String(review.provider_reply) : null,
-    provider_reply_at: review.provider_reply_at != null ? String(review.provider_reply_at) : null,
+    review_title: String(review.review_title ?? review.title ?? "Customer review"),
+    review_body: String(review.review_body ?? review.comment ?? ""),
+    provider_reply: review.provider_reply != null ? String(review.provider_reply) : review.provider_response != null ? String(review.provider_response) : null,
+    provider_reply_at: review.provider_reply_at != null ? String(review.provider_reply_at) : review.provider_response_at != null ? String(review.provider_response_at) : null,
     created_at: String(review.created_at ?? new Date().toISOString()),
   }));
 }

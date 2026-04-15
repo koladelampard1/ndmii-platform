@@ -177,11 +177,16 @@ export async function resolveProviderPublicContext(params: {
   }
 
   const supabase = await createServiceRoleSupabaseClient();
-  const { data: linkedMsmeAssociation, error: associationLookupError } = await supabase
+  let associationLookup = supabase
     .from("msmes")
     .select("association_id")
-    .eq("id", resolved.provider.msme_id)
-    .maybeSingle();
+    .limit(1);
+
+  associationLookup = UUID_PATTERN.test(resolved.provider.msme_id)
+    ? associationLookup.eq("id", resolved.provider.msme_id)
+    : associationLookup.eq("msme_id", resolved.provider.msme_id.toUpperCase());
+
+  const { data: linkedMsmeAssociation, error: associationLookupError } = await associationLookup.maybeSingle();
 
   if (associationLookupError) {
     logResolver("provider_context_association_lookup_failed", {

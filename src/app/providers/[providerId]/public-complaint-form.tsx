@@ -17,6 +17,7 @@ export function PublicComplaintForm({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null);
 
   return (
     <form
@@ -24,6 +25,7 @@ export function PublicComplaintForm({
       onSubmit={async (event) => {
         event.preventDefault();
         setClientError(null);
+        setUploadWarning(null);
         setIsSubmitting(true);
 
         try {
@@ -54,6 +56,7 @@ export function PublicComplaintForm({
                 trace: error instanceof Error ? error.message : "unknown_evidence_upload_failure",
                 error,
               });
+              setUploadWarning("Evidence upload failed, but your complaint can still be submitted without attachment.");
               uploadResult = null;
             }
           }
@@ -138,6 +141,7 @@ export function PublicComplaintForm({
         <span>I confirm that the information provided is accurate and may be used for complaint investigation and case management.</span>
       </label>
       {clientError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{clientError}</p>}
+      {uploadWarning && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{uploadWarning}</p>}
       <button
         type="submit"
         disabled={isSubmitting}
