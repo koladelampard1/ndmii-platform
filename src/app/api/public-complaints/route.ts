@@ -97,8 +97,6 @@ export async function POST(request: Request) {
   const complainant_phone = String(formData.get("phone") ?? "").trim();
   const preferred_contact_method = String(formData.get("preferred_contact_method") ?? "email").trim() || "email";
   const complaint_type = String(formData.get("complaint_type") ?? "").trim();
-  const priority = String(formData.get("priority") ?? "").trim();
-  const normalizedPriority = priority || "medium";
   const summary = String(formData.get("short_summary") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const related_reference = String(formData.get("related_reference") ?? "").trim();
@@ -115,7 +113,6 @@ export async function POST(request: Request) {
     complainant_phone,
     preferred_contact_method,
     complaint_type,
-    priority: normalizedPriority,
     summary,
     description,
     related_reference,
@@ -251,89 +248,24 @@ export async function POST(request: Request) {
       sizeBytes: number;
       mimeType: string | null;
     } | null = null;
+    const { data: complaintColumns, error: complaintColumnsError } = await supabase
+      .schema("information_schema")
+      .from("columns")
+      .select("column_name")
+      .eq("table_schema", "public")
+      .eq("table_name", "complaints");
 
-    if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
-      const evidenceBucket = resolveEvidenceBucketName();
-      const safeFileName = sanitizeEvidenceFileName(evidenceAttachment.name);
-      const storagePath = `${resolvedInternalMsmeUuid}/${resolvedProviderId}/${Date.now()}-${safeFileName}`;
-      const contentType = evidenceAttachment.type || "application/octet-stream";
-      const fileBytes = new Uint8Array(await evidenceAttachment.arrayBuffer());
-
-      const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(evidenceBucket);
-      if (bucketLookupError) {
-        console.error("[complaint-submit][evidence_bucket_lookup_error]", {
-          bucket: evidenceBucket,
-          error: toStorageErrorLog(bucketLookupError),
-        });
-      }
-
-      if (!existingBucket) {
-        const { data: createdBucket, error: createBucketError } = await supabase.storage.createBucket(evidenceBucket, {
-          public: false,
-          fileSizeLimit: `${MAX_EVIDENCE_FILE_BYTES}`,
-          allowedMimeTypes: Array.from(ALLOWED_EVIDENCE_MIME_TYPES),
-        });
-
-        if (createBucketError) {
-          console.error("[complaint-submit][evidence_bucket_create_error]", {
-            bucket: evidenceBucket,
-            error: toStorageErrorLog(createBucketError),
-          });
-          throw new Error(`[complaint-submit] evidence_bucket_prepare_failed: ${createBucketError.message}`);
-        }
-
-        console.info("[complaint-submit][evidence_bucket_created]", {
-          bucket: evidenceBucket,
-          id: createdBucket?.name ?? null,
-        });
-      } else {
-        console.info("[complaint-submit][evidence_bucket_ready]", {
-          bucket: evidenceBucket,
-          id: existingBucket.name,
-        });
-      }
-
-      console.info("[complaint-submit][file_metadata]", {
-        originalName: evidenceAttachment.name,
-        sanitizedFileName: safeFileName,
-        mimeType: evidenceAttachment.type || null,
-        contentType,
-        fileSizeBytes: evidenceAttachment.size,
-        bucket: evidenceBucket,
-        storagePath,
-      });
-
-      const { error: uploadError } = await supabase.storage.from(evidenceBucket).upload(storagePath, fileBytes, {
-        contentType,
-        upsert: false,
-      });
-
-      console.info("[complaint-submit][storage_upload_result]", {
-        ok: !uploadError,
-        bucket: evidenceBucket,
-        storagePath,
-        contentType,
-        error: uploadError
-          ? toStorageErrorLog(uploadError)
-          : null,
-      });
-
-      if (uploadError) {
-        throw new Error(`[complaint-submit] evidence_upload_failed: ${uploadError.message}`);
-      }
-
-      evidenceAttachmentRecord = {
-        originalName: evidenceAttachment.name,
-        sizeBytes: evidenceAttachment.size,
-        mimeType: evidenceAttachment.type || null,
-        bucket: evidenceBucket,
-        storagePath,
-      };
+    if (complaintColumnsError || !complaintColumns?.length) {
+      throw new Error(
+        `[complaint-submit] complaints_schema_lookup_failed: ${complaintColumnsError?.message ?? "No complaints columns found"}`
+      );
     }
 
-    const payload = {
+    const complaintColumnSet = new Set(complaintColumns.map((row) => row.column_name));
+    const payloadCandidates: Record<string, string | null> = {
       msme_id: resolvedInternalMsmeUuid,
       provider_profile_id: resolvedProviderId,
+      provider_id: resolvedProviderId,
       complaint_type,
       description,
       status: "open",
@@ -341,14 +273,21 @@ export async function POST(request: Request) {
       complainant_email: complainant_email || null,
       complainant_phone: complainant_phone || null,
       preferred_contact_method,
-      related_reference: related_reference || null,
+      reporter_name: complainant_name,
+      reporter_email: complainant_email || null,
       title: summary,
       summary,
-      priority: normalizedPriority,
-      severity: normalizedPriority,
       state: null,
       sector: null,
     };
+
+    const payload = Object.fromEntries(
+      Object.entries(payloadCandidates).filter(([key]) => complaintColumnSet.has(key))
+    );
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[complaint-submit][insert_payload_keys]", Object.keys(payload).sort());
+    }
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -372,6 +311,68 @@ export async function POST(request: Request) {
       throw new Error(
         `[complaint-submit] complaint_insert_failed: ${complaintInsertError?.message ?? "Unknown insert error"}`
       );
+    }
+
+    if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
+      try {
+        const evidenceBucket = resolveEvidenceBucketName();
+        const safeFileName = sanitizeEvidenceFileName(evidenceAttachment.name);
+        const storagePath = `${resolvedInternalMsmeUuid}/${resolvedProviderId}/${Date.now()}-${safeFileName}`;
+        const contentType = evidenceAttachment.type || "application/octet-stream";
+        const fileBytes = new Uint8Array(await evidenceAttachment.arrayBuffer());
+
+        const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(evidenceBucket);
+        if (bucketLookupError) {
+          console.error("[complaint-submit][evidence_bucket_lookup_error]", {
+            bucket: evidenceBucket,
+            error: toStorageErrorLog(bucketLookupError),
+          });
+        }
+
+        if (!existingBucket) {
+          const { data: createdBucket, error: createBucketError } = await supabase.storage.createBucket(evidenceBucket, {
+            public: false,
+            fileSizeLimit: `${MAX_EVIDENCE_FILE_BYTES}`,
+            allowedMimeTypes: Array.from(ALLOWED_EVIDENCE_MIME_TYPES),
+          });
+
+          if (createBucketError) {
+            throw new Error(`[complaint-submit] evidence_bucket_prepare_failed: ${createBucketError.message}`);
+          }
+
+          console.info("[complaint-submit][evidence_bucket_created]", {
+            bucket: evidenceBucket,
+            id: createdBucket?.name ?? null,
+          });
+        } else {
+          console.info("[complaint-submit][evidence_bucket_ready]", {
+            bucket: evidenceBucket,
+            id: existingBucket.name,
+          });
+        }
+
+        const { error: uploadError } = await supabase.storage.from(evidenceBucket).upload(storagePath, fileBytes, {
+          contentType,
+          upsert: false,
+        });
+
+        if (uploadError) {
+          throw new Error(`[complaint-submit] evidence_upload_failed: ${uploadError.message}`);
+        }
+
+        evidenceAttachmentRecord = {
+          originalName: evidenceAttachment.name,
+          sizeBytes: evidenceAttachment.size,
+          mimeType: evidenceAttachment.type || null,
+          bucket: evidenceBucket,
+          storagePath,
+        };
+      } catch (evidenceError) {
+        console.error("[complaint-submit][evidence_non_blocking_error]", {
+          complaintId: complaintRow.id,
+          error: evidenceError,
+        });
+      }
     }
 
     if (evidenceAttachmentRecord) {
