@@ -28,7 +28,7 @@ export default async function ProviderPublicPage({
   searchParams,
 }: {
   params: Promise<{ providerId: string }>;
-  searchParams: Promise<{ reported?: string; reported_error?: string; reported_trace?: string; quote?: string; quote_error?: string; notice?: string }>;
+  searchParams: Promise<{ reported?: string; quote?: string; quote_error?: string; notice?: string }>;
 }) {
   const { providerId: providerSlug } = await params;
   const query = await searchParams;
@@ -286,24 +286,6 @@ export default async function ProviderPublicPage({
                 {query.quote_error === "missing_fields"
                   ? "Please complete your name, contact, and request details before submitting."
                   : "We could not submit your quote request right now. Please retry."}
-              </div>
-            )}
-            {query.reported_error && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                {query.reported_error === "missing_fields"
-                  ? "Please complete all required complaint fields and confirm consent before submitting."
-                  : query.reported_error === "file_too_large"
-                    ? "Evidence file is too large. Maximum allowed size is 10 MB."
-                  : query.reported_error === "unsupported_file_type"
-                    ? "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX."
-                  : query.reported_error === "provider_not_found"
-                    ? "Provider profile could not be resolved. Please reopen this provider page and try again."
-                  : "We could not submit your complaint right now. Please retry."}
-                {query.reported_trace && (
-                  <p className="mt-2 rounded-md bg-rose-100 px-2 py-1 font-mono text-[11px] text-rose-900">
-                    Internal trace: {query.reported_trace}
-                  </p>
-                )}
               </div>
             )}
             <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
