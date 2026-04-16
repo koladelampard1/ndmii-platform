@@ -310,6 +310,13 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("[complaint-submit][saved-record-linkage]", {
+      complaintId: complaintRow.id,
+      savedMsmeId: payload.msme_id,
+      savedProviderId: (payload as Record<string, string | null>).provider_id ?? null,
+      savedAssociationId: (payload as Record<string, string | null>).association_id ?? null,
+    });
+
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
       try {
         const evidenceBucket = resolveEvidenceBucketName();

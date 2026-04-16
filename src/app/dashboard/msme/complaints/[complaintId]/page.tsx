@@ -17,13 +17,18 @@ async function msmeComplaintAction(formData: FormData) {
 
   const { data: complaint } = await supabase
     .from("complaints")
-    .select("id,status,provider_profile_id")
+    .select("id,status,provider_profile_id,msme_id")
     .eq("id", complaintId)
     .maybeSingle();
 
-  const ownsComplaint = Boolean(complaint?.provider_profile_id && complaint.provider_profile_id === workspace.provider.id);
+  const ownsComplaint = Boolean(
+    (complaint?.msme_id && complaint.msme_id === workspace.msme.id) ||
+      (complaint?.provider_profile_id && complaint.provider_profile_id === workspace.provider.id)
+  );
   console.info("[complaints] msme_workspace_ownership_check", {
     complaintId,
+    complaintMsmeId: complaint?.msme_id ?? null,
+    workspaceMsmeId: workspace.msme.id,
     providerProfileId: complaint?.provider_profile_id ?? null,
     workspaceProviderId: workspace.provider.id,
     ownsComplaint,
@@ -89,7 +94,7 @@ export default async function MsmeComplaintDetailPage({
     .from("complaints")
     .select("*")
     .eq("id", complaintId)
-    .or(`provider_profile_id.eq.${workspace.provider.id},provider_id.eq.${workspace.provider.id}`)
+    .eq("msme_id", workspace.msme.id)
     .maybeSingle();
 
   if (!complaint) return <section className="rounded-xl border bg-white p-6">Complaint not found for this provider workspace.</section>;
