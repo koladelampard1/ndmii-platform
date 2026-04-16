@@ -5,6 +5,7 @@ import { resolveProviderPublicContext } from "@/lib/data/provider-profile-resolv
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_EVIDENCE_FILE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_EVIDENCE_BUCKET = "complaint-evidence";
 const ALLOWED_EVIDENCE_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "doc", "docx"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -18,6 +19,44 @@ const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
 function extractFileExtension(filename: string) {
   const extension = filename.split(".").pop()?.toLowerCase();
   return extension ?? "";
+}
+
+function resolveEvidenceBucketName() {
+  return (
+    process.env.SUPABASE_COMPLAINT_EVIDENCE_BUCKET ||
+    process.env.NEXT_PUBLIC_SUPABASE_COMPLAINT_EVIDENCE_BUCKET ||
+    DEFAULT_EVIDENCE_BUCKET
+  );
+}
+
+function sanitizeEvidenceFileName(filename: string) {
+  const sanitized = filename.replace(/[^a-zA-Z0-9_.-]/g, "_").replace(/_+/g, "_");
+  const trimmed = sanitized.replace(/^[_./-]+/, "");
+  return trimmed || "evidence-file";
+}
+
+function toStorageErrorLog(error: {
+  message: string;
+  name: string;
+  statusCode?: string | number;
+}) {
+  const storageError = error as {
+    message: string;
+    name: string;
+    statusCode?: string | number;
+    details?: string;
+    hint?: string;
+    error?: string;
+  };
+
+  return {
+    message: storageError.message,
+    name: storageError.name ?? null,
+    statusCode: storageError.statusCode ?? null,
+    details: storageError.details ?? null,
+    hint: storageError.hint ?? null,
+    error: storageError.error ?? null,
+  };
 }
 
 function isEvidenceFileAllowed(file: File) {
@@ -208,21 +247,58 @@ export async function POST(request: Request) {
     let evidenceAttachmentMetadata: Record<string, unknown> | null = null;
 
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
-      const evidenceBucket = process.env.SUPABASE_COMPLAINT_EVIDENCE_BUCKET || "complaint-evidence";
-      const safeFileName = evidenceAttachment.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const evidenceBucket = resolveEvidenceBucketName();
+      const safeFileName = sanitizeEvidenceFileName(evidenceAttachment.name);
       const storagePath = `${resolvedInternalMsmeUuid}/${resolvedProviderId}/${Date.now()}-${safeFileName}`;
-      const fileBuffer = Buffer.from(await evidenceAttachment.arrayBuffer());
+      const contentType = evidenceAttachment.type || "application/octet-stream";
+      const fileBytes = new Uint8Array(await evidenceAttachment.arrayBuffer());
+
+      const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(evidenceBucket);
+      if (bucketLookupError) {
+        console.error("[complaint-submit][evidence_bucket_lookup_error]", {
+          bucket: evidenceBucket,
+          error: toStorageErrorLog(bucketLookupError),
+        });
+      }
+
+      if (!existingBucket) {
+        const { data: createdBucket, error: createBucketError } = await supabase.storage.createBucket(evidenceBucket, {
+          public: false,
+          fileSizeLimit: `${MAX_EVIDENCE_FILE_BYTES}`,
+          allowedMimeTypes: Array.from(ALLOWED_EVIDENCE_MIME_TYPES),
+        });
+
+        if (createBucketError) {
+          console.error("[complaint-submit][evidence_bucket_create_error]", {
+            bucket: evidenceBucket,
+            error: toStorageErrorLog(createBucketError),
+          });
+          throw new Error(`[complaint-submit] evidence_bucket_prepare_failed: ${createBucketError.message}`);
+        }
+
+        console.info("[complaint-submit][evidence_bucket_created]", {
+          bucket: evidenceBucket,
+          id: createdBucket?.name ?? null,
+        });
+      } else {
+        console.info("[complaint-submit][evidence_bucket_ready]", {
+          bucket: evidenceBucket,
+          id: existingBucket.name,
+        });
+      }
 
       console.info("[complaint-submit][file_metadata]", {
-        name: evidenceAttachment.name,
-        size: evidenceAttachment.size,
-        type: evidenceAttachment.type,
+        originalName: evidenceAttachment.name,
+        sanitizedFileName: safeFileName,
+        mimeType: evidenceAttachment.type || null,
+        contentType,
+        fileSizeBytes: evidenceAttachment.size,
         bucket: evidenceBucket,
         storagePath,
       });
 
-      const { error: uploadError } = await supabase.storage.from(evidenceBucket).upload(storagePath, fileBuffer, {
-        contentType: evidenceAttachment.type || "application/octet-stream",
+      const { error: uploadError } = await supabase.storage.from(evidenceBucket).upload(storagePath, fileBytes, {
+        contentType,
         upsert: false,
       });
 
@@ -230,11 +306,9 @@ export async function POST(request: Request) {
         ok: !uploadError,
         bucket: evidenceBucket,
         storagePath,
+        contentType,
         error: uploadError
-          ? {
-              message: uploadError.message,
-              name: uploadError.name,
-            }
+          ? toStorageErrorLog(uploadError)
           : null,
       });
 
