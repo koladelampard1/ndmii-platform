@@ -15,12 +15,6 @@ const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
-function buildProviderRedirect(request: Request, providerSlug: string, status: string, key = "reported_error") {
-  const redirectUrl = new URL(`/providers/${providerSlug}`, request.url);
-  redirectUrl.searchParams.set(key, status);
-  return NextResponse.redirect(redirectUrl, { status: 303 });
-}
-
 function extractFileExtension(filename: string) {
   const extension = filename.split(".").pop()?.toLowerCase();
   return extension ?? "";
@@ -53,7 +47,10 @@ export async function POST(request: Request) {
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
 
   if (!providerPathSegment) {
-    return NextResponse.redirect(new URL("/search?complaint=missing_provider", request.url), { status: 303 });
+    return NextResponse.json(
+      { ok: false, code: "missing_provider", message: "Provider route segment is required." },
+      { status: 400 }
+    );
   }
 
   const complainant_name = String(formData.get("full_name") ?? "").trim();
@@ -91,15 +88,28 @@ export async function POST(request: Request) {
   });
 
   if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
-    return buildProviderRedirect(request, providerPathSegment, "missing_fields");
+    return NextResponse.json(
+      { ok: false, code: "missing_fields", message: "Please complete all required complaint fields." },
+      { status: 400 }
+    );
   }
 
   if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
     if (evidenceAttachment.size > MAX_EVIDENCE_FILE_BYTES) {
-      return buildProviderRedirect(request, providerPathSegment, "file_too_large");
+      return NextResponse.json(
+        { ok: false, code: "file_too_large", message: "Evidence file is too large. Maximum allowed size is 10 MB." },
+        { status: 400 }
+      );
     }
     if (!isEvidenceFileAllowed(evidenceAttachment)) {
-      return buildProviderRedirect(request, providerPathSegment, "unsupported_file_type");
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "unsupported_file_type",
+          message: "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX.",
+        },
+        { status: 400 }
+      );
     }
   }
 
@@ -120,7 +130,10 @@ export async function POST(request: Request) {
     });
 
     if (!providerContext.provider_profile_id) {
-      return buildProviderRedirect(request, providerPathSegment, "provider_not_found");
+      return NextResponse.json(
+        { ok: false, code: "provider_not_found", message: "Provider profile could not be resolved." },
+        { status: 404 }
+      );
     }
 
     const resolvedProviderId = providerContext.provider_profile_id;
@@ -274,14 +287,18 @@ export async function POST(request: Request) {
       revalidatePath(`/providers/${canonicalSlug}`);
     }
 
-    const redirectUrl = new URL(`/providers/${canonicalSlug}`, request.url);
-    redirectUrl.searchParams.set("notice", "complaint_submitted");
-    return NextResponse.redirect(redirectUrl, { status: 303 });
+    return NextResponse.json({
+      ok: true,
+      redirectPath: `/providers/${canonicalSlug}?notice=complaint_submitted`,
+    });
   } catch (error) {
     console.error("[complaint-submit][submit_pipeline_error]", {
       providerPathSegment,
       error,
     });
-    return buildProviderRedirect(request, providerPathSegment, "submit_failed");
+    return NextResponse.json(
+      { ok: false, code: "submit_failed", message: "We could not submit your complaint right now. Please retry." },
+      { status: 500 }
+    );
   }
 }

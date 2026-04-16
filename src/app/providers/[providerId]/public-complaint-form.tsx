@@ -23,6 +23,7 @@ export function PublicComplaintForm({
         event.preventDefault();
         setClientError(null);
         setIsSubmitting(true);
+        console.info("public-complaint submit path = api-route");
 
         try {
           const form = event.currentTarget;
@@ -32,16 +33,21 @@ export function PublicComplaintForm({
             body: formData,
           });
 
-          const redirectedTo = response.url;
-          if (!redirectedTo) {
-            throw new Error("submit_failed");
+          const result = (await response.json()) as {
+            ok?: boolean;
+            redirectPath?: string;
+            message?: string;
+          };
+
+          if (!response.ok || !result.ok || !result.redirectPath) {
+            throw new Error(result.message ?? "submit_failed");
           }
 
-          const redirectUrl = new URL(redirectedTo);
-          router.push(`${redirectUrl.pathname}${redirectUrl.search}`);
+          console.info("public-complaint submit success = api-route");
+          router.push(result.redirectPath);
           router.refresh();
         } catch (error) {
-          console.error("[public-complaint][submit_failed]", error);
+          console.error("public-complaint submit failure = api-route", error);
           setClientError("We could not submit your complaint right now. Please retry.");
         } finally {
           setIsSubmitting(false);
