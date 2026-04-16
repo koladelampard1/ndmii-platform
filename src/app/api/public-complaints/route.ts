@@ -18,7 +18,7 @@ const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
 function buildProviderRedirect(request: Request, providerSlug: string, status: string, key = "reported_error") {
   const redirectUrl = new URL(`/providers/${providerSlug}`, request.url);
   redirectUrl.searchParams.set(key, status);
-  return NextResponse.redirect(redirectUrl);
+  return NextResponse.redirect(redirectUrl, { status: 303 });
 }
 
 function extractFileExtension(filename: string) {
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
 
   if (!providerPathSegment) {
-    return NextResponse.redirect(new URL("/search?complaint=missing_provider", request.url));
+    return NextResponse.redirect(new URL("/search?complaint=missing_provider", request.url), { status: 303 });
   }
 
   const complainant_name = String(formData.get("full_name") ?? "").trim();
@@ -276,7 +276,7 @@ export async function POST(request: Request) {
 
     const redirectUrl = new URL(`/providers/${canonicalSlug}`, request.url);
     redirectUrl.searchParams.set("notice", "complaint_submitted");
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(redirectUrl, { status: 303 });
   } catch (error) {
     console.error("[complaint-submit][submit_pipeline_error]", {
       providerPathSegment,
