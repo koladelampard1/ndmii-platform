@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { submitPublicComplaint } from "./actions";
-import { uploadPublicComplaintEvidence } from "@/lib/complaints/public-complaint-evidence-upload";
 
 export function PublicComplaintForm({
   providerSlug,
@@ -17,7 +15,6 @@ export function PublicComplaintForm({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientError, setClientError] = useState<string | null>(null);
-  const [uploadWarning, setUploadWarning] = useState<string | null>(null);
 
   return (
     <form
@@ -25,75 +22,27 @@ export function PublicComplaintForm({
       onSubmit={async (event) => {
         event.preventDefault();
         setClientError(null);
-        setUploadWarning(null);
         setIsSubmitting(true);
 
         try {
           const form = event.currentTarget;
           const formData = new FormData(form);
-          const evidenceFile = formData.get("evidence_attachment");
-
-          let uploadResult: Awaited<ReturnType<typeof uploadPublicComplaintEvidence>> | null = null;
-
-          if (evidenceFile instanceof File && evidenceFile.size > 0) {
-            try {
-              uploadResult = await uploadPublicComplaintEvidence({
-                file: evidenceFile,
-                providerProfileId,
-                providerMsmePublicId: providerMsmeId,
-              });
-            } catch (error) {
-              if (error instanceof Error && (error.message === "file_too_large" || error.message === "unsupported_file_type")) {
-                throw error;
-              }
-              console.error("[public-complaint][evidence_upload_failed_optional]", {
-                providerSlug,
-                providerProfileId,
-                providerMsmeId,
-                fileName: evidenceFile.name,
-                fileSize: evidenceFile.size,
-                fileType: evidenceFile.type,
-                trace: error instanceof Error ? error.message : "unknown_evidence_upload_failure",
-                error,
-              });
-              setUploadWarning("Evidence upload failed, but your complaint can still be submitted without attachment.");
-              uploadResult = null;
-            }
-          }
-
-          const result = await submitPublicComplaint({
-            provider_path_segment: providerSlug,
-            provider_profile_id: providerProfileId,
-            provider_msme_public_id: providerMsmeId,
-            provider_slug: providerSlug,
-            full_name: String(formData.get("full_name") ?? ""),
-            email: String(formData.get("email") ?? ""),
-            phone: String(formData.get("phone") ?? ""),
-            preferred_contact_method: String(formData.get("preferred_contact_method") ?? "email"),
-            complaint_type: String(formData.get("complaint_type") ?? ""),
-            severity: String(formData.get("severity") ?? "medium"),
-            short_summary: String(formData.get("short_summary") ?? ""),
-            description: String(formData.get("description") ?? ""),
-            related_reference: String(formData.get("related_reference") ?? ""),
-            consent_confirmation: String(formData.get("consent_confirmation") ?? ""),
-            evidence_url: uploadResult?.publicUrl,
-            evidence_storage_path: uploadResult?.storagePath,
-            evidence_bucket: uploadResult?.bucket,
-            evidence_original_name: uploadResult?.originalName,
-            evidence_size_bytes: uploadResult?.sizeBytes,
-            evidence_mime_type: uploadResult?.mimeType ?? undefined,
+          const response = await fetch("/api/public-complaints", {
+            method: "POST",
+            body: formData,
           });
 
-          router.push(result.redirectPath);
+          const redirectedTo = response.url;
+          if (!redirectedTo) {
+            throw new Error("submit_failed");
+          }
+
+          const redirectUrl = new URL(redirectedTo);
+          router.push(`${redirectUrl.pathname}${redirectUrl.search}`);
           router.refresh();
         } catch (error) {
-          if (error instanceof Error && error.message === "file_too_large") {
-            setClientError("Evidence file is too large. Maximum allowed size is 10 MB.");
-          } else if (error instanceof Error && error.message === "unsupported_file_type") {
-            setClientError("Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX.");
-          } else {
-            setClientError("We could not submit your complaint right now. Please retry.");
-          }
+          console.error("[public-complaint][submit_failed]", error);
+          setClientError("We could not submit your complaint right now. Please retry.");
         } finally {
           setIsSubmitting(false);
         }
@@ -141,7 +90,6 @@ export function PublicComplaintForm({
         <span>I confirm that the information provided is accurate and may be used for complaint investigation and case management.</span>
       </label>
       {clientError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{clientError}</p>}
-      {uploadWarning && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{uploadWarning}</p>}
       <button
         type="submit"
         disabled={isSubmitting}

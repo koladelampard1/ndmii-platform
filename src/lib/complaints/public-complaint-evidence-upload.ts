@@ -21,7 +21,23 @@ function extractFileExtension(filename: string) {
 function isAllowedEvidenceFile(file: File) {
   const extension = extractFileExtension(file.name);
   const mimeType = (file.type || "").toLowerCase();
-  return ALLOWED_EVIDENCE_EXTENSIONS.has(extension) && ALLOWED_EVIDENCE_MIME_TYPES.has(mimeType);
+  if (!ALLOWED_EVIDENCE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  if (!mimeType) {
+    return true;
+  }
+
+  if (ALLOWED_EVIDENCE_MIME_TYPES.has(mimeType)) {
+    return true;
+  }
+
+  if ((extension === "jpg" || extension === "jpeg") && mimeType === "image/pjpeg") {
+    return true;
+  }
+
+  return false;
 }
 
 export function validatePublicComplaintEvidenceFile(file: File) {
