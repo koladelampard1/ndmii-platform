@@ -244,7 +244,13 @@ export async function POST(request: Request) {
       );
     }
 
-    let evidenceAttachmentMetadata: Record<string, unknown> | null = null;
+    let evidenceAttachmentRecord: {
+      bucket: string;
+      storagePath: string;
+      originalName: string;
+      sizeBytes: number;
+      mimeType: string | null;
+    } | null = null;
 
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
       const evidenceBucket = resolveEvidenceBucketName();
@@ -316,13 +322,12 @@ export async function POST(request: Request) {
         throw new Error(`[complaint-submit] evidence_upload_failed: ${uploadError.message}`);
       }
 
-      evidenceAttachmentMetadata = {
-        original_name: evidenceAttachment.name,
-        size_bytes: evidenceAttachment.size,
-        mime_type: evidenceAttachment.type || null,
+      evidenceAttachmentRecord = {
+        originalName: evidenceAttachment.name,
+        sizeBytes: evidenceAttachment.size,
+        mimeType: evidenceAttachment.type || null,
         bucket: evidenceBucket,
-        storage_path: storagePath,
-        upload_status: "uploaded",
+        storagePath,
       };
     }
 
@@ -341,18 +346,6 @@ export async function POST(request: Request) {
       summary,
       priority: normalizedPriority,
       severity: normalizedPriority,
-      metadata: {
-        provider_public_slug: providerPublicSlug,
-        provider_public_msme_code: providerPublicMsmeId,
-        quote_invoice_order_reference: related_reference || null,
-        complaint_contact: {
-          full_name: complainant_name,
-          email: complainant_email || null,
-          phone: complainant_phone || null,
-          preferred_contact_method,
-        },
-        evidence_attachment: evidenceAttachmentMetadata,
-      },
       state: null,
       sector: null,
     };
@@ -379,6 +372,32 @@ export async function POST(request: Request) {
       throw new Error(
         `[complaint-submit] complaint_insert_failed: ${complaintInsertError?.message ?? "Unknown insert error"}`
       );
+    }
+
+    if (evidenceAttachmentRecord) {
+      const attachmentUrl = `supabase://${evidenceAttachmentRecord.bucket}/${evidenceAttachmentRecord.storagePath}`;
+      const { error: attachmentInsertError } = await supabase.from("complaint_attachments").insert({
+        complaint_id: complaintRow.id,
+        file_url: attachmentUrl,
+        file_name: evidenceAttachmentRecord.originalName,
+        visibility: "shared",
+      });
+
+      console.info("[complaint-submit][attachment_insert_result]", {
+        ok: !attachmentInsertError,
+        complaintId: complaintRow.id,
+        attachmentUrl,
+        fileName: evidenceAttachmentRecord.originalName,
+        fileSizeBytes: evidenceAttachmentRecord.sizeBytes,
+        mimeType: evidenceAttachmentRecord.mimeType,
+        error: attachmentInsertError
+          ? {
+              message: attachmentInsertError.message,
+              details: attachmentInsertError.details,
+              hint: attachmentInsertError.hint,
+            }
+          : null,
+      });
     }
 
     revalidatePath(`/providers/${providerPathSegment}`);
