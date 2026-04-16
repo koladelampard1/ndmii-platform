@@ -5,11 +5,24 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 export default async function MsmeComplaintsPage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const loggedInMsmeId = workspace.msme.id;
+  const loggedInPublicMsmeId = workspace.msme.msme_id;
+  const loggedInProviderId = workspace.provider.id;
+  const loggedInAssociationId = null;
+  const filterBeingUsed = "msme_id";
+
+  console.log("[msme-complaints][query-context]", {
+    loggedInMsmeId,
+    loggedInPublicMsmeId,
+    loggedInProviderId,
+    loggedInAssociationId,
+    filterBeingUsed,
+  });
 
   const { data: complaints } = await supabase
     .from("complaints")
     .select("id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
-    .or(`provider_profile_id.eq.${workspace.provider.id},provider_id.eq.${workspace.provider.id}`)
+    .eq("msme_id", loggedInMsmeId)
     .order("created_at", { ascending: false })
     .limit(50);
 
