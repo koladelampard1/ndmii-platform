@@ -1,42 +1,34 @@
 import Link from "next/link";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MsmeComplaintsPage() {
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const loggedInMsmeId = workspace.msme.id;
   const loggedInPublicMsmeId = workspace.msme.msme_id;
   const loggedInProviderId = workspace.provider.id;
-  const loggedInAssociationId = null;
   const filterBeingUsed = "msme_id";
-  const extraFiltersApplied: string[] = [];
 
-  console.log("[msme-complaints][query-context]", {
+  console.log("[provider-complaints][query-context]", {
     loggedInMsmeId,
-    loggedInPublicMsmeId,
     loggedInProviderId,
-    loggedInAssociationId,
+    loggedInPublicMsmeId,
     filterBeingUsed,
-  });
-
-  console.log("[msme-complaints][final-query]", {
-    filterField: "msme_id",
-    filterValue: loggedInMsmeId,
-    extraFiltersApplied,
   });
 
   const { data: rows } = await supabase
     .from("complaints")
-    .select("id,msme_id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
+    .select("id,msme_id,provider_id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
     .eq("msme_id", loggedInMsmeId)
     .order("created_at", { ascending: false })
     .limit(50);
 
-  console.log("[msme-complaints][result-summary]", {
-    rowCount: rows?.length ?? 0,
+  console.log("[provider-complaints][query-results]", {
+    count: rows?.length ?? 0,
     complaintIds: (rows ?? []).map((row) => row.id),
     msmeIds: (rows ?? []).map((row) => row.msme_id),
+    providerIds: (rows ?? []).map((row) => row.provider_id),
   });
 
   const complaints = rows;
