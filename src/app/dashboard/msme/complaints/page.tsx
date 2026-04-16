@@ -10,6 +10,7 @@ export default async function MsmeComplaintsPage() {
   const loggedInProviderId = workspace.provider.id;
   const loggedInAssociationId = null;
   const filterBeingUsed = "msme_id";
+  const extraFiltersApplied: string[] = [];
 
   console.log("[msme-complaints][query-context]", {
     loggedInMsmeId,
@@ -19,12 +20,26 @@ export default async function MsmeComplaintsPage() {
     filterBeingUsed,
   });
 
-  const { data: complaints } = await supabase
+  console.log("[msme-complaints][final-query]", {
+    filterField: "msme_id",
+    filterValue: loggedInMsmeId,
+    extraFiltersApplied,
+  });
+
+  const { data: rows } = await supabase
     .from("complaints")
-    .select("id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
+    .select("id,msme_id,complaint_reference,title,summary,priority,status,created_at,complainant_name,reporter_name")
     .eq("msme_id", loggedInMsmeId)
     .order("created_at", { ascending: false })
     .limit(50);
+
+  console.log("[msme-complaints][result-summary]", {
+    rowCount: rows?.length ?? 0,
+    complaintIds: (rows ?? []).map((row) => row.id),
+    msmeIds: (rows ?? []).map((row) => row.msme_id),
+  });
+
+  const complaints = rows;
 
   return (
     <section className="rounded-xl border bg-white p-4">

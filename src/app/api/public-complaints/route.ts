@@ -274,8 +274,10 @@ export async function POST(request: Request) {
       mimeType: string | null;
     } | null = null;
     let warningMessage: string | null = null;
-    const payload = {
+    const insertPayload = {
       msme_id: resolvedInternalMsmeUuid,
+      provider_id: resolvedProviderId,
+      association_id: providerContext.association_id ?? null,
       complaint_type,
       description,
       created_at: new Date().toISOString(),
@@ -284,12 +286,12 @@ export async function POST(request: Request) {
       severity,
     };
 
-    console.log("[complaint-submit][final-insert-payload]", payload);
+    console.log("[complaint-submit][final-insert-payload]", insertPayload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(payload)
-      .select("id")
+      .insert(insertPayload)
+      .select("id,msme_id,provider_id,association_id,status,complaint_type")
       .single();
 
     console.info("[complaint-submit][insert_result]", {
@@ -310,11 +312,20 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("[complaint-submit][inserted_row_actual]", {
+      id: complaintRow?.id ?? null,
+      msme_id: complaintRow?.msme_id ?? null,
+      provider_id: complaintRow?.provider_id ?? null,
+      association_id: complaintRow?.association_id ?? null,
+      status: complaintRow?.status ?? null,
+      complaint_type: complaintRow?.complaint_type ?? null,
+    });
+
     console.log("[complaint-submit][saved-record-linkage]", {
       complaintId: complaintRow.id,
-      savedMsmeId: payload.msme_id,
-      savedProviderId: (payload as Record<string, string | null>).provider_id ?? null,
-      savedAssociationId: (payload as Record<string, string | null>).association_id ?? null,
+      savedMsmeId: insertPayload.msme_id,
+      savedProviderId: insertPayload.provider_id ?? null,
+      savedAssociationId: insertPayload.association_id ?? null,
     });
 
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
