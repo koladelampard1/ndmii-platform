@@ -4,7 +4,7 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderPublicContext } from "@/lib/data/provider-profile-resolver";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MAX_EVIDENCE_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_EVIDENCE_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EVIDENCE_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "doc", "docx"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -29,7 +29,23 @@ function extractFileExtension(filename: string) {
 function isEvidenceFileAllowed(file: File) {
   const extension = extractFileExtension(file.name);
   const mimeType = (file.type || "").toLowerCase();
-  return ALLOWED_EVIDENCE_EXTENSIONS.has(extension) && ALLOWED_EVIDENCE_MIME_TYPES.has(mimeType);
+  if (!ALLOWED_EVIDENCE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  if (!mimeType) {
+    return true;
+  }
+
+  if (ALLOWED_EVIDENCE_MIME_TYPES.has(mimeType)) {
+    return true;
+  }
+
+  if ((extension === "jpg" || extension === "jpeg") && mimeType === "image/pjpeg") {
+    return true;
+  }
+
+  return false;
 }
 
 export async function POST(request: Request) {
