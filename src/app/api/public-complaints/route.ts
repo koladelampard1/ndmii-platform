@@ -141,7 +141,32 @@ export async function POST(request: Request) {
     const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
     const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
 
-    let resolvedInternalMsmeUuid = providerContext.provider_profile_msme_id;
+    let resolvedInternalMsmeUuid = UUID_PATTERN.test(providerContext.provider_profile_msme_id ?? "")
+      ? providerContext.provider_profile_msme_id
+      : null;
+
+    if (!resolvedInternalMsmeUuid) {
+      const { data: providerProfileRow, error: providerProfileLookupError } = await supabase
+        .from("provider_profiles")
+        .select("msme_id")
+        .eq("id", resolvedProviderId)
+        .maybeSingle();
+
+      if (providerProfileLookupError) {
+        console.error("[complaint-submit][provider_profile_lookup_error]", {
+          providerPathSegment,
+          resolvedProviderId,
+          message: providerProfileLookupError.message,
+          details: providerProfileLookupError.details,
+          hint: providerProfileLookupError.hint,
+        });
+      }
+
+      const providerProfileMsmeId = providerProfileRow?.msme_id ?? null;
+      if (UUID_PATTERN.test(providerProfileMsmeId ?? "")) {
+        resolvedInternalMsmeUuid = providerProfileMsmeId;
+      }
+    }
 
     if (!resolvedInternalMsmeUuid && providerPublicMsmeId) {
       if (UUID_PATTERN.test(providerPublicMsmeId)) {
