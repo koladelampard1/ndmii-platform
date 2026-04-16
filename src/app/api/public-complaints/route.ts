@@ -281,13 +281,20 @@ export async function POST(request: Request) {
       sector: null,
     };
 
+    delete payloadCandidates.priority;
+    delete payloadCandidates.metadata;
+    delete payloadCandidates.category;
+
     const payload = Object.fromEntries(
       Object.entries(payloadCandidates).filter(([key]) => complaintColumnSet.has(key))
     );
 
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[complaint-submit][insert_payload_keys]", Object.keys(payload).sort());
+    if ("priority" in payload) {
+      throw new Error("priority_still_present_in_payload");
     }
+
+    console.log("[complaint-submit][final-insert-payload-keys]", Object.keys(payload));
+    console.log("[complaint-submit][final-insert-payload]", payload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
