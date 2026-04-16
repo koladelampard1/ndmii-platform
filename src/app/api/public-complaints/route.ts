@@ -81,6 +81,30 @@ function isEvidenceFileAllowed(file: File) {
   return false;
 }
 
+function resolveSeverity(formData: FormData) {
+  const rawPriority = String(formData.get("priority") ?? formData.get("urgency") ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (!rawPriority) {
+    return "medium";
+  }
+
+  if (["critical", "high", "urgent"].includes(rawPriority)) {
+    return "high";
+  }
+
+  if (["low", "minor"].includes(rawPriority)) {
+    return "low";
+  }
+
+  if (["medium", "normal", "moderate"].includes(rawPriority)) {
+    return "medium";
+  }
+
+  return "medium";
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
@@ -105,6 +129,7 @@ export async function POST(request: Request) {
   const providerMsmePublicId = String(formData.get("provider_msme_public_id") ?? "").trim();
   const formProviderSlug = String(formData.get("provider_slug") ?? "").trim();
   const evidenceAttachment = formData.get("evidence_attachment");
+  const severity = resolveSeverity(formData);
 
   console.info("[complaint-submit][payload]", {
     providerPathSegment,
@@ -248,58 +273,23 @@ export async function POST(request: Request) {
       sizeBytes: number;
       mimeType: string | null;
     } | null = null;
-    const { data: complaintColumns, error: complaintColumnsError } = await supabase
-      .schema("information_schema")
-      .from("columns")
-      .select("column_name")
-      .eq("table_schema", "public")
-      .eq("table_name", "complaints");
-
-    if (complaintColumnsError || !complaintColumns?.length) {
-      throw new Error(
-        `[complaint-submit] complaints_schema_lookup_failed: ${complaintColumnsError?.message ?? "No complaints columns found"}`
-      );
-    }
-
-    const complaintColumnSet = new Set(complaintColumns.map((row) => row.column_name));
-    const payloadCandidates: Record<string, string | null> = {
+    let warningMessage: string | null = null;
+    const payload = {
       msme_id: resolvedInternalMsmeUuid,
-      provider_profile_id: resolvedProviderId,
-      provider_id: resolvedProviderId,
       complaint_type,
       description,
+      created_at: new Date().toISOString(),
       status: "open",
-      complainant_name,
-      complainant_email: complainant_email || null,
-      complainant_phone: complainant_phone || null,
-      preferred_contact_method,
-      reporter_name: complainant_name,
-      reporter_email: complainant_email || null,
-      title: summary,
       summary,
-      state: null,
-      sector: null,
+      severity,
     };
 
-    delete payloadCandidates.priority;
-    delete payloadCandidates.metadata;
-    delete payloadCandidates.category;
-
-    const payload = Object.fromEntries(
-      Object.entries(payloadCandidates).filter(([key]) => complaintColumnSet.has(key))
-    );
-
-    if ("priority" in payload) {
-      throw new Error("priority_still_present_in_payload");
-    }
-
-    console.log("[complaint-submit][final-insert-payload-keys]", Object.keys(payload));
     console.log("[complaint-submit][final-insert-payload]", payload);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
       .insert(payload)
-      .select()
+      .select("id")
       .single();
 
     console.info("[complaint-submit][insert_result]", {
@@ -375,6 +365,7 @@ export async function POST(request: Request) {
           storagePath,
         };
       } catch (evidenceError) {
+        warningMessage = "Complaint saved, but evidence upload failed.";
         console.error("[complaint-submit][evidence_non_blocking_error]", {
           complaintId: complaintRow.id,
           error: evidenceError,
@@ -406,6 +397,10 @@ export async function POST(request: Request) {
             }
           : null,
       });
+
+      if (attachmentInsertError) {
+        warningMessage = "Complaint saved, but evidence attachment could not be linked.";
+      }
     }
 
     revalidatePath(`/providers/${providerPathSegment}`);
@@ -416,6 +411,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       redirectPath: `/providers/${canonicalSlug}?notice=complaint_submitted`,
+      warning: warningMessage,
     });
   } catch (error) {
     console.error("[complaint-submit][submit_pipeline_error]", {
