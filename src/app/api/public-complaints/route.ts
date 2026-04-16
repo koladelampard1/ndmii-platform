@@ -287,7 +287,7 @@ export async function POST(request: Request) {
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
       .insert(insertPayload)
-      .select("id,msme_id,status,complaint_type")
+      .select("id,msme_id,provider_id,association_id,status,complaint_type")
       .single();
 
     console.info("[complaint-submit][insert_result]", {
@@ -311,8 +311,8 @@ export async function POST(request: Request) {
     console.log("[complaint-submit][inserted_row_actual]", {
       id: complaintRow?.id ?? null,
       msme_id: complaintRow?.msme_id ?? null,
-      status: complaintRow?.status ?? null,
-      complaint_type: complaintRow?.complaint_type ?? null,
+      provider_id: complaintRow?.provider_id ?? null,
+      association_id: complaintRow?.association_id ?? null,
     });
 
     console.log("[complaint-submit][saved-record-linkage]", {
