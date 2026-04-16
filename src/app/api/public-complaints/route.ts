@@ -274,7 +274,7 @@ export async function POST(request: Request) {
       mimeType: string | null;
     } | null = null;
     let warningMessage: string | null = null;
-    const insertPayload = {
+    const complaintInsertPayload = {
       msme_id: resolvedInternalMsmeUuid,
       complaint_type,
       description,
@@ -282,12 +282,14 @@ export async function POST(request: Request) {
       status: "open",
     };
 
-    console.log("[complaint-submit][final-insert-payload-keys]", Object.keys(insertPayload));
+    console.log("[complaint-submit][actual_insert_payload]", complaintInsertPayload);
+    const postInsertSelectClause = "id,msme_id,association_id,status,complaint_type";
+    console.log("[complaint-submit][post_insert_select_clause]", postInsertSelectClause);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(insertPayload)
-      .select("id,msme_id,provider_id,association_id,status,complaint_type")
+      .insert(complaintInsertPayload)
+      .select(postInsertSelectClause)
       .single();
 
     console.info("[complaint-submit][insert_result]", {
@@ -311,13 +313,12 @@ export async function POST(request: Request) {
     console.log("[complaint-submit][inserted_row_actual]", {
       id: complaintRow?.id ?? null,
       msme_id: complaintRow?.msme_id ?? null,
-      provider_id: complaintRow?.provider_id ?? null,
       association_id: complaintRow?.association_id ?? null,
     });
 
     console.log("[complaint-submit][saved-record-linkage]", {
       complaintId: complaintRow.id,
-      savedMsmeId: insertPayload.msme_id,
+      savedMsmeId: complaintInsertPayload.msme_id,
     });
 
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
