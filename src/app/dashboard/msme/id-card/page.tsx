@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/msme/print-button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { PassportPhoto } from "@/components/msme/passport-photo";
 
 export default async function IdCardPage() {
   const supabase = await createServerSupabaseClient();
@@ -58,13 +59,13 @@ export default async function IdCardPage() {
             <div className="min-w-0 space-y-5">
               <div className="grid gap-5 sm:grid-cols-[180px_1fr]">
                 <div className="h-52 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                  {profile.passport_photo_url ? (
-                    <img src={profile.passport_photo_url} alt="Passport" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center px-4 text-center text-xs font-medium text-slate-500">
-                      Passport photo unavailable
-                    </div>
-                  )}
+                  <PassportPhoto
+                    src={profile.passport_photo_url}
+                    alt="Passport"
+                    className="h-full w-full object-cover"
+                    placeholderClassName="flex h-full items-center justify-center px-4 text-center text-xs font-medium text-slate-500"
+                    placeholderText="Passport photo unavailable"
+                  />
                 </div>
 
                 <div className="min-w-0 space-y-4">

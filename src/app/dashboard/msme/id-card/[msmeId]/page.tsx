@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { PassportPhoto } from "@/components/msme/passport-photo";
 
 export default async function IdCardDetailPage({ params }: { params: Promise<{ msmeId: string }> }) {
   const { msmeId } = await params;
@@ -36,11 +37,13 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
       <div className="rounded-2xl border bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white shadow-xl">
         <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Federal Republic of Nigeria • NDMII</p>
         <div className="mt-4 flex items-start gap-4">
-          {profile.passport_photo_url ? (
-            <img src={profile.passport_photo_url} alt="Passport" className="h-24 w-24 rounded-xl border border-white/40 object-cover" />
-          ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/40 text-xs">No photo</div>
-          )}
+          <PassportPhoto
+            src={profile.passport_photo_url}
+            alt="Passport"
+            className="h-24 w-24 rounded-xl border border-white/40 object-cover"
+            placeholderClassName="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/40 text-xs"
+            placeholderText="No photo"
+          />
           <div>
             <h2 className="text-2xl font-bold">{profile.business_name}</h2>
             <p className="text-sm text-slate-200">Owner/Contact: {profile.owner_name}</p>

@@ -42,6 +42,14 @@ async function saveOnboarding(formData: FormData) {
   const { checks, overallStatus } = await runKycSimulation(kycPayload);
   const byProvider = new Map(checks.map((check) => [check.provider, check]));
 
+  const { data: existing } = await supabase
+    .from("msmes")
+    .select("id,msme_id,passport_photo_url")
+    .eq("created_by", appUserId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const basePayload = {
     business_name: businessName,
     owner_name: ownerName,
@@ -56,28 +64,20 @@ async function saveOnboarding(formData: FormData) {
     bvn: kycPayload.BVN,
     cac_number: kycPayload.CAC,
     tin: kycPayload.TIN,
-    passport_photo_url: String(formData.get("passport_photo_data") ?? "") || null,
+    passport_photo_url: String(formData.get("passport_photo_url") ?? "") || existing?.passport_photo_url || null,
     association_id: String(formData.get("association_id") || "") || null,
     verification_status: intent === "submit" ? "pending_review" : "draft",
     review_status: intent === "submit" ? "pending_review" : "draft",
     created_by: appUserId,
   };
 
-  const { data: existing } = await supabase
-    .from("msmes")
-    .select("id,msme_id")
-    .eq("created_by", appUserId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   const generatedMsmeId = existing?.msme_id ?? generateMsmeId(state);
   const { data, error } = existing?.id
-    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id").single()
+    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id,passport_photo_url").single()
     : await supabase
         .from("msmes")
         .insert({ msme_id: generatedMsmeId, ...basePayload })
-        .select("id,msme_id")
+        .select("id,msme_id,passport_photo_url")
         .single();
 
   if (error || !data) {
@@ -184,6 +184,14 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   const { data: associations } = await supabase.from("associations").select("id,name").order("name");
   const ctx = await getCurrentUserContext();
 
+  const { data: latestMsme } = await supabase
+    .from("msmes")
+    .select("id,passport_photo_url")
+    .eq("created_by", ctx.appUserId ?? "")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   let latestValidation: any = null;
   if (ctx.linkedMsmeId || ctx.role === "admin") {
     const query = supabase
@@ -217,7 +225,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
         </article>
       )}
       {params.error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{params.error}</div>}
-      <OnboardingWizard associations={associations ?? []} onSave={saveOnboarding} />
+      <OnboardingWizard associations={associations ?? []} onSave={saveOnboarding} initialPassportPhotoUrl={latestMsme?.passport_photo_url ?? null} />
     </section>
   );
 }

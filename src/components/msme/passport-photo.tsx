@@ -1,0 +1,21 @@
+"use client";
+
+import { useState } from "react";
+
+type PassportPhotoProps = {
+  src?: string | null;
+  alt: string;
+  className: string;
+  placeholderClassName: string;
+  placeholderText: string;
+};
+
+export function PassportPhoto({ src, alt, className, placeholderClassName, placeholderText }: PassportPhotoProps) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return <div className={placeholderClassName}>{placeholderText}</div>;
+  }
+
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+}
