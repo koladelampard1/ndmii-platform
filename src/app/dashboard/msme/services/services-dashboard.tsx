@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import {
   ArrowUpDown,
+  CheckCircle2,
   Eye,
   MessageSquare,
   MoreVertical,
   Plus,
   Search,
-  Sparkles,
   Star,
   Store,
   Tags,
@@ -142,24 +142,25 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
     () => [...services].sort((a, b) => Number(b.quote_requests_count ?? 0) - Number(a.quote_requests_count ?? 0))[0],
     [services],
   );
+  const hasPerformanceData = Boolean(mostViewed?.title || mostRequested?.title || highestPriced?.title);
 
   return (
-    <section className="space-y-6 pb-2">
+    <section className="space-y-8 pb-4">
       {saved && (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800">
+        <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800">
           Service catalog updated.
         </p>
       )}
 
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Services</h1>
-          <p className="mt-1 text-sm text-slate-600">Manage the services you offer to your customers.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">My Services</h1>
+          <p className="mt-2 text-base text-slate-600">Manage the services you offer to your customers.</p>
         </div>
         <button
           type="button"
           onClick={() => setShowAddForm((open) => !open)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 sm:self-auto"
         >
           <Plus className="h-4 w-4" />
           Add New Service
@@ -167,11 +168,11 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
       </header>
 
       {showAddForm && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="mb-4 text-base font-semibold text-slate-900">Add New Service</h2>
           <form action={serviceAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <input type="hidden" name="kind" value="create" />
-            <select name="category" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <select name="category" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
               {uniqueCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
@@ -179,66 +180,66 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
               ))}
               {!uniqueCategories.length && <option value="Professional Services">Professional Services</option>}
             </select>
-            <input name="specialization" placeholder="Specialization" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-            <input name="title" required placeholder="Service title" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            <input name="specialization" placeholder="Specialization" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
+            <input name="title" required placeholder="Service title" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
             <input
               name="short_description"
               required
               placeholder="Short description"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm md:col-span-2 xl:col-span-3"
+              className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm md:col-span-2 xl:col-span-3"
             />
-            <select name="pricing_mode" className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <select name="pricing_mode" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
               <option value="fixed">fixed</option>
               <option value="range">range</option>
               <option value="negotiable">negotiable</option>
             </select>
-            <input name="min_price" type="number" min={0} step="0.01" placeholder="Minimum price" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-            <input name="max_price" type="number" min={0} step="0.01" placeholder="Maximum price" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-            <input name="turnaround_time" placeholder="Turnaround e.g. 5 days" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-            <select name="vat_applicable" className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <input name="min_price" type="number" min={0} step="0.01" placeholder="Minimum price" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
+            <input name="max_price" type="number" min={0} step="0.01" placeholder="Maximum price" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
+            <input name="turnaround_time" placeholder="Turnaround e.g. 5 days" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
+            <select name="vat_applicable" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
               <option value="false">VAT not applicable</option>
               <option value="true">VAT applicable</option>
             </select>
-            <select name="availability_status" className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <select name="availability_status" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
               <option value="available">available</option>
               <option value="limited">limited</option>
               <option value="unavailable">unavailable</option>
             </select>
             <div className="md:col-span-2 xl:col-span-3 flex justify-end">
-              <button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Save Service</button>
+              <button className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Save Service</button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { icon: Store, label: "Total Services", value: services.length, helper: "Active services" },
           { icon: Eye, label: "Total Views", value: totalViews, helper: "This month" },
           { icon: MessageSquare, label: "Quote Requests", value: totalQuotes, helper: "This month" },
           { icon: Star, label: "Avg. Rating", value: avgRating.toFixed(1), helper: "Service ratings" },
         ].map((stat) => (
-          <article key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 inline-flex rounded-full bg-emerald-50 p-2 text-emerald-700">
+          <article key={stat.label} className="flex h-full flex-col rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <div className="mb-4 inline-flex w-fit rounded-full bg-emerald-50 p-2.5 text-emerald-700 ring-1 ring-emerald-100">
               <stat.icon className="h-4 w-4" />
             </div>
-            <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-            <p className="text-sm font-semibold text-slate-700">{stat.label}</p>
-            <p className="text-xs text-slate-500">{stat.helper}</p>
+            <p className="text-3xl font-bold tracking-tight text-slate-950">{stat.value}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">{stat.label}</p>
+            <p className="mt-1 text-xs text-slate-500">{stat.helper}</p>
           </article>
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-10">
-        <div className="space-y-4 xl:col-span-7">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div className="border-b border-slate-200 pb-3">
-              <div className="flex gap-2">
+      <div className="grid gap-6 xl:grid-cols-12">
+        <div className="space-y-5 xl:col-span-8">
+          <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="border-b border-slate-200 pb-4">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setActiveTab("all")}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                    activeTab === "all" ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:text-slate-700"
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    activeTab === "all" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600 hover:text-slate-800"
                   }`}
                 >
                   All Services
@@ -246,8 +247,8 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                 <button
                   type="button"
                   onClick={() => setActiveTab("categories")}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                    activeTab === "categories" ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:text-slate-700"
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    activeTab === "categories" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600 hover:text-slate-800"
                   }`}
                 >
                   Service Categories
@@ -255,21 +256,22 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 sm:p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="relative md:col-span-2 xl:col-span-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search services..."
-                  className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm"
                 />
               </label>
 
               <select
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
               >
                 <option value="all">All Categories</option>
                 {uniqueCategories.map((category) => (
@@ -282,7 +284,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
               >
                 <option value="all">All Status</option>
                 <option value="available">Active</option>
@@ -295,7 +297,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                 <select
                   value={sortBy}
                   onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-                  className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm"
                 >
                   <option value="newest">Sort: Newest</option>
                   <option value="oldest">Sort: Oldest</option>
@@ -304,24 +306,28 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                 </select>
               </label>
             </div>
+            </div>
 
             {activeTab === "categories" ? (
-              <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+              <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
                 Category grouping view will appear here as your services and categories grow.
               </div>
             ) : null}
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-5 space-y-3">
               {!visibleServices.length ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-                  <h3 className="text-lg font-semibold text-slate-900">You have not added any services yet.</h3>
-                  <p className="mt-2 text-sm text-slate-600">
+                <div className="mx-auto flex max-w-xl flex-col items-center rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-6 py-12 text-center shadow-sm">
+                  <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                    <Store className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900">You have not added any services yet</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-600">
                     Add your first service to start appearing in the marketplace and receiving quote requests.
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowAddForm(true)}
-                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                    className="mt-7 inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                   >
                     <Plus className="h-4 w-4" />
                     Add New Service
@@ -331,7 +337,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                 visibleServices.map((service) => {
                   const createdDate = formatDate(service.created_at);
                   return (
-                    <article key={service.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <article key={service.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start gap-4">
                         <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 sm:flex">
                           <Zap className="h-5 w-5" />
@@ -442,33 +448,37 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
           </section>
         </div>
 
-        <aside className="space-y-4 xl:col-span-3">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <aside className="space-y-4 xl:col-span-4">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
               <TrendingUp className="h-4 w-4 text-emerald-700" />
               Service Performance
             </h2>
-            <div className="mt-4 space-y-4 text-sm">
-              <div>
-                <p className="text-slate-500">Most Viewed Service</p>
-                <p className="font-semibold text-slate-900">{mostViewed?.title ?? "No data yet"}</p>
+            {!hasPerformanceData ? (
+              <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">No performance data yet. Add services to start tracking insights.</p>
+            ) : (
+              <div className="mt-4 divide-y divide-slate-100 text-sm">
+                <div className="space-y-1 py-3 first:pt-0">
+                  <p className="text-slate-500">Most Viewed Service</p>
+                  <p className="font-semibold text-slate-900">{mostViewed?.title ?? "No data yet"}</p>
+                </div>
+                <div className="space-y-1 py-3">
+                  <p className="text-slate-500">Most Requested Service</p>
+                  <p className="font-semibold text-slate-900">{mostRequested?.title ?? "No data yet"}</p>
+                </div>
+                <div className="space-y-1 py-3 last:pb-0">
+                  <p className="text-slate-500">Highest Priced Service</p>
+                  <p className="font-semibold text-slate-900">
+                    {highestPriced?.title ? `${highestPriced.title} (${formatCurrency(highestPriced.min_price)})` : "No data yet"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-slate-500">Most Requested Service</p>
-                <p className="font-semibold text-slate-900">{mostRequested?.title ?? "No data yet"}</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Highest Priced Service</p>
-                <p className="font-semibold text-slate-900">
-                  {highestPriced?.title ? `${highestPriced.title} (${formatCurrency(highestPriced.min_price)})` : "No data yet"}
-                </p>
-              </div>
-            </div>
+            )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">Tips to get more customers</h2>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+            <ul className="mt-3 space-y-2.5 text-sm text-slate-700">
               {[
                 "Add clear descriptions and pricing",
                 "Upload relevant photos",
@@ -477,22 +487,22 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                 "Encourage customer reviews",
               ].map((tip) => (
                 <li key={tip} className="flex items-start gap-2">
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
                   <span>{tip}</span>
                 </li>
               ))}
             </ul>
           </section>
 
-          <section className="rounded-2xl bg-emerald-950 p-5 text-white">
+          <section className="rounded-3xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 p-6 text-white shadow-lg shadow-emerald-900/20">
             <h2 className="text-xl font-semibold">Grow Your Business</h2>
-            <p className="mt-2 text-sm text-emerald-100">
+            <p className="mt-2 text-sm leading-relaxed text-emerald-100">
               Add more services to increase your visibility and attract more customers.
             </p>
             <button
               type="button"
               onClick={() => setShowAddForm(true)}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-emerald-900"
+              className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emerald-900"
             >
               Add New Service
               <Plus className="h-4 w-4" />
