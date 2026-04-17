@@ -50,7 +50,7 @@ export default async function LandingPage() {
               Build trust with a government-grade digital MSME ID, then discover trusted providers by category, specialization, and location.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/register" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
+              <Link href="/signup/msme" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
                 Register Your Business
               </Link>
               <Link href="/marketplace" className="inline-flex h-11 items-center justify-center rounded-md border border-white/40 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10">
@@ -272,7 +272,7 @@ export default async function LandingPage() {
             Join the NDMII platform to build digital trust, gain visibility, and connect with verified opportunities nationwide.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/register" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-300">Register now</Link>
+            <Link href="/signup/msme" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-300">Register now</Link>
             <Link href="/verify" className="inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">Verify MSME ID</Link>
           </div>
         </div>

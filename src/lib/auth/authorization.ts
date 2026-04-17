@@ -62,12 +62,16 @@ export function isPublicPath(path: string): boolean {
   return (
     path === "/" ||
     path === "/login" ||
+    path.startsWith("/signup") ||
     path.startsWith("/register") ||
     path.startsWith("/verify") ||
+    path === "/marketplace" ||
+    path.startsWith("/marketplace/") ||
     path === "/search" ||
     path.startsWith("/search?") ||
     path === "/categories" ||
     path.startsWith("/categories/") ||
+    path.startsWith("/provider/") ||
     path.startsWith("/providers/") ||
     path.startsWith("/invoice/") ||
     path === "/access-denied"
