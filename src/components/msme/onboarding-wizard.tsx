@@ -1,7 +1,8 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MAX_PASSPORT_FILE_BYTES, validatePassportPhotoFile } from "@/lib/msme/passport-upload";
 
 const steps = [
   "Business Information",
@@ -15,26 +16,78 @@ const steps = [
 type Props = {
   associations: { id: string; name: string }[];
   onSave: (formData: FormData) => void | Promise<void>;
+  initialPassportPhotoUrl?: string | null;
 };
 
-export function OnboardingWizard({ associations, onSave }: Props) {
+export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl = null }: Props) {
   const [step, setStep] = useState(0);
-  const [passportPreview, setPassportPreview] = useState("");
+  const [passportPreview, setPassportPreview] = useState(initialPassportPhotoUrl ?? "");
+  const [passportPhotoUrl, setPassportPhotoUrl] = useState(initialPassportPhotoUrl ?? "");
+  const [passportError, setPassportError] = useState("");
+  const [isUploadingPassport, setIsUploadingPassport] = useState(false);
   const progress = useMemo(() => Math.round(((step + 1) / steps.length) * 100), [step]);
 
-  const onPassportChange = (event: ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    setPassportPreview(initialPassportPhotoUrl ?? "");
+    setPassportPhotoUrl(initialPassportPhotoUrl ?? "");
+  }, [initialPassportPhotoUrl]);
+
+  useEffect(() => {
+    if (!passportPreview.startsWith("blob:")) return;
+
+    return () => {
+      URL.revokeObjectURL(passportPreview);
+    };
+  }, [passportPreview]);
+
+  const onPassportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => setPassportPreview(typeof reader.result === "string" ? reader.result : "");
-    reader.readAsDataURL(file);
+    setPassportError("");
+    const validationResult = validatePassportPhotoFile(file);
+
+    if (!validationResult.ok) {
+      setPassportPhotoUrl("");
+      setPassportPreview("");
+      setPassportError(validationResult.message);
+      return;
+    }
+
+    const localPreviewUrl = URL.createObjectURL(file);
+    setPassportPreview(localPreviewUrl);
+
+    try {
+      setIsUploadingPassport(true);
+      const uploadFormData = new FormData();
+      uploadFormData.append("passport_photo", file);
+
+      const response = await fetch("/api/msme/passport-photo", {
+        method: "POST",
+        body: uploadFormData,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setPassportPhotoUrl("");
+        setPassportError(String(payload?.error ?? "Failed to upload passport photo. Please try again."));
+        return;
+      }
+
+      setPassportPhotoUrl(String(payload.publicUrl ?? ""));
+      setPassportError("");
+    } catch {
+      setPassportPhotoUrl("");
+      setPassportError("Failed to upload passport photo. Please check your connection and retry.");
+    } finally {
+      setIsUploadingPassport(false);
+    }
   };
 
   return (
     <form action={onSave} className="space-y-6 rounded-xl border bg-white p-6 shadow-sm">
       <input type="hidden" name="currentStep" value={steps[step]} />
-      <input type="hidden" name="passport_photo_data" value={passportPreview} />
+      <input type="hidden" name="passport_photo_url" value={passportPhotoUrl} />
 
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">MSME onboarding wizard</p>
@@ -62,8 +115,18 @@ export function OnboardingWizard({ associations, onSave }: Props) {
             <input name="contact_title" className="rounded border px-3 py-2" placeholder="Designation" />
             <div className="space-y-2 md:col-span-2">
               <label className="block text-xs font-medium uppercase tracking-wide text-slate-600">Passport Photograph</label>
-              <input type="file" accept="image/*" className="rounded border px-3 py-2 text-sm" onChange={onPassportChange} />
-              <p className="text-xs text-slate-500">Optional. A small passport-style photo improves regulator verification and ID card quality.</p>
+              <input
+                type="file"
+                name="passport_photo"
+                accept="image/jpeg,image/png,image/webp"
+                className="rounded border px-3 py-2 text-sm"
+                onChange={onPassportChange}
+              />
+              <p className="text-xs text-slate-500">
+                Optional. Upload JPG, PNG, or WEBP. Maximum size: {Math.floor(MAX_PASSPORT_FILE_BYTES / (1024 * 1024))}MB.
+              </p>
+              {isUploadingPassport && <p className="text-xs text-slate-500">Uploading passport photo…</p>}
+              {passportError && <p className="text-xs text-rose-600">{passportError}</p>}
               {passportPreview && <img src={passportPreview} alt="Passport preview" className="h-20 w-20 rounded-lg border object-cover" />}
             </div>
           </>
@@ -112,8 +175,8 @@ export function OnboardingWizard({ associations, onSave }: Props) {
           </Button>
         </div>
         <div className="space-x-2">
-          <Button name="intent" value="draft" variant="secondary">Save Draft</Button>
-          <Button name="intent" value="submit">Submit Final</Button>
+          <Button name="intent" value="draft" variant="secondary" disabled={isUploadingPassport}>Save Draft</Button>
+          <Button name="intent" value="submit" disabled={isUploadingPassport}>Submit Final</Button>
         </div>
       </div>
     </form>
