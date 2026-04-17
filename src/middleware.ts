@@ -4,7 +4,7 @@ import { canAccessRoute, normalizeUserRole } from "@/lib/auth/authorization";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.includes(".")) {
+  if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.startsWith("/logout") || pathname.includes(".")) {
     return NextResponse.next();
   }
 
