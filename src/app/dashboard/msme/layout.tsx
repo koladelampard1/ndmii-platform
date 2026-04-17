@@ -1,7 +1,17 @@
+"use client";
+
 import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { ProviderWorkspaceNav } from "@/components/msme/provider-workspace-nav";
 
 export default function MsmeWorkspaceLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isWorkspaceHome = pathname === "/dashboard/msme";
+
+  if (isWorkspaceHome) {
+    return <>{children}</>;
+  }
+
   return (
     <section className="space-y-4">
       <header className="rounded-2xl border border-slate-200 bg-gradient-to-r from-indigo-950 to-blue-900 p-5 text-white shadow-sm">
