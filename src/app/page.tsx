@@ -41,13 +41,13 @@ export default async function LandingPage() {
         <div className="grid gap-8 rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#111827_45%,#052e2b_100%)] p-8 text-white md:grid-cols-2 md:items-center md:p-12">
           <div>
             <p className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
-              National verified marketplace
+              National MSME identity + marketplace
             </p>
             <h1 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight md:text-5xl">
-              Find verified artisans, businesses, and MSMEs across Nigeria.
+              Register your MSME identity and find verified businesses across Nigeria.
             </h1>
             <p className="mt-4 max-w-2xl text-sm text-slate-200 md:text-base">
-              Discover trusted providers by category, specialization, and location—powered by the NDMII verification infrastructure.
+              Build trust with a government-grade digital MSME ID, then discover trusted providers by category, specialization, and location.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link href="/register" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
