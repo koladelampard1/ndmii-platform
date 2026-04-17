@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Bell,
   CheckCircle2,
+  ChevronRight,
   CircleHelp,
   ClipboardList,
   Eye,
@@ -31,6 +32,7 @@ type ActivityItem = {
   label: string;
   timestamp: string | null;
   href: string;
+  icon: typeof ClipboardList;
 };
 
 function formatDate(value: string | null) {
@@ -60,14 +62,7 @@ function profileCompletion({
   services: number;
   portfolio: number;
 }) {
-  const checks = [
-    Boolean(displayName?.trim()),
-    Boolean(description?.trim()),
-    Boolean(logoUrl?.trim()),
-    services > 0,
-    portfolio > 0,
-  ];
-
+  const checks = [Boolean(displayName?.trim()), Boolean(description?.trim()), Boolean(logoUrl?.trim()), services > 0, portfolio > 0];
   const completed = checks.filter(Boolean).length;
   return Math.max(20, Math.round((completed / checks.length) * 100));
 }
@@ -171,6 +166,7 @@ export default async function MsmePage() {
           label: "New quote request received",
           timestamp: quoteActivity[0].created_at,
           href: "/dashboard/msme/quotes",
+          icon: ClipboardList,
         }
       : null,
     reviewActivity?.[0]
@@ -179,6 +175,7 @@ export default async function MsmePage() {
           label: "A new customer review was added",
           timestamp: reviewActivity[0].created_at,
           href: "/dashboard/msme/reviews",
+          icon: Star,
         }
       : null,
     invoiceActivity?.[0]
@@ -187,6 +184,7 @@ export default async function MsmePage() {
           label: invoiceActivity[0].status === "paid" ? "An invoice payment was completed" : "An invoice was created",
           timestamp: invoiceActivity[0].created_at,
           href: "/dashboard/msme/invoices",
+          icon: Receipt,
         }
       : null,
   ].filter((item): item is ActivityItem => Boolean(item));
@@ -196,17 +194,18 @@ export default async function MsmePage() {
   const improveVisibilityRoute = safeServiceCount === 0 ? "/dashboard/msme/services" : "/dashboard/msme/profile";
 
   return (
-    <div className="min-h-[calc(100vh-6rem)] bg-slate-100/70">
-      <div className="mx-auto grid max-w-[1600px] gap-4 p-3 lg:grid-cols-[280px,1fr] lg:p-6">
-        <aside className="rounded-3xl bg-emerald-950 p-4 text-emerald-50 shadow-xl lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          <div className="mb-5 border-b border-emerald-900/80 pb-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">NDMII</p>
-            <h2 className="mt-1 text-xl font-semibold">My Workspace</h2>
+    <div className="min-h-screen bg-slate-100">
+      <div className="mx-auto grid w-full max-w-[1700px] gap-5 p-4 lg:grid-cols-[290px,minmax(0,1fr)] lg:p-6">
+        <aside className="flex h-full flex-col rounded-3xl bg-emerald-950 p-5 text-white shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+          <div className="mb-6 border-b border-emerald-900/80 pb-5">
+            <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">NDMII</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight">My Workspace</h2>
           </div>
-          <nav className="space-y-5">
+
+          <nav className="space-y-6">
             {sidebarSections.map((section) => (
               <div key={section.title || "dashboard"}>
-                {section.title ? <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/90">{section.title}</p> : null}
+                {section.title ? <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-300/95">{section.title}</p> : null}
                 <div className="space-y-1.5">
                   {section.links.map((item) => {
                     const Icon = item.icon;
@@ -215,13 +214,11 @@ export default async function MsmePage() {
                       <Link
                         key={item.href}
                         href={item.href}
-                        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                          isDashboard
-                            ? "bg-emerald-800 text-white"
-                            : "text-emerald-100/90 hover:bg-emerald-900/70 hover:text-white"
+                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                          isDashboard ? "bg-emerald-800 font-medium text-white" : "text-emerald-100/95 hover:bg-emerald-900/75 hover:text-white"
                         }`}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-4 w-4 shrink-0" />
                         <span>{item.label}</span>
                       </Link>
                     );
@@ -231,60 +228,61 @@ export default async function MsmePage() {
             ))}
           </nav>
 
-          <div className="mt-6 rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
-            <p className="text-lg font-semibold">Need Help?</p>
-            <p className="mt-1 text-sm text-emerald-100/90">Our support team is ready to assist your MSME dashboard operations.</p>
-            <Link
-              href="/dashboard/msme/settings"
-              className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
-            >
-              Contact Support
-            </Link>
+          <div className="mt-auto pt-6">
+            <div className="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
+              <p className="text-lg font-semibold">Need Help?</p>
+              <p className="mt-1.5 text-sm text-emerald-100/90">Our support team can help you manage your MSME dashboard quickly.</p>
+              <Link
+                href="/dashboard/msme/settings"
+                className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+              >
+                Contact Support
+              </Link>
+            </div>
           </div>
         </aside>
 
-        <main className="space-y-4">
-          <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <h1 className="text-2xl font-semibold text-slate-900">My Business Dashboard</h1>
-            <div className="flex items-center gap-3">
-              <button type="button" className="rounded-full border border-slate-200 p-2 text-slate-600" aria-label="Notifications">
-                <Bell className="h-5 w-5" />
-              </button>
-              <button type="button" className="rounded-full border border-slate-200 p-2 text-slate-600" aria-label="Help center">
-                <CircleHelp className="h-5 w-5" />
-              </button>
-              <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:flex">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-                  <Users className="h-4 w-4" />
+        <main className="space-y-5">
+          <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My Business Dashboard</h1>
+                <p className="mt-1 text-sm text-slate-600">Track your marketplace presence, business records, and verification progress in one view.</p>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button type="button" className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50" aria-label="Notifications">
+                  <Bell className="h-5 w-5" />
+                </button>
+                <button type="button" className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50" aria-label="Help center">
+                  <CircleHelp className="h-5 w-5" />
+                </button>
+                <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 md:flex">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div className="max-w-[180px]">
+                    <p className="truncate text-sm font-semibold text-slate-900">{workspace.msme.owner_name || "MSME User"}</p>
+                    <p className="truncate text-xs text-slate-500">{workspace.provider.display_name}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{workspace.msme.owner_name || "MSME User"}</p>
-                  <p className="text-xs text-slate-500">{workspace.provider.display_name}</p>
-                </div>
+                <Link
+                  href="/dashboard/msme/public-profile"
+                  className="inline-flex items-center rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                >
+                  View Public Profile
+                </Link>
               </div>
             </div>
           </header>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),360px]">
-            <div className="space-y-4">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-slate-500">Welcome back</p>
-                    <h2 className="text-2xl font-semibold text-slate-900">{workspace.provider.display_name || workspace.msme.business_name}</h2>
-                  </div>
-                  <Link
-                    href="/dashboard/msme/public-profile"
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                  >
-                    View Public Profile
-                  </Link>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),320px]">
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,2fr),minmax(320px,1fr)]">
+            <div className="space-y-5">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr),minmax(260px,1fr)]">
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-emerald-100 text-emerald-700">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-emerald-100 text-emerald-700">
                         {workspace.provider.logo_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={workspace.provider.logo_url} alt="Business logo" className="h-full w-full object-cover" />
@@ -292,92 +290,90 @@ export default async function MsmePage() {
                           <User className="h-7 w-7" />
                         )}
                       </div>
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-xl font-semibold text-slate-900">{workspace.msme.business_name || workspace.provider.display_name}</p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              isVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                            }`}
-                          >
+                          <h2 className="text-2xl font-semibold text-slate-900">{workspace.msme.business_name || workspace.provider.display_name}</h2>
+                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                             {isVerified ? "Verified" : "Pending Review"}
                           </span>
                         </div>
-                        <p className="flex items-center gap-1 text-sm text-slate-600"><MapPin className="h-4 w-4" /> {workspace.msme.state}, Nigeria</p>
+                        <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
+                          <MapPin className="h-4 w-4" /> {workspace.msme.state}, Nigeria
+                        </p>
                         <p className="text-sm text-slate-600">{workspace.msme.sector || "Business category not set"}</p>
                       </div>
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">MSME ID</p>
-                        <p className="text-sm font-semibold text-slate-900">{workspace.msme.msme_id}</p>
+                      <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">MSME ID</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">{workspace.msme.msme_id}</p>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Member Since</p>
-                        <p className="text-sm font-semibold text-slate-900">{formatDate(msmeMeta?.created_at ?? null)}</p>
+                      <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Member Since</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">{formatDate(msmeMeta?.created_at ?? null)}</p>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Verification Status</p>
-                        <p className="text-sm font-semibold capitalize text-slate-900">{verificationStatus}</p>
+                      <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Verification</p>
+                        <p className="mt-1 text-sm font-semibold capitalize text-slate-900">{verificationStatus}</p>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Open Complaints</p>
-                        <p className="text-sm font-semibold text-slate-900">{safeComplaintCount}</p>
+                      <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Open Complaints</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">{safeComplaintCount}</p>
                       </div>
                     </div>
 
                     <div>
-                      <div className="mb-1 flex items-center justify-between text-sm">
+                      <div className="mb-1.5 flex items-center justify-between text-sm">
                         <p className="font-medium text-slate-700">Profile Completion</p>
                         <p className="font-semibold text-slate-700">{completion}% Complete</p>
                       </div>
-                      <div className="h-2 rounded-full bg-slate-100">
-                        <div className="h-2 rounded-full bg-emerald-600" style={{ width: `${completion}%` }} />
+                      <div className="h-2.5 rounded-full bg-slate-100">
+                        <div className="h-2.5 rounded-full bg-emerald-600" style={{ width: `${completion}%` }} />
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-                    <p className="text-center text-sm font-semibold text-emerald-800">Your Digital ID Card</p>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <p className="text-center text-sm font-semibold text-emerald-800">Digital ID Card Preview</p>
                     <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm">
-                      <p className="text-xs font-semibold text-emerald-700">NDMII DIGITAL MSME</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{workspace.provider.display_name}</p>
-                      <p className="text-xs text-slate-600">{workspace.msme.owner_name}</p>
+                      <p className="text-xs font-semibold tracking-wide text-emerald-700">NDMII DIGITAL MSME</p>
+                      <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{workspace.provider.display_name}</p>
+                      <p className="truncate text-xs text-slate-600">{workspace.msme.owner_name}</p>
                       <p className="mt-2 text-xs text-slate-500">{workspace.msme.msme_id}</p>
                     </div>
                     <Link
                       href="/dashboard/msme/id-card"
-                      className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
                     >
-                      Download Digital ID Card
+                      Download Digital ID
                     </Link>
                   </div>
                 </div>
               </article>
 
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-900">Quick Actions</h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {quickActions.map((action) => {
                     const Icon = action.icon;
                     return (
                       <Link
                         key={action.href}
                         href={action.href}
-                        className="group rounded-xl border border-slate-200 bg-white px-3 py-4 transition hover:border-emerald-300 hover:bg-emerald-50"
+                        className="group flex min-h-[108px] flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:bg-emerald-50"
                       >
                         <Icon className="h-5 w-5 text-emerald-700" />
-                        <p className="mt-2 text-sm font-semibold text-slate-800">{action.label}</p>
+                        <p className="text-sm font-semibold text-slate-800">{action.label}</p>
                       </Link>
                     );
                   })}
                 </div>
               </article>
 
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-900">Business Performance (This Month)</h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">Business Performance</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
                     { label: "Profile Views", value: "0", icon: Eye, tone: "text-sky-700 bg-sky-100" },
                     { label: "Search Appearances", value: "0", icon: Search, tone: "text-violet-700 bg-violet-100" },
@@ -386,11 +382,11 @@ export default async function MsmePage() {
                   ].map((metric) => {
                     const Icon = metric.icon;
                     return (
-                      <div key={metric.label} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <div key={metric.label} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                         <div className={`inline-flex rounded-full p-2 ${metric.tone}`}>
                           <Icon className="h-4 w-4" />
                         </div>
-                        <p className="mt-2 text-2xl font-semibold text-slate-900">{metric.value}</p>
+                        <p className="mt-3 text-2xl font-semibold text-slate-900">{metric.value}</p>
                         <p className="text-sm text-slate-600">{metric.label}</p>
                       </div>
                     );
@@ -398,19 +394,33 @@ export default async function MsmePage() {
                 </div>
               </article>
 
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-slate-900">Recent Activity</h3>
-                  <Link href="/dashboard/msme/quotes" className="text-sm font-medium text-emerald-700 hover:underline">View all</Link>
+                  <Link href="/dashboard/msme/quotes" className="text-sm font-medium text-emerald-700 hover:underline">
+                    View all
+                  </Link>
                 </div>
+
                 <div className="divide-y divide-slate-100">
                   {activity.length > 0 ? (
-                    activity.slice(0, 4).map((item) => (
-                      <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 py-3 text-sm hover:bg-slate-50">
-                        <span className="text-slate-700">{item.label}</span>
-                        <span className="text-xs text-slate-500">{activityDateLabel(item.timestamp)}</span>
-                      </Link>
-                    ))
+                    activity.slice(0, 5).map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 py-3 transition hover:bg-slate-50/80">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="inline-flex rounded-full bg-emerald-100 p-2 text-emerald-700">
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-800">{item.label}</p>
+                              <p className="text-xs text-slate-500">{activityDateLabel(item.timestamp)}</p>
+                            </div>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                        </Link>
+                      );
+                    })
                   ) : (
                     <p className="py-4 text-sm text-slate-500">No recent activity yet. New quotes, reviews, and invoices will appear here.</p>
                   )}
@@ -418,54 +428,78 @@ export default async function MsmePage() {
               </article>
             </div>
 
-            <aside className="space-y-4">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <aside className="space-y-5">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-900">Marketplace Visibility</h3>
-                <div className="mt-3 space-y-3">
+                <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2 text-slate-700">
                       {hasPublicProfile ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-500" />}
                       Public profile is live
                     </span>
-                    {!hasPublicProfile ? <Link href="/dashboard/msme/public-profile" className="text-emerald-700 hover:underline">Enable</Link> : null}
+                    {!hasPublicProfile ? (
+                      <Link href="/dashboard/msme/public-profile" className="text-emerald-700 hover:underline">
+                        Enable
+                      </Link>
+                    ) : null}
                   </div>
+
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2 text-slate-700">
                       {profileSearchable ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-500" />}
                       Searchable in marketplace
                     </span>
                   </div>
+
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2 text-slate-700">
                       {safeServiceCount > 0 ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-500" />}
                       {safeServiceCount > 0 ? `${safeServiceCount} services listed` : "No services listed"}
                     </span>
-                    {safeServiceCount === 0 ? <Link href="/dashboard/msme/services" className="text-emerald-700 hover:underline">Add services</Link> : null}
+                    {safeServiceCount === 0 ? (
+                      <Link href="/dashboard/msme/services" className="text-emerald-700 hover:underline">
+                        Add services
+                      </Link>
+                    ) : null}
                   </div>
+
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2 text-slate-700">
                       {safeGalleryCount > 0 ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-500" />}
                       {safeGalleryCount > 0 ? `${safeGalleryCount} portfolio items` : "Portfolio is missing"}
                     </span>
-                    {safeGalleryCount === 0 ? <Link href="/dashboard/msme/portfolio" className="text-emerald-700 hover:underline">Add portfolio</Link> : null}
+                    {safeGalleryCount === 0 ? (
+                      <Link href="/dashboard/msme/portfolio" className="text-emerald-700 hover:underline">
+                        Add portfolio
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
+
                 <Link
                   href={improveVisibilityRoute}
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  className="mt-5 inline-flex w-full items-center justify-center rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
                 >
                   Improve Visibility
                 </Link>
               </article>
 
-              <article className="overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-700 p-5 text-white shadow-lg">
+              <article className="overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-700 p-6 text-white shadow-lg">
                 <h3 className="text-2xl font-semibold leading-tight">Grow Your Business with NDMII</h3>
-                <p className="mt-2 text-sm text-emerald-100">Complete your profile and keep your services updated to improve trust and discoverability across Nigeria.</p>
+                <p className="mt-2 text-sm text-emerald-100">Complete your profile and keep your business details updated to improve trust and discoverability across Nigeria.</p>
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-emerald-100">
-                  <p>Services listed: <span className="font-semibold text-white">{safeServiceCount}</span></p>
-                  <p>Portfolio items: <span className="font-semibold text-white">{safeGalleryCount}</span></p>
-                  <p>Quote requests: <span className="font-semibold text-white">{safeQuoteCount}</span></p>
-                  <p>Invoices: <span className="font-semibold text-white">{safeInvoiceCount}</span></p>
+                  <p>
+                    Services listed: <span className="font-semibold text-white">{safeServiceCount}</span>
+                  </p>
+                  <p>
+                    Portfolio items: <span className="font-semibold text-white">{safeGalleryCount}</span>
+                  </p>
+                  <p>
+                    Quote requests: <span className="font-semibold text-white">{safeQuoteCount}</span>
+                  </p>
+                  <p>
+                    Invoices: <span className="font-semibold text-white">{safeInvoiceCount}</span>
+                  </p>
                 </div>
                 <Link
                   href="/dashboard/msme/onboarding"
@@ -475,7 +509,7 @@ export default async function MsmePage() {
                 </Link>
               </article>
             </aside>
-          </div>
+          </section>
         </main>
       </div>
     </div>
