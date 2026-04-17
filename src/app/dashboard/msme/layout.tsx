@@ -7,8 +7,9 @@ import { ProviderWorkspaceNav } from "@/components/msme/provider-workspace-nav";
 export default function MsmeWorkspaceLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isWorkspaceHome = pathname === "/dashboard/msme";
+  const isProfilePage = pathname === "/dashboard/msme/profile";
 
-  if (isWorkspaceHome) {
+  if (isWorkspaceHome || isProfilePage) {
     return <>{children}</>;
   }
 
