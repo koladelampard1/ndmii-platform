@@ -2,7 +2,10 @@
 
 export function PrintButton() {
   return (
-    <button onClick={() => window.print()} className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+    <button
+      onClick={() => window.print()}
+      className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+    >
       Download / Print
     </button>
   );
