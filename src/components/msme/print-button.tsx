@@ -1,60 +1,23 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 
 type PrintButtonProps = {
   targetId?: string;
+  className?: string;
+  label?: string;
+  helper?: string;
+  icon?: ReactNode;
 };
 
 const PRINT_STYLE_ID = "msme-id-card-print-style";
 const PRINT_BODY_CLASS = "msme-id-card-printing";
 
 function ensurePrintStyles(targetId: string) {
-  const existing = document.getElementById(PRINT_STYLE_ID);
-  if (existing) {
-    existing.textContent = `
-      @page {
-        margin: 12mm;
-        size: auto;
-      }
-
-      @media print {
-        html, body {
-          background: #ffffff !important;
-        }
-
-        body.${PRINT_BODY_CLASS} * {
-          visibility: hidden !important;
-        }
-
-        body.${PRINT_BODY_CLASS} #${targetId},
-        body.${PRINT_BODY_CLASS} #${targetId} * {
-          visibility: visible !important;
-        }
-
-        body.${PRINT_BODY_CLASS} #${targetId} {
-          position: fixed;
-          inset: 0;
-          margin: 0 auto;
-          width: min(100%, 1080px);
-          height: fit-content;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-          overflow: visible !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-    `;
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = PRINT_STYLE_ID;
-  style.textContent = `
+  const css = `
     @page {
-      margin: 12mm;
-      size: auto;
+      margin: 14mm;
+      size: A4 portrait;
     }
 
     @media print {
@@ -73,23 +36,40 @@ function ensurePrintStyles(targetId: string) {
 
       body.${PRINT_BODY_CLASS} #${targetId} {
         position: fixed;
-        inset: 0;
-        margin: 0 auto;
-        width: min(100%, 1080px);
-        height: fit-content;
+        top: 14mm;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(180mm, 100%);
+        height: auto !important;
+        aspect-ratio: 1.586;
         box-shadow: none !important;
         border-radius: 0 !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
     }
   `;
 
+  const existing = document.getElementById(PRINT_STYLE_ID);
+  if (existing) {
+    existing.textContent = css;
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = PRINT_STYLE_ID;
+  style.textContent = css;
   document.head.appendChild(style);
 }
 
-export function PrintButton({ targetId = "msme-id-card-canvas" }: PrintButtonProps) {
+export function PrintButton({
+  targetId = "msme-id-card-canvas",
+  className,
+  label = "Download / Print",
+  helper,
+  icon,
+}: PrintButtonProps) {
   const handlePrintCard = useCallback(() => {
     const card = document.getElementById(targetId);
     if (!card) return;
@@ -112,9 +92,13 @@ export function PrintButton({ targetId = "msme-id-card-canvas" }: PrintButtonPro
   return (
     <button
       onClick={handlePrintCard}
-      className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+      className={`flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-slate-900 transition hover:border-slate-300 ${className ?? ""}`}
     >
-      Download / Print
+      <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100">{icon ?? "🖨️"}</span>
+      <span>
+        <span className="block text-sm font-semibold">{label}</span>
+        {helper ? <span className="block text-xs text-slate-500">{helper}</span> : null}
+      </span>
     </button>
   );
 }
