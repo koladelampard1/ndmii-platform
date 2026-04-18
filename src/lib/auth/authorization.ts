@@ -198,7 +198,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/msme/settings", label: "Provider Settings" },
     { href: "/dashboard/msme/onboarding", label: "My Onboarding" },
     { href: "/dashboard/msme/id-card", label: "My Digital ID Card" },
-    { href: "/dashboard/compliance", label: "My KYC Status" },
+    { href: "/dashboard/msme/compliance", label: "My KYC Status" },
     { href: "/dashboard/payments", label: "My Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],

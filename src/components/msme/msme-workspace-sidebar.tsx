@@ -52,7 +52,7 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
     title: "Identity & Verification",
     links: [
       { href: "/dashboard/msme/id-card", label: "My Digital ID Card", icon: FileBadge2 },
-      { href: "/dashboard/compliance", label: "Verification Status", icon: ShieldCheck },
+      { href: "/dashboard/msme/compliance", label: "Verification Status", icon: ShieldCheck },
       { href: "/dashboard/payments", label: "Tax / VAT", icon: FileText },
     ],
   },
