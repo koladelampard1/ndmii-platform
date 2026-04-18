@@ -9,8 +9,9 @@ export default function MsmeWorkspaceLayout({ children }: { children: ReactNode 
   const isWorkspaceHome = pathname === "/dashboard/msme";
   const isProfilePage = pathname === "/dashboard/msme/profile";
   const isServicesPage = pathname === "/dashboard/msme/services";
+  const isPortfolioPage = pathname === "/dashboard/msme/portfolio";
 
-  if (isWorkspaceHome || isProfilePage || isServicesPage) {
+  if (isWorkspaceHome || isProfilePage || isServicesPage || isPortfolioPage) {
     return <>{children}</>;
   }
 
