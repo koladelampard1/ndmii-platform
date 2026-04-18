@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { MsmeComplaintsDashboard } from "@/components/msme/complaints-dashboard";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -31,32 +31,5 @@ export default async function MsmeComplaintsPage() {
     providerIds: (rows ?? []).map((row) => row.provider_id),
   });
 
-  const complaints = rows;
-
-  return (
-    <section className="rounded-xl border bg-white p-4">
-      <h2 className="text-lg font-semibold">Provider complaint log</h2>
-      <p className="mt-1 text-sm text-slate-500">Track complaints raised against your provider profile and respond to move cases forward.</p>
-      <div className="mt-3 overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left text-slate-600"><tr><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Title</th><th className="px-3 py-2">Complainant</th><th className="px-3 py-2">Priority</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Action</th></tr></thead>
-          <tbody>
-            {(complaints ?? []).map((item) => (
-              <tr key={item.id} className="border-t">
-                <td className="px-3 py-2 text-xs font-semibold">{item.complaint_reference ?? String(item.id).slice(0, 8)}</td>
-                <td className="px-3 py-2">{item.title ?? item.summary ?? "Complaint report"}</td>
-                <td className="px-3 py-2">{item.complainant_name ?? item.reporter_name ?? "Public user"}</td>
-                <td className="px-3 py-2 uppercase">{item.priority ?? "medium"}</td>
-                <td className="px-3 py-2">{item.status ?? "submitted"}</td>
-                <td className="px-3 py-2 text-xs">{item.created_at ? new Date(item.created_at).toLocaleDateString() : "-"}</td>
-                <td className="px-3 py-2"><Link href={`/dashboard/msme/complaints/${item.id}`} className="text-indigo-700 hover:underline">Open</Link></td>
-              </tr>
-            ))}
-            {(!complaints || complaints.length === 0) && <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={7}>No complaints currently linked to this provider profile.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-3 text-xs text-slate-500">For escalation workflows use <Link href="/dashboard/fccpc" className="text-indigo-700 hover:underline">FCCPC Workspace</Link>.</p>
-    </section>
-  );
+  return <MsmeComplaintsDashboard complaints={rows ?? []} />;
 }
