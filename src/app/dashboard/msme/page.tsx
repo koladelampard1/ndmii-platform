@@ -7,16 +7,12 @@ import {
   ClipboardList,
   Eye,
   FileBadge2,
-  FileText,
   ImageIcon,
-  LayoutDashboard,
   MapPin,
   MessageSquare,
   NotebookPen,
   Receipt,
   Search,
-  Settings,
-  ShieldCheck,
   Star,
   User,
   Users,
@@ -128,37 +124,6 @@ export default async function MsmePage() {
     { href: "/dashboard/msme/id-card", label: "Download Digital ID", icon: FileBadge2 },
   ];
 
-  const sidebarSections = [
-    {
-      title: "",
-      links: [{ href: "/dashboard/msme", label: "Dashboard", icon: LayoutDashboard }],
-    },
-    {
-      title: "Business Management",
-      links: [
-        { href: "/dashboard/msme/profile", label: "My Business Profile", icon: User },
-        { href: "/dashboard/msme/services", label: "My Services", icon: Wrench },
-        { href: "/dashboard/msme/portfolio", label: "Portfolio Gallery", icon: ImageIcon },
-        { href: "/dashboard/msme/reviews", label: "Customer Reviews", icon: Star },
-        { href: "/dashboard/msme/complaints", label: "Complaints", icon: MessageSquare },
-        { href: "/dashboard/msme/quotes", label: "Quote Requests", icon: ClipboardList },
-        { href: "/dashboard/msme/invoices", label: "Invoices", icon: Receipt },
-      ],
-    },
-    {
-      title: "Identity & Verification",
-      links: [
-        { href: "/dashboard/msme/id-card", label: "My Digital ID Card", icon: FileBadge2 },
-        { href: "/dashboard/compliance", label: "Verification Status", icon: ShieldCheck },
-        { href: "/dashboard/payments", label: "Tax / VAT", icon: FileText },
-      ],
-    },
-    {
-      title: "Settings",
-      links: [{ href: "/dashboard/msme/settings", label: "Settings", icon: Settings }],
-    },
-  ];
-
   const activity: ActivityItem[] = [
     quoteActivity?.[0]
       ? {
@@ -194,56 +159,8 @@ export default async function MsmePage() {
   const improveVisibilityRoute = safeServiceCount === 0 ? "/dashboard/msme/services" : "/dashboard/msme/profile";
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="mx-auto grid w-full max-w-[1700px] gap-5 p-4 lg:grid-cols-[290px,minmax(0,1fr)] lg:p-6">
-        <aside className="flex h-full flex-col rounded-3xl bg-emerald-950 p-5 text-white shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-          <div className="mb-6 border-b border-emerald-900/80 pb-5">
-            <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">NDMII</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">My Workspace</h2>
-          </div>
-
-          <nav className="space-y-6">
-            {sidebarSections.map((section) => (
-              <div key={section.title || "dashboard"}>
-                {section.title ? <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-300/95">{section.title}</p> : null}
-                <div className="space-y-1.5">
-                  {section.links.map((item) => {
-                    const Icon = item.icon;
-                    const isDashboard = item.href === "/dashboard/msme";
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
-                          isDashboard ? "bg-emerald-800 font-medium text-white" : "text-emerald-100/95 hover:bg-emerald-900/75 hover:text-white"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span>{item.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </nav>
-
-          <div className="mt-auto pt-6">
-            <div className="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
-              <p className="text-lg font-semibold">Need Help?</p>
-              <p className="mt-1.5 text-sm text-emerald-100/90">Our support team can help you manage your MSME dashboard quickly.</p>
-              <Link
-                href="/dashboard/msme/settings"
-                className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
-              >
-                Contact Support
-              </Link>
-            </div>
-          </div>
-        </aside>
-
-        <main className="space-y-5">
-          <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <section className="space-y-5">
+      <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My Business Dashboard</h1>
@@ -509,9 +426,7 @@ export default async function MsmePage() {
                 </Link>
               </article>
             </aside>
-          </section>
-        </main>
-      </div>
-    </div>
+      </section>
+    </section>
   );
 }
