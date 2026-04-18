@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   ArrowUpDown,
   Folder,
@@ -27,7 +27,19 @@ type GalleryItem = {
 type MsmePortfolioGalleryDashboardProps = {
   gallery: GalleryItem[];
   saved: boolean;
+  error: string | null;
   galleryAction: (formData: FormData) => Promise<void>;
+};
+
+const ACCEPTED_FILE_TYPES = ".jpg,.jpeg,.png,.webp";
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+const uploadErrorMessages: Record<string, string> = {
+  file_required: "Please choose an image file to upload.",
+  unsupported_file_type: "Unsupported image format. Use JPG, JPEG, PNG, or WEBP.",
+  file_too_large: "Image size must be 5MB or less.",
+  upload_failed: "Image upload failed. Please try again.",
+  save_failed: "Portfolio item could not be saved. Please try again.",
 };
 
 function formatDate(value: string | null | undefined) {
@@ -45,12 +57,64 @@ function titleFromItem(item: GalleryItem) {
 
 const recommendedCategories = ["Completed Projects", "Certifications", "Equipment", "Team", "Events", "Other"];
 
-export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }: MsmePortfolioGalleryDashboardProps) {
+export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAction }: MsmePortfolioGalleryDashboardProps) {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "featured">("newest");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(error ? uploadErrorMessages[error] ?? "Unable to save portfolio item." : null);
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedFile]);
+
+  function validateFile(file: File) {
+    const lowerName = file.name.toLowerCase();
+    const allowedExtension = [".jpg", ".jpeg", ".png", ".webp"].some((extension) => lowerName.endsWith(extension));
+    if (!allowedExtension) {
+      return "Unsupported image format. Use JPG, JPEG, PNG, or WEBP.";
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      return "Image size must be 5MB or less.";
+    }
+
+    return null;
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const validationMessage = validateFile(file);
+    if (validationMessage) {
+      setSelectedFile(null);
+      setFileError(validationMessage);
+      event.target.value = "";
+      return;
+    }
+
+    setFileError(null);
+    setSelectedFile(file);
+  }
+
+  function clearSelectedFile() {
+    setSelectedFile(null);
+    setFileError(null);
+  }
 
   const totalItems = gallery.length;
   const totalViews = 0;
@@ -85,6 +149,7 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
   return (
     <section className="mx-auto w-full max-w-[1400px] space-y-8 px-1 pb-6 pt-2 sm:px-2 lg:space-y-9 lg:px-3 lg:pt-4">
       {saved && <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800">Portfolio updated.</p>}
+      {fileError && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{fileError}</p>}
 
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-2">
@@ -104,20 +169,49 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
       {showUploadForm && (
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="mb-4 text-base font-semibold text-slate-900">Upload Portfolio Item</h2>
-          <form action={galleryAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <form
+            action={galleryAction}
+            className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+            onSubmit={(event) => {
+              if (!selectedFile) {
+                event.preventDefault();
+                setFileError("Please choose an image file to upload.");
+              }
+            }}
+          >
             <input type="hidden" name="kind" value="create" />
-            <input
-              name="asset_url"
-              required
-              placeholder="Image URL"
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm md:col-span-2 xl:col-span-2"
-            />
+            <div className="space-y-3 md:col-span-2 xl:col-span-3">
+              <label htmlFor="asset_file" className="text-sm font-medium text-slate-700">
+                Portfolio Image
+              </label>
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-4">
+                <input id="asset_file" name="asset_file" type="file" accept={ACCEPTED_FILE_TYPES} className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-800" onChange={handleFileChange} />
+                <p className="mt-2 text-xs text-slate-500">Accepted: JPG, JPEG, PNG, WEBP • Max size: 5MB</p>
+                {selectedFile && (
+                  <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                    <span className="truncate pr-2 font-medium">{selectedFile.name}</span>
+                    <button type="button" onClick={clearSelectedFile} className="font-semibold text-rose-600 hover:text-rose-700">
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+              {previewUrl && (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={previewUrl} alt="Selected portfolio preview" className="h-52 w-full object-cover" />
+                </div>
+              )}
+            </div>
             <input name="caption" placeholder="Caption" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm md:col-span-2" />
             <input name="sort_order" type="number" defaultValue={0} className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <select name="is_featured" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
-              <option value="false">Standard Item</option>
-              <option value="true">Featured Item</option>
-            </select>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Category / Item Type</label>
+              <select name="is_featured" className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
+                <option value="false">Standard Item</option>
+                <option value="true">Featured Item</option>
+              </select>
+            </div>
             <div className="md:col-span-2 xl:col-span-5 flex justify-end">
               <button className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Save Portfolio Item</button>
             </div>
@@ -236,7 +330,6 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
                     <form action={galleryAction} className="grid gap-2 border-t border-slate-100 pt-3">
                       <input type="hidden" name="kind" value="update" />
                       <input type="hidden" name="item_id" value={item.id} />
-                      <input name="asset_url" defaultValue={item.asset_url ?? ""} className="h-10 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Image URL" />
                       <input name="caption" defaultValue={item.caption ?? ""} className="h-10 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Caption" />
                       <div className="grid grid-cols-2 gap-2">
                         <input name="sort_order" type="number" defaultValue={item.sort_order ?? 0} className="h-10 rounded-xl border border-slate-200 px-3 text-sm" />
