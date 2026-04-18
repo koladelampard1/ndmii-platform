@@ -83,18 +83,18 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
   }, [gallery, query, categoryFilter, statusFilter, sortBy]);
 
   return (
-    <section className="space-y-6 pb-4">
+    <section className="mx-auto w-full max-w-[1400px] space-y-8 px-1 pb-6 pt-2 sm:px-2 lg:space-y-9 lg:px-3 lg:pt-4">
       {saved && <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800">Portfolio updated.</p>}
 
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Portfolio / Gallery</h1>
-          <p className="mt-2 text-sm text-slate-600 sm:text-base">Showcase your work and build trust with your customers.</p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-[2rem]">Portfolio / Gallery</h1>
+          <p className="text-sm text-slate-500 sm:text-base">Showcase your work and build trust with your customers.</p>
         </div>
         <button
           type="button"
           onClick={() => setShowUploadForm((open) => !open)}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm shadow-emerald-950/10 transition hover:bg-emerald-800"
         >
           <Plus className="h-4 w-4" />
           Upload New Item
@@ -132,32 +132,32 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
           { icon: Heart, label: "Total Likes", value: totalLikes, helper: "This month" },
           { icon: Star, label: "Avg. Rating", value: averageRating.toFixed(1), helper: "Based on reviews" },
         ].map((stat) => (
-          <article key={stat.label} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-            <div className="mb-4 inline-flex rounded-full bg-emerald-50 p-3 text-emerald-700 ring-1 ring-emerald-100">
-              <stat.icon className="h-4 w-4" />
+          <article key={stat.label} className="flex min-h-[168px] flex-col rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm shadow-slate-200/40 sm:p-6">
+            <div className="mb-5 inline-flex w-fit rounded-xl bg-emerald-50 p-2.5 text-emerald-700 ring-1 ring-emerald-100/80">
+              <stat.icon className="h-[18px] w-[18px]" />
             </div>
-            <p className="text-3xl font-bold tracking-tight text-slate-950">{stat.value}</p>
-            <p className="mt-2 text-sm font-semibold text-slate-800">{stat.label}</p>
+            <p className="text-3xl font-bold leading-none tracking-tight text-slate-950">{stat.value}</p>
+            <p className="mt-3 text-sm font-semibold text-slate-800">{stat.label}</p>
             <p className="mt-1 text-xs text-slate-500">{stat.helper}</p>
           </article>
         ))}
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="relative block">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50 sm:p-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <label className="relative block md:col-span-2 xl:col-span-5">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search portfolio items..."
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm shadow-sm"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
             />
           </label>
           <select
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
-            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100 xl:col-span-2"
           >
             <option value="all">All Categories</option>
             <option value="general">General</option>
@@ -166,18 +166,18 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100 xl:col-span-2"
           >
             <option value="all">All Status</option>
             <option value="standard">Standard</option>
             <option value="featured">Featured</option>
           </select>
-          <label className="relative block">
+          <label className="relative block xl:col-span-3">
             <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <select
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value as "newest" | "oldest" | "featured")}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm shadow-sm"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
             >
               <option value="newest">Sort: Newest</option>
               <option value="oldest">Sort: Oldest</option>
@@ -187,21 +187,21 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-12">
+      <div className="grid gap-8 xl:grid-cols-12">
         <section className="xl:col-span-9">
           {filteredGallery.length === 0 ? (
-            <article className="flex min-h-[390px] flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
-              <div className="mb-6 inline-flex rounded-full bg-emerald-50 p-5 text-emerald-700 ring-1 ring-emerald-100">
-                <Folder className="h-8 w-8" />
+            <article className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm shadow-slate-200/50">
+              <div className="mb-7 inline-flex rounded-2xl bg-emerald-50 p-5 text-emerald-700 ring-1 ring-emerald-100">
+                <Folder className="h-9 w-9" />
               </div>
-              <h3 className="text-3xl font-bold tracking-tight text-slate-900">Your portfolio is empty</h3>
-              <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
+              <h3 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">Your portfolio is empty</h3>
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
                 Upload your work, project photos, or documents to showcase your expertise and build confidence with potential customers.
               </p>
               <button
                 type="button"
                 onClick={() => setShowUploadForm(true)}
-                className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+                className="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm shadow-emerald-950/10 transition hover:bg-emerald-800"
               >
                 <Plus className="h-4 w-4" />
                 Upload New Item
@@ -262,13 +262,13 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
           )}
         </section>
 
-        <aside className="space-y-4 xl:col-span-3">
-          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900">
+        <aside className="space-y-5 xl:col-span-3">
+          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/40">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
               <Lightbulb className="h-4 w-4 text-emerald-700" />
               Tips for a Great Portfolio
             </h2>
-            <ul className="space-y-2 text-sm text-slate-600">
+            <ul className="space-y-2.5 text-sm leading-relaxed text-slate-600">
               <li>• Upload high-quality images</li>
               <li>• Show before and after results</li>
               <li>• Add clear descriptions</li>
@@ -277,29 +277,32 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, galleryAction }:
             </ul>
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900">
+          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/40">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
               <Folder className="h-4 w-4 text-emerald-700" />
               Recommended Categories
             </h2>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               {recommendedCategories.map((category) => (
-                <span key={category} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                <span
+                  key={category}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm shadow-slate-200/30"
+                >
                   {category}
                 </span>
               ))}
             </div>
           </article>
 
-          <article className="rounded-2xl border border-emerald-700 bg-gradient-to-br from-emerald-800 to-emerald-950 p-4 text-white shadow-sm">
-            <div className="mb-4 inline-flex rounded-xl bg-white/15 p-2">
+          <article className="rounded-2xl border border-emerald-700/90 bg-gradient-to-br from-emerald-800 via-emerald-900 to-emerald-950 p-5 text-white shadow-sm shadow-emerald-950/40">
+            <div className="mb-4 inline-flex rounded-xl bg-white/15 p-2.5 ring-1 ring-white/20">
               <TrendingUp className="h-5 w-5" />
             </div>
-            <h2 className="text-lg font-semibold">Grow Your Business</h2>
-            <p className="mt-2 text-sm text-emerald-50">A strong portfolio helps you stand out and win more trust and projects.</p>
+            <h2 className="text-lg font-semibold tracking-tight">Grow Your Business</h2>
+            <p className="mt-2 text-sm leading-relaxed text-emerald-50">A strong portfolio helps you stand out and win more trust and projects.</p>
             <Link
               href="/dashboard/msme/services"
-              className="mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-emerald-800"
+              className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-50"
             >
               Go to Services
             </Link>
