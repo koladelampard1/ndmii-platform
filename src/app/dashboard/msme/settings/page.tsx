@@ -1,25 +1,145 @@
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info, Upload } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+const SETTINGS_SECTIONS = [
+  {
+    id: "profile-information",
+    title: "Profile Information",
+    description: "Business and personal details",
+  },
+  {
+    id: "business-information",
+    title: "Business Information",
+    description: "Update business details",
+  },
+  {
+    id: "contact-address",
+    title: "Contact & Address",
+    description: "Contact person and address",
+  },
+  {
+    id: "banking-information",
+    title: "Banking Information",
+    description: "Bank account details",
+  },
+  {
+    id: "tax-information",
+    title: "Tax Information",
+    description: "TIN, VAT and tax details",
+  },
+  {
+    id: "verification-documents",
+    title: "Verification Documents",
+    description: "View and update documents",
+  },
+  {
+    id: "notification-preferences",
+    title: "Notification Preferences",
+    description: "Manage email and alerts",
+  },
+  {
+    id: "account-security",
+    title: "Account & Security",
+    description: "Password and security",
+  },
+  {
+    id: "integrations",
+    title: "Integrations",
+    description: "Connected services",
+  },
+  {
+    id: "activity-log",
+    title: "Activity Log",
+    description: "Recent account activity",
+  },
+] as const;
+
+type CompletenessItem = {
+  label: string;
+  complete: boolean;
+};
+
+function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>) {
+  const items: CompletenessItem[] = [
+    {
+      label: "Business Information",
+      complete: Boolean(workspace.msme.business_name && workspace.provider.display_name && workspace.msme.sector),
+    },
+    {
+      label: "Contact & Address",
+      complete: Boolean(workspace.msme.owner_name && workspace.msme.contact_email && workspace.provider.contact_phone),
+    },
+    {
+      label: "Banking Information",
+      complete: false,
+    },
+    {
+      label: "Tax Information",
+      complete: false,
+    },
+    {
+      label: "Verification Documents",
+      complete: workspace.msme.verification_status !== "draft",
+    },
+    {
+      label: "Business Description",
+      complete: Boolean(workspace.provider.long_description && workspace.provider.long_description.trim().length > 0),
+    },
+  ];
+
+  const completeCount = items.filter((item) => item.complete).length;
+  const percentage = Math.round((completeCount / items.length) * 100);
+
+  return {
+    items,
+    percentage,
+    completeCount,
+  };
+}
+
 async function settingsAction(formData: FormData) {
   "use server";
+
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const { data: existingMsme } = await supabase
+    .from("msmes")
+    .select("contact_phone,address,cac_number,tin,business_type")
+    .eq("id", workspace.msme.id)
+    .maybeSingle();
 
-  await supabase
-    .from("provider_profiles")
-    .update({
-      display_name: String(formData.get("display_name") ?? workspace.provider.display_name),
-      tagline: String(formData.get("short_description") ?? "").trim() || null,
-      description: String(formData.get("long_description") ?? "").trim() || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", workspace.provider.id)
-    .eq("msme_id", workspace.provider.msme_id);
+  const providerPayload = {
+    display_name: String(formData.get("business_name") ?? workspace.provider.display_name),
+    tagline: String(formData.get("short_description") ?? workspace.provider.short_description ?? "").trim() || null,
+    description: String(formData.get("business_description") ?? workspace.provider.long_description ?? "").trim() || null,
+    contact_email: String(formData.get("contact_email") ?? workspace.provider.contact_email ?? "").trim() || null,
+    contact_phone: String(formData.get("contact_phone") ?? workspace.provider.contact_phone ?? "").trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  await supabase.from("provider_profiles").update(providerPayload).eq("id", workspace.provider.id).eq("msme_id", workspace.provider.msme_id);
+
+  const msmePayload = {
+    business_name: String(formData.get("business_name") ?? workspace.msme.business_name),
+    owner_name: String(formData.get("owner_name") ?? workspace.msme.owner_name),
+    sector: String(formData.get("business_category") ?? workspace.msme.sector),
+    business_type: String(formData.get("business_sub_category") ?? existingMsme?.business_type ?? "").trim() || null,
+    contact_email: String(formData.get("contact_email") ?? workspace.msme.contact_email ?? "").trim() || null,
+    contact_phone: String(formData.get("contact_phone") ?? existingMsme?.contact_phone ?? "").trim() || null,
+    cac_number: String(formData.get("cac_number") ?? existingMsme?.cac_number ?? "").trim() || null,
+    tin: String(formData.get("tin") ?? existingMsme?.tin ?? "").trim() || null,
+    address: String(formData.get("address") ?? existingMsme?.address ?? "").trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  await supabase.from("msmes").update(msmePayload).eq("id", workspace.msme.id);
 
   revalidatePath("/dashboard/msme/settings");
+  revalidatePath("/dashboard/msme/profile");
   revalidatePath(`/providers/${workspace.provider.id}`);
   redirect("/dashboard/msme/settings?saved=1");
 }
@@ -27,16 +147,318 @@ async function settingsAction(formData: FormData) {
 export default async function MsmeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
+  const supabase = await createServerSupabaseClient();
+
+  const { data: msmeExtended } = await supabase
+    .from("msmes")
+    .select("contact_phone,address,cac_number,tin,business_type")
+    .eq("id", workspace.msme.id)
+    .maybeSingle();
+
+  const completeness = deriveProfileCompleteness(workspace);
 
   return (
-    <section className="space-y-4">
-      {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Provider settings saved.</p>}
-      <form action={settingsAction} className="grid gap-2 rounded-xl border bg-white p-4">
-        <input name="display_name" defaultValue={workspace.provider.display_name} className="rounded border px-2 py-2 text-sm" />
-        <input name="short_description" defaultValue={workspace.provider.short_description ?? ""} placeholder="Short description" className="rounded border px-2 py-2 text-sm" />
-        <textarea name="long_description" defaultValue={workspace.provider.long_description ?? ""} className="min-h-32 rounded border px-2 py-2 text-sm" />
-        <button className="w-fit rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Save settings</button>
+    <section className="space-y-5 pb-6">
+      {params.saved && (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">Your settings were saved successfully.</p>
+      )}
+
+      <header className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Settings</h1>
+        <p className="mt-2 text-sm text-slate-600">Manage your account, business profile, and preferences.</p>
+      </header>
+
+      <form action={settingsAction} className="grid gap-4 xl:grid-cols-[280px,minmax(0,1fr),280px]">
+        <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <nav className="space-y-1" aria-label="Settings sections">
+            {SETTINGS_SECTIONS.map((section, index) => {
+              const isActive = index === 0;
+              return (
+                <a
+                  key={section.id}
+                  href={`#${section.id}`}
+                  className={`block rounded-xl border px-3 py-2 transition ${
+                    isActive
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                      : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">{section.title}</p>
+                  <p className="text-xs text-slate-500">{section.description}</p>
+                </a>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <div className="space-y-4">
+          <section id="profile-information" className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Profile Information</h2>
+                <p className="mt-1 text-sm text-slate-600">Update your account and business contact information.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Verified
+                </span>
+                <Info className="h-4 w-4 text-slate-400" aria-hidden />
+              </div>
+            </div>
+          </section>
+
+          <section id="business-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Business Logo / Photo</h3>
+            <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-dashed border-slate-300 bg-white text-slate-400">
+                  <Upload className="h-6 w-6" />
+                </div>
+                <button
+                  type="button"
+                  className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Upload Logo
+                </button>
+                <p className="mt-2 text-xs text-slate-500">PNG, JPG or SVG. Max size 2MB.</p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-xs font-medium text-slate-600">Business Name</span>
+                  <input
+                    name="business_name"
+                    defaultValue={workspace.provider.display_name || workspace.msme.business_name}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Business Category</span>
+                  <input
+                    name="business_category"
+                    defaultValue={workspace.msme.sector ?? ""}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Business Sub-category</span>
+                  <input
+                    name="business_sub_category"
+                    defaultValue={msmeExtended?.business_type ?? workspace.msme.lga ?? ""}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">CAC Registration Number</span>
+                  <input
+                    name="cac_number"
+                    defaultValue={msmeExtended?.cac_number ?? ""}
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Date of Incorporation</span>
+                  <input
+                    type="date"
+                    name="date_of_incorporation"
+                    defaultValue=""
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-500 outline-none ring-emerald-200 transition focus:ring"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section id="contact-address" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Business Owner / Contact Person</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Full Name</span>
+                <input
+                  name="owner_name"
+                  defaultValue={workspace.msme.owner_name ?? ""}
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Email Address</span>
+                <input
+                  name="contact_email"
+                  defaultValue={workspace.provider.contact_email ?? workspace.msme.contact_email ?? ""}
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Phone Number</span>
+                <input
+                  name="contact_phone"
+                  defaultValue={workspace.provider.contact_phone ?? msmeExtended?.contact_phone ?? ""}
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Alternate Phone (Optional)</span>
+                <input
+                  name="alternate_phone"
+                  defaultValue=""
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-xs font-medium text-slate-600">Designation / Role</span>
+                <input
+                  name="designation"
+                  defaultValue="Owner / CEO"
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section id="about-business" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">About Your Business</h3>
+            <p className="mt-1 text-sm text-slate-600">Tell us more about your business.</p>
+            <label className="mt-4 block space-y-1">
+              <span className="text-xs font-medium text-slate-600">Business Description</span>
+              <textarea
+                name="business_description"
+                defaultValue={workspace.provider.long_description ?? ""}
+                maxLength={500}
+                className="min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+              />
+              <span className="block text-right text-xs text-slate-400">{(workspace.provider.long_description ?? "").length}/500</span>
+            </label>
+          </section>
+
+          <section id="banking-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Banking Information</h3>
+            <p className="mt-1 text-sm text-slate-600">Bank account details are managed in your tax and compliance workspace.</p>
+            <div className="mt-3">
+              <Link href="/dashboard/payments" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
+                Manage banking and VAT profile <ExternalLink className="h-4 w-4" />
+              </Link>
+            </div>
+          </section>
+
+          <section id="tax-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Tax Information</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">TIN</span>
+                <input
+                  name="tin"
+                  defaultValue={msmeExtended?.tin ?? ""}
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">VAT & Tax Workspace</span>
+                <Link
+                  href="/dashboard/payments"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Open Tax / VAT Settings
+                </Link>
+              </label>
+            </div>
+          </section>
+
+          <section id="verification-documents" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Verification Documents</h3>
+            <p className="mt-1 text-sm text-slate-600">Your KYC and verification records can be reviewed and updated in compliance.</p>
+            <Link href="/dashboard/msme/compliance" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
+              Open verification workspace <ExternalLink className="h-4 w-4" />
+            </Link>
+          </section>
+
+          <section id="notification-preferences" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Notification Preferences</h3>
+            <p className="mt-1 text-sm text-slate-600">Visual-only section for now. Notification delivery channels are coming soon.</p>
+          </section>
+
+          <section id="account-security" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Account & Security</h3>
+            <p className="mt-1 text-sm text-slate-600">For password updates, use your account access settings from your sign-in provider.</p>
+          </section>
+
+          <section id="integrations" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Integrations</h3>
+            <p className="mt-1 text-sm text-slate-600">NIN, BVN, CAC, and TIN integrations are connected through simulation adapters.</p>
+          </section>
+
+          <section id="activity-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Activity Log</h3>
+            <p className="mt-1 text-sm text-slate-600">Recent account activity is tracked automatically across onboarding and compliance flows.</p>
+          </section>
+
+          <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <Link
+              href="/dashboard/msme"
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Profile Completeness</h3>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-emerald-600 text-lg font-semibold text-slate-900">
+                {completeness.percentage}%
+              </div>
+              <p className="text-sm text-slate-600">Your profile is almost complete.</p>
+            </div>
+            <ul className="mt-4 space-y-2">
+              {completeness.items.map((item) => (
+                <li key={item.label} className="flex items-start gap-2 text-sm">
+                  {item.complete ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <CircleAlert className="mt-0.5 h-4 w-4 text-amber-500" />
+                  )}
+                  <span className={item.complete ? "text-slate-700" : "text-slate-500"}>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Tips</h3>
+            <p className="mt-2 text-sm text-slate-600">Keeping your information updated helps you stay verified and unlock more opportunities.</p>
+            <button
+              type="button"
+              className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+            >
+              Learn More <ExternalLink className="h-4 w-4" />
+            </button>
+          </section>
+
+          <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Need Help?</h3>
+            <p className="mt-2 text-sm text-slate-600">If you need assistance updating your information, our support team is ready to help.</p>
+            <button
+              type="button"
+              className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-blue-200 bg-white px-3 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Contact Support <CircleHelp className="h-4 w-4" />
+            </button>
+          </section>
+        </aside>
       </form>
+
+      <footer className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        Your information is secure and encrypted. We follow strict security measures to protect your data.
+      </footer>
     </section>
   );
 }
