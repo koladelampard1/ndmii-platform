@@ -17,7 +17,7 @@ function logProviderLinkGeneration(href: string, provider: ProviderLinkInput) {
 }
 
 export function buildProviderProfileHref(provider: ProviderLinkInput): string {
-  const href = `/provider/${provider.public_slug}`;
+  const href = `/providers/${provider.public_slug}`;
   logProviderLinkGeneration(href, provider);
   return href;
 }

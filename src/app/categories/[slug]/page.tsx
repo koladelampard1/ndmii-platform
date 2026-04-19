@@ -26,8 +26,8 @@ export default async function CategoryProvidersPage({ params }: { params: Promis
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Category results</p>
             <h1 className="text-3xl font-semibold">{category}</h1>
           </div>
-          <Link href={`/search?category=${encodeURIComponent(category)}`} className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
-            Open in full search
+          <Link href={`/marketplace?category=${encodeURIComponent(category)}`} className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
+            Open in marketplace
           </Link>
         </div>
 
@@ -36,7 +36,7 @@ export default async function CategoryProvidersPage({ params }: { params: Promis
             All categories
           </Link>
           <Link
-            href={`/search?category=${encodeURIComponent(category)}&verification=verified_or_approved`}
+            href={`/marketplace?category=${encodeURIComponent(category)}&verification=verified_or_approved`}
             className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
           >
             Filtered search view
@@ -51,7 +51,7 @@ export default async function CategoryProvidersPage({ params }: { params: Promis
 
         {providers.length === 0 ? (
           <p className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-            No providers are currently listed in this category. Try another category or use the full marketplace search.
+            No providers are currently listed in this category. Try another category or use the full marketplace view.
           </p>
         ) : null}
       </section>

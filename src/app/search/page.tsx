@@ -11,10 +11,14 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const q = typeof params.q === "string" ? params.q : "";
+  const queryParam = typeof params.q === "string" ? params.q : "";
+  const serviceParam = typeof params.service === "string" ? params.service : "";
+  const q = queryParam || serviceParam;
   const category = typeof params.category === "string" ? params.category : "";
   const specialization = typeof params.specialization === "string" ? params.specialization : "";
-  const state = typeof params.state === "string" ? params.state : "";
+  const stateParam = typeof params.state === "string" ? params.state : "";
+  const locationParam = typeof params.location === "string" ? params.location : "";
+  const state = stateParam || locationParam;
   const lga = typeof params.lga === "string" ? params.lga : "";
   const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
   const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
@@ -47,7 +51,7 @@ export default async function SearchPage({
           <Link href="/verify" className="text-sm font-medium text-slate-600 hover:text-slate-900">Verify MSME ID</Link>
         </div>
 
-        <form action="/search" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+        <form action="/marketplace" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
           <input name="q" defaultValue={q} placeholder="Business name or ID" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
           <select name="category" defaultValue={category} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
             <option value="">All categories</option>
