@@ -71,6 +71,15 @@ export function isPublicPath(path: string): boolean {
     path.startsWith("/search?") ||
     path === "/categories" ||
     path.startsWith("/categories/") ||
+    path === "/about" ||
+    path === "/for-msmes" ||
+    path === "/for-associations" ||
+    path === "/for-government" ||
+    path === "/for-financial-institutions" ||
+    path === "/partners" ||
+    path === "/resources" ||
+    path === "/contact" ||
+    path === "/sample-id-card" ||
     path.startsWith("/provider/") ||
     path.startsWith("/providers/") ||
     path.startsWith("/invoice/") ||

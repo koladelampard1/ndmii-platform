@@ -57,7 +57,7 @@ export default async function ProviderPublicPage({
             <p className="mt-2 text-sm text-amber-800">
               The provider link is invalid or the provider is no longer publicly available.
             </p>
-            <Link href="/search" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+            <Link href="/marketplace" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
               Return to provider search
             </Link>
           </div>

@@ -11,16 +11,25 @@ type NavbarProps = {
 export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
   return (
     <header className="border-b bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
         <Link href="/" className="text-lg font-semibold">
           NDMII Platform
         </Link>
-        <nav className="flex items-center gap-3">
-          <Link href="/search" className="text-sm text-slate-600">
+        <nav className="flex flex-wrap items-center gap-3">
+          <Link href="/marketplace" className="text-sm text-slate-600 hover:text-slate-900">
             Marketplace
           </Link>
-          <Link href="/verify" className="text-sm text-slate-600">
+          <Link href="/verify" className="text-sm text-slate-600 hover:text-slate-900">
             Verify ID
+          </Link>
+          <Link href="/resources" className="text-sm text-slate-600 hover:text-slate-900">
+            Resources
+          </Link>
+          <Link href="/partners" className="text-sm text-slate-600 hover:text-slate-900">
+            Partners
+          </Link>
+          <Link href="/about" className="text-sm text-slate-600 hover:text-slate-900">
+            About
           </Link>
           {isAuthenticated ? (
             <>
@@ -36,9 +45,14 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
               </Link>
             </>
           ) : (
-            <Link href="/login">
-              <Button size="sm">Sign in</Button>
-            </Link>
+            <>
+              <Link href="/signup/msme">
+                <Button size="sm" variant="secondary">Register</Button>
+              </Link>
+              <Link href="/login">
+                <Button size="sm">Sign in</Button>
+              </Link>
+            </>
           )}
         </nav>
       </div>
