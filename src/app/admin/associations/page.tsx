@@ -10,7 +10,7 @@ async function createAssociationAction(formData: FormData) {
   if (ctx.role !== "admin") redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
-  await supabase.from("associations").insert({
+  const payload = {
     name: String(formData.get("name") ?? ""),
     category: String(formData.get("category") ?? "General"),
     contact_person_name: String(formData.get("contact_person_name") ?? ""),
@@ -22,16 +22,42 @@ async function createAssociationAction(formData: FormData) {
     created_by_admin_id: ctx.appUserId,
     state: String(formData.get("location") ?? ""),
     sector: String(formData.get("category") ?? "General"),
+  };
+
+  console.info("[admin-associations:create] table=associations payload", payload);
+
+  const { data: insertedAssociation, error } = await supabase
+    .from("associations")
+    .insert(payload)
+    .select("id,name,state,sector,status,created_at")
+    .single();
+
+  if (error) {
+    console.error("[admin-associations:create] insert failed", {
+      table: "associations",
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    redirect("/admin/associations?error=create_failed");
+  }
+
+  console.info("[admin-associations:create] insert success", {
+    table: "associations",
+    insertedId: insertedAssociation.id,
+    insertedRow: insertedAssociation,
   });
 
   revalidatePath("/admin/associations");
-  redirect("/admin/associations?saved=1");
+  revalidatePath("/dashboard/associations");
+  redirect(`/admin/associations?saved=1&id=${insertedAssociation.id}`);
 }
 
 export default async function AdminAssociationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
@@ -61,6 +87,7 @@ export default async function AdminAssociationsPage({
       </div>
 
       {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association created successfully.</p>}
+      {params.error === "create_failed" && <p className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">Association creation failed. Please check server logs for details.</p>}
 
       <div className="grid gap-4 rounded-xl border bg-white p-4 md:grid-cols-2">
         <article>
