@@ -18,7 +18,7 @@ export default async function SearchPage({
   const specialization = typeof params.specialization === "string" ? params.specialization : "";
   const stateParam = typeof params.state === "string" ? params.state : "";
   const locationParam = typeof params.location === "string" ? params.location : "";
-  const state = stateParam || locationParam;
+  const location = locationParam || stateParam;
   const lga = typeof params.lga === "string" ? params.lga : "";
   const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
   const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
@@ -31,7 +31,7 @@ export default async function SearchPage({
       q: q || undefined,
       category: category || undefined,
       specialization: specialization || undefined,
-      state: state || undefined,
+      state: location || undefined,
       lga: lga || undefined,
       minRating: rating || undefined,
       verification,
@@ -52,13 +52,13 @@ export default async function SearchPage({
         </div>
 
         <form action="/marketplace" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
-          <input name="q" defaultValue={q} placeholder="Business name or ID" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+          <input name="q" defaultValue={q} placeholder="Business name, MSME ID, or service" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
           <select name="category" defaultValue={category} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
             <option value="">All categories</option>
             {options.categories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
           <input name="specialization" defaultValue={specialization} placeholder="Specialization" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-          <select name="state" defaultValue={state} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+          <select name="location" defaultValue={location} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
             <option value="">All states</option>
             {options.states.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
@@ -90,7 +90,7 @@ export default async function SearchPage({
           <span>{providers.length} providers found</span>
           <span>
             Search is restricted to approved NDMII identities.{" "}
-            <Link href="/categories" className="font-medium text-emerald-700 hover:text-emerald-800">
+            <Link href="/marketplace" className="font-medium text-emerald-700 hover:text-emerald-800">
               Browse categories
             </Link>
           </span>
@@ -101,9 +101,29 @@ export default async function SearchPage({
           </div>
         )}
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
-        </div>
+        {providers.length > 0 ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">No providers match this search yet</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Try another keyword, location, or category to discover verified MSMEs in the NDMII marketplace.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {options.categories.slice(0, 6).map((item) => (
+                <Link
+                  key={item}
+                  href={`/marketplace?category=${encodeURIComponent(item)}`}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-emerald-200 hover:bg-emerald-50"
+                >
+                  {item}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );

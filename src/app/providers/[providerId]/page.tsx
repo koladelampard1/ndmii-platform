@@ -93,6 +93,8 @@ export default async function ProviderPublicPage({
     review_count: 0,
     is_featured: false,
     owner_name: "Verified MSME Owner",
+    contact_email: null,
+    contact_phone: null,
     long_description: "This provider has a verified public profile. Additional service details will appear as profile data is completed.",
     gallery: [],
     services: [],
@@ -168,6 +170,11 @@ export default async function ProviderPublicPage({
             <div className="mt-5 rounded-2xl border border-slate-200 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Service description</h2>
               <p className="mt-2 text-sm text-slate-700">{providerView.long_description}</p>
+            </div>
+
+            <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:grid-cols-2">
+              <p><span className="font-semibold text-slate-900">Phone:</span> {providerView.contact_phone ?? "Available after quote request"}</p>
+              <p><span className="font-semibold text-slate-900">Email:</span> {providerView.contact_email ?? "Available after quote request"}</p>
             </div>
 
             <div className="mt-4 grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-2">

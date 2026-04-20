@@ -56,6 +56,8 @@ export type ProviderReview = {
 
 export type ProviderProfile = ProviderCard & {
   owner_name: string;
+  contact_email: string | null;
+  contact_phone: string | null;
   long_description: string;
   gallery: Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>;
   services: ProviderService[];
@@ -1018,7 +1020,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
         loadProviderSectionsFailClosed(providerId),
         supabase
           .from("msmes")
-          .select("owner_name,review_status,association_id,associations(name)")
+          .select("owner_name,contact_email,contact_phone,review_status,association_id,associations(name)")
           .eq("id", row.msme_row_id)
           .maybeSingle(),
         supabase
@@ -1070,6 +1072,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
         ...base,
         trust_score: trustScore,
         owner_name: msmeRow?.owner_name ?? "Verified MSME Owner",
+        contact_email: msmeRow?.contact_email ?? null,
+        contact_phone: msmeRow?.contact_phone ?? null,
         long_description: row.long_description ?? `${row.business_name} is a verified NDMII provider serving ${row.state}.`,
         gallery,
         services,
@@ -1093,7 +1097,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     const supabase = await createServiceRoleSupabaseClient();
     let msmeQuery = supabase
       .from("msmes")
-      .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,passport_photo_url")
+      .select("id,msme_id,business_name,owner_name,contact_email,contact_phone,state,lga,sector,verification_status,passport_photo_url")
       .in("verification_status", ["verified", "approved"])
       .limit(1);
     msmeQuery = msmeQuery.or(`id.eq.${providerId},msme_id.eq.${providerId.toUpperCase()}`);
@@ -1116,6 +1120,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       return {
         ...card,
         owner_name: row.owner_name,
+        contact_email: (row as any).contact_email ?? null,
+        contact_phone: (row as any).contact_phone ?? null,
         long_description: `${row.business_name} is a verified business in the NDMII marketplace with a validated identity profile and strong compliance records.`,
         gallery: [],
         services: [],

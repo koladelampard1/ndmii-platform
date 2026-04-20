@@ -77,7 +77,7 @@ export default async function LandingPage() {
               Build trust with a government-grade digital MSME ID, then discover trusted providers by category, specialization, and location.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup/msme" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
+              <Link href="/register/msme" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
                 Register Your Business
               </Link>
               <Link href="/marketplace" className="inline-flex h-11 items-center justify-center rounded-md border border-white/40 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10">
@@ -136,7 +136,7 @@ export default async function LandingPage() {
             </div>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
               <MapPin className="h-4 w-4 text-slate-400" />
-              <input name="state" placeholder="Location (e.g. Abuja)" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400" />
+              <input name="location" placeholder="Location (e.g. Abuja)" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400" />
             </div>
             <Button type="submit" className="h-11 bg-emerald-600 text-white hover:bg-emerald-700">Search</Button>
           </form>
@@ -144,7 +144,7 @@ export default async function LandingPage() {
             {MARKETPLACE_QUICK_CATEGORIES.map((category) => (
               <Link
                 key={category}
-                href={`/marketplace?category=${encodeURIComponent(category)}&verification=verified_or_approved`}
+                href={`/marketplace?category=${encodeURIComponent(category)}`}
                 className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50"
               >
                 {category}
@@ -189,14 +189,17 @@ export default async function LandingPage() {
 
       <section className="mx-auto grid max-w-7xl gap-4 px-6 pb-12 md:grid-cols-3">
         {[
-          { icon: ShieldCheck, title: "Get a Verified Business Identity", body: "Stand out as a legitimate and trustworthy business." },
-          { icon: BadgeCheck, title: "Access Opportunities Faster", body: "Unlock access to contracts, markets, funding, and support." },
-          { icon: CheckCircle2, title: "Build Customer Trust Nationwide", body: "Show customers and institutions that you are verified." },
+          { icon: ShieldCheck, title: "Get a Verified Business Identity", body: "Stand out as a legitimate and trustworthy business.", href: "/register/msme", cta: "Register your MSME" },
+          { icon: BadgeCheck, title: "Access Opportunities Faster", body: "Unlock access to contracts, markets, funding, and support.", href: "/resources", cta: "Explore resources" },
+          { icon: CheckCircle2, title: "Build Customer Trust Nationwide", body: "Show customers and institutions that you are verified.", href: "/verify", cta: "Open verifier" },
         ].map((item) => (
           <article key={item.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <item.icon className="h-5 w-5 text-emerald-600" />
             <h2 className="mt-3 text-base font-semibold">{item.title}</h2>
             <p className="mt-2 text-sm text-slate-600">{item.body}</p>
+            <Link href={item.href} className="mt-3 inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800">
+              {item.cta}
+            </Link>
           </article>
         ))}
       </section>
@@ -244,7 +247,7 @@ export default async function LandingPage() {
         <h2 className="mb-4 text-2xl font-semibold text-slate-900">Browse Services by Category</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {DISCOVERY_CATEGORIES.map((category) => (
-            <Link key={category} href={`/marketplace?category=${encodeURIComponent(category)}&verification=verified_or_approved`} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50">
+            <Link key={category} href={`/marketplace?category=${encodeURIComponent(category)}`} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50">
               {category}
             </Link>
           ))}
@@ -308,8 +311,9 @@ export default async function LandingPage() {
             Join the NDMII platform to build digital trust, gain visibility, and connect with verified opportunities nationwide.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/signup/msme" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-300">Register now</Link>
+            <Link href="/register/msme" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-300">Register now</Link>
             <Link href="/verify" className="inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">Verify MSME ID</Link>
+            <Link href="/partners" className="inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">Partner With Us</Link>
           </div>
         </div>
       </section>

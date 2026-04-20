@@ -35,7 +35,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
                 Search to view a verification result.
                 <div className="mt-2 flex flex-wrap justify-center gap-3">
                   <Link href="/sample-id-card" className="font-medium text-emerald-700 hover:text-emerald-800">View sample ID card</Link>
-                  <Link href="/signup/msme" className="font-medium text-emerald-700 hover:text-emerald-800">Register your business</Link>
+                  <Link href="/register/msme" className="font-medium text-emerald-700 hover:text-emerald-800">Register your business</Link>
                 </div>
               </div>
             )}
