@@ -49,7 +49,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
 };
 
 export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
-  admin: ["/dashboard"],
+  admin: ["/dashboard", "/admin"],
   nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
   msme: ["/dashboard/msme", "/dashboard/compliance", "/dashboard/payments"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
@@ -64,6 +64,7 @@ export function isPublicPath(path: string): boolean {
     path === "/login" ||
     path.startsWith("/signup") ||
     path.startsWith("/register") ||
+    path.startsWith("/activate-account/") ||
     path.startsWith("/verify") ||
     path === "/marketplace" ||
     path.startsWith("/marketplace/") ||
@@ -110,7 +111,7 @@ function routeMatchesPrefix(path: string, prefix: string): boolean {
 export function canAccessRoute(role: UserRole, path: string): boolean {
   if (isPublicPath(path)) return true;
   if (role === "public") return false;
-  if (role === "admin") return routeMatchesPrefix(path, "/dashboard");
+  if (role === "admin") return routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   if (path === "/dashboard") return true;
   return ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
 }
@@ -185,6 +186,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/executive/complaints", label: "Complaint Monitor" },
     { href: "/dashboard/nrs", label: "NRS Operations" },
     { href: "/dashboard/associations", label: "Associations" },
+    { href: "/admin/associations", label: "Admin Association Upload" },
     { href: "/dashboard/manufacturers", label: "Manufacturers" },
     { href: "/dashboard/reports", label: "Reports & Export" },
     { href: "/dashboard/audit", label: "Audit Trail" },

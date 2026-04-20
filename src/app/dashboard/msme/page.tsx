@@ -76,6 +76,7 @@ export default async function MsmePage() {
     { count: reviewCount },
     { count: invoiceCount },
     { data: msmeMeta },
+    { data: associationMembership },
     { data: quoteActivity },
     { data: reviewActivity },
     { data: invoiceActivity },
@@ -91,6 +92,7 @@ export default async function MsmePage() {
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
     supabase.from("invoices").select("id", { count: "exact", head: true }).eq("provider_profile_id", workspace.provider.id),
     supabase.from("msmes").select("created_at").eq("id", workspace.msme.id).maybeSingle(),
+    supabase.from("association_members").select("associations(name)").eq("msme_id", workspace.msme.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("provider_quotes").select("id,created_at").eq("provider_profile_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
     supabase.from("reviews").select("id,created_at").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
     supabase.from("invoices").select("id,created_at,status").eq("provider_profile_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
@@ -154,6 +156,7 @@ export default async function MsmePage() {
       : null,
   ].filter((item): item is ActivityItem => Boolean(item));
 
+  const associationName = (associationMembership?.associations as { name?: string } | null)?.name ?? null;
   const hasPublicProfile = Boolean(workspace.provider.public_slug);
   const profileSearchable = hasPublicProfile && Boolean(workspace.provider.is_active ?? true);
   const improveVisibilityRoute = safeServiceCount === 0 ? "/dashboard/msme/services" : "/dashboard/msme/profile";
@@ -218,6 +221,7 @@ export default async function MsmePage() {
                           <MapPin className="h-4 w-4" /> {workspace.msme.state}, Nigeria
                         </p>
                         <p className="text-sm text-slate-600">{workspace.msme.sector || "Business category not set"}</p>
+                        {associationName && <p className="text-xs text-emerald-700">Member of: {associationName}</p>}
                       </div>
                     </div>
 
