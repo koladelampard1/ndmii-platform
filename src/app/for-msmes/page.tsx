@@ -6,7 +6,7 @@ export default function ForMsmesPage() {
       eyebrow="For MSMEs"
       title="Get verified, trusted, and market-ready with NDMII"
       description="Create your business identity, complete onboarding checks, and unlock new opportunities with a public profile buyers can verify instantly."
-      primaryCta={{ label: "Start MSME registration", href: "/signup/msme" }}
+      primaryCta={{ label: "Start MSME registration", href: "/register/msme" }}
       secondaryCta={{ label: "See sample ID card", href: "/sample-id-card" }}
       highlights={[
         "Generate your digital MSME ID and track your verification status.",

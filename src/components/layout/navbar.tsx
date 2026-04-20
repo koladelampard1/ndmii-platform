@@ -31,6 +31,9 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           <Link href="/about" className="text-sm text-slate-600 hover:text-slate-900">
             About
           </Link>
+          <Link href="/contact" className="text-sm text-slate-600 hover:text-slate-900">
+            Contact
+          </Link>
           {isAuthenticated ? (
             <>
               {roleLabel ? (
@@ -46,7 +49,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
             </>
           ) : (
             <>
-              <Link href="/signup/msme">
+              <Link href="/register/msme">
                 <Button size="sm" variant="secondary">Register</Button>
               </Link>
               <Link href="/login">

@@ -21,7 +21,7 @@ export default async function ContactPage({
       eyebrow="Contact"
       title="Talk to the NDMII implementation team"
       description="Need help with onboarding, verification, partnerships, or data quality? Reach out and our team will direct your request to the right desk."
-      primaryCta={{ label: "Register your MSME", href: "/signup/msme" }}
+      primaryCta={{ label: "Register your MSME", href: "/register/msme" }}
       secondaryCta={{ label: "Open verification portal", href: "/verify" }}
     >
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

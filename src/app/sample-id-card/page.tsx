@@ -8,7 +8,7 @@ export default function SampleIdCardPage() {
       eyebrow="Sample Credential"
       title="Preview the NDMII digital MSME ID card"
       description="This sample illustrates the data points and trust markers institutions and customers can verify through the public portal."
-      primaryCta={{ label: "Register your business", href: "/signup/msme" }}
+      primaryCta={{ label: "Register your business", href: "/register/msme" }}
       secondaryCta={{ label: "Verify an MSME", href: "/verify" }}
       highlights={[
         "Each MSME ID maps to a unique public verification route.",

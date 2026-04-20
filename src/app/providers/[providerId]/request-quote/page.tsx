@@ -21,7 +21,7 @@ async function submitProviderQuoteRequest(formData: FormData) {
   const submittedProviderMsmeId = String(formData.get("provider_msme_id") ?? "").trim();
 
   if (!providerPathSegment) {
-    redirect("/search?quote_error=missing_provider");
+    redirect("/marketplace?quote_error=missing_provider");
   }
 
   devQuoteLog("quote_submission_route_param_received", { providerPathSegment });
@@ -151,7 +151,7 @@ export default async function PublicProviderRequestQuotePage({
             <p className="mt-2 text-sm text-amber-800">
               The quote request link is invalid or the provider is no longer publicly available.
             </p>
-            <Link href="/search" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+            <Link href="/marketplace" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
               Return to provider search
             </Link>
           </div>
