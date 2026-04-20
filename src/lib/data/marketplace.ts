@@ -967,8 +967,22 @@ export async function getCategoryBySlug(slug: string): Promise<string | null> {
   return categories.find((item) => item.slug === slug)?.name ?? null;
 }
 
-async function getProviderPublicPortfolio(_providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
-  return [];
+async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("provider_gallery")
+      .select("id,asset_url,caption,is_featured")
+      .eq("provider_id", providerId)
+      .order("is_featured", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (error) throw error;
+    return (data ?? []).filter((item: any) => typeof item?.asset_url === "string" && item.asset_url.trim().length > 0);
+  } catch {
+    return [];
+  }
 }
 
 async function loadProviderSectionsFailClosed(providerId: string) {
@@ -1149,17 +1163,58 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 }
 
 export async function getProviderPublicServices(providerId: string): Promise<ProviderService[]> {
-  if (DEV_MODE) {
-    console.info("[provider-public-page][services_disabled_temporarily]", { providerId });
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("provider_services")
+      .select(
+        "id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status",
+      )
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      id: String(row.id),
+      category: row.category ?? "General Services",
+      specialization: row.specialization ?? null,
+      title: row.title ?? "Service",
+      short_description: row.short_description ?? "No description provided yet.",
+      pricing_mode: row.pricing_mode ?? "custom",
+      min_price: row.min_price ?? null,
+      max_price: row.max_price ?? null,
+      turnaround_time: row.turnaround_time ?? null,
+      vat_applicable: Boolean(row.vat_applicable),
+      availability_status: row.availability_status ?? "available",
+    }));
+  } catch {
+    return [];
   }
-  return [];
 }
 
 export async function getProviderPublicReviews(providerId: string): Promise<ProviderReview[]> {
-  if (DEV_MODE) {
-    console.info("[provider-public-page][reviews_disabled_temporarily]", { providerId });
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      id: String(row.id),
+      reviewer_name: row.reviewer_name ?? "Verified customer",
+      rating: safeNumber(row.rating, 0),
+      review_title: row.review_title ?? "Customer review",
+      review_body: row.review_body ?? "No review body provided.",
+      provider_reply: row.provider_reply ?? null,
+      provider_reply_at: row.provider_reply_at ?? null,
+      created_at: row.created_at ?? new Date().toISOString(),
+    }));
+  } catch {
+    return [];
   }
-  return [];
 }
 
 export async function getProviderComplaintFormContext(providerId: string): Promise<{

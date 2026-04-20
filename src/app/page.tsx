@@ -144,7 +144,7 @@ export default async function LandingPage() {
             {MARKETPLACE_QUICK_CATEGORIES.map((category) => (
               <Link
                 key={category}
-                href={`/marketplace?category=${encodeURIComponent(category)}`}
+                href={`/marketplace?q=${encodeURIComponent(category)}`}
                 className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50"
               >
                 {category}
@@ -247,7 +247,7 @@ export default async function LandingPage() {
         <h2 className="mb-4 text-2xl font-semibold text-slate-900">Browse Services by Category</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {DISCOVERY_CATEGORIES.map((category) => (
-            <Link key={category} href={`/marketplace?category=${encodeURIComponent(category)}`} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50">
+            <Link key={category} href={`/marketplace?q=${encodeURIComponent(category)}`} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50">
               {category}
             </Link>
           ))}
