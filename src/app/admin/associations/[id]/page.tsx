@@ -16,13 +16,6 @@ async function updateAssociationAction(formData: FormData) {
     .from("associations")
     .update({
       name: String(formData.get("name") ?? ""),
-      category: String(formData.get("category") ?? "General"),
-      contact_person_name: String(formData.get("contact_person_name") ?? ""),
-      contact_email: String(formData.get("contact_email") ?? "") || null,
-      contact_phone: String(formData.get("contact_phone") ?? "") || null,
-      location: String(formData.get("location") ?? ""),
-      logo_url: String(formData.get("logo_url") ?? "") || null,
-      status: String(formData.get("status") ?? "ACTIVE"),
       state: String(formData.get("location") ?? ""),
       sector: String(formData.get("category") ?? "General"),
     })
@@ -49,7 +42,7 @@ export default async function AdminAssociationDetailPage({
   const [{ data: association }, { data: members }] = await Promise.all([
     supabase
       .from("associations")
-      .select("id,name,category,contact_person_name,contact_email,contact_phone,location,logo_url,status")
+      .select("id,name,state,sector,created_at")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -75,6 +68,7 @@ export default async function AdminAssociationDetailPage({
         <div className="flex gap-2 text-xs">
           <Link href={`/admin/associations/${id}/upload-members`} className="rounded border px-2 py-1">Upload members</Link>
           <Link href={`/admin/associations/${id}/members`} className="rounded border px-2 py-1">View members</Link>
+          <Link href="/admin/associations" className="rounded border px-2 py-1">Back to associations</Link>
         </div>
       </div>
 
@@ -91,13 +85,13 @@ export default async function AdminAssociationDetailPage({
       <form action={updateAssociationAction} className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-2">
         <input type="hidden" name="association_id" value={association.id} />
         <input name="name" defaultValue={association.name} required className="rounded border px-2 py-2 text-sm" />
-        <input name="category" defaultValue={association.category ?? ""} required className="rounded border px-2 py-2 text-sm" />
-        <input name="contact_person_name" defaultValue={association.contact_person_name ?? ""} required className="rounded border px-2 py-2 text-sm" />
-        <input name="contact_email" defaultValue={association.contact_email ?? ""} className="rounded border px-2 py-2 text-sm" />
-        <input name="contact_phone" defaultValue={association.contact_phone ?? ""} className="rounded border px-2 py-2 text-sm" />
-        <input name="location" defaultValue={association.location ?? ""} required className="rounded border px-2 py-2 text-sm" />
-        <input name="logo_url" defaultValue={association.logo_url ?? ""} className="rounded border px-2 py-2 text-sm md:col-span-2" />
-        <select name="status" defaultValue={association.status ?? "ACTIVE"} className="rounded border px-2 py-2 text-sm">
+        <input name="category" defaultValue={association.sector ?? ""} required className="rounded border px-2 py-2 text-sm" />
+        <input name="contact_person_name" defaultValue="" className="rounded border px-2 py-2 text-sm" placeholder="Contact person (not configured in current schema)" />
+        <input name="contact_email" defaultValue="" className="rounded border px-2 py-2 text-sm" placeholder="Contact email (not configured in current schema)" />
+        <input name="contact_phone" defaultValue="" className="rounded border px-2 py-2 text-sm" placeholder="Contact phone (not configured in current schema)" />
+        <input name="location" defaultValue={association.state ?? ""} required className="rounded border px-2 py-2 text-sm" />
+        <input name="logo_url" defaultValue="" className="rounded border px-2 py-2 text-sm md:col-span-2" placeholder="Logo URL (not configured in current schema)" />
+        <select name="status" defaultValue="ACTIVE" className="rounded border px-2 py-2 text-sm">
           <option value="ACTIVE">ACTIVE</option>
           <option value="INACTIVE">INACTIVE</option>
         </select>

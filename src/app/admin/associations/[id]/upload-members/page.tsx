@@ -44,6 +44,8 @@ export default async function AdminAssociationUploadMembersPage({
       redirect(`/admin/associations/${id}/upload-members?error=invalid_payload`);
     }
 
+    const actionSupabase = await createServerSupabaseClient();
+
     const result = await processAssociationBulkRows({
       associationId: id,
       uploadedBy: actionCtx.appUserId,
@@ -62,7 +64,7 @@ export default async function AdminAssociationUploadMembersPage({
       })),
     });
 
-    await supabase.from("association_member_imports").insert({
+    await actionSupabase.from("association_member_imports").insert({
       association_id: id,
       uploaded_by: actionCtx.appUserId,
       file_name: fileName,
@@ -85,6 +87,7 @@ export default async function AdminAssociationUploadMembersPage({
         <div className="flex gap-2 text-xs">
           <a href="/api/admin/associations/template?format=csv" className="rounded border px-2 py-1">Download MSME Upload Template</a>
           <Link href={`/admin/associations/${id}/members`} className="rounded border px-2 py-1">View members</Link>
+          <Link href={`/admin/associations/${id}`} className="rounded border px-2 py-1">Back to association</Link>
         </div>
       </div>
 
