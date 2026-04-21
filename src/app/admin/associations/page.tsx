@@ -12,6 +12,11 @@ async function createAssociationAction(formData: FormData) {
   const supabase = await createServerSupabaseClient();
   const payload = {
     name: String(formData.get("name") ?? ""),
+    state: String(formData.get("location") ?? ""),
+    sector: String(formData.get("category") ?? "General"),
+  };
+
+  const unsupportedFormFields = {
     category: String(formData.get("category") ?? "General"),
     contact_person_name: String(formData.get("contact_person_name") ?? ""),
     contact_email: String(formData.get("contact_email") ?? "") || null,
@@ -20,21 +25,22 @@ async function createAssociationAction(formData: FormData) {
     logo_url: String(formData.get("logo_url") ?? "") || null,
     status: String(formData.get("status") ?? "ACTIVE"),
     created_by_admin_id: ctx.appUserId,
-    state: String(formData.get("location") ?? ""),
-    sector: String(formData.get("category") ?? "General"),
   };
 
   console.info("[admin-associations:create] table=associations payload", payload);
+  console.info("[admin-associations:create] omitted unsupported fields", unsupportedFormFields);
 
   const { data: insertedAssociation, error } = await supabase
     .from("associations")
     .insert(payload)
-    .select("id,name,state,sector,status,created_at")
+    .select("id,name,state,sector,created_at")
     .single();
 
   if (error) {
     console.error("[admin-associations:create] insert failed", {
       table: "associations",
+      attemptedPayload: payload,
+      omittedUnsupportedFields: unsupportedFormFields,
       message: error.message,
       details: error.details,
       hint: error.hint,
@@ -67,7 +73,7 @@ export default async function AdminAssociationsPage({
   const [{ data: associations }, { data: members }] = await Promise.all([
     supabase
       .from("associations")
-      .select("id,name,category,contact_person_name,contact_email,contact_phone,location,status,created_at")
+      .select("id,name,state,sector,created_at")
       .order("created_at", { ascending: false }),
     supabase.from("association_members").select("association_id,id,invite_status"),
   ]);
@@ -95,11 +101,11 @@ export default async function AdminAssociationsPage({
           <p className="text-sm text-slate-600">Designed for high-volume Abuja artisan association onboarding.</p>
           <form action={createAssociationAction} className="mt-3 grid gap-2 md:grid-cols-2">
             <input name="name" required placeholder="Association name" className="rounded border px-2 py-2 text-sm" />
-            <input name="category" required placeholder="Category / type" className="rounded border px-2 py-2 text-sm" />
+            <input name="category" required placeholder="Sector / category" className="rounded border px-2 py-2 text-sm" />
             <input name="contact_person_name" required placeholder="Contact person" className="rounded border px-2 py-2 text-sm" />
             <input name="contact_email" type="email" placeholder="Contact email" className="rounded border px-2 py-2 text-sm" />
             <input name="contact_phone" placeholder="Contact phone" className="rounded border px-2 py-2 text-sm" />
-            <input name="location" required placeholder="Location" className="rounded border px-2 py-2 text-sm" />
+            <input name="location" required placeholder="State" className="rounded border px-2 py-2 text-sm" />
             <input name="logo_url" placeholder="Logo URL (optional)" className="rounded border px-2 py-2 text-sm md:col-span-2" />
             <select name="status" defaultValue="ACTIVE" className="rounded border px-2 py-2 text-sm">
               <option value="ACTIVE">ACTIVE</option>
@@ -126,7 +132,7 @@ export default async function AdminAssociationsPage({
           <article key={association.id} className="rounded-xl border bg-white p-4 shadow-sm">
             <h2 className="text-lg font-semibold">{association.name}</h2>
             <p className="text-sm text-slate-600">
-              {association.category ?? "General"} • {association.location ?? "N/A"} • {association.status ?? "ACTIVE"}
+              {association.sector ?? "General"} • {association.state ?? "N/A"}
             </p>
             <p className="text-xs text-slate-500">Members linked: {countByAssociation.get(association.id) ?? 0}</p>
             <div className="mt-3 flex gap-2 text-xs">
