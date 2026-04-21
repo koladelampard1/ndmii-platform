@@ -130,6 +130,7 @@ export async function processAssociationBulkRows({
         .from("msmes")
         .insert({
           msme_id: generateMsmeId(row.location),
+          association_id: associationId,
           business_name: row.business_name,
           owner_name: row.owner_full_name,
           state: row.location,
