@@ -77,6 +77,7 @@ export default async function AdminAssociationUploadMembersPage({
 
     revalidatePath(`/admin/associations/${id}`);
     revalidatePath(`/admin/associations/${id}/members`);
+    revalidatePath("/admin/associations");
     redirect(`/admin/associations/${id}/upload-members?saved=1&total=${result.total}&invited=${result.invited}&failed=${result.failed}&already=${result.alreadyExists}`);
   }
 

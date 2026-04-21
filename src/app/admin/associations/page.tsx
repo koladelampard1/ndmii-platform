@@ -75,7 +75,7 @@ export default async function AdminAssociationsPage({
       .from("associations")
       .select("id,name,state,sector,created_at")
       .order("created_at", { ascending: false }),
-    supabase.from("association_members").select("association_id,id,invite_status"),
+    supabase.from("msmes").select("association_id,id").not("association_id", "is", null),
   ]);
 
   const countByAssociation = new Map<string, number>();
