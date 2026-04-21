@@ -35,7 +35,12 @@ export default async function AssociationDetailPage({ params, searchParams }: { 
   const supabase = await createServerSupabaseClient();
   const [{ data: association }, { data: members }] = await Promise.all([
     supabase.from("associations").select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone").eq("id", id).maybeSingle(),
-    supabase.from("association_members").select("id,msme_id,member_status,is_verified,msmes(business_name,msme_id,state,sector)").eq("association_id", id).limit(40),
+    supabase
+      .from("msmes")
+      .select("id,msme_id,business_name,state,sector,verification_status")
+      .eq("association_id", id)
+      .order("created_at", { ascending: false })
+      .limit(40),
   ]);
 
   if (!association) return <main className="rounded border bg-white p-6">Association not found.</main>;
@@ -61,8 +66,8 @@ export default async function AssociationDetailPage({ params, searchParams }: { 
       <article className="rounded-xl border bg-white p-4">
         <h2 className="font-semibold">Member coverage ({(members ?? []).length})</h2>
         <div className="mt-2 space-y-2 text-sm">
-          {(members ?? []).map((member, idx) => (
-            <p key={idx} className="rounded border p-2">{(member.msmes as any)?.business_name} • {(member.msmes as any)?.msme_id} • {member.member_status} • {member.is_verified ? "verified" : "pending"}</p>
+          {(members ?? []).map((member) => (
+            <p key={member.id} className="rounded border p-2">{member.business_name} • {member.msme_id} • {member.verification_status ?? "pending_review"}</p>
           ))}
           {(members ?? []).length === 0 && <p className="text-slate-500">No linked members yet.</p>}
         </div>
