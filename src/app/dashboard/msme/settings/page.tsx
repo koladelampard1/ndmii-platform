@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info, Upload } from "lucide-react";
+import { mergeSupportedSectors } from "@/lib/constants/sectors";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -156,6 +157,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
     .maybeSingle();
 
   const completeness = deriveProfileCompleteness(workspace);
+  const sectorOptions = mergeSupportedSectors([workspace.msme.sector]);
 
   return (
     <section className="space-y-5 pb-6">
@@ -169,6 +171,9 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
       </header>
 
       <form action={settingsAction} className="grid gap-4 xl:grid-cols-[280px,minmax(0,1fr),280px]">
+        <datalist id="msme-sector-options">
+          {sectorOptions.map((sector) => <option key={sector} value={sector} />)}
+        </datalist>
         <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <nav className="space-y-1" aria-label="Settings sections">
             {SETTINGS_SECTIONS.map((section, index) => {
@@ -238,6 +243,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                   <span className="text-xs font-medium text-slate-600">Business Category</span>
                   <input
                     name="business_category"
+                    list="msme-sector-options"
                     defaultValue={workspace.msme.sector ?? ""}
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                   />

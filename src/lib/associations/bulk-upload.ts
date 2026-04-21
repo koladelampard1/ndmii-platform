@@ -1,3 +1,5 @@
+import { SUPPORTED_MSME_SECTORS } from "@/lib/constants/sectors";
+
 export const BULK_UPLOAD_COLUMNS = [
   "business_name",
   "owner_full_name",
@@ -102,7 +104,9 @@ export function validateUploadRows({
   const duplicateEmailTracker = new Map<string, number[]>();
   const duplicatePhoneTracker = new Map<string, number[]>();
 
-  const normalizedCategories = new Set(categories.map((item) => item.trim().toLowerCase()).filter(Boolean));
+  const normalizedCategories = new Set(
+    [...categories, ...SUPPORTED_MSME_SECTORS].map((item) => item.trim().toLowerCase()).filter(Boolean),
+  );
   const normalizedLocations = new Set(locations.map((item) => item.trim().toLowerCase()).filter(Boolean));
 
   const validated = rows.map<ValidatedUploadRow>((values, index) => {
