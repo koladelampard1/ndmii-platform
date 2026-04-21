@@ -91,17 +91,37 @@ export default async function AdminAssociationMembersPage({
   const statusFilter = query.status?.toUpperCase();
 
   const supabase = await createServerSupabaseClient();
-  let queryBuilder = supabase
-    .from("association_members")
-    .select("id,invite_status,invite_sent_at,activated_at,msmes(id,business_name,owner_name,contact_email,contact_phone,passport_photo_url,sector,state)")
-    .eq("association_id", id)
-    .order("created_at", { ascending: false });
+  const [{ data: msmes }, { data: associationMembers }] = await Promise.all([
+    supabase
+      .from("msmes")
+      .select("id,business_name,owner_name,contact_email,contact_phone,passport_photo_url,sector,state,association_id,created_at")
+      .eq("association_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("association_members")
+      .select("id,msme_id,invite_status,invite_sent_at,activated_at")
+      .eq("association_id", id),
+  ]);
 
-  if (statusFilter && ["INVITED", "ACTIVATED", "FAILED", "ALREADY_EXISTS"].includes(statusFilter)) {
-    queryBuilder = queryBuilder.eq("invite_status", statusFilter);
-  }
+  const membersByMsmeId = new Map(
+    (associationMembers ?? []).map((member) => [member.msme_id, member]),
+  );
 
-  const { data: rows } = await queryBuilder;
+  const rows = (msmes ?? [])
+    .map((msme) => {
+      const member = membersByMsmeId.get(msme.id);
+      return {
+        id: msme.id,
+        msme,
+        invite_status: member?.invite_status ?? "N/A",
+        activated_at: member?.activated_at ?? null,
+        association_member_id: member?.id ?? null,
+      };
+    })
+    .filter((row) => {
+      if (!statusFilter || !["INVITED", "ACTIVATED", "FAILED", "ALREADY_EXISTS"].includes(statusFilter)) return true;
+      return row.invite_status === statusFilter;
+    });
 
   return (
     <section className="space-y-4">
@@ -134,43 +154,27 @@ export default async function AdminAssociationMembersPage({
             </tr>
           </thead>
           <tbody>
-            {(rows ?? []).map((row) => {
-              const msmeRaw = row.msmes as {
-                id: string;
-                business_name: string;
-                owner_name: string;
-                contact_email: string | null;
-                contact_phone: string | null;
-                passport_photo_url: string | null;
-                sector: string | null;
-                state: string | null;
-              } | Array<{
-                id: string;
-                business_name: string;
-                owner_name: string;
-                contact_email: string | null;
-                contact_phone: string | null;
-                passport_photo_url: string | null;
-                sector: string | null;
-                state: string | null;
-              }> | null;
-              const msme = Array.isArray(msmeRaw) ? msmeRaw[0] : msmeRaw;
-
+            {rows.map((row) => {
+              const msme = row.msme;
               return (
                 <tr key={row.id} className="border-t align-top">
                   <td className="px-3 py-2">{msme?.business_name ?? "-"}</td>
                   <td className="px-3 py-2">{msme?.owner_name ?? "-"}</td>
                   <td className="px-3 py-2">{msme?.contact_email ?? "-"}</td>
                   <td className="px-3 py-2">{msme?.contact_phone ?? "-"}</td>
-                  <td className="px-3 py-2">{row.invite_status ?? "INVITED"}</td>
+                  <td className="px-3 py-2">{row.invite_status ?? "N/A"}</td>
                   <td className="px-3 py-2">{row.activated_at ? "ACTIVATED" : "PENDING"}</td>
                   <td className="px-3 py-2">{profileCompletionStatus(msme ?? {})}</td>
                   <td className="px-3 py-2">
-                    <form action={resendInviteAction}>
-                      <input type="hidden" name="association_id" value={id} />
-                      <input type="hidden" name="member_id" value={row.id} />
-                      <button className="rounded border px-2 py-1 text-xs">Resend invite</button>
-                    </form>
+                    {row.association_member_id ? (
+                      <form action={resendInviteAction}>
+                        <input type="hidden" name="association_id" value={id} />
+                        <input type="hidden" name="member_id" value={row.association_member_id} />
+                        <button className="rounded border px-2 py-1 text-xs">Resend invite</button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-slate-500">No invite record</span>
+                    )}
                   </td>
                 </tr>
               );
