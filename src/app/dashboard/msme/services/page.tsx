@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { getMsmeServicesData } from "@/lib/data/msme-services";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { MsmeServicesDashboard, type ServiceRecord } from "./services-dashboard";
 
@@ -42,19 +43,20 @@ async function serviceAction(formData: FormData) {
 export default async function MsmeServicesPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const createServiceRoute = "/dashboard/msme/services/new";
+  const servicesData = await getMsmeServicesData(workspace.provider.id);
 
-  const [{ data: services }, { data: categories }] = await Promise.all([
-    supabase.from("provider_services").select("*").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }),
-    supabase.from("service_categories").select("name").eq("is_active", true).order("name"),
-  ]);
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-services] page-route-config", { createServiceRoute });
+  }
 
   return (
     <MsmeServicesDashboard
       saved={Boolean(params.saved)}
-      services={(services ?? []) as ServiceRecord[]}
-      categories={(categories ?? []).map((category) => category.name)}
+      services={servicesData.services as ServiceRecord[]}
+      categories={servicesData.categories}
       serviceAction={serviceAction}
+      createServiceRoute={createServiceRoute}
     />
   );
 }
