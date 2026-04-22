@@ -319,9 +319,9 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupKey = msme.id;
+  const providerLookupKey = msme.msme_id;
   const providerSelect =
-    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,slug";
+    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
   let provider: {
     id: string;
     msme_id: string;
@@ -334,7 +334,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     website: string | null;
     is_verified: boolean | null;
     is_active: boolean | null;
-    slug?: string | null;
   } | null = null;
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
@@ -353,11 +352,11 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     console.info("[provider-workspace-query]", {
       source,
       route,
-      providerProfilesSchemaUsed: {
-        table: "provider_profiles",
-        lookupColumn: "msme_id(uuid->msmes.id)",
-        selectColumns: providerSelect.split(","),
-      },
+        providerProfilesSchemaUsed: {
+          table: "provider_profiles",
+          lookupColumn: "msme_id(public MSME ID)",
+          selectColumns: providerSelect.split(","),
+        },
       select: providerSelect,
       lookupField: "msme_id",
       lookupValue: providerLookupKey,
@@ -424,7 +423,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
 
-    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.id);
+    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.msme_id);
     if (providerById && ownsProvider) {
       provider = providerById;
     }
@@ -470,12 +469,14 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   if (!provider) {
     const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
     const provisioningPayload = {
-      msme_id: msme.id,
-      display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
-      slug: generatedSlug,
+      msme_id: msme.msme_id,
       public_slug: generatedSlug,
+      display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
       tagline: `NDMII registered MSME in ${msme.state}.`,
       description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
+      contact_email: msme.contact_email ?? null,
+      contact_phone: null,
+      website: null,
       is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
       is_active: true,
       updated_at: new Date().toISOString(),
@@ -487,7 +488,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
         route,
         providerProfilesSchemaUsed: {
           table: "provider_profiles",
-          lookupColumn: "msme_id(uuid->msmes.id)",
+          lookupColumn: "msme_id(public MSME ID)",
           insertColumns: Object.keys(provisioningPayload),
         },
         lookupKeyUsed: providerLookupKey,
@@ -594,7 +595,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const ownsProvider = provider.msme_id === msme.id;
+  const ownsProvider = provider.msme_id === msme.msme_id;
   if (!ownsProvider) {
     denyProviderWorkspaceAccess({
       route,
@@ -672,7 +673,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       ...provider,
       short_description: provider.tagline ?? provider.description ?? null,
       long_description: provider.description ?? null,
-      slug: provider.public_slug ?? provider.slug ?? provider.id,
+      slug: provider.public_slug ?? provider.id,
       trust_score: 0,
       logo_url: null,
     },

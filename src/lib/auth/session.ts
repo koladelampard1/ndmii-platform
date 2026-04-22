@@ -105,7 +105,7 @@ export async function getCurrentUserContext(): Promise<UserContext> {
         .limit(1)
         .maybeSingle();
 
-      const msmeLookupCandidates = [linkedMsme?.msme_id, linkedMsme?.id, context.linkedMsmeId].filter(
+      const msmeLookupCandidates = [linkedMsme?.msme_id, context.linkedMsmeId].filter(
         (value): value is string => Boolean(value),
       );
 

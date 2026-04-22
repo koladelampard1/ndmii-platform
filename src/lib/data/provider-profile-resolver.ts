@@ -78,27 +78,9 @@ export async function resolvePublicProviderProfile(params: {
     data = await attemptLookup("id", providerRouteParam);
   }
 
-  if (!data?.id && UUID_PATTERN.test(providerRouteParam)) {
-    data = await attemptLookup("msme_id", providerRouteParam);
-  }
-
   if (!data?.id) {
-    const { data: msmeByPublicId, error: msmeLookupError } = await supabase
-      .from("msmes")
-      .select("id")
-      .eq("msme_id", providerRouteParam.toUpperCase())
-      .maybeSingle();
-    if (msmeLookupError) {
-      logResolver("provider_lookup_msme_public_id_error", {
-        query_field: "msmes.msme_id",
-        filter: `msme_id.eq.${providerRouteParam.toUpperCase()}`,
-        message: msmeLookupError.message ?? null,
-      });
-    }
-    if (msmeByPublicId?.id) {
-      data = await attemptLookup("msme_id", msmeByPublicId.id);
-      if (data?.id) queryFieldUsed = "msmes.msme_id";
-    }
+    data = await attemptLookup("msme_id", providerRouteParam.toUpperCase());
+    if (data?.id) queryFieldUsed = "provider_profiles.msme_id";
   }
 
   if (!data?.id) {
