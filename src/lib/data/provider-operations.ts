@@ -319,9 +319,9 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupKey = msme.msme_id;
+  const providerLookupKey = msme.id;
   const providerSelect =
-    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active";
+    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,short_description,long_description,slug";
   let provider: {
     id: string;
     msme_id: string;
@@ -334,6 +334,9 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     website: string | null;
     is_verified: boolean | null;
     is_active: boolean | null;
+    short_description?: string | null;
+    long_description?: string | null;
+    slug?: string | null;
   } | null = null;
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
@@ -352,6 +355,11 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     console.info("[provider-workspace-query]", {
       source,
       route,
+      providerProfilesSchemaUsed: {
+        table: "provider_profiles",
+        lookupColumn: "msme_id(uuid->msmes.id)",
+        selectColumns: providerSelect.split(","),
+      },
       select: providerSelect,
       lookupField: "msme_id",
       lookupValue: providerLookupKey,
@@ -418,7 +426,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
 
-    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.msme_id);
+    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.id);
     if (providerById && ownsProvider) {
       provider = providerById;
     }
@@ -463,21 +471,36 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
   if (!provider) {
     const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
+    const provisioningPayload = {
+      msme_id: msme.id,
+      display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
+      slug: generatedSlug,
+      public_slug: generatedSlug,
+      short_description: `NDMII registered MSME in ${msme.state}.`,
+      long_description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
+      is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[provider-workspace-provision-attempt]", {
+        source,
+        route,
+        providerProfilesSchemaUsed: {
+          table: "provider_profiles",
+          lookupColumn: "msme_id(uuid->msmes.id)",
+          insertColumns: Object.keys(provisioningPayload),
+        },
+        lookupKeyUsed: providerLookupKey,
+        provisioningPayload,
+      });
+    }
+
     const { data: provisionedProvider, error: provisionError } = await supabase
       .from("provider_profiles")
       .upsert(
-        {
-          msme_id: msme.id,
-          display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
-          business_name: msme.business_name || null,
-          slug: generatedSlug,
-          public_slug: generatedSlug,
-          short_description: `NDMII registered MSME in ${msme.state}.`,
-          long_description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
-          is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
+        provisioningPayload,
         { onConflict: "msme_id" }
       )
       .select(providerSelect)
@@ -487,6 +510,14 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       provider = provisionedProvider;
       providerQueryResultLength = 1;
       providerQueryError = null;
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[provider-workspace-provision-success]", {
+          source,
+          route,
+          lookupKeyUsed: providerLookupKey,
+          createdProviderProfileId: provisionedProvider.id,
+        });
+      }
       logProviderAccessAudit({
         route,
         source,
@@ -565,7 +596,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const ownsProvider = provider.msme_id === msme.msme_id;
+  const ownsProvider = provider.msme_id === msme.id;
   if (!ownsProvider) {
     denyProviderWorkspaceAccess({
       route,
@@ -641,9 +672,9 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     msme,
     provider: {
       ...provider,
-      short_description: provider.tagline ?? provider.description ?? null,
-      long_description: provider.description ?? null,
-      slug: provider.public_slug ?? provider.id,
+      short_description: provider.short_description ?? provider.tagline ?? provider.description ?? null,
+      long_description: provider.long_description ?? provider.description ?? null,
+      slug: provider.public_slug ?? provider.slug ?? provider.id,
       trust_score: 0,
       logo_url: null,
     },
