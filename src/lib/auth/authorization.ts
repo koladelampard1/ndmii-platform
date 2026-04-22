@@ -62,8 +62,21 @@ export function isPublicPath(path: string): boolean {
   return (
     path === "/" ||
     path === "/login" ||
+    path === "/forgot-password" ||
+    path === "/reset-password" ||
+    path === "/auth/callback" ||
+    path.startsWith("/auth/callback/") ||
+    path === "/auth/confirm" ||
+    path.startsWith("/auth/confirm/") ||
+    path === "/auth/reset-password" ||
+    path.startsWith("/auth/reset-password/") ||
+    path === "/password-setup" ||
+    path.startsWith("/password-setup/") ||
+    path === "/set-password" ||
+    path.startsWith("/set-password/") ||
     path.startsWith("/signup") ||
     path.startsWith("/register") ||
+    path === "/activate-account" ||
     path.startsWith("/activate-account/") ||
     path.startsWith("/verify") ||
     path === "/marketplace" ||
