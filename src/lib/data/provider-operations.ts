@@ -80,6 +80,20 @@ function denyProviderWorkspaceAccess(payload: ProviderAccessAuditLog): never {
   redirect("/access-denied");
 }
 
+function buildProviderSlug(businessName: string, msmePublicId: string): string {
+  const businessSlug = businessName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const idSlug = msmePublicId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return [businessSlug || "provider", idSlug || "msme"].join("-");
+}
+
 export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceContext> {
   const ctx = await getCurrentUserContext();
   const route = "/dashboard/msme/*";
@@ -272,7 +286,15 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  if (ctx.role === "msme" && resolvedAppUserId && msme.created_by !== resolvedAppUserId) {
+  const isMsmeOwnedByLinkedUser = Boolean(ctx.role === "msme" && resolvedAppUserId && msme.created_by === resolvedAppUserId);
+  const isMsmeOwnedByContactEmail = Boolean(
+    ctx.role === "msme"
+    && ctx.email
+    && msme.contact_email
+    && msme.contact_email.trim().toLowerCase() === ctx.email.trim().toLowerCase()
+  );
+
+  if (ctx.role === "msme" && !isMsmeOwnedByLinkedUser && !isMsmeOwnedByContactEmail) {
     denyProviderWorkspaceAccess({
       route,
       source,
@@ -289,7 +311,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       providerRow: null,
       resolvedProviderMsmeId: null,
       decision: "deny",
-      reason: "msme_user_not_creator_of_resolved_msme",
+      reason: "msme_user_not_owner_by_created_by_or_contact_email",
       queryClientUsed,
       providerQuery: null,
       providerQueryResultLength: null,
@@ -437,6 +459,78 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       providerQueryResultLength,
       providerQueryError,
     });
+  }
+
+  if (!provider) {
+    const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
+    const { data: provisionedProvider, error: provisionError } = await supabase
+      .from("provider_profiles")
+      .upsert(
+        {
+          msme_id: msme.id,
+          display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
+          business_name: msme.business_name || null,
+          slug: generatedSlug,
+          public_slug: generatedSlug,
+          short_description: `NDMII registered MSME in ${msme.state}.`,
+          long_description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
+          is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "msme_id" }
+      )
+      .select(providerSelect)
+      .maybeSingle();
+
+    if (!provisionError && provisionedProvider) {
+      provider = provisionedProvider;
+      providerQueryResultLength = 1;
+      providerQueryError = null;
+      logProviderAccessAudit({
+        route,
+        source,
+        component,
+        email: ctx.email,
+        role: ctx.role,
+        resolvedUserId: resolvedAppUserId,
+        resolvedMsmeId: msme.id,
+        resolvedMsmePublicId: msme.msme_id,
+        linkedMsmeId: ctx.linkedMsmeId,
+        linkedProviderId: ctx.linkedProviderId,
+        providerLookupKeyUsed: providerLookupKey,
+        providerRowFound: true,
+        providerRow: {
+          id: provider.id,
+          msme_id: provider.msme_id ?? null,
+          display_name: provider.display_name,
+        },
+        resolvedProviderMsmeId: provider.msme_id ?? null,
+        decision: "allow",
+        reason: "provider_profile_auto_provisioned_for_authenticated_msme",
+        queryClientUsed,
+        providerQuery: {
+          table: "provider_profiles",
+          select: providerSelect,
+          filters: {
+            msme_id: providerLookupKey,
+          },
+        },
+        providerQueryResultLength,
+        providerQueryError,
+      });
+    } else if (process.env.NODE_ENV !== "production") {
+      console.info("[provider-workspace-provision]", {
+        source,
+        route,
+        email: ctx.email,
+        role: ctx.role,
+        msmeId: msme.id,
+        msmePublicId: msme.msme_id,
+        generatedSlug,
+        provisionError: provisionError?.message ?? null,
+      });
+    }
   }
 
   if (!provider) {

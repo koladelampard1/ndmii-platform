@@ -18,6 +18,8 @@ export async function POST(request: Request) {
       email: email || null,
       rawRole: body.role ?? null,
       normalizedRole: role,
+      authUserId: body.userId ?? null,
+      appUserId: body.appUserId ?? null,
       reason: role === "public" ? "fallback_public_role_written" : "role_cookie_written",
     });
   }
