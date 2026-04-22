@@ -498,10 +498,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
     const { data: provisionedProvider, error: provisionError } = await supabase
       .from("provider_profiles")
-      .upsert(
-        provisioningPayload,
-        { onConflict: "msme_id" }
-      )
+      .insert(provisioningPayload)
       .select(providerSelect)
       .maybeSingle();
 
@@ -549,17 +546,52 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
         providerQueryResultLength,
         providerQueryError,
       });
-    } else if (process.env.NODE_ENV !== "production") {
-      console.info("[provider-workspace-provision]", {
-        source,
-        route,
-        email: ctx.email,
-        role: ctx.role,
-        msmeId: msme.id,
-        msmePublicId: msme.msme_id,
-        generatedSlug,
-        provisionError: provisionError?.message ?? null,
-      });
+    } else {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[provider-workspace-provision-insert-error]", {
+          source,
+          route,
+          email: ctx.email,
+          role: ctx.role,
+          msmeId: msme.id,
+          msmePublicId: msme.msme_id,
+          generatedSlug,
+          dbErrorMessage: provisionError?.message ?? null,
+          dbErrorCode: provisionError?.code ?? null,
+          dbErrorDetails: provisionError?.details ?? null,
+          dbErrorHint: provisionError?.hint ?? null,
+          dbError: provisionError ?? null,
+        });
+      }
+
+      const { data: providerAfterInsertFailureRows, error: providerAfterInsertFailureError } = await supabase
+        .from("provider_profiles")
+        .select(providerSelect)
+        .eq("msme_id", providerLookupKey)
+        .order("updated_at", { ascending: false })
+        .limit(10);
+
+      const providerAfterInsertFailure = providerAfterInsertFailureRows?.[0] ?? null;
+      if (providerAfterInsertFailure) {
+        provider = providerAfterInsertFailure;
+        providerQueryResultLength = providerAfterInsertFailureRows?.length ?? 1;
+        providerQueryError = providerAfterInsertFailureError?.message ?? null;
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[provider-workspace-provision-requery-success]", {
+            source,
+            route,
+            lookupKeyUsed: providerLookupKey,
+            recoveredProviderProfileId: providerAfterInsertFailure.id,
+          });
+        }
+      } else if (process.env.NODE_ENV !== "production") {
+        console.info("[provider-workspace-provision-requery-empty]", {
+          source,
+          route,
+          lookupKeyUsed: providerLookupKey,
+          requeryError: providerAfterInsertFailureError?.message ?? null,
+        });
+      }
     }
   }
 
