@@ -31,7 +31,21 @@ async function createServiceAction(formData: FormData) {
     updated_at: new Date().toISOString(),
   };
 
-  await supabase.from("provider_services").insert(payload);
+  const { data: insertedRows, error } = await supabase.from("provider_services").insert(payload).select("id").limit(1);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-services] write-table", {
+      writeTable: "provider_services",
+      writeProviderId: workspace.provider.id,
+      insertedServiceId: insertedRows?.[0]?.id ?? null,
+      writeError: error?.message ?? null,
+    });
+  }
+
+  if (error) {
+    throw new Error(`Failed to create service: ${error.message}`);
+  }
+
   revalidatePath("/dashboard/msme/services");
   revalidatePath("/dashboard/msme/services/new");
   redirect("/dashboard/msme/services?saved=1");
@@ -39,7 +53,11 @@ async function createServiceAction(formData: FormData) {
 
 export default async function MsmeCreateServicePage() {
   const workspace = await getProviderWorkspaceContext();
-  const servicesData = await getMsmeServicesData(workspace.provider.id);
+  const servicesData = await getMsmeServicesData({
+    providerId: workspace.provider.id,
+    msmeDatabaseId: workspace.msme.id,
+    msmePublicId: workspace.msme.msme_id,
+  });
   const servicesRoute = "/dashboard/msme/services";
   const createServiceRoute = "/dashboard/msme/services/new";
 
