@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpDown,
   CheckCircle2,
@@ -40,6 +41,7 @@ type MsmeServicesDashboardProps = {
   categories: string[];
   saved: boolean;
   serviceAction: (formData: FormData) => Promise<void>;
+  createServiceRoute: string;
 };
 
 const formatter = new Intl.NumberFormat("en-NG");
@@ -61,8 +63,7 @@ function statusLabel(value: string | null | undefined) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function MsmeServicesDashboard({ services, categories, saved, serviceAction }: MsmeServicesDashboardProps) {
-  const [showAddForm, setShowAddForm] = useState(false);
+export function MsmeServicesDashboard({ services, categories, saved, serviceAction, createServiceRoute }: MsmeServicesDashboardProps) {
   const [activeTab, setActiveTab] = useState<"all" | "categories">("all");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -143,6 +144,27 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
     [services],
   );
   const hasPerformanceData = Boolean(mostViewed?.title || mostRequested?.title || highestPriced?.title);
+  const servicesByCategory = useMemo(() => {
+    const grouped = new Map<string, ServiceRecord[]>();
+    for (const service of services) {
+      const key = service.category?.trim() || "Uncategorized";
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(service);
+      grouped.set(key, bucket);
+    }
+    return Array.from(grouped.entries())
+      .map(([category, items]) => ({
+        category,
+        count: items.length,
+        items: items.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "")),
+      }))
+      .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+  }, [services]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    console.info("[msme-services] add-new-service-route", { route: createServiceRoute });
+  }, [createServiceRoute]);
 
   return (
     <section className="space-y-8 pb-4">
@@ -157,60 +179,14 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
           <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">My Services</h1>
           <p className="mt-2 text-base text-slate-600">Manage the services you offer to your customers.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddForm((open) => !open)}
+        <Link
+          href={createServiceRoute}
           className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 sm:self-auto"
         >
           <Plus className="h-4 w-4" />
           Add New Service
-        </button>
+        </Link>
       </header>
-
-      {showAddForm && (
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="mb-4 text-base font-semibold text-slate-900">Add New Service</h2>
-          <form action={serviceAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <input type="hidden" name="kind" value="create" />
-            <select name="category" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-              {uniqueCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-              {!uniqueCategories.length && <option value="Professional Services">Professional Services</option>}
-            </select>
-            <input name="specialization" placeholder="Specialization" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <input name="title" required placeholder="Service title" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <input
-              name="short_description"
-              required
-              placeholder="Short description"
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm md:col-span-2 xl:col-span-3"
-            />
-            <select name="pricing_mode" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
-              <option value="fixed">fixed</option>
-              <option value="range">range</option>
-              <option value="negotiable">negotiable</option>
-            </select>
-            <input name="min_price" type="number" min={0} step="0.01" placeholder="Minimum price" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <input name="max_price" type="number" min={0} step="0.01" placeholder="Maximum price" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <input name="turnaround_time" placeholder="Turnaround e.g. 5 days" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm" />
-            <select name="vat_applicable" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
-              <option value="false">VAT not applicable</option>
-              <option value="true">VAT applicable</option>
-            </select>
-            <select name="availability_status" className="h-11 rounded-xl border border-slate-200 px-3 text-sm shadow-sm">
-              <option value="available">available</option>
-              <option value="limited">limited</option>
-              <option value="unavailable">unavailable</option>
-            </select>
-            <div className="md:col-span-2 xl:col-span-3 flex justify-end">
-              <button className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Save Service</button>
-            </div>
-          </form>
-        </div>
-      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
@@ -309,8 +285,35 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
             </div>
 
             {activeTab === "categories" ? (
-              <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
-                Category grouping view will appear here as your services and categories grow.
+              <div className="mt-5 space-y-3">
+                {!servicesByCategory.length ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
+                    No service categories yet. Add your first service to start organizing your catalog.
+                  </div>
+                ) : (
+                  servicesByCategory.map((group) => (
+                    <article key={group.category} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-900">{group.category}</p>
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                          {group.count} service{group.count === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {group.items.slice(0, 4).map((service) => (
+                          <span key={service.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700">
+                            {service.title || "Untitled service"}
+                          </span>
+                        ))}
+                        {group.count > 4 ? (
+                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500">
+                            +{group.count - 4} more
+                          </span>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))
+                )}
               </div>
             ) : null}
 
@@ -324,14 +327,13 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                   <p className="mt-3 text-sm leading-relaxed text-slate-600">
                     Add your first service to start appearing in the marketplace and receiving quote requests.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm(true)}
+                  <Link
+                    href={createServiceRoute}
                     className="mt-7 inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                   >
                     <Plus className="h-4 w-4" />
                     Add New Service
-                  </button>
+                  </Link>
                 </div>
               ) : (
                 visibleServices.map((service) => {
@@ -499,14 +501,13 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
             <p className="mt-2 text-sm leading-relaxed text-emerald-100">
               Add more services to increase your visibility and attract more customers.
             </p>
-            <button
-              type="button"
-              onClick={() => setShowAddForm(true)}
+            <Link
+              href={createServiceRoute}
               className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emerald-900"
             >
               Add New Service
               <Plus className="h-4 w-4" />
-            </button>
+            </Link>
           </section>
         </aside>
       </div>
