@@ -83,6 +83,13 @@ export async function POST(request: Request) {
     redirectTo,
     supabaseConfigured: true,
   };
+  const supabaseResetPayload = {
+    email: normalizedEmail,
+    options: {
+      redirectTo,
+    },
+  };
+  debug.supabaseRequestPayload = supabaseResetPayload;
 
   if (isDev && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
@@ -105,7 +112,12 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+
+  if (isDev) {
+    console.info("[reset-password] supabase resetPasswordForEmail request payload", supabaseResetPayload);
+  }
+
+  const { data, error } = await supabase.auth.resetPasswordForEmail(supabaseResetPayload.email, supabaseResetPayload.options);
 
   debug.supabaseAcceptedResetRequest = !error;
   debug.supabaseResponse = data ?? null;
