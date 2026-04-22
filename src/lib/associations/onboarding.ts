@@ -3,6 +3,7 @@ import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { computeInviteExpiry, generateInviteToken, sendActivationInvite } from "@/lib/associations/invites";
+import crypto from "node:crypto";
 
 type BulkRow = {
   business_name: string;
@@ -32,7 +33,68 @@ export type BulkProcessResult = {
 };
 
 function randomSeedPassword() {
-  return `Ndmii!${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  return `Ndmii!${crypto.randomBytes(12).toString("base64url")}`;
+}
+
+async function findAuthUserIdByEmail(supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>, email: string) {
+  const { data: usersResponse, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) return null;
+  const match = usersResponse.users.find((user) => (user.email ?? "").toLowerCase() === email.toLowerCase());
+  return match?.id ?? null;
+}
+
+async function ensureMsmeAuthProfile({
+  supabase,
+  email,
+  ownerName,
+}: {
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
+  email: string;
+  ownerName: string;
+}) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const { data: existingProfile } = await supabase
+    .from("users")
+    .select("id,auth_user_id")
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+
+  let authUserId = existingProfile?.auth_user_id ?? null;
+
+  if (!authUserId) {
+    const { data: authUserData, error: authError } = await supabase.auth.admin.createUser({
+      email: normalizedEmail,
+      password: randomSeedPassword(),
+      email_confirm: true,
+      user_metadata: {
+        role: "msme",
+        owner_name: ownerName,
+        onboarding_source: "association_bulk_upload",
+      },
+    });
+
+    authUserId = authUserData.user?.id ?? null;
+
+    if (!authUserId) {
+      const authErrorMessage = authError?.message ?? "";
+      const alreadyExistsError = authErrorMessage.toLowerCase().includes("already");
+      if (!alreadyExistsError) return { ok: false as const, error: authError?.message ?? "Unable to create auth user." };
+      authUserId = await findAuthUserIdByEmail(supabase, normalizedEmail);
+    }
+  }
+
+  if (!authUserId) return { ok: false as const, error: "Unable to resolve auth user for email." };
+
+  const profile = await resolveOrCreateUserProfile(supabase, { authUserId, email: normalizedEmail });
+  if (!profile?.id) return { ok: false as const, error: "Unable to resolve app user profile." };
+
+  await supabase
+    .from("users")
+    .update({ full_name: ownerName, role: "msme", auth_user_id: authUserId })
+    .eq("id", profile.id);
+
+  return { ok: true as const, profileId: profile.id };
 }
 
 export async function processAssociationBulkRows({
@@ -58,64 +120,75 @@ export async function processAssociationBulkRows({
     try {
       const { data: existingMsmeByEmail } = await supabase
         .from("msmes")
-        .select("id")
+        .select("id,owner_name,contact_email,created_by")
         .eq("contact_email", normalizedEmail)
         .maybeSingle();
 
       const { data: existingMsmeByPhone } = await supabase
         .from("msmes")
-        .select("id")
+        .select("id,owner_name,contact_email,created_by")
         .eq("contact_phone", normalizedPhone)
         .maybeSingle();
 
-      const duplicateMsmeId = existingMsmeByEmail?.id ?? existingMsmeByPhone?.id ?? null;
+      const duplicateMsme = existingMsmeByEmail ?? existingMsmeByPhone ?? null;
+      const duplicateMsmeId = duplicateMsme?.id ?? null;
 
       if (duplicateMsmeId) {
-        await supabase.from("association_members").upsert(
+        const existingMsme = duplicateMsme;
+        if (!existingMsme) {
+          failed += 1;
+          details.push({ email: normalizedEmail, status: "FAILED", message: "Unable to resolve existing MSME row." });
+          continue;
+        }
+
+        const account = await ensureMsmeAuthProfile({
+          supabase,
+          email: existingMsme.contact_email ?? normalizedEmail,
+          ownerName: existingMsme.owner_name ?? row.owner_full_name,
+        });
+
+        if (!account.ok) {
+          failed += 1;
+          details.push({ email: normalizedEmail, status: "FAILED", message: account.error });
+          continue;
+        }
+
+        if (!existingMsme.created_by) {
+          await supabase.from("msmes").update({ created_by: account.profileId }).eq("id", duplicateMsmeId);
+        }
+
+        const { error: memberUpsertError } = await supabase.from("association_members").upsert(
           {
             association_id: associationId,
             msme_id: duplicateMsmeId,
             role: "MEMBER",
             invite_status: "ALREADY_EXISTS",
+            created_by_admin_id: uploadedBy,
           },
           { onConflict: "association_id,msme_id" },
         );
+        if (memberUpsertError) {
+          failed += 1;
+          details.push({ email: normalizedEmail, status: "FAILED", message: "Unable to link existing MSME to association members." });
+          continue;
+        }
 
         alreadyExists += 1;
         details.push({ email: normalizedEmail, status: "ALREADY_EXISTS", message: "Existing MSME account linked to association." });
         continue;
       }
 
-      const { data: authUserData, error: authError } = await supabase.auth.admin.createUser({
+      const account = await ensureMsmeAuthProfile({
+        supabase,
         email: normalizedEmail,
-        password: randomSeedPassword(),
-        email_confirm: true,
-        user_metadata: {
-          role: "msme",
-          owner_name: row.owner_full_name,
-          onboarding_source: "association_bulk_upload",
-        },
+        ownerName: row.owner_full_name,
       });
 
-      if (authError || !authUserData.user?.id) {
+      if (!account.ok) {
         failed += 1;
-        details.push({ email: normalizedEmail, status: "FAILED", message: authError?.message ?? "Unable to create auth user." });
+        details.push({ email: normalizedEmail, status: "FAILED", message: account.error });
         continue;
       }
-
-      const authUserId = authUserData.user.id;
-      const profile = await resolveOrCreateUserProfile(supabase, { authUserId, email: normalizedEmail });
-
-      if (!profile?.id) {
-        failed += 1;
-        details.push({ email: normalizedEmail, status: "FAILED", message: "Unable to resolve app user profile." });
-        continue;
-      }
-
-      await supabase
-        .from("users")
-        .update({ full_name: row.owner_full_name, role: "msme", auth_user_id: authUserId })
-        .eq("id", profile.id);
 
       const kycPayload = {
         NIN: "",
@@ -143,7 +216,7 @@ export async function processAssociationBulkRows({
           tin: row.tin?.trim() || null,
           verification_status: "pending_review",
           review_status: "pending_review",
-          created_by: profile.id,
+          created_by: account.profileId,
         })
         .select("id")
         .single();
@@ -160,7 +233,7 @@ export async function processAssociationBulkRows({
       const inviteSentAt = new Date().toISOString();
       const inviteExpiresAt = computeInviteExpiry(new Date(inviteSentAt));
 
-      await supabase.from("association_members").upsert(
+      const { error: memberUpsertError } = await supabase.from("association_members").upsert(
         {
           association_id: associationId,
           msme_id: msme.id,
@@ -173,6 +246,11 @@ export async function processAssociationBulkRows({
         },
         { onConflict: "association_id,msme_id" },
       );
+      if (memberUpsertError) {
+        failed += 1;
+        details.push({ email: normalizedEmail, status: "FAILED", message: "Unable to create association member invite record." });
+        continue;
+      }
 
       const inviteResponse = await sendActivationInvite({ email: normalizedEmail, token });
 

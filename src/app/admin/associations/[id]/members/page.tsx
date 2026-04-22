@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { computeInviteExpiry, generateInviteToken, sendActivationInvite } from "@/lib/associations/invites";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 function profileCompletionStatus(msme: {
   passport_photo_url?: string | null;
@@ -32,7 +32,7 @@ async function resendInviteAction(formData: FormData) {
   const associationId = String(formData.get("association_id") ?? "");
   const memberId = String(formData.get("member_id") ?? "");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const { data: member } = await supabase
     .from("association_members")
     .select("id,invite_token,invite_expires_at,msmes(contact_email)")
@@ -90,11 +90,11 @@ export default async function AdminAssociationMembersPage({
 
   const statusFilter = query.status?.toUpperCase();
 
-  const supabase = await createServerSupabaseClient();
-  const [{ data: msmes }, { data: associationMembers }] = await Promise.all([
+  const supabase = await createServiceRoleSupabaseClient();
+  const [{ data: msmes }, { data: associationMembersRaw }] = await Promise.all([
     supabase
       .from("msmes")
-      .select("id,business_name,owner_name,contact_email,contact_phone,passport_photo_url,sector,state,association_id,created_at")
+      .select("id,business_name,owner_name,contact_email,contact_phone,passport_photo_url,sector,state,association_id,created_at,created_by")
       .eq("association_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -102,6 +102,32 @@ export default async function AdminAssociationMembersPage({
       .select("id,msme_id,invite_status,invite_sent_at,activated_at")
       .eq("association_id", id),
   ]);
+
+  const existingMemberMsmeIds = new Set((associationMembersRaw ?? []).map((member) => member.msme_id));
+  const missingMembers = (msmes ?? []).filter((msme) => !existingMemberMsmeIds.has(msme.id));
+  if (missingMembers.length > 0) {
+    await supabase.from("association_members").upsert(
+      missingMembers.map((msme) => ({
+        association_id: id,
+        msme_id: msme.id,
+        role: "MEMBER",
+        invite_status: "ALREADY_EXISTS",
+        created_by_admin_id: ctx.appUserId,
+      })),
+      { onConflict: "association_id,msme_id" },
+    );
+  }
+
+  const { data: associationMembers } = await supabase
+    .from("association_members")
+    .select("id,msme_id,invite_status,invite_sent_at,activated_at")
+    .eq("association_id", id);
+
+  const creatorIds = (msmes ?? []).map((item) => item.created_by).filter((value): value is string => Boolean(value));
+  const { data: creatorUsers } = creatorIds.length > 0
+    ? await supabase.from("users").select("id,auth_user_id").in("id", creatorIds)
+    : { data: [] as Array<{ id: string; auth_user_id: string | null }> };
+  const authByUserId = new Map((creatorUsers ?? []).map((user) => [user.id, user.auth_user_id]));
 
   const membersByMsmeId = new Map(
     (associationMembers ?? []).map((member) => [member.msme_id, member]),
@@ -115,6 +141,7 @@ export default async function AdminAssociationMembersPage({
         msme,
         invite_status: member?.invite_status ?? "N/A",
         activated_at: member?.activated_at ?? null,
+        account_status: msme.created_by && authByUserId.get(msme.created_by) ? "ACCOUNT_READY" : "ACCOUNT_MISSING",
         association_member_id: member?.id ?? null,
       };
     })
@@ -148,6 +175,7 @@ export default async function AdminAssociationMembersPage({
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Phone</th>
               <th className="px-3 py-2">Invite status</th>
+              <th className="px-3 py-2">Account status</th>
               <th className="px-3 py-2">Activation status</th>
               <th className="px-3 py-2">Profile completion</th>
               <th className="px-3 py-2">Actions</th>
@@ -163,6 +191,7 @@ export default async function AdminAssociationMembersPage({
                   <td className="px-3 py-2">{msme?.contact_email ?? "-"}</td>
                   <td className="px-3 py-2">{msme?.contact_phone ?? "-"}</td>
                   <td className="px-3 py-2">{row.invite_status ?? "N/A"}</td>
+                  <td className="px-3 py-2">{row.account_status}</td>
                   <td className="px-3 py-2">{row.activated_at ? "ACTIVATED" : "PENDING"}</td>
                   <td className="px-3 py-2">{profileCompletionStatus(msme ?? {})}</td>
                   <td className="px-3 py-2">
