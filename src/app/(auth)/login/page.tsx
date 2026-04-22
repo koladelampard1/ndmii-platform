@@ -72,9 +72,20 @@ export default function LoginPage() {
       body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
     });
 
+    const targetRoute = role === "msme" ? "/dashboard/msme" : getDefaultDashboardRoute(role);
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[login-role-resolution]", {
+        authenticatedEmail: signInData.user.email ?? email,
+        resolvedRole: role,
+        authUserId: signInData.user.id,
+        appUserId,
+        targetRoute,
+      });
+    }
+
     setLoading(false);
     setMessage("Authentication successful. Redirecting to your dashboard...");
-    router.replace(role === "msme" ? "/dashboard/msme" : getDefaultDashboardRoute(role));
+    router.replace(targetRoute);
     router.refresh();
   }
 
