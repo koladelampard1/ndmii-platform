@@ -35,6 +35,15 @@ async function serviceAction(formData: FormData) {
     await supabase.from("provider_services").insert(payload);
   }
 
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-services] write-table", {
+      writeTable: "provider_services",
+      writeProviderId: workspace.provider.id,
+      writeKind: kind,
+      wroteServiceId: serviceId || null,
+    });
+  }
+
   revalidatePath("/dashboard/msme/services");
   revalidatePath(`/providers/${workspace.provider.id}`);
   redirect("/dashboard/msme/services?saved=1");
@@ -44,7 +53,11 @@ export default async function MsmeServicesPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const createServiceRoute = "/dashboard/msme/services/new";
-  const servicesData = await getMsmeServicesData(workspace.provider.id);
+  const servicesData = await getMsmeServicesData({
+    providerId: workspace.provider.id,
+    msmeDatabaseId: workspace.msme.id,
+    msmePublicId: workspace.msme.msme_id,
+  });
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] page-route-config", { createServiceRoute });

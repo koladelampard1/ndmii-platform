@@ -19,16 +19,39 @@ export type MsmeServicesData = {
   categoriesSource: string;
 };
 
+export type MsmeServicesQueryScope = {
+  providerId: string;
+  msmeDatabaseId?: string;
+  msmePublicId?: string;
+};
+
 function dedupeCategoryNames(values: Array<string | null | undefined>) {
   return Array.from(
     new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value && value.length > 0))),
   ).sort((a, b) => a.localeCompare(b));
 }
 
-export async function getMsmeServicesData(providerId: string): Promise<MsmeServicesData> {
+export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePublicId }: MsmeServicesQueryScope): Promise<MsmeServicesData> {
   const supabase = await createServiceRoleSupabaseClient();
+  const msmeReferenceValues = dedupeCategoryNames([msmeDatabaseId, msmePublicId]);
+
+  const [{ data: providerByIdRows, error: providerByIdError }, { data: providerByMsmeRows, error: providerByMsmeError }] = await Promise.all([
+    supabase.from("provider_profiles").select("id,msme_id").eq("id", providerId).limit(20),
+    msmeReferenceValues.length
+      ? supabase.from("provider_profiles").select("id,msme_id").in("msme_id", msmeReferenceValues).limit(50)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const providerIds = Array.from(
+    new Set([
+      providerId,
+      ...(providerByIdRows ?? []).map((row) => row.id),
+      ...(providerByMsmeRows ?? []).map((row) => row.id),
+    ]),
+  );
+
   const [{ data: servicesData, error: servicesError }, { data: categoryRows, error: categoriesError }] = await Promise.all([
-    supabase.from("provider_services").select("*").eq("provider_id", providerId).order("created_at", { ascending: false }),
+    supabase.from("provider_services").select("*").in("provider_id", providerIds).order("created_at", { ascending: false }),
     supabase.from("service_categories").select("name").eq("is_active", true).order("name"),
   ]);
 
@@ -50,9 +73,14 @@ export async function getMsmeServicesData(providerId: string): Promise<MsmeServi
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] resolved-data-sources", {
       servicesSource: "provider_services",
+      servicesReadProviderIds: providerIds,
+      providerProfilesReadTable: "provider_profiles",
+      providerProfilesByIdError: providerByIdError?.message ?? null,
+      providerProfilesByMsmeRefError: providerByMsmeError?.message ?? null,
       categoriesSource,
       servicesCount: services.length,
       categoriesCount: categories.length,
+      categoriesDerivedFromServices: categoriesFromServices,
       servicesError: servicesError?.message ?? null,
       categoriesError: categoriesError?.message ?? null,
     });
