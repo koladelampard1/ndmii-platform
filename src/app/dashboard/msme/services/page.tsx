@@ -60,7 +60,12 @@ export default async function MsmeServicesPage({ searchParams }: { searchParams:
   });
 
   if (process.env.NODE_ENV !== "production") {
-    console.info("[msme-services] page-route-config", { createServiceRoute });
+    console.info("[msme-services] page-route-config", {
+      createServiceRoute,
+      summaryReadTable: servicesData.servicesSource,
+      categoriesSource: servicesData.categoriesSource,
+      servicesCount: servicesData.services.length,
+    });
   }
 
   return (

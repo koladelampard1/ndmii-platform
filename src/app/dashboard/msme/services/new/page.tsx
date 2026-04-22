@@ -6,6 +6,19 @@ import { getMsmeServicesData, mapPriceTypeToStorageMode } from "@/lib/data/msme-
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ServiceCreateForm } from "./service-create-form";
 
+const PROVIDER_SERVICES_INSERT_COLUMNS = [
+  "provider_id",
+  "category",
+  "specialization",
+  "title",
+  "short_description",
+  "pricing_mode",
+  "min_price",
+  "max_price",
+  "turnaround_time",
+  "vat_applicable",
+] as const;
+
 async function createServiceAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
@@ -27,17 +40,21 @@ async function createServiceAction(formData: FormData) {
     max_price: hasPriceAmount ? priceAmount : null,
     turnaround_time: String(formData.get("turnaround_time") ?? "").trim() || null,
     vat_applicable: String(formData.get("vat_applicable") ?? "false") === "true",
-    availability_status: String(formData.get("availability_status") ?? "available"),
-    updated_at: new Date().toISOString(),
   };
 
-  const { data: insertedRows, error } = await supabase.from("provider_services").insert(payload).select("id").limit(1);
+  const { data: insertedRow, error } = await supabase
+    .from("provider_services")
+    .insert(payload)
+    .select("id")
+    .single();
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] write-table", {
       writeTable: "provider_services",
       writeProviderId: workspace.provider.id,
-      insertedServiceId: insertedRows?.[0]?.id ?? null,
+      providerServicesSchemaUsed: PROVIDER_SERVICES_INSERT_COLUMNS,
+      finalInsertPayload: payload,
+      insertedServiceId: insertedRow?.id ?? null,
       writeError: error?.message ?? null,
     });
   }
