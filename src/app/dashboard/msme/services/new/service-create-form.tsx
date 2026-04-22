@@ -104,22 +104,6 @@ export function ServiceCreateForm({ categories, createAction }: ServiceCreateFor
       )}
 
       <div className="space-y-1.5">
-        <label htmlFor="availability_status" className="text-sm font-medium text-slate-700">
-          Availability / status
-        </label>
-        <select
-          id="availability_status"
-          name="availability_status"
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
-          defaultValue="available"
-        >
-          <option value="available">Available</option>
-          <option value="limited">Limited</option>
-          <option value="unavailable">Unavailable</option>
-        </select>
-      </div>
-
-      <div className="space-y-1.5">
         <label htmlFor="turnaround_time" className="text-sm font-medium text-slate-700">
           Turnaround time (optional)
         </label>
