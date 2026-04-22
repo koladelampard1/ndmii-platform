@@ -88,6 +88,7 @@ export default function LoginPage() {
           {error && <p className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
           <Button className="w-full" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</Button>
         </form>
+        <p className="text-sm text-slate-600">Forgot password? <Link href="/reset-password" className="text-emerald-700 hover:underline">Set up or reset password</Link></p>
         <p className="text-sm text-slate-600">New MSME? <Link href="/register" className="text-emerald-700 hover:underline">Start onboarding</Link></p>
       </FormWrapper>
 

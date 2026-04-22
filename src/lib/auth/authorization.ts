@@ -74,6 +74,8 @@ export function isPublicPath(path: string): boolean {
     path.startsWith("/password-setup/") ||
     path === "/set-password" ||
     path.startsWith("/set-password/") ||
+    path === "/update-password" ||
+    path.startsWith("/update-password/") ||
     path.startsWith("/signup") ||
     path.startsWith("/register") ||
     path === "/activate-account" ||
