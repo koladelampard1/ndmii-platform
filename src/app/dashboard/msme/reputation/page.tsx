@@ -37,7 +37,7 @@ async function submitReply(formData: FormData) {
 
   let providerQuery = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
   if (workspace) {
-    providerQuery = providerQuery.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
+    providerQuery = providerQuery.eq("msme_id", workspace.msme.msme_id);
   }
 
   const { data: provider } = await providerQuery.maybeSingle();
@@ -97,7 +97,7 @@ async function updateProviderProfile(formData: FormData) {
   const supabase = await createServiceRoleSupabaseClient();
   let query = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
   if (workspace) {
-    query = query.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
+    query = query.eq("msme_id", workspace.msme.msme_id);
   }
 
   const { data: provider } = await query.maybeSingle();
@@ -153,7 +153,7 @@ export default async function MsmeReputationPage({
     .limit(5);
 
   if (workspace) {
-    providerQuery = providerQuery.in("msme_id", [workspace.msme.id, workspace.msme.msme_id]);
+    providerQuery = providerQuery.eq("msme_id", workspace.msme.msme_id);
   }
 
   const { data: providers } = await providerQuery;
