@@ -321,7 +321,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
   const providerLookupKey = msme.id;
   const providerSelect =
-    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,short_description,long_description,slug";
+    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,slug";
   let provider: {
     id: string;
     msme_id: string;
@@ -334,8 +334,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     website: string | null;
     is_verified: boolean | null;
     is_active: boolean | null;
-    short_description?: string | null;
-    long_description?: string | null;
     slug?: string | null;
   } | null = null;
   let providerQueryResultLength = 0;
@@ -476,8 +474,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
       slug: generatedSlug,
       public_slug: generatedSlug,
-      short_description: `NDMII registered MSME in ${msme.state}.`,
-      long_description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
+      tagline: `NDMII registered MSME in ${msme.state}.`,
+      description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
       is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
       is_active: true,
       updated_at: new Date().toISOString(),
@@ -672,8 +670,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     msme,
     provider: {
       ...provider,
-      short_description: provider.short_description ?? provider.tagline ?? provider.description ?? null,
-      long_description: provider.long_description ?? provider.description ?? null,
+      short_description: provider.tagline ?? provider.description ?? null,
+      long_description: provider.description ?? null,
       slug: provider.public_slug ?? provider.slug ?? provider.id,
       trust_score: 0,
       logo_url: null,
