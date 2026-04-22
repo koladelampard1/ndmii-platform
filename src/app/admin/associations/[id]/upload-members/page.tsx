@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { UploadMembersClient } from "./upload-members-client";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { processAssociationBulkRows } from "@/lib/associations/onboarding";
+import { mergeSupportedSectors } from "@/lib/constants/sectors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function AdminAssociationUploadMembersPage({
@@ -99,7 +100,7 @@ export default async function AdminAssociationUploadMembersPage({
       )}
 
       <UploadMembersClient
-        categories={[...new Set((categories ?? []).map((item) => item.sector).filter(Boolean))] as string[]}
+        categories={mergeSupportedSectors((categories ?? []).map((item) => item.sector))}
         locations={[...new Set((locations ?? []).map((item) => item.state).filter(Boolean))] as string[]}
         processUpload={processUploadAction}
       />

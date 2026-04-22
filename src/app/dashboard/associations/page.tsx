@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { mergeSupportedSectors } from "@/lib/constants/sectors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 async function associationAction(formData: FormData) {
@@ -75,6 +76,7 @@ export default async function AssociationsPage({
   if (params.state) rows = rows.filter((a) => a.state === params.state);
   if (params.sector) rows = rows.filter((a) => a.sector === params.sector);
   if (params.sort === "members") rows = [...rows].sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
+  const sectorOptions = mergeSupportedSectors(rows.map((association) => association.sector));
 
   return (
     <section className="space-y-5">
@@ -89,9 +91,12 @@ export default async function AssociationsPage({
       </div>
 
       <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-5">
+        <datalist id="association-sector-options">
+          {sectorOptions.map((sector) => <option key={sector} value={sector} />)}
+        </datalist>
         <input name="q" defaultValue={params.q} placeholder="Search name/profile" className="rounded border px-2 py-2 text-sm" />
         <input name="state" defaultValue={params.state} placeholder="State" className="rounded border px-2 py-2 text-sm" />
-        <input name="sector" defaultValue={params.sector} placeholder="Sector" className="rounded border px-2 py-2 text-sm" />
+        <input name="sector" list="association-sector-options" defaultValue={params.sector} placeholder="Sector" className="rounded border px-2 py-2 text-sm" />
         <select name="sort" defaultValue={params.sort} className="rounded border px-2 py-2 text-sm"><option value="">Newest</option><option value="members">Member count</option></select>
         <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Apply</button>
       </form>
@@ -100,7 +105,7 @@ export default async function AssociationsPage({
         <form action={associationAction} className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-4">
           <input type="hidden" name="kind" value="create" />
           <input name="name" required placeholder="Association name" className="rounded border px-2 py-2 text-sm" />
-          <input name="sector_focus" placeholder="Sector focus" className="rounded border px-2 py-2 text-sm" />
+          <input name="sector_focus" list="association-sector-options" placeholder="Sector focus" className="rounded border px-2 py-2 text-sm" />
           <input name="state" placeholder="State" className="rounded border px-2 py-2 text-sm" />
           <input name="lga_coverage" placeholder="LGA coverage" className="rounded border px-2 py-2 text-sm" />
           <input name="contact_email" placeholder="Contact email" className="rounded border px-2 py-2 text-sm" />
