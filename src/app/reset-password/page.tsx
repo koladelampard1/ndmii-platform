@@ -1,40 +1,70 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { isValidEmailAddress, normalizeEmail } from "@/lib/auth/email-validation";
+
+type ResetPasswordApiResponse = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  debug?: Record<string, unknown>;
+};
+
+const isDev = process.env.NODE_ENV !== "production";
 
 export default function ResetPasswordPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setDebug(null);
 
+    const normalizedEmail = normalizeEmail(email);
     const redirectTo = `${window.location.origin}/update-password`;
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo,
+    if (!isValidEmailAddress(normalizedEmail)) {
+      setLoading(false);
+      setError(`Email address '${normalizedEmail}' is invalid.`);
+      return;
+    }
+
+    const response = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        redirectTo,
+      }),
     });
 
-    if (resetError) {
+    const result = (await response.json().catch(() => ({}))) as ResetPasswordApiResponse;
+
+    if (!response.ok || !result.ok) {
       setLoading(false);
-      setError(resetError.message || "Unable to send password setup link. Please try again.");
+      setError(result.error || "Unable to send password setup link. Please try again.");
+      if (isDev && result.debug) {
+        setDebug(result.debug);
+      }
       return;
     }
 
     setLoading(false);
-    setSuccess(
-      "Password setup link sent. Check your inbox and follow the secure link to complete account setup.",
-    );
+    setSuccess(result.message || "Password setup link sent. Check your inbox and follow the secure link.");
+    if (isDev && result.debug) {
+      setDebug(result.debug);
+    }
     setEmail("");
   }
 
@@ -57,6 +87,11 @@ export default function ResetPasswordPage() {
 
           {success && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{success}</p>}
           {error && <p className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
+          {isDev && debug && (
+            <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+              {JSON.stringify(debug, null, 2)}
+            </pre>
+          )}
 
           <Button className="w-full" disabled={loading}>
             {loading ? "Sending link..." : "Send password setup link"}
