@@ -1,15 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
+import { readProviderGalleryItems } from "@/lib/data/provider-gallery";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MsmePublicProfilePreviewPage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
-  const [{ data: services }, { data: gallery }] = await Promise.all([
+  const [{ data: services }, gallerySnapshot] = await Promise.all([
     supabase.from("provider_services").select("id,title,category,availability_status,min_price,max_price").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }).limit(4),
-    supabase.from("provider_gallery").select("id,asset_url,caption,is_featured").eq("provider_id", workspace.provider.id).order("sort_order", { ascending: true }).limit(4),
+    readProviderGalleryItems({ supabase, providerId: workspace.provider.id, limit: 4 }),
   ]);
+  const gallery = gallerySnapshot.items;
 
   return (
     <section className="space-y-4">

@@ -1,4 +1,5 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { readProviderGalleryItems } from "@/lib/data/provider-gallery";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 
 export type ProviderCard = {
@@ -970,16 +971,12 @@ export async function getCategoryBySlug(slug: string): Promise<string | null> {
 async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ id: string; asset_url: string; caption: string | null; is_featured?: boolean | null }>> {
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    const { data, error } = await supabase
-      .from("provider_gallery")
-      .select("id,asset_url,caption,is_featured")
-      .eq("provider_id", providerId)
-      .order("is_featured", { ascending: false })
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(12);
-    if (error) throw error;
-    return (data ?? []).filter((item: any) => typeof item?.asset_url === "string" && item.asset_url.trim().length > 0);
+    const { items } = await readProviderGalleryItems({
+      supabase,
+      providerId,
+      limit: 12,
+    });
+    return items;
   } catch {
     return [];
   }
