@@ -132,10 +132,21 @@ export async function POST(request: Request) {
       logoUrl,
     });
 
+    const msmeRowId = msmeRow.id;
+    const payload = {
+      passport_photo_url: logoUrl,
+    };
+
+    console.log("[msme-settings][logo-upload][msmes-update-payload]", {
+      table: "msmes",
+      lookup: { id: msmeRowId },
+      payload,
+    });
+
     const { data: persistedRows, error: persistError } = await supabase
       .from("msmes")
-      .update({ passport_photo_url: logoUrl, updated_at: new Date().toISOString() })
-      .eq("id", msmeRow.id)
+      .update(payload)
+      .eq("id", msmeRowId)
       .eq("msme_id", providerRow.msme_id)
       .select("id,msme_id,passport_photo_url");
 
