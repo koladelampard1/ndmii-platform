@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info, Upload } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info } from "lucide-react";
 import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
 
 const SETTINGS_SECTIONS = [
   {
@@ -411,18 +412,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
-                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-dashed border-slate-300 bg-white text-slate-400">
-                  <Upload className="h-6 w-6" />
-                </div>
-                <button
-                  type="button"
-                  className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Upload Logo
-                </button>
-                <p className="mt-2 text-xs text-slate-500">PNG, JPG or SVG. Max size 2MB.</p>
-              </div>
+              <LogoUploadCard initialLogoUrl={workspace.provider.logo_url} />
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 sm:col-span-2">
