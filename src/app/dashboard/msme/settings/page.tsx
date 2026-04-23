@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info, Upload } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const SETTINGS_SECTIONS = [
   {
@@ -87,7 +87,7 @@ function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProvi
     },
     {
       label: "Business Description",
-      complete: Boolean(workspace.provider.long_description && workspace.provider.long_description.trim().length > 0),
+      complete: Boolean(workspace.provider.description && workspace.provider.description.trim().length > 0),
     },
   ];
 
@@ -105,49 +105,122 @@ async function settingsAction(formData: FormData) {
   "use server";
 
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
-  const { data: existingMsme } = await supabase
+  const supabase = await createServiceRoleSupabaseClient();
+  const nowIso = new Date().toISOString();
+
+  const settingsReadSelect = "id,msme_id,business_name,owner_name,sector,contact_email,contact_phone,address,cac_number,tin,business_type";
+  const { data: existingMsme, error: existingMsmeError } = await supabase
     .from("msmes")
-    .select("contact_phone,address,cac_number,tin,business_type")
+    .select(settingsReadSelect)
     .eq("id", workspace.msme.id)
     .maybeSingle();
 
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-settings][read-source]", {
+      table: "msmes",
+      filters: { id: workspace.msme.id },
+      select: settingsReadSelect.split(","),
+      error: existingMsmeError?.message ?? null,
+      found: Boolean(existingMsme),
+    });
+  }
+
+  if (existingMsmeError || !existingMsme) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[msme-settings][read-failed]", {
+        table: "msmes",
+        error: existingMsmeError?.message ?? "owned_msme_not_found",
+      });
+    }
+    redirect("/dashboard/msme/settings?error=read_failed");
+  }
+
   const providerPayload = {
-    display_name: String(formData.get("business_name") ?? workspace.provider.display_name),
-    tagline: String(formData.get("short_description") ?? workspace.provider.short_description ?? "").trim() || null,
-    description: String(formData.get("business_description") ?? workspace.provider.long_description ?? "").trim() || null,
+    display_name: String(formData.get("business_name") ?? workspace.provider.display_name).trim() || workspace.provider.display_name,
+    description: String(formData.get("business_description") ?? workspace.provider.description ?? "").trim() || null,
     contact_email: String(formData.get("contact_email") ?? workspace.provider.contact_email ?? "").trim() || null,
     contact_phone: String(formData.get("contact_phone") ?? workspace.provider.contact_phone ?? "").trim() || null,
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   };
 
-  await supabase.from("provider_profiles").update(providerPayload).eq("id", workspace.provider.id).eq("msme_id", workspace.provider.msme_id);
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-settings][save-payload]", {
+      table: "provider_profiles",
+      filters: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
+      payload: providerPayload,
+    });
+  }
+
+  const { data: providerUpdateRows, error: providerUpdateError } = await supabase
+    .from("provider_profiles")
+    .update(providerPayload)
+    .eq("id", workspace.provider.id)
+    .eq("msme_id", workspace.provider.msme_id)
+    .select("id");
+
+  if (providerUpdateError || !providerUpdateRows?.length) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[msme-settings][save-failed]", {
+        table: "provider_profiles",
+        error: providerUpdateError?.message ?? "no_rows_updated",
+        payload: providerPayload,
+      });
+    }
+    redirect("/dashboard/msme/settings?error=provider_save_failed");
+  }
 
   const msmePayload = {
-    business_name: String(formData.get("business_name") ?? workspace.msme.business_name),
-    owner_name: String(formData.get("owner_name") ?? workspace.msme.owner_name),
-    sector: String(formData.get("business_category") ?? workspace.msme.sector),
-    business_type: String(formData.get("business_sub_category") ?? existingMsme?.business_type ?? "").trim() || null,
-    contact_email: String(formData.get("contact_email") ?? workspace.msme.contact_email ?? "").trim() || null,
-    contact_phone: String(formData.get("contact_phone") ?? existingMsme?.contact_phone ?? "").trim() || null,
-    cac_number: String(formData.get("cac_number") ?? existingMsme?.cac_number ?? "").trim() || null,
-    tin: String(formData.get("tin") ?? existingMsme?.tin ?? "").trim() || null,
-    address: String(formData.get("address") ?? existingMsme?.address ?? "").trim() || null,
-    updated_at: new Date().toISOString(),
+    business_name: String(formData.get("business_name") ?? existingMsme.business_name).trim() || existingMsme.business_name,
+    owner_name: String(formData.get("owner_name") ?? existingMsme.owner_name).trim() || existingMsme.owner_name,
+    sector: String(formData.get("business_category") ?? existingMsme.sector).trim() || existingMsme.sector,
+    business_type: String(formData.get("business_sub_category") ?? existingMsme.business_type ?? "").trim() || null,
+    contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? "").trim() || null,
+    contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? "").trim() || null,
+    cac_number: String(formData.get("cac_number") ?? existingMsme.cac_number ?? "").trim() || null,
+    tin: String(formData.get("tin") ?? existingMsme.tin ?? "").trim() || null,
+    address: String(formData.get("address") ?? existingMsme.address ?? "").trim() || null,
+    updated_at: nowIso,
   };
 
-  await supabase.from("msmes").update(msmePayload).eq("id", workspace.msme.id);
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-settings][save-payload]", {
+      table: "msmes",
+      filters: { id: workspace.msme.id },
+      payload: msmePayload,
+    });
+  }
 
+  const { data: msmeUpdateRows, error: msmeUpdateError } = await supabase
+    .from("msmes")
+    .update(msmePayload)
+    .eq("id", workspace.msme.id)
+    .select("id");
+
+  if (msmeUpdateError || !msmeUpdateRows?.length) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[msme-settings][save-failed]", {
+        table: "msmes",
+        error: msmeUpdateError?.message ?? "no_rows_updated",
+        payload: msmePayload,
+      });
+    }
+    redirect("/dashboard/msme/settings?error=msme_save_failed");
+  }
+
+  const revalidationTargets = ["/dashboard/msme/settings", "/dashboard/msme/profile", `/providers/${workspace.provider.id}`];
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-settings][revalidation-targets]", revalidationTargets);
+  }
   revalidatePath("/dashboard/msme/settings");
   revalidatePath("/dashboard/msme/profile");
   revalidatePath(`/providers/${workspace.provider.id}`);
   redirect("/dashboard/msme/settings?saved=1");
 }
 
-export default async function MsmeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+export default async function MsmeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   const { data: msmeExtended } = await supabase
     .from("msmes")
@@ -161,6 +234,11 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
     <section className="space-y-5 pb-6">
       {params.saved && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">Your settings were saved successfully.</p>
+      )}
+      {params.error && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          Unable to save settings ({params.error}). Check server diagnostics for read/write details.
+        </p>
       )}
 
       <header className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
@@ -264,8 +342,10 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                     type="date"
                     name="date_of_incorporation"
                     defaultValue=""
+                    disabled
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-500 outline-none ring-emerald-200 transition focus:ring"
                   />
+                  <span className="block text-xs text-slate-500">Not editable here yet (no mapped schema column in this workspace).</span>
                 </label>
               </div>
             </div>
@@ -303,14 +383,26 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <input
                   name="alternate_phone"
                   defaultValue=""
+                  disabled
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
+                <span className="block text-xs text-slate-500">Not editable here yet (no mapped schema column in this workspace).</span>
               </label>
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-xs font-medium text-slate-600">Designation / Role</span>
                 <input
                   name="designation"
                   defaultValue="Owner / CEO"
+                  disabled
+                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
+                />
+                <span className="block text-xs text-slate-500">Not editable here yet (no mapped schema column in this workspace).</span>
+              </label>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-xs font-medium text-slate-600">Business Address</span>
+                <input
+                  name="address"
+                  defaultValue={msmeExtended?.address ?? ""}
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
               </label>
@@ -324,11 +416,11 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
               <span className="text-xs font-medium text-slate-600">Business Description</span>
               <textarea
                 name="business_description"
-                defaultValue={workspace.provider.long_description ?? ""}
+                defaultValue={workspace.provider.description ?? ""}
                 maxLength={500}
                 className="min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
               />
-              <span className="block text-right text-xs text-slate-400">{(workspace.provider.long_description ?? "").length}/500</span>
+              <span className="block text-right text-xs text-slate-400">{(workspace.provider.description ?? "").length}/500</span>
             </label>
           </section>
 
@@ -354,7 +446,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-xs font-medium text-slate-600">VAT & Tax Workspace</span>
+                <span className="text-xs font-medium text-slate-600">VAT & Tax Workspace (link-out)</span>
                 <Link
                   href="/dashboard/payments"
                   className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-medium text-slate-700 hover:bg-slate-100"
@@ -376,6 +468,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           <section id="notification-preferences" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Notification Preferences</h3>
             <p className="mt-1 text-sm text-slate-600">Visual-only section for now. Notification delivery channels are coming soon.</p>
+            <p className="mt-2 text-xs font-medium text-slate-500">No local save action is wired for this section yet.</p>
           </section>
 
           <section id="account-security" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -386,11 +479,13 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           <section id="integrations" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Integrations</h3>
             <p className="mt-1 text-sm text-slate-600">NIN, BVN, CAC, and TIN integrations are connected through simulation adapters.</p>
+            <p className="mt-2 text-xs font-medium text-slate-500">Read-only status summary; configuration is managed in module workspaces.</p>
           </section>
 
           <section id="activity-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Activity Log</h3>
             <p className="mt-1 text-sm text-slate-600">Recent account activity is tracked automatically across onboarding and compliance flows.</p>
+            <p className="mt-2 text-xs font-medium text-slate-500">This section is informational and does not submit with Save Changes.</p>
           </section>
 
           <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
