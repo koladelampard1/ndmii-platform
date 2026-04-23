@@ -408,7 +408,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="business-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Business Logo / Photo</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Business Logo / Profile Image</h3>
             <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">

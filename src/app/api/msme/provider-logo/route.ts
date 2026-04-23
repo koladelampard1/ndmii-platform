@@ -133,11 +133,11 @@ export async function POST(request: Request) {
     });
 
     const { data: persistedRows, error: persistError } = await supabase
-      .from("provider_profiles")
-      .update({ logo_url: logoUrl, updated_at: new Date().toISOString() })
-      .eq("id", providerRow.id)
+      .from("msmes")
+      .update({ passport_photo_url: logoUrl, updated_at: new Date().toISOString() })
+      .eq("id", msmeRow.id)
       .eq("msme_id", providerRow.msme_id)
-      .select("id,logo_url");
+      .select("id,msme_id,passport_photo_url");
 
     if (persistError || !persistedRows?.length) {
       console.error("[msme-settings][logo-upload][persist-failed]", {
