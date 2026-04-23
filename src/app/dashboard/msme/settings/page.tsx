@@ -104,9 +104,18 @@ function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProvi
 async function settingsAction(formData: FormData) {
   "use server";
 
+  const route = "/dashboard/msme/settings";
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
   const nowIso = new Date().toISOString();
+  const saveContext = {
+    route,
+    providerProfileId: workspace.provider.id,
+    providerMsmeReference: workspace.provider.msme_id,
+    msmeRowId: workspace.msme.id,
+    msmePublicId: workspace.msme.msme_id,
+  };
+  let firstFailedWrite: string | null = null;
 
   const settingsReadSelect = "id,msme_id,business_name,owner_name,sector,contact_email,contact_phone,address,cac_number,tin,business_type";
   const { data: existingMsme, error: existingMsmeError } = await supabase
@@ -115,23 +124,26 @@ async function settingsAction(formData: FormData) {
     .eq("id", workspace.msme.id)
     .maybeSingle();
 
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[msme-settings][read-source]", {
-      table: "msmes",
-      filters: { id: workspace.msme.id },
-      select: settingsReadSelect.split(","),
-      error: existingMsmeError?.message ?? null,
-      found: Boolean(existingMsme),
-    });
-  }
+  console.info("[msme-settings][read-source]", {
+    ...saveContext,
+    table: "msmes",
+    filters: { id: workspace.msme.id },
+    select: settingsReadSelect.split(","),
+    error: existingMsmeError?.message ?? null,
+    found: Boolean(existingMsme),
+  });
 
   if (existingMsmeError || !existingMsme) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[msme-settings][read-failed]", {
-        table: "msmes",
-        error: existingMsmeError?.message ?? "owned_msme_not_found",
-      });
-    }
+    console.error("[msme-settings][read-failed]", {
+      ...saveContext,
+      table: "msmes",
+      dbResponse: {
+        message: existingMsmeError?.message ?? "owned_msme_not_found",
+        details: existingMsmeError?.details ?? null,
+        hint: existingMsmeError?.hint ?? null,
+        code: existingMsmeError?.code ?? null,
+      },
+    });
     redirect("/dashboard/msme/settings?error=read_failed");
   }
 
@@ -143,13 +155,13 @@ async function settingsAction(formData: FormData) {
     updated_at: nowIso,
   };
 
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[msme-settings][save-payload]", {
-      table: "provider_profiles",
-      filters: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
-      payload: providerPayload,
-    });
-  }
+  console.info("[msme-settings][write-before]", {
+    ...saveContext,
+    section: "profile-information,contact-address,about-business",
+    table: "provider_profiles",
+    lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
+    payload: providerPayload,
+  });
 
   const { data: providerUpdateRows, error: providerUpdateError } = await supabase
     .from("provider_profiles")
@@ -158,14 +170,35 @@ async function settingsAction(formData: FormData) {
     .eq("msme_id", workspace.provider.msme_id)
     .select("id");
 
+  console.info("[msme-settings][write-after]", {
+    ...saveContext,
+    section: "profile-information,contact-address,about-business",
+    table: "provider_profiles",
+    success: !providerUpdateError && Boolean(providerUpdateRows?.length),
+    returnedRowCount: providerUpdateRows?.length ?? 0,
+    dbResponse: {
+      message: providerUpdateError?.message ?? null,
+      details: providerUpdateError?.details ?? null,
+      hint: providerUpdateError?.hint ?? null,
+      code: providerUpdateError?.code ?? null,
+    },
+  });
+
   if (providerUpdateError || !providerUpdateRows?.length) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[msme-settings][save-failed]", {
-        table: "provider_profiles",
-        error: providerUpdateError?.message ?? "no_rows_updated",
-        payload: providerPayload,
-      });
-    }
+    firstFailedWrite = firstFailedWrite ?? "provider_profiles";
+    console.error("[msme-settings][save-failed]", {
+      ...saveContext,
+      firstFailedWrite,
+      table: "provider_profiles",
+      lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
+      payload: providerPayload,
+      dbResponse: {
+        message: providerUpdateError?.message ?? "no_rows_updated",
+        details: providerUpdateError?.details ?? null,
+        hint: providerUpdateError?.hint ?? null,
+        code: providerUpdateError?.code ?? null,
+      },
+    });
     redirect("/dashboard/msme/settings?error=provider_save_failed");
   }
 
@@ -177,18 +210,16 @@ async function settingsAction(formData: FormData) {
     contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? "").trim() || null,
     contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? "").trim() || null,
     cac_number: String(formData.get("cac_number") ?? existingMsme.cac_number ?? "").trim() || null,
-    tin: String(formData.get("tin") ?? existingMsme.tin ?? "").trim() || null,
     address: String(formData.get("address") ?? existingMsme.address ?? "").trim() || null,
-    updated_at: nowIso,
   };
 
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[msme-settings][save-payload]", {
-      table: "msmes",
-      filters: { id: workspace.msme.id },
-      payload: msmePayload,
-    });
-  }
+  console.info("[msme-settings][write-before]", {
+    ...saveContext,
+    section: "business-information,contact-address",
+    table: "msmes",
+    lookupKeys: { id: workspace.msme.id },
+    payload: msmePayload,
+  });
 
   const { data: msmeUpdateRows, error: msmeUpdateError } = await supabase
     .from("msmes")
@@ -196,21 +227,40 @@ async function settingsAction(formData: FormData) {
     .eq("id", workspace.msme.id)
     .select("id");
 
+  console.info("[msme-settings][write-after]", {
+    ...saveContext,
+    section: "business-information,contact-address",
+    table: "msmes",
+    success: !msmeUpdateError && Boolean(msmeUpdateRows?.length),
+    returnedRowCount: msmeUpdateRows?.length ?? 0,
+    dbResponse: {
+      message: msmeUpdateError?.message ?? null,
+      details: msmeUpdateError?.details ?? null,
+      hint: msmeUpdateError?.hint ?? null,
+      code: msmeUpdateError?.code ?? null,
+    },
+  });
+
   if (msmeUpdateError || !msmeUpdateRows?.length) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[msme-settings][save-failed]", {
-        table: "msmes",
-        error: msmeUpdateError?.message ?? "no_rows_updated",
-        payload: msmePayload,
-      });
-    }
+    firstFailedWrite = firstFailedWrite ?? "msmes";
+    console.error("[msme-settings][save-failed]", {
+      ...saveContext,
+      firstFailedWrite,
+      table: "msmes",
+      lookupKeys: { id: workspace.msme.id },
+      payload: msmePayload,
+      dbResponse: {
+        message: msmeUpdateError?.message ?? "no_rows_updated",
+        details: msmeUpdateError?.details ?? null,
+        hint: msmeUpdateError?.hint ?? null,
+        code: msmeUpdateError?.code ?? null,
+      },
+    });
     redirect("/dashboard/msme/settings?error=msme_save_failed");
   }
 
   const revalidationTargets = ["/dashboard/msme/settings", "/dashboard/msme/profile", `/providers/${workspace.provider.id}`];
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[msme-settings][revalidation-targets]", revalidationTargets);
-  }
+  console.info("[msme-settings][revalidation-targets]", { ...saveContext, revalidationTargets });
   revalidatePath("/dashboard/msme/settings");
   revalidatePath("/dashboard/msme/profile");
   revalidatePath(`/providers/${workspace.provider.id}`);
@@ -436,14 +486,17 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
 
           <section id="tax-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Tax Information</h3>
+            <p className="mt-1 text-sm text-slate-600">Tax and VAT fields are managed in the dedicated Tax / VAT workspace.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-xs font-medium text-slate-600">TIN</span>
+                <span className="text-xs font-medium text-slate-600">TIN (read-only here)</span>
                 <input
                   name="tin"
                   defaultValue={msmeExtended?.tin ?? ""}
+                  disabled
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
+                <span className="block text-xs text-slate-500">Use the Tax / VAT workspace to update TIN and tax settings.</span>
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-slate-600">VAT & Tax Workspace (link-out)</span>
