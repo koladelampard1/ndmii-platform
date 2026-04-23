@@ -46,4 +46,51 @@ export function validatePortfolioImageFile(file: File) {
   return { ok: true as const };
 }
 
+const PORTFOLIO_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_PORTFOLIO_BUCKET || "provider-gallery";
+
+export async function uploadMsmePortfolioImage(params: {
+  file: File;
+  providerId: string;
+  msmeId: string;
+}) {
+  const validationResult = validatePortfolioImageFile(params.file);
+  if (!validationResult.ok) {
+    throw new Error(validationResult.error);
+  }
+
+  const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+  const supabase = createSupabaseBrowserClient();
+  const safeName = sanitizePortfolioFileName(params.file.name);
+  const storagePath = `${params.msmeId}/${params.providerId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage.from(PORTFOLIO_BUCKET).upload(storagePath, params.file, {
+    contentType: params.file.type || "application/octet-stream",
+    upsert: false,
+  });
+
+  if (uploadError) {
+    throw new Error(uploadError.message);
+  }
+
+  const { data: publicUrlData } = supabase.storage.from(PORTFOLIO_BUCKET).getPublicUrl(storagePath);
+
+  console.log("[msme-portfolio-upload][storage_upload_result]", {
+    bucket: PORTFOLIO_BUCKET,
+    providerId: params.providerId,
+    msmeId: params.msmeId,
+    storagePath,
+    bytes: params.file.size,
+    mimeType: params.file.type || null,
+  });
+
+  return {
+    bucket: PORTFOLIO_BUCKET,
+    storagePath,
+    publicUrl: publicUrlData.publicUrl,
+    originalName: params.file.name,
+    sizeBytes: params.file.size,
+    mimeType: params.file.type || null,
+  };
+}
+
 export { MAX_PORTFOLIO_IMAGE_BYTES };

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   ArrowUpDown,
   Folder,
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Eye,
 } from "lucide-react";
+import { uploadMsmePortfolioImage } from "@/lib/msme/portfolio-upload";
 
 type GalleryItem = {
   id: string;
@@ -29,6 +31,9 @@ type MsmePortfolioGalleryDashboardProps = {
   saved: boolean;
   error: string | null;
   galleryAction: (formData: FormData) => Promise<void>;
+  createPortfolioItemAction: (formData: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
+  providerId: string;
+  msmeId: string;
 };
 
 const ACCEPTED_FILE_TYPES = ".jpg,.jpeg,.png,.webp";
@@ -57,7 +62,16 @@ function titleFromItem(item: GalleryItem) {
 
 const recommendedCategories = ["Completed Projects", "Certifications", "Equipment", "Team", "Events", "Other"];
 
-export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAction }: MsmePortfolioGalleryDashboardProps) {
+export function MsmePortfolioGalleryDashboard({
+  gallery,
+  saved,
+  error,
+  galleryAction,
+  createPortfolioItemAction,
+  providerId,
+  msmeId,
+}: MsmePortfolioGalleryDashboardProps) {
+  const router = useRouter();
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -66,6 +80,7 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAc
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(error ? uploadErrorMessages[error] ?? "Unable to save portfolio item." : null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -93,7 +108,13 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAc
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
+    const selectedFiles = event.target.files ? Array.from(event.target.files) : [];
+    const file = selectedFiles[0] ?? null;
+    console.log("[msme-portfolio-upload][selected_files]", {
+      selectedFileCount: selectedFiles.length,
+      fileSizesBytes: selectedFiles.map((item) => item.size),
+    });
+
     if (!file) {
       setSelectedFile(null);
       return;
@@ -114,6 +135,49 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAc
   function clearSelectedFile() {
     setSelectedFile(null);
     setFileError(null);
+  }
+
+  async function handleCreatePortfolioItemSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) {
+      setFileError("Please choose an image file to upload.");
+      return;
+    }
+
+    setIsSaving(true);
+    setFileError(null);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      const uploadResult = await uploadMsmePortfolioImage({
+        file: selectedFile,
+        providerId,
+        msmeId,
+      });
+      console.log("[msme-portfolio-upload][storage_upload_result]", uploadResult);
+
+      const payload = new FormData();
+      payload.set("asset_url", uploadResult.publicUrl);
+      payload.set("caption", String(formData.get("caption") ?? ""));
+      payload.set("sort_order", String(formData.get("sort_order") ?? 0));
+      payload.set("is_featured", String(formData.get("is_featured") ?? "false"));
+
+      const result = await createPortfolioItemAction(payload);
+      if (!result.ok) {
+        setFileError(uploadErrorMessages[result.error] ?? "Portfolio item could not be saved. Please try again.");
+        return;
+      }
+
+      setSelectedFile(null);
+      setShowUploadForm(false);
+      router.replace("/dashboard/msme/portfolio?saved=1");
+      router.refresh();
+    } catch (submissionError) {
+      const message = submissionError instanceof Error ? submissionError.message : "upload_failed";
+      setFileError(uploadErrorMessages[message] ?? "Image upload failed. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const totalItems = gallery.length;
@@ -170,22 +234,16 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAc
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="mb-4 text-base font-semibold text-slate-900">Upload Portfolio Item</h2>
           <form
-            action={galleryAction}
+            action="#"
             className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
-            onSubmit={(event) => {
-              if (!selectedFile) {
-                event.preventDefault();
-                setFileError("Please choose an image file to upload.");
-              }
-            }}
+            onSubmit={handleCreatePortfolioItemSubmit}
           >
-            <input type="hidden" name="kind" value="create" />
             <div className="space-y-3 md:col-span-2 xl:col-span-3">
               <label htmlFor="asset_file" className="text-sm font-medium text-slate-700">
                 Portfolio Image
               </label>
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-4">
-                <input id="asset_file" name="asset_file" type="file" accept={ACCEPTED_FILE_TYPES} className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-800" onChange={handleFileChange} />
+                <input id="asset_file" type="file" accept={ACCEPTED_FILE_TYPES} className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-800" onChange={handleFileChange} />
                 <p className="mt-2 text-xs text-slate-500">Accepted: JPG, JPEG, PNG, WEBP • Max size: 5MB</p>
                 {selectedFile && (
                   <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
@@ -213,7 +271,9 @@ export function MsmePortfolioGalleryDashboard({ gallery, saved, error, galleryAc
               </select>
             </div>
             <div className="md:col-span-2 xl:col-span-5 flex justify-end">
-              <button className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Save Portfolio Item</button>
+              <button disabled={isSaving} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">
+                {isSaving ? "Saving..." : "Save Portfolio Item"}
+              </button>
             </div>
           </form>
         </section>
