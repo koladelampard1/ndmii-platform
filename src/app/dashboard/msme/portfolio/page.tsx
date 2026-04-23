@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { MsmePortfolioGalleryDashboard } from "./portfolio-gallery-dashboard";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { buildProviderGalleryInsertPayload, getProviderGallerySchema, readProviderGalleryItems } from "@/lib/data/provider-gallery";
 import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const MAX_PORTFOLIO_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -74,19 +75,27 @@ async function galleryAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const gallerySchema = await getProviderGallerySchema(supabase);
   const kind = String(formData.get("kind") ?? "create");
   const itemId = String(formData.get("item_id") ?? "");
 
   if (kind === "delete" && itemId) {
-    await supabase.from("provider_gallery").delete().eq("id", itemId).eq("provider_id", workspace.provider.id);
+    await supabase.from("provider_gallery").delete().eq(gallerySchema.idColumn, itemId).eq(gallerySchema.providerRefColumn, workspace.provider.id);
   } else if (kind === "update" && itemId) {
-    const payload = {
-      caption: String(formData.get("caption") ?? "").trim() || null,
-      is_featured: String(formData.get("is_featured") ?? "false") === "true",
-      sort_order: Number(formData.get("sort_order") ?? 0) || 0,
-      updated_at: new Date().toISOString(),
-    };
-    await supabase.from("provider_gallery").update(payload).eq("id", itemId).eq("provider_id", workspace.provider.id);
+    const payload: Record<string, unknown> = {};
+    if (gallerySchema.captionColumn) {
+      payload[gallerySchema.captionColumn] = String(formData.get("caption") ?? "").trim() || null;
+    }
+    if (gallerySchema.isFeaturedColumn) {
+      payload[gallerySchema.isFeaturedColumn] = String(formData.get("is_featured") ?? "false") === "true";
+    }
+    if (gallerySchema.sortOrderColumn) {
+      payload[gallerySchema.sortOrderColumn] = Number(formData.get("sort_order") ?? 0) || 0;
+    }
+    if (gallerySchema.updatedAtColumn) {
+      payload[gallerySchema.updatedAtColumn] = new Date().toISOString();
+    }
+    await supabase.from("provider_gallery").update(payload).eq(gallerySchema.idColumn, itemId).eq(gallerySchema.providerRefColumn, workspace.provider.id);
   } else {
     redirect(toErrorPath("upload_failed"));
   }
@@ -202,23 +211,37 @@ async function createPortfolioItemAction(formData: FormData) {
 
   const { data: publicUrlData } = supabase.storage.from(PORTFOLIO_BUCKET).getPublicUrl(storagePath);
   const assetUrl = publicUrlData.publicUrl;
+  const gallerySchema = await getProviderGallerySchema(supabase, { forceRefresh: true });
 
-  const payload = {
-    provider_id: workspace.provider.id,
-    asset_url: assetUrl,
+  console.info("[msme-portfolio-upload][provider_gallery_columns_discovered]", {
+    providerId: workspace.provider.id,
+    msmeId: workspace.msme.id,
+    columns: Array.from(gallerySchema.columns).sort(),
+    selectedProviderRefColumn: gallerySchema.providerRefColumn,
+    selectedUrlColumn: gallerySchema.urlColumn,
+    selectedCaptionColumn: gallerySchema.captionColumn,
+    selectedIsFeaturedColumn: gallerySchema.isFeaturedColumn,
+    selectedSortOrderColumn: gallerySchema.sortOrderColumn,
+    selectedUpdatedAtColumn: gallerySchema.updatedAtColumn,
+  });
+
+  const payload = buildProviderGalleryInsertPayload({
+    schema: gallerySchema,
+    providerId: workspace.provider.id,
+    publicAssetUrl: assetUrl,
+    storagePath,
     caption: String(formData.get("caption") ?? "").trim() || null,
-    is_featured: String(formData.get("is_featured") ?? "false") === "true",
-    sort_order: Number(formData.get("sort_order") ?? 0) || 0,
-    updated_at: new Date().toISOString(),
-  };
+    isFeatured: String(formData.get("is_featured") ?? "false") === "true",
+    sortOrder: Number(formData.get("sort_order") ?? 0) || 0,
+  });
 
-  console.info("[msme-portfolio-upload][db_insert_payload]", {
+  console.info("[msme-portfolio-upload][db_insert_payload_aligned]", {
     providerId: workspace.provider.id,
     msmeId: workspace.msme.id,
     payload,
   });
 
-  const { data, error: insertError } = await supabase.from("provider_gallery").insert(payload).select("id");
+  const { data, error: insertError } = await supabase.from("provider_gallery").insert(payload).select(gallerySchema.idColumn);
 
   if (insertError) {
     console.error("[msme-portfolio-upload][db_insert_failed]", {
@@ -238,10 +261,25 @@ async function createPortfolioItemAction(formData: FormData) {
     providerId: workspace.provider.id,
     msmeId: workspace.msme.id,
     savedRecordCount: data?.length ?? 0,
-    savedRecordIds: data?.map((item) => item.id) ?? [],
+    savedRecordIds: data?.map((item: Record<string, any>) => item[gallerySchema.idColumn]) ?? [],
     bucket: PORTFOLIO_BUCKET,
     storagePath,
     assetUrl,
+  });
+
+  const reloadSnapshot = await readProviderGalleryItems({
+    supabase,
+    providerId: workspace.provider.id,
+  });
+
+  console.info("[msme-portfolio-upload][reload_query_result]", {
+    providerId: workspace.provider.id,
+    msmeId: workspace.msme.id,
+    sourceTable: "provider_gallery",
+    providerRefColumn: reloadSnapshot.schema.providerRefColumn,
+    urlColumn: reloadSnapshot.schema.urlColumn,
+    itemCount: reloadSnapshot.items.length,
+    itemIds: reloadSnapshot.items.map((item) => item.id),
   });
 
   revalidatePath("/dashboard/msme/portfolio");
@@ -253,18 +291,18 @@ export default async function MsmePortfolioPage({ searchParams }: { searchParams
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
-
-  const { data: gallery } = await supabase
-    .from("provider_gallery")
-    .select("id,asset_url,caption,is_featured,sort_order,updated_at")
-    .eq("provider_id", workspace.provider.id)
-    .order("sort_order", { ascending: true });
+  const { schema, items: gallery } = await readProviderGalleryItems({
+    supabase,
+    providerId: workspace.provider.id,
+  });
 
   console.log("[msme-portfolio-upload][page_reload_items]", {
     providerId: workspace.provider.id,
     msmeId: workspace.msme.id,
     sourceTable: "provider_gallery",
-    selectedColumns: "id,asset_url,caption,is_featured,sort_order,updated_at",
+    selectedColumns: Array.from(schema.columns).sort(),
+    providerRefColumn: schema.providerRefColumn,
+    urlColumn: schema.urlColumn,
     portfolioItemCount: gallery?.length ?? 0,
     portfolioItemIds: (gallery ?? []).map((item) => item.id),
   });
