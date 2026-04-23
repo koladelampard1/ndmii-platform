@@ -7,39 +7,39 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ServiceCreateForm } from "./service-create-form";
 
 const PROVIDER_SERVICES_INSERT_COLUMNS = [
-  "provider_id",
-  "category",
-  "specialization",
-  "title",
-  "short_description",
-  "pricing_mode",
-  "min_price",
-  "max_price",
-  "turnaround_time",
-  "vat_applicable",
+  "provider_profile_id",
+  "service_name",
+  "description",
+  "price_min",
+  "price_max",
+  "pricing_model",
+  "is_active",
+  "created_at",
 ] as const;
 
 async function createServiceAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const providerProfileId = workspace.provider.id;
 
   const priceType = String(formData.get("price_type") ?? "fixed");
   const resolvedPricingMode = mapPriceTypeToStorageMode(priceType);
-  const priceAmount = Number(formData.get("price_amount") ?? 0);
-  const hasPriceAmount = Number.isFinite(priceAmount) && priceAmount > 0;
+  const parsedMinPrice = Number(formData.get("price_min") ?? "");
+  const parsedMaxPrice = Number(formData.get("price_max") ?? "");
+  const hasMinPrice = Number.isFinite(parsedMinPrice) && parsedMinPrice >= 0;
+  const hasMaxPrice = Number.isFinite(parsedMaxPrice) && parsedMaxPrice >= 0;
+  const resolvedMinPrice = hasMinPrice ? parsedMinPrice : null;
+  const resolvedMaxPrice = hasMaxPrice ? parsedMaxPrice : resolvedMinPrice;
 
   const payload = {
-    provider_id: workspace.provider.id,
-    category: String(formData.get("category") ?? "Professional Services"),
-    specialization: String(formData.get("specialization") ?? "").trim() || null,
-    title: String(formData.get("title") ?? "").trim(),
-    short_description: String(formData.get("short_description") ?? "").trim(),
-    pricing_mode: resolvedPricingMode,
-    min_price: hasPriceAmount ? priceAmount : null,
-    max_price: hasPriceAmount ? priceAmount : null,
-    turnaround_time: String(formData.get("turnaround_time") ?? "").trim() || null,
-    vat_applicable: String(formData.get("vat_applicable") ?? "false") === "true",
+    provider_profile_id: providerProfileId,
+    service_name: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("short_description") ?? "").trim(),
+    price_min: resolvedMinPrice,
+    price_max: resolvedMaxPrice,
+    pricing_model: resolvedPricingMode,
+    is_active: String(formData.get("is_active") ?? "true") !== "false",
   };
 
   const { data: insertedRow, error } = await supabase
@@ -51,7 +51,7 @@ async function createServiceAction(formData: FormData) {
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] write-table", {
       writeTable: "provider_services",
-      writeProviderId: workspace.provider.id,
+      writeProviderProfileId: providerProfileId,
       providerServicesSchemaUsed: PROVIDER_SERVICES_INSERT_COLUMNS,
       finalInsertPayload: payload,
       insertedServiceId: insertedRow?.id ?? null,
@@ -61,6 +61,19 @@ async function createServiceAction(formData: FormData) {
 
   if (error) {
     throw new Error(`Failed to create service: ${error.message}`);
+  }
+
+  const { count: servicesCountAfterSave, error: servicesCountError } = await supabase
+    .from("provider_services")
+    .select("id", { count: "exact", head: true })
+    .eq("provider_profile_id", providerProfileId);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[msme-services] post-save-count", {
+      providerProfileId,
+      servicesCountAfterSave: servicesCountAfterSave ?? 0,
+      servicesCountError: servicesCountError?.message ?? null,
+    });
   }
 
   revalidatePath("/dashboard/msme/services");
