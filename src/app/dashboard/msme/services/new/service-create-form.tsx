@@ -9,7 +9,7 @@ type ServiceCreateFormProps = {
 
 export function ServiceCreateForm({ categories, createAction }: ServiceCreateFormProps) {
   const [priceType, setPriceType] = useState<"fixed" | "starting_from" | "negotiable" | "request_quote">("fixed");
-  const showPriceAmount = useMemo(() => priceType === "fixed" || priceType === "starting_from", [priceType]);
+  const showPriceRange = useMemo(() => priceType === "fixed" || priceType === "starting_from", [priceType]);
 
   return (
     <form action={createAction} className="grid gap-4 md:grid-cols-2">
@@ -83,47 +83,47 @@ export function ServiceCreateForm({ categories, createAction }: ServiceCreateFor
         </select>
       </div>
 
-      {showPriceAmount ? (
-        <div className="space-y-1.5">
-          <label htmlFor="price_amount" className="text-sm font-medium text-slate-700">
-            Price amount (₦)
-          </label>
-          <input
-            id="price_amount"
-            name="price_amount"
-            type="number"
-            min={0}
-            step="0.01"
-            required={showPriceAmount}
-            placeholder="50000"
-            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm"
-          />
-        </div>
+      {showPriceRange ? (
+        <>
+          <div className="space-y-1.5">
+            <label htmlFor="price_min" className="text-sm font-medium text-slate-700">
+              Minimum price (₦)
+            </label>
+            <input
+              id="price_min"
+              name="price_min"
+              type="number"
+              min={0}
+              step="0.01"
+              required={showPriceRange}
+              placeholder="50000"
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="price_max" className="text-sm font-medium text-slate-700">
+              Maximum price (₦)
+            </label>
+            <input
+              id="price_max"
+              name="price_max"
+              type="number"
+              min={0}
+              step="0.01"
+              required={priceType === "fixed"}
+              placeholder={priceType === "fixed" ? "50000" : "Optional"}
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm"
+            />
+          </div>
+        </>
       ) : (
-        <input type="hidden" name="price_amount" value="" />
+        <>
+          <input type="hidden" name="price_min" value="" />
+          <input type="hidden" name="price_max" value="" />
+        </>
       )}
 
-      <div className="space-y-1.5">
-        <label htmlFor="turnaround_time" className="text-sm font-medium text-slate-700">
-          Turnaround time (optional)
-        </label>
-        <input
-          id="turnaround_time"
-          name="turnaround_time"
-          placeholder="e.g. 3-5 business days"
-          className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="vat_applicable" className="text-sm font-medium text-slate-700">
-          VAT
-        </label>
-        <select id="vat_applicable" name="vat_applicable" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm">
-          <option value="false">VAT not applicable</option>
-          <option value="true">VAT applicable</option>
-        </select>
-      </div>
+      <input type="hidden" name="is_active" value="true" />
 
       <div className="flex items-end justify-end md:col-span-2">
         <button className="inline-flex h-11 items-center rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800">

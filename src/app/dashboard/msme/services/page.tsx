@@ -9,38 +9,29 @@ async function serviceAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const providerProfileId = workspace.provider.id;
 
   const kind = String(formData.get("kind") ?? "create");
   const serviceId = String(formData.get("service_id") ?? "");
   const payload = {
-    provider_id: workspace.provider.id,
-    category: String(formData.get("category") ?? "Professional Services"),
-    specialization: String(formData.get("specialization") ?? "").trim() || null,
-    title: String(formData.get("title") ?? ""),
-    short_description: String(formData.get("short_description") ?? ""),
-    pricing_mode: String(formData.get("pricing_mode") ?? "range"),
-    min_price: Number(formData.get("min_price") ?? 0) || 0,
-    max_price: Number(formData.get("max_price") ?? 0) || 0,
-    turnaround_time: String(formData.get("turnaround_time") ?? "").trim() || null,
-    vat_applicable: String(formData.get("vat_applicable") ?? "false") === "true",
-    availability_status: String(formData.get("availability_status") ?? "available"),
-    updated_at: new Date().toISOString(),
+    is_active: String(formData.get("is_active") ?? "true") !== "false",
   };
 
   if (kind === "delete" && serviceId) {
-    await supabase.from("provider_services").delete().eq("id", serviceId).eq("provider_id", workspace.provider.id);
+    await supabase.from("provider_services").delete().eq("id", serviceId).eq("provider_profile_id", providerProfileId);
   } else if (kind === "update" && serviceId) {
-    await supabase.from("provider_services").update(payload).eq("id", serviceId).eq("provider_id", workspace.provider.id);
+    await supabase.from("provider_services").update(payload).eq("id", serviceId).eq("provider_profile_id", providerProfileId);
   } else {
-    await supabase.from("provider_services").insert(payload);
+    return;
   }
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] write-table", {
       writeTable: "provider_services",
-      writeProviderId: workspace.provider.id,
+      writeProviderProfileId: providerProfileId,
       writeKind: kind,
       wroteServiceId: serviceId || null,
+      finalUpdatePayload: payload,
     });
   }
 

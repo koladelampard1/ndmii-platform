@@ -42,7 +42,7 @@ export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePubl
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const providerIds = Array.from(
+  const providerProfileIds = Array.from(
     new Set([
       providerId,
       ...(providerByIdRows ?? []).map((row) => row.id),
@@ -51,21 +51,17 @@ export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePubl
   );
 
   const [{ data: servicesData, error: servicesError }, { data: categoryRows, error: categoriesError }] = await Promise.all([
-    supabase.from("provider_services").select("*").in("provider_id", providerIds).order("created_at", { ascending: false }),
+    supabase.from("provider_services").select("*").in("provider_profile_id", providerProfileIds).order("created_at", { ascending: false }),
     supabase.from("service_categories").select("name").eq("is_active", true).order("name"),
   ]);
 
   const services = (servicesData ?? []) as ServiceRecord[];
   const categoriesFromTable = dedupeCategoryNames((categoryRows ?? []).map((category) => category.name));
-  const categoriesFromServices = dedupeCategoryNames(services.map((service) => service.category));
 
   let categories = categoriesFromTable;
   let categoriesSource = "service_categories";
 
-  if (!categories.length && categoriesFromServices.length) {
-    categories = categoriesFromServices;
-    categoriesSource = "provider_services.category";
-  } else if (!categories.length) {
+  if (!categories.length) {
     categories = FALLBACK_SERVICE_CATEGORIES;
     categoriesSource = "fallback_static_categories";
   }
@@ -73,14 +69,16 @@ export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePubl
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] resolved-data-sources", {
       servicesSource: "provider_services",
-      servicesReadProviderIds: providerIds,
+      servicesReadFilter: {
+        column: "provider_profile_id",
+        values: providerProfileIds,
+      },
       providerProfilesReadTable: "provider_profiles",
       providerProfilesByIdError: providerByIdError?.message ?? null,
       providerProfilesByMsmeRefError: providerByMsmeError?.message ?? null,
       categoriesSource,
       servicesCount: services.length,
       categoriesCount: categories.length,
-      categoriesDerivedFromServices: categoriesFromServices,
       servicesError: servicesError?.message ?? null,
       categoriesError: categoriesError?.message ?? null,
     });
