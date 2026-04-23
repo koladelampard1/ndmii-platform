@@ -15,7 +15,6 @@ import {
   TrendingUp,
   Eye,
 } from "lucide-react";
-import { uploadMsmePortfolioImage } from "@/lib/msme/portfolio-upload";
 
 type GalleryItem = {
   id: string;
@@ -112,7 +111,11 @@ export function MsmePortfolioGalleryDashboard({
     const file = selectedFiles[0] ?? null;
     console.log("[msme-portfolio-upload][selected_files]", {
       selectedFileCount: selectedFiles.length,
+      selectedFileNames: selectedFiles.map((item) => item.name),
       fileSizesBytes: selectedFiles.map((item) => item.size),
+      mimeTypes: selectedFiles.map((item) => item.type || null),
+      providerId,
+      msmeId,
     });
 
     if (!file) {
@@ -149,21 +152,27 @@ export function MsmePortfolioGalleryDashboard({
 
     try {
       const formData = new FormData(event.currentTarget);
-      const uploadResult = await uploadMsmePortfolioImage({
-        file: selectedFile,
+      console.log("[msme-portfolio-upload][submit_request]", {
         providerId,
         msmeId,
+        fileName: selectedFile.name,
+        fileSizeBytes: selectedFile.size,
+        mimeType: selectedFile.type || null,
       });
-      console.log("[msme-portfolio-upload][storage_upload_result]", uploadResult);
 
       const payload = new FormData();
-      payload.set("asset_url", uploadResult.publicUrl);
+      payload.set("asset_file", selectedFile);
       payload.set("caption", String(formData.get("caption") ?? ""));
       payload.set("sort_order", String(formData.get("sort_order") ?? 0));
       payload.set("is_featured", String(formData.get("is_featured") ?? "false"));
 
       const result = await createPortfolioItemAction(payload);
       if (!result.ok) {
+        console.error("[msme-portfolio-upload][server_action_failed]", {
+          providerId,
+          msmeId,
+          errorCode: result.error,
+        });
         setFileError(uploadErrorMessages[result.error] ?? "Portfolio item could not be saved. Please try again.");
         return;
       }
