@@ -973,7 +973,7 @@ async function getProviderPublicPortfolio(providerId: string): Promise<Array<{ i
     const supabase = await createServiceRoleSupabaseClient();
     const { items } = await readProviderGalleryItems({
       supabase,
-      providerId,
+      providerProfileId: providerId,
       limit: 12,
     });
     return items;

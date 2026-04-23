@@ -9,7 +9,7 @@ export default async function MsmePublicProfilePreviewPage() {
   const supabase = await createServerSupabaseClient();
   const [{ data: services }, gallerySnapshot] = await Promise.all([
     supabase.from("provider_services").select("id,title,category,availability_status,min_price,max_price").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }).limit(4),
-    readProviderGalleryItems({ supabase, providerId: workspace.provider.id, limit: 4 }),
+    readProviderGalleryItems({ supabase, providerProfileId: workspace.provider.id, limit: 4 }),
   ]);
   const gallery = gallerySnapshot.items;
 
