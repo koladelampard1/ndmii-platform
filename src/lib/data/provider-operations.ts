@@ -15,6 +15,7 @@ export type ProviderWorkspaceContext = {
     sector: string;
     verification_status: string;
     contact_email: string | null;
+    passport_photo_url: string | null;
   };
   provider: {
     id: string;
@@ -257,7 +258,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
   const { data: msme } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,created_by")
+    .select("id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,passport_photo_url,created_by")
     .eq("id", msmeId)
     .maybeSingle();
 
@@ -707,7 +708,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       long_description: provider.description ?? null,
       slug: provider.public_slug ?? provider.id,
       trust_score: 0,
-      logo_url: null,
+      logo_url: msme.passport_photo_url ?? null,
     },
   };
 }

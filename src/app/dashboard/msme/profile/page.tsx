@@ -225,7 +225,7 @@ export default async function MsmeProfileOverviewPage() {
 
         <aside className="space-y-4">
           <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <h4 className="text-base font-semibold text-slate-900">Business Logo</h4>
+            <h4 className="text-base font-semibold text-slate-900">Business Logo / Profile Image</h4>
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
               <div className="flex items-center gap-4">
                 <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl bg-emerald-900 text-white">
