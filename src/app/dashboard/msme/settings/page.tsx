@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info, Upload } from "lucide-react";
+import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -61,6 +62,19 @@ const SETTINGS_SECTIONS = [
 type CompletenessItem = {
   label: string;
   complete: boolean;
+};
+
+type SettingsErrorCode =
+  | "read_failed"
+  | "provider_save_failed"
+  | "msme_save_failed"
+  | "unknown_save_error";
+
+const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
+  read_failed: "We could not load your current settings. Please refresh and try again.",
+  provider_save_failed: "Your business profile changes could not be saved. Please try again.",
+  msme_save_failed: "Your MSME settings could not be saved. Please try again.",
+  unknown_save_error: "Something went wrong while saving. Please retry.",
 };
 
 function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>) {
@@ -147,35 +161,55 @@ async function settingsAction(formData: FormData) {
     redirect("/dashboard/msme/settings?error=read_failed");
   }
 
-  const providerPayload = {
-    display_name: String(formData.get("business_name") ?? workspace.provider.display_name).trim() || workspace.provider.display_name,
+  // Source of truth for editable fields:
+  // - Canonical business/contact data lives in `msmes` and is always written there.
+  // - `provider_profiles` is only updated for display-facing mirror fields (display_name/contact/description)
+  //   to keep public profile views in sync while tolerating schema drift.
+  const providerRawPayload = {
+    display_name: String(formData.get("business_name") ?? existingMsme.business_name ?? workspace.provider.display_name).trim() || null,
     description: String(formData.get("business_description") ?? workspace.provider.description ?? "").trim() || null,
-    contact_email: String(formData.get("contact_email") ?? workspace.provider.contact_email ?? "").trim() || null,
-    contact_phone: String(formData.get("contact_phone") ?? workspace.provider.contact_phone ?? "").trim() || null,
+    contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? workspace.provider.contact_email ?? "").trim() || null,
+    contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? workspace.provider.contact_phone ?? "").trim() || null,
     updated_at: nowIso,
   };
+  const providerColumns = await getTableColumns(supabase, "provider_profiles");
+  const providerPayload = filterPayloadByColumns(providerRawPayload, providerColumns);
 
   console.info("[msme-settings][write-before]", {
     ...saveContext,
     section: "profile-information,contact-address,about-business",
     table: "provider_profiles",
     lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
+    availableColumns: Array.from(providerColumns).sort(),
     payload: providerPayload,
   });
 
-  const { data: providerUpdateRows, error: providerUpdateError } = await supabase
-    .from("provider_profiles")
-    .update(providerPayload)
-    .eq("id", workspace.provider.id)
-    .eq("msme_id", workspace.provider.msme_id)
-    .select("id");
+  let providerUpdateRows: { id: string }[] | null = null;
+  let providerUpdateError: { message?: string; details?: string; hint?: string; code?: string } | null = null;
+  if (Object.keys(providerPayload).length > 0) {
+    const providerUpdateResult = await supabase
+      .from("provider_profiles")
+      .update(providerPayload)
+      .eq("id", workspace.provider.id)
+      .eq("msme_id", workspace.provider.msme_id)
+      .select("id");
+    providerUpdateRows = providerUpdateResult.data as { id: string }[] | null;
+    providerUpdateError = providerUpdateResult.error;
+  } else {
+    console.warn("[msme-settings][provider-write-skipped]", {
+      ...saveContext,
+      reason: "no_mutable_provider_profile_columns",
+      providerRawPayloadKeys: Object.keys(providerRawPayload),
+    });
+  }
 
   console.info("[msme-settings][write-after]", {
     ...saveContext,
     section: "profile-information,contact-address,about-business",
     table: "provider_profiles",
-    success: !providerUpdateError && Boolean(providerUpdateRows?.length),
+    success: !providerUpdateError && (Object.keys(providerPayload).length === 0 || Boolean(providerUpdateRows?.length)),
     returnedRowCount: providerUpdateRows?.length ?? 0,
+    skippedWrite: Object.keys(providerPayload).length === 0,
     dbResponse: {
       message: providerUpdateError?.message ?? null,
       details: providerUpdateError?.details ?? null,
@@ -184,7 +218,7 @@ async function settingsAction(formData: FormData) {
     },
   });
 
-  if (providerUpdateError || !providerUpdateRows?.length) {
+  if (providerUpdateError || (Object.keys(providerPayload).length > 0 && !providerUpdateRows?.length)) {
     firstFailedWrite = firstFailedWrite ?? "provider_profiles";
     console.error("[msme-settings][save-failed]", {
       ...saveContext,
@@ -203,13 +237,21 @@ async function settingsAction(formData: FormData) {
   }
 
   const msmePayload = {
+    // Canonical: msmes.business_name (mirrored into provider_profiles.display_name above when available)
     business_name: String(formData.get("business_name") ?? existingMsme.business_name).trim() || existingMsme.business_name,
+    // Canonical: msmes.owner_name
     owner_name: String(formData.get("owner_name") ?? existingMsme.owner_name).trim() || existingMsme.owner_name,
+    // Canonical: msmes.sector
     sector: String(formData.get("business_category") ?? existingMsme.sector).trim() || existingMsme.sector,
+    // Canonical: msmes.business_type
     business_type: String(formData.get("business_sub_category") ?? existingMsme.business_type ?? "").trim() || null,
+    // Canonical: msmes.contact_email (mirrored into provider_profiles.contact_email above when available)
     contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? "").trim() || null,
+    // Canonical: msmes.contact_phone (mirrored into provider_profiles.contact_phone above when available)
     contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? "").trim() || null,
+    // Canonical: msmes.cac_number
     cac_number: String(formData.get("cac_number") ?? existingMsme.cac_number ?? "").trim() || null,
+    // Canonical: msmes.address
     address: String(formData.get("address") ?? existingMsme.address ?? "").trim() || null,
   };
 
@@ -272,13 +314,42 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
-  const { data: msmeExtended } = await supabase
+  const settingsReadSelect =
+    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin";
+  const { data: msmeSettings, error: msmeSettingsError } = await supabase
     .from("msmes")
-    .select("contact_phone,address,cac_number,tin,business_type")
+    .select(settingsReadSelect)
     .eq("id", workspace.msme.id)
     .maybeSingle();
 
+  console.info("[msme-settings][read-page]", {
+    route: "/dashboard/msme/settings",
+    providerProfileId: workspace.provider.id,
+    msmeRowId: workspace.msme.id,
+    table: "msmes",
+    select: settingsReadSelect.split(","),
+    error: msmeSettingsError?.message ?? null,
+    found: Boolean(msmeSettings),
+  });
+
+  if (msmeSettingsError || !msmeSettings) {
+    console.error("[msme-settings][read-page-failed]", {
+      route: "/dashboard/msme/settings",
+      providerProfileId: workspace.provider.id,
+      msmeRowId: workspace.msme.id,
+      dbResponse: {
+        message: msmeSettingsError?.message ?? "settings_row_not_found",
+        details: msmeSettingsError?.details ?? null,
+        hint: msmeSettingsError?.hint ?? null,
+        code: msmeSettingsError?.code ?? null,
+      },
+    });
+    redirect("/dashboard/msme/settings?error=read_failed");
+  }
+
   const completeness = deriveProfileCompleteness(workspace);
+  const errorCode: SettingsErrorCode = (params.error as SettingsErrorCode) || "unknown_save_error";
+  const errorMessage = SETTINGS_ERROR_MESSAGES[errorCode] ?? SETTINGS_ERROR_MESSAGES.unknown_save_error;
 
   return (
     <section className="space-y-5 pb-6">
@@ -287,7 +358,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
       )}
       {params.error && (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          Unable to save settings ({params.error}). Check server diagnostics for read/write details.
+          {errorMessage} ({params.error})
         </p>
       )}
 
@@ -358,7 +429,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                   <span className="text-xs font-medium text-slate-600">Business Name</span>
                   <input
                     name="business_name"
-                    defaultValue={workspace.provider.display_name || workspace.msme.business_name}
+                    defaultValue={msmeSettings.business_name ?? workspace.provider.display_name ?? workspace.msme.business_name}
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                   />
                 </label>
@@ -366,7 +437,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                   <span className="text-xs font-medium text-slate-600">Business Category</span>
                   <input
                     name="business_category"
-                    defaultValue={workspace.msme.sector ?? ""}
+                    defaultValue={msmeSettings.sector ?? workspace.msme.sector ?? ""}
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                   />
                 </label>
@@ -374,7 +445,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                   <span className="text-xs font-medium text-slate-600">Business Sub-category</span>
                   <input
                     name="business_sub_category"
-                    defaultValue={msmeExtended?.business_type ?? workspace.msme.lga ?? ""}
+                    defaultValue={msmeSettings.business_type ?? ""}
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                   />
                 </label>
@@ -382,7 +453,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                   <span className="text-xs font-medium text-slate-600">CAC Registration Number</span>
                   <input
                     name="cac_number"
-                    defaultValue={msmeExtended?.cac_number ?? ""}
+                    defaultValue={msmeSettings.cac_number ?? ""}
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                   />
                 </label>
@@ -408,7 +479,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <span className="text-xs font-medium text-slate-600">Full Name</span>
                 <input
                   name="owner_name"
-                  defaultValue={workspace.msme.owner_name ?? ""}
+                  defaultValue={msmeSettings.owner_name ?? workspace.msme.owner_name ?? ""}
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
               </label>
@@ -416,7 +487,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <span className="text-xs font-medium text-slate-600">Email Address</span>
                 <input
                   name="contact_email"
-                  defaultValue={workspace.provider.contact_email ?? workspace.msme.contact_email ?? ""}
+                  defaultValue={msmeSettings.contact_email ?? workspace.provider.contact_email ?? workspace.msme.contact_email ?? ""}
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
               </label>
@@ -424,7 +495,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <span className="text-xs font-medium text-slate-600">Phone Number</span>
                 <input
                   name="contact_phone"
-                  defaultValue={workspace.provider.contact_phone ?? msmeExtended?.contact_phone ?? ""}
+                  defaultValue={msmeSettings.contact_phone ?? workspace.provider.contact_phone ?? ""}
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
               </label>
@@ -452,7 +523,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <span className="text-xs font-medium text-slate-600">Business Address</span>
                 <input
                   name="address"
-                  defaultValue={msmeExtended?.address ?? ""}
+                  defaultValue={msmeSettings.address ?? ""}
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
               </label>
@@ -492,7 +563,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <span className="text-xs font-medium text-slate-600">TIN (read-only here)</span>
                 <input
                   name="tin"
-                  defaultValue={msmeExtended?.tin ?? ""}
+                  defaultValue={msmeSettings.tin ?? ""}
                   disabled
                   className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:ring"
                 />
