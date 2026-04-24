@@ -1,23 +1,24 @@
 import Link from "next/link";
-import { BadgeCheck, CheckCircle2, MapPin, Search, ShieldCheck, Star } from "lucide-react";
-import { Navbar } from "@/components/layout/navbar";
-import { Button } from "@/components/ui/button";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Building2,
+  CheckCircle2,
+  Factory,
+  Landmark,
+  Leaf,
+  MapPin,
+  QrCode,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Store,
+  Users,
+} from "lucide-react";
 import { searchMarketplaceProviders } from "@/lib/data/marketplace";
 
-const MARKETPLACE_QUICK_CATEGORIES = [
-  "Mechanics",
-  "Electricians",
-  "Tailors",
-  "Fabricators",
-  "POS Agents",
-  "Plumbers",
-  "Transporters",
-  "Caterers",
-  "ICT Support",
-  "Agriculture",
-];
-
-const DISCOVERY_CATEGORIES = [
+const CATEGORY_CHIPS = [
   "Automotive",
   "Construction",
   "Repairs",
@@ -26,35 +27,51 @@ const DISCOVERY_CATEGORIES = [
   "Retail",
   "Beauty",
   "Food Vendors",
-  "Transport",
   "Manufacturing",
+  "Transport",
 ];
 
-const STAKEHOLDER_PANELS = [
-  {
-    title: "For MSMEs",
-    body: "Register and verify your business to access opportunities and build trust.",
-    href: "/for-msmes",
-    cta: "Explore MSME guide",
-  },
-  {
-    title: "For Associations",
-    body: "Onboard members, issue digital IDs, and track verification.",
-    href: "/for-associations",
-    cta: "Association onboarding",
-  },
-  {
-    title: "For Government",
-    body: "Strengthen compliance and improve visibility of verified MSMEs.",
-    href: "/for-government",
-    cta: "Government overview",
-  },
-  {
-    title: "For Financial Institutions",
-    body: "Reduce risk and onboard verified MSMEs with confidence.",
-    href: "/for-financial-institutions",
-    cta: "Institution playbook",
-  },
+const TRUST_ECOSYSTEM = [
+  { label: "MSMEs", sublabel: "Grow and get verified", icon: Store },
+  { label: "Trade Associations", sublabel: "Onboard and manage members", icon: Users },
+  { label: "Financial Institutions", sublabel: "Verify and reduce risk", icon: Landmark },
+  { label: "Procurement Teams", sublabel: "Find reliable suppliers", icon: Building2 },
+  { label: "Public Institutions", sublabel: "Strengthen service delivery", icon: ShieldCheck },
+  { label: "Development Partners", sublabel: "Support ecosystem growth", icon: Leaf },
+];
+
+const BENEFITS = [
+  "Verified Business Identity",
+  "Marketplace Visibility",
+  "Partner & Association Readiness",
+  "Trust for Finance and Procurement",
+  "QR-based Verification",
+  "Digital Credential Sharing",
+];
+
+const HOW_IT_WORKS = [
+  "Register your business",
+  "Complete business profile",
+  "Verify identity and compliance records",
+  "Receive your Business Identity Credential",
+  "Get discovered by customers and partners",
+];
+
+const STAKEHOLDERS = [
+  "For MSMEs",
+  "For Associations",
+  "For Marketplaces",
+  "For Financial Institutions",
+  "For Public Institutions",
+  "For Development Partners",
+];
+
+const METRICS = [
+  "12,842+ Businesses profiled",
+  "38+ Associations onboarded",
+  "11 State coverage configurable",
+  "6 Partner institution integrations",
+  "98.7% Verification accuracy rate (demo)",
 ];
 
 export default async function LandingPage() {
@@ -62,86 +79,126 @@ export default async function LandingPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <Navbar />
+      <section className="relative overflow-hidden bg-[radial-gradient(circle_at_top_right,#0f766e_0%,#064e3b_35%,#022c22_70%,#012018_100%)] text-white">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,transparent_15%,rgba(16,185,129,0.12)_45%,transparent_75%)]" />
+        <div className="pointer-events-none absolute -left-20 top-28 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-8 top-8 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
 
-      <section className="mx-auto max-w-7xl px-6 pb-6 pt-10 md:pt-16">
-        <div className="grid gap-8 rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#111827_45%,#052e2b_100%)] p-8 text-white md:grid-cols-2 md:items-center md:p-12">
+        <header className="relative mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-5">
+          <Link href="/" className="inline-flex items-center gap-3">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/90 text-lg font-extrabold">BIN</span>
+            <span className="text-sm font-semibold leading-tight md:text-base">Business Identity Network</span>
+          </Link>
+
+          <nav className="hidden items-center gap-6 text-sm text-emerald-50/90 lg:flex">
+            <Link href="/marketplace" className="transition hover:text-white">Marketplace</Link>
+            <Link href="/verify" className="transition hover:text-white">Verify Business ID</Link>
+            <Link href="/resources" className="transition hover:text-white">Resources</Link>
+            <Link href="/partners" className="transition hover:text-white">Partners</Link>
+            <Link href="/about" className="transition hover:text-white">About</Link>
+            <Link href="/contact" className="transition hover:text-white">Contact</Link>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="inline-flex h-9 items-center rounded-md border border-white/30 px-3 text-sm font-medium text-white transition hover:bg-white/10">Sign in</Link>
+            <Link href="/register" className="inline-flex h-9 items-center rounded-md bg-emerald-400 px-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300">Register</Link>
+          </div>
+        </header>
+
+        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-6 pb-12 pt-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pb-16">
           <div>
-            <p className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
-              National MSME identity + marketplace
+            <p className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-1 text-xs font-semibold tracking-[0.18em] text-emerald-100">
+              TRUSTED • VERIFIED • SHAREABLE
             </p>
-            <h1 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight md:text-5xl">
-              Register your MSME identity and find verified businesses across Nigeria.
+            <h1 className="mt-5 text-4xl font-semibold leading-[1.05] md:text-6xl">
+              Verify businesses.
+              <br />
+              Build trust.
+              <br />
+              <span className="text-emerald-300">Unlock opportunities.</span>
             </h1>
-            <p className="mt-4 max-w-2xl text-sm text-slate-200 md:text-base">
-              Build trust with a government-grade digital MSME ID, then discover trusted providers by category, specialization, and location.
+            <p className="mt-5 max-w-xl text-sm text-emerald-50/90 md:text-base">
+              Business Identity Network helps MSMEs, associations, marketplaces, lenders, and institutions create trusted business identities, verify credentials, and connect with reliable businesses.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/register/msme" className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-500 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-400">
-                Register Your Business
-              </Link>
-              <Link href="/marketplace" className="inline-flex h-11 items-center justify-center rounded-md border border-white/40 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10">
-                Find Trusted Businesses
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/register" className="inline-flex h-11 items-center rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300">Register Your Business</Link>
+              <Link href="/marketplace" className="inline-flex h-11 items-center rounded-md border border-white/35 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/15">Find Verified Businesses</Link>
+              <Link href="/verify" className="inline-flex h-11 items-center gap-1 rounded-md border border-white/35 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">
+                Verify a Business ID <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
 
-          <article className="mx-auto w-full max-w-md rounded-2xl border border-white/25 bg-white p-4 text-slate-900 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
+          <article className="relative overflow-hidden rounded-3xl border border-emerald-200/35 bg-white/10 p-5 shadow-2xl backdrop-blur-xl md:p-6">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">NDMII ID card</p>
-                <h2 className="text-lg font-semibold">Abuja AutoCare Services Ltd.</h2>
-                <p className="text-sm text-slate-600">Owner: Ibrahim Usman</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-emerald-200">Official Business Identity Credential</p>
+                <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-1 text-xs font-semibold text-emerald-100">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> BIN VERIFIED
+                </p>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
-                <BadgeCheck className="h-3 w-3" /> Verified
-              </span>
+              <span className="text-xs font-semibold text-emerald-100">BIN</span>
             </div>
-            <div className="mt-4 grid grid-cols-[88px_1fr] gap-4">
-              <div className="flex h-24 w-22 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500">PHOTO</div>
-              <dl className="space-y-1 text-xs text-slate-600">
-                <div className="flex justify-between gap-4"><dt>Business Category</dt><dd className="font-medium text-slate-900">Automotive Services</dd></div>
-                <div className="flex justify-between gap-4"><dt>Location</dt><dd className="font-medium text-slate-900">Abuja, FCT</dd></div>
-                <div className="flex justify-between gap-4"><dt>NDMII ID</dt><dd className="font-medium text-slate-900">NDMII-LAG-108168205</dd></div>
-              </dl>
+
+            <div className="mt-5 grid grid-cols-[84px_1fr_auto] gap-4 rounded-2xl border border-emerald-200/25 bg-emerald-950/30 p-4">
+              <div className="flex h-24 w-20 items-center justify-center rounded-xl bg-gradient-to-b from-cyan-100 to-emerald-100 text-emerald-950">
+                <Users className="h-7 w-7" />
+              </div>
+              <div className="space-y-1 text-sm">
+                <h2 className="text-base font-semibold text-white">Kado Engine Works Limited</h2>
+                <p className="text-emerald-100">Category: Automobile</p>
+                <p className="text-emerald-100">Business Type: Rewiring</p>
+                <p className="text-emerald-100">Business ID: NDMII-FCT-406488769</p>
+                <p className="text-emerald-100">Owner: Tunde Adeyemi</p>
+                <p className="inline-flex items-center gap-1 text-emerald-200"><BadgeCheck className="h-4 w-4" /> Status: Verified</p>
+              </div>
+              <div className="grid place-items-center gap-2">
+                <div className="rounded-lg bg-white p-2 text-slate-900">
+                  <QrCode className="h-12 w-12" />
+                </div>
+                <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-100">Scan to verify</p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between text-xs text-emerald-100">
+              <p>Verified • Trusted • Shareable</p>
+              <p>Expiry: Apr 2027</p>
             </div>
           </article>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-10">
-        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 px-5 py-4 text-xs font-medium text-slate-700 md:text-sm">
-          <span className="font-semibold text-slate-900">Trusted and used by:</span>
-          {[
-            { label: "Trade Associations", href: "/for-associations" },
-            { label: "Government Agencies", href: "/for-government" },
-            { label: "Financial Institutions", href: "/for-financial-institutions" },
-            { label: "Procurement Platforms", href: "/partners" },
-          ].map((item) => (
-            <Link key={item.label} href={item.href} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm transition hover:bg-emerald-50">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
-              {item.label}
-            </Link>
-          ))}
+      <section className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Built for an ecosystem of trust</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            {TRUST_ECOSYSTEM.map((item) => (
+              <article key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <item.icon className="mx-auto h-5 w-5 text-emerald-700" />
+                <h2 className="mt-2 text-sm font-semibold">{item.label}</h2>
+                <p className="mt-1 text-xs text-slate-600">{item.sublabel}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <h2 className="text-center text-2xl font-semibold text-slate-900">Find Trusted Businesses Near You</h2>
+      <section className="mx-auto max-w-7xl px-6 py-10">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
+          <h2 className="text-center text-2xl font-semibold">Find verified businesses near you</h2>
           <form action="/marketplace" className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+            <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3">
               <Search className="h-4 w-4 text-slate-400" />
-              <input name="q" placeholder="What service do you need?" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400" />
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+              <input name="q" placeholder="What service do you need?" className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400" />
+            </label>
+            <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3">
               <MapPin className="h-4 w-4 text-slate-400" />
-              <input name="location" placeholder="Location (e.g. Abuja)" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400" />
-            </div>
-            <Button type="submit" className="h-11 bg-emerald-600 text-white hover:bg-emerald-700">Search</Button>
+              <input name="location" placeholder="Location (e.g. Abuja)" className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400" />
+            </label>
+            <button type="submit" className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700">Search</button>
           </form>
           <div className="mt-4 flex flex-wrap gap-2">
-            {MARKETPLACE_QUICK_CATEGORIES.map((category) => (
+            {CATEGORY_CHIPS.map((category) => (
               <Link
                 key={category}
                 href={`/marketplace?q=${encodeURIComponent(category)}`}
@@ -152,15 +209,15 @@ export default async function LandingPage() {
             ))}
           </div>
           <p className="mt-4 inline-flex items-center gap-2 text-sm text-emerald-700">
-            <CheckCircle2 className="h-4 w-4" /> Showing verified MSMEs only
+            <CheckCircle2 className="h-4 w-4" /> Showing verified businesses only
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="mb-5 flex items-end justify-between">
-          <h2 className="text-2xl font-semibold text-slate-900">Verified Businesses You Can Trust</h2>
-          <Link href="/marketplace" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">View all businesses</Link>
+        <div className="mb-5 flex items-end justify-between gap-3">
+          <h2 className="text-2xl font-semibold">Verified businesses you can trust</h2>
+          <Link href="/marketplace" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View all businesses</Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {verifiedProviders.map((provider) => (
@@ -169,154 +226,140 @@ export default async function LandingPage() {
                 {provider.logo_url ? (
                   <img src={provider.logo_url} alt={provider.business_name} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-500">No photo</div>
+                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-100 to-slate-200 text-emerald-800">
+                    <Factory className="h-8 w-8" />
+                  </div>
                 )}
                 <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
                   <BadgeCheck className="h-3 w-3" /> Verified
                 </span>
               </div>
-              <div className="space-y-2 p-4">
-                <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{provider.business_name}</h3>
+              <div className="space-y-1.5 p-4">
+                <h3 className="line-clamp-2 text-sm font-semibold">{provider.business_name}</h3>
                 <p className="text-xs text-slate-600">{provider.lga ? `${provider.lga}, ` : ""}{provider.state}</p>
                 <p className="text-xs text-slate-600">{provider.category}</p>
                 <p className="inline-flex items-center gap-1 text-xs font-medium text-amber-600"><Star className="h-3.5 w-3.5 fill-current" /> {provider.avg_rating.toFixed(1)}</p>
-                <Link href={`/providers/${provider.public_slug}`} className="block text-sm font-medium text-emerald-700 hover:text-emerald-800">View Profile</Link>
+                <Link href={`/providers/${provider.public_slug}`} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+                  View profile <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-4 px-6 pb-12 md:grid-cols-3">
-        {[
-          { icon: ShieldCheck, title: "Get a Verified Business Identity", body: "Stand out as a legitimate and trustworthy business.", href: "/register/msme", cta: "Register your MSME" },
-          { icon: BadgeCheck, title: "Access Opportunities Faster", body: "Unlock access to contracts, markets, funding, and support.", href: "/resources", cta: "Explore resources" },
-          { icon: CheckCircle2, title: "Build Customer Trust Nationwide", body: "Show customers and institutions that you are verified.", href: "/verify", cta: "Open verifier" },
-        ].map((item) => (
-          <article key={item.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <item.icon className="h-5 w-5 text-emerald-600" />
-            <h2 className="mt-3 text-base font-semibold">{item.title}</h2>
-            <p className="mt-2 text-sm text-slate-600">{item.body}</p>
-            <Link href={item.href} className="mt-3 inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800">
-              {item.cta}
-            </Link>
-          </article>
-        ))}
-      </section>
-
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="text-2xl font-semibold text-slate-900">Verify an MSME Instantly</h2>
-            <Link href="/verify" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">Open verifier</Link>
-          </div>
-          <form action="/verify" className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <input name="q" placeholder="Enter MSME ID (e.g. NDMII-LAG-108168205)" className="h-11 rounded-xl border border-slate-200 px-3 text-sm" />
-            <Button type="submit" className="h-11 bg-emerald-600 hover:bg-emerald-700">Verify Now</Button>
-          </form>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-7xl gap-4 px-6 pb-12 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">How NDMII works</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900">One Identity. Unlimited Opportunities.</h2>
-          <ol className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
-            {["Register your business", "Verify your information", "Get your digital ID", "Unlock opportunities"].map((step, idx) => (
-              <li key={step} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="font-semibold text-slate-900">{idx + 1}.</span> {step}</li>
-            ))}
-          </ol>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/for-msmes" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">MSME onboarding guide</Link>
-            <Link href="/resources" className="text-sm font-medium text-slate-600 hover:text-slate-900">Learn more resources</Link>
-          </div>
-        </article>
-        <article className="rounded-2xl bg-[linear-gradient(135deg,#0f172a_0%,#065f46_100%)] p-6 text-white shadow-sm">
-          <h2 className="text-2xl font-semibold">Your Digital ID Card. Your Competitive Advantage.</h2>
-          <ul className="mt-4 space-y-2 text-sm text-emerald-100">
-            <li>• Tamper-proof digital credential</li>
-            <li>• Instantly verifiable with QR code</li>
-            <li>• Recognized by partners & institutions</li>
-            <li>• Boosts trust and business credibility</li>
-          </ul>
-          <Link href="/sample-id-card" className="mt-5 inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/20">View Sample ID Card</Link>
-        </article>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 pb-12">
-        <h2 className="mb-4 text-2xl font-semibold text-slate-900">Browse Services by Category</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {DISCOVERY_CATEGORIES.map((category) => (
-            <Link key={category} href={`/marketplace?q=${encodeURIComponent(category)}`} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50">
-              {category}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 pb-12">
-        <h2 className="mb-4 text-2xl font-semibold text-slate-900">Built for Every Stakeholder</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {STAKEHOLDER_PANELS.map((panel) => (
-            <article key={panel.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-semibold text-slate-900">{panel.title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{panel.body}</p>
-              <Link href={panel.href} className="mt-4 inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800">{panel.cta}</Link>
+        <h2 className="text-center text-2xl font-semibold">Why join Business Identity Network?</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {BENEFITS.map((item) => (
+            <article key={item} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <Sparkles className="h-5 w-5 text-emerald-700" />
+              <h3 className="mt-3 text-base font-semibold">{item}</h3>
             </article>
           ))}
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="grid gap-4 rounded-2xl bg-emerald-900 p-6 text-white md:grid-cols-5">
-          {[
-            `${Math.max(12842, verifiedProviders.length * 150)}+ MSMEs Verified`,
-            "38+ Associations Onboarded",
-            "11 States Activated",
-            "6 Partner Institutions",
-            "98.7% Verification Accuracy",
-          ].map((metric) => (
-            <p key={metric} className="text-sm font-semibold">{metric}</p>
+        <h2 className="text-center text-2xl font-semibold">How Business Identity Network works</h2>
+        <ol className="mt-6 grid gap-3 md:grid-cols-5">
+          {HOW_IT_WORKS.map((step, index) => (
+            <li key={step} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-600">Step {index + 1}</p>
+              <p className="mt-2 font-medium text-slate-800">{step}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-12">
+        <h2 className="text-center text-2xl font-semibold">Built for every stakeholder</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {STAKEHOLDERS.map((item) => (
+            <article key={item} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-base font-semibold">{item}</h3>
+              <p className="mt-2 text-sm text-slate-600">Built for practical verification, discovery, and trusted collaboration.</p>
+            </article>
           ))}
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="grid gap-4 md:grid-cols-3">
-          {["With NDMII, verifying vendors is now fast and reliable.", "Our members now access opportunities previously locked out.", "The identity recognition model improved trust for MSMEs."].map((quote) => (
-            <blockquote key={quote} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
-              “{quote}”
-            </blockquote>
+        <div className="grid gap-4 rounded-2xl bg-emerald-950 p-6 text-white md:grid-cols-5">
+          {METRICS.map((metric) => (
+            <p key={metric} className="text-sm font-semibold text-emerald-50">{metric}</p>
           ))}
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-900">Aligned with Nigeria&apos;s National Priorities</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Supporting MSME formalization and digital transformation through identity, verification, and marketplace visibility.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3 text-sm">
-            <Link href="/about" className="font-medium text-emerald-700 hover:text-emerald-800">Learn more</Link>
-            <Link href="/partners" className="font-medium text-slate-600 hover:text-slate-900">Partner with us</Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <div className="rounded-3xl bg-[linear-gradient(135deg,#064e3b_0%,#022c22_100%)] p-8 text-white md:p-10">
-          <h2 className="text-2xl font-semibold md:text-3xl">Ready to verify your MSME and unlock new markets?</h2>
-          <p className="mt-3 max-w-2xl text-sm text-emerald-100 md:text-base">
-            Join the NDMII platform to build digital trust, gain visibility, and connect with verified opportunities nationwide.
-          </p>
+        <div className="rounded-3xl bg-[linear-gradient(130deg,#064e3b_0%,#022c22_100%)] p-8 text-white md:p-10">
+          <h2 className="text-2xl font-semibold md:text-3xl">Ready to make your business easier to verify and trust?</h2>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/register/msme" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-medium text-slate-950 transition hover:bg-emerald-300">Register now</Link>
-            <Link href="/verify" className="inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">Verify MSME ID</Link>
-            <Link href="/partners" className="inline-flex h-10 items-center justify-center rounded-md border border-white/40 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">Partner With Us</Link>
+            <Link href="/register" className="inline-flex h-10 items-center rounded-md bg-emerald-300 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200">Register your business</Link>
+            <Link href="/verify" className="inline-flex h-10 items-center rounded-md border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Verify Business ID</Link>
+            <Link href="/partners" className="inline-flex h-10 items-center rounded-md border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Partner with BIN</Link>
           </div>
         </div>
       </section>
+
+      <footer className="bg-slate-950 text-slate-200">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1.2fr_2fr]">
+          <div>
+            <div className="inline-flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500 text-lg font-extrabold text-white">BIN</span>
+              <span className="font-semibold text-white">Business Identity Network</span>
+            </div>
+            <p className="mt-4 max-w-md text-sm text-slate-400">
+              An independent business identity and verification network for MSMEs, associations, marketplaces, lenders, and institutions.
+            </p>
+          </div>
+
+          <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-5">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Platform</h3>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li><Link href="/marketplace" className="hover:text-white">Marketplace</Link></li>
+                <li><Link href="/verify" className="hover:text-white">Verify Business ID</Link></li>
+                <li><Link href="/for-associations" className="hover:text-white">For Associations</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Resources</h3>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li><Link href="/resources" className="hover:text-white">Resource center</Link></li>
+                <li><Link href="/verify" className="hover:text-white">Verification guide</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Company</h3>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li><Link href="/about" className="hover:text-white">About</Link></li>
+                <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
+                <li><Link href="/partners" className="hover:text-white">Partners</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Legal</h3>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li><Link href="/terms" className="hover:text-white">Terms of use</Link></li>
+                <li><Link href="/privacy" className="hover:text-white">Privacy policy</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Stay updated</h3>
+              <form className="mt-3 flex gap-2">
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-xs text-slate-200 placeholder:text-slate-500"
+                />
+                <button type="button" className="h-9 rounded-md bg-emerald-500 px-3 text-xs font-semibold text-emerald-950">Go</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
