@@ -88,6 +88,12 @@ export function isPublicPath(path: string): boolean {
     path === "/categories" ||
     path.startsWith("/categories/") ||
     path === "/about" ||
+    path === "/terms" ||
+    path.startsWith("/terms/") ||
+    path === "/privacy" ||
+    path.startsWith("/privacy/") ||
+    path === "/cookies" ||
+    path.startsWith("/cookies/") ||
     path === "/for-msmes" ||
     path === "/for-associations" ||
     path === "/for-government" ||
