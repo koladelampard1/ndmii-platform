@@ -32,7 +32,7 @@ export default async function IdCardPage() {
     .eq("msme_id", profile.id)
     .maybeSingle();
 
-  const verifyUrl = `https://ndmii.gov.ng/verify/${profile.msme_id}`;
+  const verifyUrl = `https://bin.gov.ng/verify/${profile.msme_id}`;
   const qr = await QRCode.toDataURL(verifyUrl, {
     width: 512,
     margin: 1,

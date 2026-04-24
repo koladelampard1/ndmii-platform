@@ -139,7 +139,7 @@ async function saveOnboarding(formData: FormData) {
 
   if (intent === "submit") {
     const ndmiiId = data.msme_id?.startsWith("NDMII-") ? data.msme_id : generatedMsmeId;
-    const verifyUrl = `https://ndmii.gov.ng/verify/${ndmiiId}`;
+    const verifyUrl = `https://bin.gov.ng/verify/${ndmiiId}`;
     await supabase.from("digital_ids").upsert(
       {
         msme_id: data.id,

@@ -25,7 +25,7 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
     return <p className="rounded border bg-white p-6 text-slate-500">No approved MSME found for {msmeId}.</p>;
   }
 
-  const verifyUrl = `https://ndmii.gov.ng/verify/${profile.msme_id}`;
+  const verifyUrl = `https://bin.gov.ng/verify/${profile.msme_id}`;
   const qr = await QRCode.toDataURL(verifyUrl);
 
   return (

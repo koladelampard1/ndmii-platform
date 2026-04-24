@@ -11,8 +11,8 @@ import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authoriz
 import type { UserRole } from "@/types/roles";
 
 const DEMO_USERS = [
-  { email: "admin@ndmii.gov.ng", role: "admin" },
-  { email: "reviewer@ndmii.gov.ng", role: "reviewer" },
+  { email: "admin@bin.gov.ng", role: "admin" },
+  { email: "reviewer@bin.gov.ng", role: "reviewer" },
   { email: "officer@fccpc.gov.ng", role: "fccpc_officer" },
   { email: "officer@nrs.gov.ng", role: "nrs_officer" },
   { email: "assoc.lagos@ndmii.ng", role: "association_officer" },
