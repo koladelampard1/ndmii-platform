@@ -241,14 +241,28 @@ async function settingsAction(formData: FormData) {
   // - Canonical business/contact data lives in `msmes` and is always written there.
   // - `provider_profiles` is only updated for display-facing mirror fields (display_name/contact/description)
   //   to keep public profile views in sync while tolerating schema drift.
+  const providerColumns = await getTableColumns(supabase, "provider_profiles");
   const providerRawPayload = {
     display_name: String(formData.get("business_name") ?? existingMsme.business_name ?? workspace.provider.display_name).trim() || null,
     description: String(formData.get("business_description") ?? workspace.provider.description ?? "").trim() || null,
+    tagline: String(formData.get("business_tagline") ?? workspace.provider.tagline ?? "").trim() || null,
     contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? workspace.provider.contact_email ?? "").trim() || null,
     contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? workspace.provider.contact_phone ?? "").trim() || null,
-    updated_at: nowIso,
+    website: String(formData.get("website") ?? workspace.provider.website ?? "").trim() || null,
+    ...(providerColumns.has("updated_at") ? { updated_at: nowIso } : {}),
   };
-  const providerColumns = await getTableColumns(supabase, "provider_profiles");
+  const providerWritableColumns = pickExistingColumns(providerColumns, [
+    "display_name",
+    "description",
+    "tagline",
+    "contact_email",
+    "contact_phone",
+    "website",
+    "is_verified",
+    "is_active",
+    "updated_at",
+  ]);
+  console.info("[provider-profile][write-columns-detected]", providerWritableColumns);
   const providerPayload = filterPayloadByColumns(providerRawPayload, providerColumns);
 
   console.info("[msme-settings][write-before]", {
