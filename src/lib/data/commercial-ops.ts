@@ -2,6 +2,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const schemaColumnCache = new Map<string, Set<string>>();
+const TABLE_COLUMN_PROBE_CANDIDATES: Record<string, string[]> = {
+  provider_profiles: [
+    "id",
+    "msme_id",
+    "display_name",
+    "description",
+    "tagline",
+    "contact_email",
+    "contact_phone",
+    "website",
+    "is_verified",
+    "is_active",
+    "updated_at",
+  ],
+};
 
 function devLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
@@ -21,14 +36,47 @@ export async function getTableColumns(supabase: SupabaseClient<any>, tableName: 
 
   if (error) {
     devLog("schema_columns_lookup_error", { tableName, message: error.message, code: error.code ?? null });
-    const fallback = new Set<string>();
+    const fallback = await probeTableColumns(supabase, tableName);
     schemaColumnCache.set(cacheKey, fallback);
     return fallback;
   }
 
   const columns = new Set((data ?? []).map((row) => String(row.column_name)));
+  if (columns.size === 0) {
+    const fallback = await probeTableColumns(supabase, tableName);
+    schemaColumnCache.set(cacheKey, fallback);
+    return fallback;
+  }
   schemaColumnCache.set(cacheKey, columns);
   return columns;
+}
+
+async function probeTableColumns(supabase: SupabaseClient<any>, tableName: string) {
+  const candidates = TABLE_COLUMN_PROBE_CANDIDATES[tableName] ?? [];
+  if (candidates.length === 0) return new Set<string>();
+
+  const detected = new Set<string>();
+  for (const column of candidates) {
+    const { error } = await supabase.from(tableName).select(column).limit(1);
+    if (!error) {
+      detected.add(column);
+      continue;
+    }
+
+    devLog("schema_columns_probe_error", {
+      tableName,
+      column,
+      message: error.message,
+      code: error.code ?? null,
+    });
+  }
+
+  devLog("schema_columns_probe_result", {
+    tableName,
+    detectedColumns: Array.from(detected).sort(),
+    candidateCount: candidates.length,
+  });
+  return detected;
 }
 
 export function pickExistingColumns(columns: Set<string>, requested: string[]) {
