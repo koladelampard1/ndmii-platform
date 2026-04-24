@@ -2,7 +2,6 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { CheckCircle2, ExternalLink, Info } from "lucide-react";
-import { filterPayloadByColumns, getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
@@ -74,6 +73,16 @@ const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   unknown_save_error: "Something went wrong while saving. Please retry.",
 };
 
+const SAFE_SCHEMA_COLUMNS = {
+  provider_profiles: ["display_name", "description", "tagline", "contact_email", "contact_phone", "website", "updated_at"] as const,
+  msmes: ["business_name", "owner_name", "sector", "business_type", "contact_email", "contact_phone", "cac_number", "address"] as const,
+  activity_logs: ["created_at", "action", "actor_user_id", "actor", "entity_type", "msme_id"] as const,
+} as const;
+
+function pickAllowedPayload<T extends Record<string, unknown>, K extends readonly (keyof T)[]>(payload: T, allowedKeys: K) {
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => (allowedKeys as readonly string[]).includes(key)));
+}
+
 function SectionStatusBadge({
   tone,
   children,
@@ -137,24 +146,21 @@ async function loadSettingsActivityLog(params: {
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
   workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>;
 }): Promise<ActivityLogRow[]> {
-  const columns = await getTableColumns(params.supabase, "activity_logs");
-  if (!columns.has("msme_id")) return [];
-  if (!columns.has("action") || !columns.has("entity_type")) return [];
-
-  const selectColumns = pickExistingColumns(columns, ["created_at", "action", "actor_user_id", "actor", "entity_type", "msme_id"]);
-  if (!selectColumns.includes("action") || !selectColumns.includes("entity_type")) return [];
+  console.info("[msme-settings][safe-schema-mode]", { activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs });
 
   const { data, error } = await params.supabase
     .from("activity_logs")
-    .select(selectColumns.join(","))
+    .select(SAFE_SCHEMA_COLUMNS.activity_logs.join(","))
     .eq("msme_id", params.workspace.msme.msme_id)
     .order("created_at", { ascending: false })
     .limit(5);
 
   if (error) {
-    console.warn("[msme-settings][activity-log][read-failed]", { message: error.message, code: error.code ?? null });
+    console.warn("[activity-log][read-skipped]", { message: error.message, code: error.code ?? null });
     return [];
   }
+
+  console.info("[activity-log][read-success]", { rowCount: data?.length ?? 0 });
 
   const rows = ((data ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
   const actorUserIds = rows
@@ -163,18 +169,14 @@ async function loadSettingsActivityLog(params: {
 
   const actorByUserId = new Map<string, string>();
   if (actorUserIds.length > 0) {
-    const userColumns = await getTableColumns(params.supabase, "users");
-    const userSelectColumns = pickExistingColumns(userColumns, ["id", "full_name", "email"]);
-    if (userSelectColumns.includes("id")) {
-      const { data: usersData } = await params.supabase.from("users").select(userSelectColumns.join(",")).in("id", actorUserIds);
-      const users = ((usersData ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
-      for (const user of users) {
-        const userId = String(user.id ?? "").trim();
-        if (!userId) continue;
-        const fullName = String(user.full_name ?? "").trim();
-        const email = String(user.email ?? "").trim();
-        actorByUserId.set(userId, fullName || email || userId);
-      }
+    const { data: usersData } = await params.supabase.from("users").select("id,full_name,email").in("id", actorUserIds);
+    const users = ((usersData ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+    for (const user of users) {
+      const userId = String(user.id ?? "").trim();
+      if (!userId) continue;
+      const fullName = String(user.full_name ?? "").trim();
+      const email = String(user.email ?? "").trim();
+      actorByUserId.set(userId, fullName || email || userId);
     }
   }
 
@@ -206,6 +208,12 @@ async function settingsAction(formData: FormData) {
     msmePublicId: workspace.msme.msme_id,
   };
   let firstFailedWrite: string | null = null;
+
+  console.info("[msme-settings][safe-schema-mode]", {
+    providerProfiles: SAFE_SCHEMA_COLUMNS.provider_profiles,
+    msmes: SAFE_SCHEMA_COLUMNS.msmes,
+    activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs,
+  });
 
   const settingsReadSelect = "id,msme_id,business_name,owner_name,sector,contact_email,contact_phone,address,cac_number,tin,business_type";
   const { data: existingMsme, error: existingMsmeError } = await supabase
@@ -241,7 +249,6 @@ async function settingsAction(formData: FormData) {
   // - Canonical business/contact data lives in `msmes` and is always written there.
   // - `provider_profiles` is only updated for display-facing mirror fields (display_name/contact/description)
   //   to keep public profile views in sync while tolerating schema drift.
-  const providerColumns = await getTableColumns(supabase, "provider_profiles");
   const providerRawPayload = {
     display_name: String(formData.get("business_name") ?? existingMsme.business_name ?? workspace.provider.display_name).trim() || null,
     description: String(formData.get("business_description") ?? workspace.provider.description ?? "").trim() || null,
@@ -249,28 +256,16 @@ async function settingsAction(formData: FormData) {
     contact_email: String(formData.get("contact_email") ?? existingMsme.contact_email ?? workspace.provider.contact_email ?? "").trim() || null,
     contact_phone: String(formData.get("contact_phone") ?? existingMsme.contact_phone ?? workspace.provider.contact_phone ?? "").trim() || null,
     website: String(formData.get("website") ?? workspace.provider.website ?? "").trim() || null,
-    ...(providerColumns.has("updated_at") ? { updated_at: nowIso } : {}),
+    updated_at: nowIso,
   };
-  const providerWritableColumns = pickExistingColumns(providerColumns, [
-    "display_name",
-    "description",
-    "tagline",
-    "contact_email",
-    "contact_phone",
-    "website",
-    "is_verified",
-    "is_active",
-    "updated_at",
-  ]);
-  console.info("[provider-profile][write-columns-detected]", providerWritableColumns);
-  const providerPayload = filterPayloadByColumns(providerRawPayload, providerColumns);
+  const providerPayload = pickAllowedPayload(providerRawPayload, SAFE_SCHEMA_COLUMNS.provider_profiles);
 
   console.info("[msme-settings][write-before]", {
     ...saveContext,
     section: "profile-information,contact-address,about-business",
     table: "provider_profiles",
     lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
-    availableColumns: Array.from(providerColumns).sort(),
+    allowedColumns: SAFE_SCHEMA_COLUMNS.provider_profiles,
     payload: providerPayload,
   });
 
@@ -344,18 +339,19 @@ async function settingsAction(formData: FormData) {
     // Canonical: msmes.address
     address: String(formData.get("address") ?? existingMsme.address ?? "").trim() || null,
   };
+  const safeMsmePayload = pickAllowedPayload(msmePayload, SAFE_SCHEMA_COLUMNS.msmes);
 
   console.info("[msme-settings][write-before]", {
     ...saveContext,
     section: "business-information,contact-address",
     table: "msmes",
     lookupKeys: { id: workspace.msme.id },
-    payload: msmePayload,
+    payload: safeMsmePayload,
   });
 
   const { data: msmeUpdateRows, error: msmeUpdateError } = await supabase
     .from("msmes")
-    .update(msmePayload)
+    .update(safeMsmePayload)
     .eq("id", workspace.msme.id)
     .select("id");
 
@@ -380,7 +376,7 @@ async function settingsAction(formData: FormData) {
       firstFailedWrite,
       table: "msmes",
       lookupKeys: { id: workspace.msme.id },
-      payload: msmePayload,
+      payload: safeMsmePayload,
       dbResponse: {
         message: msmeUpdateError?.message ?? "no_rows_updated",
         details: msmeUpdateError?.details ?? null,
