@@ -80,7 +80,7 @@ export async function getDashboardMetrics() {
     cards: [
       { title: "Total MSMEs", value: total.toLocaleString(), status: "up" as const },
       { title: "Pending Review", value: pending.toLocaleString(), status: "down" as const },
-      { title: "Verified MSMEs", value: verified.toLocaleString(), status: "up" as const },
+      { title: "Verified Businesses", value: verified.toLocaleString(), status: "up" as const },
       { title: "Suspended MSMEs", value: suspended.toLocaleString(), status: "down" as const },
       { title: "KYC Completion Rate", value: `${kycCompletionRate}%`, status: "up" as const },
       { title: "Complaints Count", value: (complaintsCount ?? 0).toLocaleString(), status: "down" as const },

@@ -1,23 +1,53 @@
 import Link from "next/link";
-import {
-  Building2,
-  CheckCircle2,
-  Grid3X3,
-  LayoutList,
-  ListFilter,
-  Map,
-  MapPin,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { Building2, CheckCircle2, Grid3X3, LayoutList, ListFilter, Map, MapPin, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { Navbar } from "@/components/layout/navbar";
 import { ProviderCard } from "@/components/marketplace/provider-card";
 import { SearchSubmitButton } from "@/components/marketplace/search-submit-button";
 import { getMarketplaceFilterOptions, searchMarketplaceProviders } from "@/lib/data/marketplace";
 
-const DEV_MODE = process.env.NODE_ENV !== "production";
+const FALLBACK_BUSINESS_TYPES = [
+  "Sole Proprietor",
+  "Limited Company",
+  "Cooperative",
+  "Association Member",
+  "Service Provider",
+  "Manufacturer",
+  "Retailer",
+];
+
+const FALLBACK_CATEGORIES = [
+  "Automotive",
+  "Professional Services",
+  "Food Processing",
+  "Repairs & Maintenance",
+  "Agriculture",
+  "ICT Services",
+  "Manufacturing",
+  "Construction",
+  "Retail",
+  "Transport",
+  "Beauty",
+  "Education",
+  "Health",
+  "Logistics",
+];
+
+const FALLBACK_SPECIALIZATIONS = [
+  "Rewiring",
+  "Car Painting",
+  "Fabrication",
+  "Agro Processing",
+  "Electrical Services",
+  "Tailoring",
+  "Catering",
+  "POS Services",
+  "ICT Support",
+  "Logistics Support",
+];
+
+const FALLBACK_STATES = ["FCT", "Lagos", "Rivers", "Kano", "Kaduna", "Oyo", "Ogun", "Enugu", "Anambra", "Delta", "Edo"];
+
+const FALLBACK_LGAS = ["Abuja Municipal", "Port Harcourt", "Ikeja", "Lekki", "Kano Municipal", "Ibadan South-West", "Wuse", "Garki", "Victoria Island"];
 
 function withoutParam(
   params: Record<string, string | string[] | undefined>,
@@ -50,10 +80,13 @@ export default async function SearchPage({
   const locationParam = typeof params.location === "string" ? params.location : "";
   const location = locationParam || stateParam;
   const lga = typeof params.lga === "string" ? params.lga : "";
-  const rating = typeof params.rating === "string" ? Number(params.rating) : 0;
-  const verification = typeof params.verification === "string" ? params.verification : "verified_or_approved";
-  const sort = typeof params.sort === "string" ? params.sort : "relevance";
-  const normalizedSearchTerm = q.trim().toLowerCase().replace(/\s+/g, " ");
+  const ratingParam = typeof params.rating === "string" ? params.rating : "";
+  const rating = ratingParam ? Number(ratingParam) : 0;
+  const businessType = typeof params.business_type === "string" ? params.business_type : "all";
+  const verificationParam = typeof params.verification === "string" ? params.verification : "verified_or_approved";
+  const verification = verificationParam === "pending_review" ? "all" : verificationParam;
+  const sortParam = typeof params.sort === "string" ? params.sort : "relevance";
+  const sort = sortParam === "top-rated" || sortParam === "featured" ? sortParam : "relevance";
 
   const [options, providers] = await Promise.all([
     getMarketplaceFilterOptions(),
@@ -65,9 +98,16 @@ export default async function SearchPage({
       lga: lga || undefined,
       minRating: rating || undefined,
       verification,
-      sort: sort === "top-rated" || sort === "featured" ? sort : "relevance",
+      sort,
     }),
   ]);
+
+  const uniqueValues = (values: string[]) => [...new Set(values.map((item) => item.trim()).filter(Boolean))];
+  const safeCategories = uniqueValues(options.categories).length ? uniqueValues(options.categories) : FALLBACK_CATEGORIES;
+  const safeStates = uniqueValues(options.states).length ? uniqueValues(options.states) : FALLBACK_STATES;
+  const safeLgas = uniqueValues(options.lgas).length ? uniqueValues(options.lgas) : FALLBACK_LGAS;
+  const safeBusinessTypes = FALLBACK_BUSINESS_TYPES;
+  const safeSpecializations = FALLBACK_SPECIALIZATIONS;
 
   const stats = [
     { icon: Building2, value: "12,842+", label: "Verified Businesses" },
@@ -76,23 +116,36 @@ export default async function SearchPage({
     { icon: ShieldCheck, value: "98.7%", label: "Verification accuracy" },
   ];
 
+  const verificationLabelMap: Record<string, string> = {
+    verified_or_approved: "Verified + Approved",
+    verified: "Verified",
+    pending_review: "Pending Review",
+    all: "All",
+  };
+
+  const sortLabelMap: Record<string, string> = {
+    relevance: "Best match",
+    "top-rated": "Highest rated",
+    newest: "Newest",
+    "most-reviewed": "Most reviewed",
+    "a-z": "A-Z",
+  };
+
   const activeFilters = [
-    verification !== "all"
-      ? {
-          label: "Verified + Approved",
-          removeHref: withoutParam(params, "verification"),
-        }
-      : null,
-    {
-      label: category || "All categories",
-      removeHref: withoutParam(params, "category"),
-    },
-  ].filter(Boolean) as Array<{ label: string; removeHref: string }>;
+    { key: "verification", label: verificationLabelMap[verificationParam] ?? "Verified + Approved", removeHref: withoutParam(params, "verification") },
+    { key: "category", label: category || "All categories", removeHref: withoutParam(params, "category") },
+    { key: "specialization", label: specialization || "All specializations", removeHref: withoutParam(params, "specialization") },
+    { key: "state", label: stateParam || "All states", removeHref: withoutParam(params, "state") },
+    { key: "lga", label: lga || "All LGAs", removeHref: withoutParam(params, "lga") },
+    { key: "rating", label: ratingParam ? `${ratingParam}+` : "Any rating", removeHref: withoutParam(params, "rating") },
+    { key: "business_type", label: businessType === "all" ? "All types" : businessType, removeHref: withoutParam(params, "business_type") },
+    { key: "sort", label: sortLabelMap[sortParam] ?? "Best match", removeHref: withoutParam(params, "sort") },
+  ] as Array<{ key: string; label: string; removeHref: string }>;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 pb-24 pt-10 text-white">
+      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 pb-14 pt-10 text-white">
         <div className="mx-auto max-w-7xl px-6">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">Marketplace</p>
           <div className="mt-4 grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-end">
@@ -128,168 +181,181 @@ export default async function SearchPage({
         </div>
       </section>
 
-      <section className="mx-auto -mt-16 max-w-7xl px-6">
-        <form action="/marketplace" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg md:p-6">
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>What service do you need?</span>
-              <div className="relative">
+      <section>
+        <div className="mx-auto mt-8 max-w-7xl px-4 sm:px-6 lg:mt-12 lg:px-8">
+          <form action="/marketplace" className="relative z-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>What service do you need?</span>
+                <div className="relative">
+                  <input
+                    aria-label="Search for service or business"
+                    name="q"
+                    defaultValue={q}
+                    placeholder="Search for service or business"
+                    className="h-11 w-full rounded-xl border border-slate-200 px-3 pr-10 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  />
+                  <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
+                </div>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-2">
+                <span>Location</span>
                 <input
-                  aria-label="Search for service or business"
-                  name="q"
-                  defaultValue={q}
-                  placeholder="Search for service or business"
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 pr-10 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  aria-label="Location"
+                  name="location"
+                  defaultValue={location}
+                  placeholder="Enter location (e.g. Abuja)"
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
-                <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
-              </div>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Location</span>
-              <input
-                aria-label="Location"
-                name="location"
-                defaultValue={location}
-                placeholder="Enter location (e.g. Abuja)"
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Category</span>
-              <select
-                aria-label="Category"
-                name="category"
-                defaultValue={category}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="">All categories</option>
-                {options.categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Specialization</span>
-              <input
-                aria-label="Specialization"
-                name="specialization"
-                defaultValue={specialization}
-                placeholder="All specializations"
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span className="sr-only">Search</span>
-              <div className="flex h-full items-end">
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Category</span>
+                <select
+                  aria-label="Category"
+                  name="category"
+                  defaultValue={category}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="">All categories</option>
+                  {safeCategories.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Specialization</span>
+                <select
+                  aria-label="Specialization"
+                  name="specialization"
+                  defaultValue={specialization}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="">All specializations</option>
+                  {safeSpecializations.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Business type</span>
+                <select
+                  aria-label="Business type"
+                  name="business_type"
+                  defaultValue={businessType}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="all">All types</option>
+                  {safeBusinessTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>LGA</span>
+                <select
+                  aria-label="LGA"
+                  name="lga"
+                  defaultValue={lga}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="">All LGAs</option>
+                  {safeLgas.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>State</span>
+                <select
+                  aria-label="State"
+                  name="state"
+                  defaultValue={stateParam}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="">All states</option>
+                  {safeStates.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Rating</span>
+                <select
+                  aria-label="Rating"
+                  name="rating"
+                  defaultValue={rating ? String(rating) : ""}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="">Any rating</option>
+                  <option value="4.5">4.5+</option>
+                  <option value="4">4.0+</option>
+                  <option value="3.5">3.5+</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Verification status</span>
+                <select
+                  aria-label="Verification status"
+                  name="verification"
+                  defaultValue={verificationParam}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="verified_or_approved">Verified + Approved</option>
+                  <option value="verified">Verified</option>
+                  <option value="pending_review">Pending Review</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">
+                <span>Sort by</span>
+                <select
+                  aria-label="Sort by"
+                  name="sort"
+                  defaultValue={sortParam}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                >
+                  <option value="relevance">Best match</option>
+                  <option value="top-rated">Highest rated</option>
+                  <option value="newest">Newest</option>
+                  <option value="most-reviewed">Most reviewed</option>
+                  <option value="a-z">A-Z</option>
+                </select>
+              </label>
+              <div className="flex items-end md:col-span-3 lg:col-span-1 lg:justify-end">
                 <SearchSubmitButton />
               </div>
-            </label>
-          </div>
+            </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Business type</span>
-              <select
-                aria-label="Business type"
-                defaultValue="all"
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="all">All types</option>
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>LGA</span>
-              <select
-                aria-label="LGA"
-                name="lga"
-                defaultValue={lga}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="">All LGAs</option>
-                {options.lgas.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>State</span>
-              <select
-                aria-label="State"
-                name="state"
-                defaultValue={stateParam}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="">All states</option>
-                {options.states.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Rating</span>
-              <select
-                aria-label="Rating"
-                name="rating"
-                defaultValue={rating ? String(rating) : ""}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="">Any rating</option>
-                <option value="5">5.0+</option>
-                <option value="4">4.0+</option>
-                <option value="3">3.0+</option>
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Verification status</span>
-              <select
-                aria-label="Verification status"
-                name="verification"
-                defaultValue={verification}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="verified_or_approved">Verified + Approved</option>
-                <option value="verified">Verified only</option>
-                <option value="approved">Approved only</option>
-                <option value="all">All statuses</option>
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              <span>Sort by</span>
-              <select
-                aria-label="Sort by"
-                name="sort"
-                defaultValue={sort}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="relevance">Best match</option>
-                <option value="top-rated">Top rated</option>
-                <option value="featured">Featured</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Link href="/marketplace" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-              Clear all filters
-            </Link>
-            {activeFilters.map((chip) => (
-              <Link
-                key={chip.label}
-                href={chip.removeHref}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700"
-              >
-                {chip.label}
-                <span aria-hidden="true">×</span>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Link href="/marketplace" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+                Clear all filters
               </Link>
-            ))}
-          </div>
-        </form>
+              {activeFilters.map((chip) => (
+                <Link
+                  key={chip.key}
+                  href={chip.removeHref}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700"
+                >
+                  {chip.label}
+                  <span aria-hidden="true">×</span>
+                </Link>
+              ))}
+            </div>
+          </form>
+        </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-8">
@@ -323,12 +389,6 @@ export default async function SearchPage({
             </button>
           </div>
         </div>
-
-        {DEV_MODE && (
-          <div className="mb-3 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700">
-            DEV diagnostics — normalized search term: "{normalizedSearchTerm || "(empty)"}" • results: {providers.length}
-          </div>
-        )}
 
         {providers.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-busy="false">

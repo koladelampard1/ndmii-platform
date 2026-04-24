@@ -45,7 +45,7 @@ export default async function ContactPage({
           Live support channel setup is in progress. For immediate platform access, use the guided routes below.
           <div className="mt-2 flex flex-wrap gap-3">
             <Link href="/marketplace" className="font-medium">Browse marketplace</Link>
-            <Link href="/verify" className="font-medium">Verify MSME ID</Link>
+            <Link href="/verify" className="font-medium">Verify Business ID</Link>
             <Link href="/partners" className="font-medium">Partnership pathways</Link>
           </div>
         </div>

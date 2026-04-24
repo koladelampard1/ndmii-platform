@@ -2,7 +2,7 @@ import "./globals.css";
 import { ReactNode } from "react";
 
 export const metadata = {
-  title: "NDMII Platform",
+  title: "Business Identity Network",
   description: "Digital MSME identity infrastructure",
 };
 
