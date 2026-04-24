@@ -14,15 +14,16 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
       <section className="px-6 py-14">
         <div className="mx-auto max-w-5xl">
           <header className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-lg shadow-slate-300/40">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">NDMII Public Verification</p>
-            <h1 className="mt-3 text-3xl font-semibold text-slate-900 md:text-4xl">Verify an MSME digital identity</h1>
-            <p className="mt-2 text-slate-600">Enter a digital ID or business name to confirm official registry status.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">BIN Public Verification</p>
+            <h1 className="mt-3 text-3xl font-semibold text-slate-900 md:text-4xl">Verify a business identity credential</h1>
+            <p className="mt-2 text-slate-600">Enter a business ID or business name to confirm registry status.</p>
+            <p className="mt-2 text-xs text-slate-500">BIN is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.</p>
 
             <form className="mx-auto mt-6 grid max-w-2xl gap-2 md:grid-cols-[1fr_auto]">
               <input
                 name="q"
                 defaultValue={params.q}
-                placeholder="NDMII-LAG-000001 or business name"
+                placeholder="Business ID (e.g. NDMII-LAG-000001) or business name"
                 className="h-12 rounded-xl border border-slate-300 px-4 text-slate-900 outline-none ring-emerald-500 transition focus:ring-2"
               />
               <button className="h-12 rounded-xl bg-slate-900 px-6 font-medium text-white transition hover:bg-slate-800">Verify</button>

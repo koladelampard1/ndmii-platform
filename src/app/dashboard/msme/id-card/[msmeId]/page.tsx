@@ -31,11 +31,11 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Digital ID Card Detail</h1>
+        <h1 className="text-2xl font-bold">Business Identity Credential Detail</h1>
         <Link href="/dashboard/msme/id-registry" className="rounded border px-3 py-2 text-sm">Back to registry</Link>
       </div>
       <div className="rounded-2xl border bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white shadow-xl">
-        <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Federal Republic of Nigeria • NDMII</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Business Identity Network • BIN</p>
         <div className="mt-4 flex items-start gap-4">
           <PassportPhoto
             src={profile.passport_photo_url}

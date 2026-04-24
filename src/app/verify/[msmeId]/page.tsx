@@ -32,8 +32,9 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
   return (
     <main className="mx-auto max-w-4xl px-6 py-16">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold">Public MSME Verification</h1>
-        <p className="mt-2 text-slate-600">Federal issuer authority: Nigeria Digital MSME Identity Infrastructure Initiative (NDMII).</p>
+        <h1 className="text-3xl font-bold">Public Business Identity Verification</h1>
+        <p className="mt-2 text-slate-600">Credential record on the Business Identity Network (BIN).</p>
+        <p className="mt-2 text-xs text-slate-500">BIN is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.</p>
       </div>
 
       <section className="rounded-2xl border bg-white p-6 shadow-sm">
@@ -43,9 +44,9 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
               <h2 className="text-xl font-semibold">{msme.business_name}</h2>
               <StatusBadge status={msme.verification_status === "verified" ? "active" : msme.verification_status === "suspended" ? "critical" : "warning"} label={digitalId?.status ?? msme.verification_status} />
             </div>
-            <p className="text-sm text-slate-600">Digital ID: <strong>{resolvedId}</strong></p>
+            <p className="text-sm text-slate-600">Business Identity Credential: <strong>{resolvedId}</strong></p>
             <p className="text-sm">Owner: {msme.owner_name} • {msme.state} • {msme.sector}</p>
-            <p className="text-sm">Issuer authority: Federal Ministry program registry • Status: {msme.suspended ? "Suspended" : msme.flagged ? "Flagged" : "Good standing"}</p>
+            <p className="text-sm">Registry status: {msme.suspended ? "Suspended" : msme.flagged ? "Flagged" : "Good standing"}</p>
 
             <div className="grid gap-2 rounded-lg border bg-slate-50 p-3 text-sm md:grid-cols-2">
               <p><strong>CAC:</strong> {validation?.cac_status ?? (digitalId?.validation_snapshot as any)?.cac_status ?? "pending"}</p>
