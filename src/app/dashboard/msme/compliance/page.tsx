@@ -173,7 +173,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
             Verify ID
           </Button>
           <Link href="/dashboard/msme/id-card" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800">
-            View My Digital ID Card
+            View My Business Identity Credential
           </Link>
         </div>
       </header>
@@ -187,7 +187,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
             <p className="text-base font-semibold text-slate-900">{isVerified ? "You are Verified" : "Verification in Progress"}</p>
             <p className="text-sm text-slate-600">
               {isVerified
-                ? "Your account is fully verified and compliant with NDMII requirements."
+                ? "Your account is fully verified and compliant with BIN verification requirements."
                 : `Your profile is ${verificationProgress}% complete. Complete pending checks to reach full compliance.`}
             </p>
           </div>

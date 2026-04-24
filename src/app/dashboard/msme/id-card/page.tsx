@@ -4,6 +4,10 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { DigitalIdWorkspace } from "@/components/msme/digital-id-workspace";
 
+export const metadata = {
+  title: "My Business Identity Credential",
+};
+
 export default async function IdCardPage() {
   const supabase = await createServerSupabaseClient();
   const ctx = await getCurrentUserContext();

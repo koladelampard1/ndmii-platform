@@ -178,11 +178,11 @@ async function drawPocketCard(
 
   ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.font = "700 38px Inter, Arial";
-  ctx.fillText("FEDERAL REPUBLIC OF NIGERIA", 70, 84);
+  ctx.fillText("BUSINESS IDENTITY NETWORK", 70, 84);
 
   ctx.font = "900 72px Inter, Arial";
   ctx.textAlign = "right";
-  ctx.fillText("NDMII", POCKET_CARD_WIDTH_PX - 70, 94);
+  ctx.fillText("BIN", POCKET_CARD_WIDTH_PX - 70, 94);
   ctx.textAlign = "left";
 
   ctx.font = "700 68px Inter, Arial";
@@ -240,7 +240,7 @@ async function drawPocketCard(
 
   ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.font = "700 26px Inter, Arial";
-  ctx.fillText("MSME ID", 390, 420);
+  ctx.fillText("BUSINESS ID", 390, 420);
   ctx.font = "700 40px Inter, Arial";
   ctx.fillText(data.msmeId, 390, 470);
 
@@ -253,7 +253,7 @@ async function drawPocketCard(
   ctx.fillText("Status", 390, 652);
   ctx.font = "700 44px Inter, Arial";
   ctx.fillStyle = data.displayStatus.toLowerCase() === "verified" ? "#86efac" : "#fde68a";
-  ctx.fillText(data.displayStatus, 390, 706);
+  ctx.fillText(data.displayStatus.toLowerCase() === "verified" ? "BIN Verified" : data.displayStatus, 390, 706);
 
   ctx.fillStyle = "rgba(0,0,0,0.28)";
   ctx.fillRect(0, POCKET_CARD_HEIGHT_PX - 120, POCKET_CARD_WIDTH_PX, 120);
@@ -261,7 +261,7 @@ async function drawPocketCard(
   ctx.font = "700 36px Inter, Arial";
   ctx.fillText(`Expiry: ${data.expiryDate}`, 70, POCKET_CARD_HEIGHT_PX - 46);
   ctx.textAlign = "right";
-  ctx.fillText("Verified • Trusted • Empowered", POCKET_CARD_WIDTH_PX - 70, POCKET_CARD_HEIGHT_PX - 46);
+  ctx.fillText("BIN Verified • Trusted • Shareable", POCKET_CARD_WIDTH_PX - 70, POCKET_CARD_HEIGHT_PX - 46);
   ctx.textAlign = "left";
 }
 
@@ -294,8 +294,8 @@ export function DigitalIdWorkspace({
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "NDMII MSME Digital ID",
-          text: `Verify MSME identity: ${msmeId}`,
+          title: "BIN Business Identity Credential",
+          text: `Verify business identity credential: ${msmeId}`,
           url: verifyUrl,
         });
         return;
@@ -305,7 +305,7 @@ export function DigitalIdWorkspace({
         await navigator.clipboard.writeText(verifyUrl);
       }
     } catch {
-      setError("Unable to share right now. Please try again.");
+      setError("Unable to share this credential right now. Please try again.");
     } finally {
       setBusy("none");
     }
@@ -339,7 +339,7 @@ export function DigitalIdWorkspace({
       const pngBlob = await toPngBlob(canvas);
       downloadBlob(pngBlob, `${msmeId.toLowerCase()}-pocket-id.png`);
     } catch {
-      setError("Could not generate PNG pocket ID. Please retry.");
+      setError("Could not generate PNG pocket credential. Please retry.");
     } finally {
       setBusy("none");
     }
@@ -371,7 +371,7 @@ export function DigitalIdWorkspace({
       });
 
       const jpegBlob = await toJpegBlob(canvas);
-      await buildPdfFromJpeg(jpegBlob, `${msmeId.toLowerCase()}-digital-id.pdf`);
+      await buildPdfFromJpeg(jpegBlob, `${msmeId.toLowerCase()}-business-identity-credential.pdf`);
     } catch {
       setError("Could not generate PDF. Please retry.");
     } finally {
@@ -384,7 +384,7 @@ export function DigitalIdWorkspace({
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-700">{isVerified ? "Verified MSME" : "Pending MSME"}</p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Official Business Identity Credential</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Business Identity Credential</h1>
         </div>
         <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
           <button
@@ -393,7 +393,7 @@ export function DigitalIdWorkspace({
             disabled={busy !== "none"}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
           >
-            <Share2 className="h-4 w-4" /> {busy === "share" ? "Sharing..." : "Share ID Card"}
+            <Share2 className="h-4 w-4" /> {busy === "share" ? "Sharing..." : "Share Credential"}
           </button>
           <button
             type="button"
@@ -409,7 +409,7 @@ export function DigitalIdWorkspace({
             disabled={busy !== "none"}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
           >
-            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download PNG (Pocket ID)"}
+            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download PNG (Pocket Credential)"}
           </button>
         </div>
       </header>
@@ -423,8 +423,8 @@ export function DigitalIdWorkspace({
         <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background:radial-gradient(circle_at_80%_22%,#fff_0,transparent_38%),radial-gradient(circle_at_88%_78%,#fff_0,transparent_26%)]" />
         <div className="pointer-events-none absolute bottom-6 right-6 h-28 w-28 rounded-full border border-emerald-100/20 bg-white/5 sm:h-44 sm:w-44" />
         <div className="pointer-events-none absolute right-7 top-7 text-right text-emerald-100/90">
-          <p className="text-3xl font-black leading-none sm:text-6xl">NDMII</p>
-          <p className="mt-1 text-[10px] sm:text-sm">Verified • Trusted • Empowered</p>
+          <p className="text-3xl font-black leading-none sm:text-6xl">BIN</p>
+          <p className="mt-1 text-[10px] sm:text-sm">BIN Verified • Trusted • Shareable</p>
         </div>
 
         <div className="pointer-events-none absolute bottom-8 right-6 hidden text-emerald-100/10 sm:block">
@@ -436,12 +436,13 @@ export function DigitalIdWorkspace({
         <div className="relative z-10 space-y-4" id="msme-id-card-full-view">
           <div className="flex items-start justify-between gap-4 border-b border-white/20 pb-4">
             <div>
-              <p className="text-xs uppercase tracking-widest text-emerald-100">Federal Republic of Nigeria</p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-5xl">National Digital MSME Identity Initiative</h2>
-              <p className="mt-1 text-sm text-emerald-50 sm:text-2xl">Official Business Identity Credential</p>
+              <p className="text-xs uppercase tracking-widest text-emerald-100">Business Identity Network</p>
+              <h2 className="mt-1 text-xl font-semibold text-white sm:text-5xl">Business Identity Network</h2>
+              <p className="mt-1 text-sm text-emerald-50 sm:text-2xl">Verified Business Identity Credential</p>
+              <p className="mt-2 max-w-3xl text-xs text-emerald-100/90 sm:text-sm">A trusted digital business identity for verified MSMEs, associations, and enterprise partners.</p>
             </div>
             <span className={`mt-1 inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide backdrop-blur ${isVerified ? "border-emerald-100/60 bg-emerald-300/20 text-emerald-50 shadow-[0_0_24px_rgba(74,222,128,.55)]" : "border-amber-100/60 bg-amber-300/20 text-amber-50 shadow-[0_0_24px_rgba(251,191,36,.45)]"}`}>
-              {isVerified ? "Verified" : "Pending Review"}
+              {isVerified ? "BIN Verified" : "Pending Review"}
             </span>
           </div>
 
@@ -484,8 +485,8 @@ export function DigitalIdWorkspace({
                 <img src={qrDataUrl} alt="Verification QR" className="h-20 w-20" />
               </div>
               <div className="text-emerald-50">
-                <p className="text-xs uppercase tracking-widest text-emerald-100">Scan to Verify</p>
-                <p className="text-sm">Instantly verify this MSME identity on the NDMII portal</p>
+                <p className="text-xs uppercase tracking-widest text-emerald-100">Scan to verify this business identity</p>
+                <p className="text-sm">Instantly verify this credential on the Business Identity Network registry.</p>
               </div>
             </div>
             <div className="md:border-r md:border-emerald-100/25 md:pr-4">
@@ -510,25 +511,26 @@ export function DigitalIdWorkspace({
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-700" /> Government Recognised</p>
-          <p className="mt-2 text-sm text-slate-600">Issued under the Federal Republic of Nigeria digital identity framework.</p>
+          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-700" /> Verified Business Profile</p>
+          <p className="mt-2 text-sm text-slate-600">A trusted digital business identity for verified MSMEs, associations, and enterprise partners.</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><LockKeyhole className="h-4 w-4 text-emerald-700" /> Secure &amp; Tamper-Proof</p>
+          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><LockKeyhole className="h-4 w-4 text-emerald-700" /> Secure Digital Credential</p>
           <p className="mt-2 text-sm text-slate-600">Encrypted metadata and QR verification ensure authenticity.</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><Globe2 className="h-4 w-4 text-emerald-700" /> Globally Shareable</p>
+          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><Globe2 className="h-4 w-4 text-emerald-700" /> Shareable Identity Card</p>
           <p className="mt-2 text-sm text-slate-600">Share your verified MSME identity with confidence anywhere.</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><BadgeCheck className="h-4 w-4 text-emerald-700" /> Trusted &amp; Verified</p>
-          <p className="mt-2 text-sm text-slate-600">NDMII verified MSMEs are trusted by partners and institutions.</p>
+          <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><BadgeCheck className="h-4 w-4 text-emerald-700" /> Partner-Ready Verification</p>
+          <p className="mt-2 text-sm text-slate-600">Designed for trusted verification across associations, lenders, buyers, and enterprise platforms.</p>
         </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        <p className="inline-flex items-center gap-2 font-medium text-slate-800"><CheckCircle2 className="h-4 w-4 text-emerald-700" /> This credential is an official identity artifact of the National Digital MSME Identity Initiative.</p>
+        <p className="inline-flex items-center gap-2 font-medium text-slate-800"><CheckCircle2 className="h-4 w-4 text-emerald-700" /> This credential confirms that the business profile has been registered and validated within the Business Identity Network.</p>
+        <p className="mt-1 text-xs text-slate-500">BIN is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.</p>
       </div>
     </section>
   );
