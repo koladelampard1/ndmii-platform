@@ -10,34 +10,34 @@ type NavbarProps = {
 
 export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
   return (
-    <header className="border-b bg-white">
+    <header className="border-b border-emerald-950/70 bg-emerald-950 text-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-        <Link href="/" className="text-lg font-semibold">
-          NDMII Platform
+        <Link href="/" className="text-lg font-semibold tracking-tight">
+          BIN Business Identity Network
         </Link>
         <nav className="flex flex-wrap items-center gap-3">
-          <Link href="/marketplace" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">
             Marketplace
           </Link>
-          <Link href="/verify" className="text-sm text-slate-600 hover:text-slate-900">
-            Verify ID
+          <Link href="/verify" className="text-sm text-emerald-100/90 hover:text-white">
+            Verify Business ID
           </Link>
-          <Link href="/resources" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/resources" className="text-sm text-emerald-100/90 hover:text-white">
             Resources
           </Link>
-          <Link href="/partners" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/partners" className="text-sm text-emerald-100/90 hover:text-white">
             Partners
           </Link>
-          <Link href="/about" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/about" className="text-sm text-emerald-100/90 hover:text-white">
             About
           </Link>
-          <Link href="/contact" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/contact" className="text-sm text-emerald-100/90 hover:text-white">
             Contact
           </Link>
           {isAuthenticated ? (
             <>
               {roleLabel ? (
-                <span className="rounded bg-slate-100 px-2 py-1 text-xs uppercase tracking-wide text-slate-600">
+                <span className="rounded bg-emerald-900/80 px-2 py-1 text-xs uppercase tracking-wide text-emerald-100">
                   {roleLabel}
                 </span>
               ) : null}
@@ -50,10 +50,10 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           ) : (
             <>
               <Link href="/register/msme">
-                <Button size="sm" variant="secondary">Register</Button>
+                <Button size="sm" className="bg-emerald-500 text-emerald-950 hover:bg-emerald-400">Register</Button>
               </Link>
               <Link href="/login">
-                <Button size="sm">Sign in</Button>
+                <Button size="sm" variant="secondary">Sign in</Button>
               </Link>
             </>
           )}
