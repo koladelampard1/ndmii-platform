@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { mapRegistrationErrorMessage } from "@/lib/auth/registration";
@@ -252,49 +251,168 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <FormWrapper title="MSME Registration & Onboarding">
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={onSubmit}>
-          <div>
-            <input name="email" type="email" required className="w-full rounded border px-3 py-2" placeholder="Login email" />
-            {fieldErrors.email && <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p>}
+    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+      <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
+        <aside className="rounded-2xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-xl lg:p-8">
+          <h1 className="text-3xl font-semibold leading-tight">Join the Business Identity Network</h1>
+          <p className="mt-4 text-sm leading-6 text-emerald-100">
+            Create a verified business identity, unlock marketplace visibility, and become discoverable by partners, buyers,
+            lenders, and associations.
+          </p>
+
+          <ul className="mt-8 space-y-4 text-sm">
+            {[
+              "Get a Business Identity Number",
+              "Build trust with verified buyers and partners",
+              "Access marketplace visibility",
+              "Prepare for finance and procurement opportunities",
+            ].map((benefit) => (
+              <li className="flex items-start gap-3" key={benefit}>
+                <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-emerald-300" />
+                <span>{benefit}</span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-8 rounded-xl border border-emerald-700/60 bg-emerald-900/40 px-4 py-3 text-sm text-emerald-100">
+            BIN is an independent business identity and verification network.
+          </p>
+        </aside>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          <div className="mb-6 border-b border-slate-200 pb-5">
+            <h2 className="text-3xl font-semibold text-slate-900">Create your BIN profile</h2>
+            <p className="mt-2 text-slate-600">Start your business verification and marketplace onboarding.</p>
+            <p className="mt-3 text-sm font-medium text-emerald-700">Step 1 of 3 · Business Identity Setup</p>
           </div>
-          <div>
-            <input name="password" type="password" required className="w-full rounded border px-3 py-2" placeholder="Password (min 8 chars)" />
-            {fieldErrors.password && <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p>}
-          </div>
-          <div>
-            <input name="business_name" required className="w-full rounded border px-3 py-2" placeholder="Business name" />
-            {fieldErrors.business_name && <p className="mt-1 text-xs text-rose-600">{fieldErrors.business_name}</p>}
-          </div>
-          <div>
-            <input name="owner_name" required className="w-full rounded border px-3 py-2" placeholder="Owner full name" />
-            {fieldErrors.owner_name && <p className="mt-1 text-xs text-rose-600">{fieldErrors.owner_name}</p>}
-          </div>
-          <input name="business_type" className="rounded border px-3 py-2" placeholder="Business type" />
-          <input name="contact_phone" className="rounded border px-3 py-2" placeholder="Contact phone" />
-          <div>
-            <input name="state" required className="w-full rounded border px-3 py-2" placeholder="State" />
-            {fieldErrors.state && <p className="mt-1 text-xs text-rose-600">{fieldErrors.state}</p>}
-          </div>
-          <input name="lga" className="rounded border px-3 py-2" placeholder="LGA" />
-          <div>
-            <input name="sector" required className="w-full rounded border px-3 py-2" placeholder="Sector" />
-            {fieldErrors.sector && <p className="mt-1 text-xs text-rose-600">{fieldErrors.sector}</p>}
-          </div>
-          <input name="address" className="rounded border px-3 py-2" placeholder="Business address" />
-          <input name="nin" className="rounded border px-3 py-2" placeholder="NIN" />
-          <input name="bvn" className="rounded border px-3 py-2" placeholder="BVN" />
-          <input name="cac_number" className="rounded border px-3 py-2" placeholder="CAC Number" />
-          <input name="tin" className="rounded border px-3 py-2" placeholder="TIN" />
-          {success && <p className="md:col-span-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">{success}</p>}
-          {error && <p className="md:col-span-2 rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-          <Button className="md:col-span-2" disabled={loading}>
-            {loading ? "Securing your MSME onboarding record..." : "Register MSME"}
-          </Button>
-        </form>
-        <p className="text-sm text-slate-600">Already onboarded? <Link href="/login" className="text-emerald-700 hover:underline">Sign in</Link></p>
-      </FormWrapper>
+
+          <form className="space-y-5" onSubmit={onSubmit}>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">1. Account Access</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
+                    Email address
+                  </label>
+                  <input id="email" name="email" type="email" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter your email address" />
+                  {fieldErrors.email && <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
+                    Password
+                  </label>
+                  <input id="password" name="password" type="password" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Create a strong password" />
+                  {fieldErrors.password && <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">2. Business Details</h3>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="business_name">
+                    Business name
+                  </label>
+                  <input id="business_name" name="business_name" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter business name" />
+                  {fieldErrors.business_name && <p className="mt-1 text-xs text-rose-600">{fieldErrors.business_name}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="business_type">
+                    Business type
+                  </label>
+                  <input id="business_type" name="business_type" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter business type" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="sector">
+                    Sector
+                  </label>
+                  <input id="sector" name="sector" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter sector" />
+                  {fieldErrors.sector && <p className="mt-1 text-xs text-rose-600">{fieldErrors.sector}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="state">
+                    State
+                  </label>
+                  <input id="state" name="state" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter state" />
+                  {fieldErrors.state && <p className="mt-1 text-xs text-rose-600">{fieldErrors.state}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="lga">
+                    LGA
+                  </label>
+                  <input id="lga" name="lga" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter LGA" />
+                </div>
+                <div className="md:col-span-2 lg:col-span-1">
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="address">
+                    Business address
+                  </label>
+                  <input id="address" name="address" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter business address" />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">3. Owner &amp; Compliance</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="owner_name">
+                    Owner full name
+                  </label>
+                  <input id="owner_name" name="owner_name" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter owner full name" />
+                  {fieldErrors.owner_name && <p className="mt-1 text-xs text-rose-600">{fieldErrors.owner_name}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="contact_phone">
+                    Contact phone
+                  </label>
+                  <input id="contact_phone" name="contact_phone" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter contact phone" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="cac_number">
+                    CAC number
+                  </label>
+                  <input id="cac_number" name="cac_number" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter CAC number" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="tin">
+                    TIN
+                  </label>
+                  <input id="tin" name="tin" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter TIN" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="nin">
+                    NIN
+                  </label>
+                  <input id="nin" name="nin" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter NIN" />
+                  <p className="mt-1 text-xs text-slate-500">Used only for verification checks. Not displayed publicly.</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="bvn">
+                    BVN
+                  </label>
+                  <input id="bvn" name="bvn" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter BVN" />
+                  <p className="mt-1 text-xs text-slate-500">Used only for verification checks. Not displayed publicly.</p>
+                </div>
+              </div>
+            </div>
+
+            {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
+            {error && <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+
+            <Button className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={loading}>
+              {loading ? "Securing your MSME onboarding record..." : "Create BIN Profile"}
+            </Button>
+          </form>
+
+          <p className="mt-4 text-center text-sm text-slate-600">
+            Already have a BIN profile?{" "}
+            <Link href="/login" className="font-medium text-emerald-700 hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </section>
+      </div>
     </main>
   );
 }
