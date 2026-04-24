@@ -14,13 +14,19 @@ export default async function IdCardPage() {
 
   const { data: profile } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,state,sector,passport_photo_url,verification_status")
+    .select("id,msme_id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,passport_photo_url,verification_status")
     .eq("id", ctx.linkedMsmeId ?? "")
     .maybeSingle();
 
   if (!profile) {
     redirect("/access-denied");
   }
+
+  const { data: compliance } = await supabase
+    .from("compliance_profiles")
+    .select("overall_status")
+    .eq("msme_id", profile.id)
+    .maybeSingle();
 
   const verifyUrl = `https://ndmii.gov.ng/verify/${profile.msme_id}`;
   const qr = await QRCode.toDataURL(verifyUrl, {
@@ -36,10 +42,15 @@ export default async function IdCardPage() {
   return (
     <DigitalIdWorkspace
       businessName={profile.business_name || "Not provided"}
-      ownerEmail={ctx.email || "Not provided"}
+      ownerName={profile.owner_name || "Not provided"}
+      ownerEmail={profile.contact_email || ctx.email || "Not provided"}
       businessCategory={profile.sector || "Unspecified"}
+      businessType={profile.business_type || "Unspecified"}
+      cacNumber={profile.cac_number || "Not provided"}
+      phoneNumber={profile.contact_phone || "Not provided"}
+      businessAddress={profile.address || "Not provided"}
       msmeId={profile.msme_id}
-      verificationStatus={profile.verification_status || "pending_review"}
+      verificationStatus={compliance?.overall_status || profile.verification_status || "pending_review"}
       passportPhotoUrl={profile.passport_photo_url}
       verifyUrl={verifyUrl}
       qrDataUrl={qr}
