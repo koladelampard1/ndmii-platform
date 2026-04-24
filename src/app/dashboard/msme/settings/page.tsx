@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CheckCircle2, CircleAlert, ExternalLink, Info } from "lucide-react";
-import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
+import { CheckCircle2, ExternalLink, Info } from "lucide-react";
+import { filterPayloadByColumns, getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
+import { ProfileCompletenessCard, type ProfileCompletenessSignals } from "@/app/dashboard/msme/settings/profile-completeness-card";
 
 const SETTINGS_SECTIONS = [
   {
@@ -60,11 +61,6 @@ const SETTINGS_SECTIONS = [
   },
 ] as const;
 
-type CompletenessItem = {
-  label: string;
-  complete: boolean;
-};
-
 type SettingsErrorCode =
   | "read_failed"
   | "provider_save_failed"
@@ -95,42 +91,104 @@ function SectionStatusBadge({
   return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClasses[tone]}`}>{children}</span>;
 }
 
-function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>) {
-  const items: CompletenessItem[] = [
-    {
-      label: "Business Information",
-      complete: Boolean(workspace.msme.business_name && workspace.provider.display_name && workspace.msme.sector),
-    },
-    {
-      label: "Contact & Address",
-      complete: Boolean(workspace.msme.owner_name && workspace.msme.contact_email && workspace.provider.contact_phone),
-    },
-    {
-      label: "Banking Information",
-      complete: false,
-    },
-    {
-      label: "Tax Information",
-      complete: false,
-    },
-    {
-      label: "Verification Documents",
-      complete: workspace.msme.verification_status !== "draft",
-    },
-    {
-      label: "Business Description",
-      complete: Boolean(workspace.provider.description && workspace.provider.description.trim().length > 0),
-    },
-  ];
+function hasText(value: string | null | undefined) {
+  return Boolean(value && value.trim().length > 0);
+}
 
-  const completeCount = items.filter((item) => item.complete).length;
-  const percentage = Math.round((completeCount / items.length) * 100);
-
-  return {
-    items,
-    percentage,
-    completeCount,
+function deriveProfileCompletenessSignals(params: {
+  msme: {
+    business_name: string | null;
+    sector: string | null;
+    business_type: string | null;
+    cac_number: string | null;
+    owner_name: string | null;
+    contact_email: string | null;
+    contact_phone: string | null;
+    address: string | null;
+    passport_photo_url: string | null;
   };
+  provider: { id: string | null; description: string | null; logo_url: string | null };
+}): ProfileCompletenessSignals {
+  const signals = {
+    businessNamePresent: hasText(params.msme.business_name),
+    categoryPresent: hasText(params.msme.sector),
+    subCategoryPresent: hasText(params.msme.business_type),
+    cacPresent: hasText(params.msme.cac_number),
+    ownerNamePresent: hasText(params.msme.owner_name),
+    contactInfoPresent: hasText(params.msme.contact_email) && hasText(params.msme.contact_phone),
+    addressPresent: hasText(params.msme.address),
+    descriptionPresent: hasText(params.provider.description),
+    logoUploaded: hasText(params.provider.logo_url) || hasText(params.msme.passport_photo_url),
+    providerProfileExists: hasText(params.provider.id),
+  } satisfies ProfileCompletenessSignals;
+
+  console.info("[profile-completion] recomputed");
+  return signals;
+}
+
+type ActivityLogRow = {
+  timestamp: string;
+  action: string;
+  actor: string;
+  entityType: string;
+};
+
+async function loadSettingsActivityLog(params: {
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
+  workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>;
+}): Promise<ActivityLogRow[]> {
+  const columns = await getTableColumns(params.supabase, "activity_logs");
+  if (!columns.has("msme_id")) return [];
+  if (!columns.has("action") || !columns.has("entity_type")) return [];
+
+  const selectColumns = pickExistingColumns(columns, ["created_at", "action", "actor_user_id", "actor", "entity_type", "msme_id"]);
+  if (!selectColumns.includes("action") || !selectColumns.includes("entity_type")) return [];
+
+  const { data, error } = await params.supabase
+    .from("activity_logs")
+    .select(selectColumns.join(","))
+    .eq("msme_id", params.workspace.msme.msme_id)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error) {
+    console.warn("[msme-settings][activity-log][read-failed]", { message: error.message, code: error.code ?? null });
+    return [];
+  }
+
+  const rows = ((data ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+  const actorUserIds = rows
+    .map((row) => String(row.actor_user_id ?? "").trim())
+    .filter((value) => value.length > 0);
+
+  const actorByUserId = new Map<string, string>();
+  if (actorUserIds.length > 0) {
+    const userColumns = await getTableColumns(params.supabase, "users");
+    const userSelectColumns = pickExistingColumns(userColumns, ["id", "full_name", "email"]);
+    if (userSelectColumns.includes("id")) {
+      const { data: usersData } = await params.supabase.from("users").select(userSelectColumns.join(",")).in("id", actorUserIds);
+      const users = ((usersData ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+      for (const user of users) {
+        const userId = String(user.id ?? "").trim();
+        if (!userId) continue;
+        const fullName = String(user.full_name ?? "").trim();
+        const email = String(user.email ?? "").trim();
+        actorByUserId.set(userId, fullName || email || userId);
+      }
+    }
+  }
+
+  return rows.map((row) => {
+    const actorUserId = String(row.actor_user_id ?? "").trim();
+    const actorFromUserTable = actorByUserId.get(actorUserId);
+    const actorFromRow = String(row.actor ?? "").trim();
+    return {
+      timestamp: String(row.created_at ?? ""),
+      action: String(row.action ?? "unknown"),
+      actor: actorFromUserTable || actorFromRow || actorUserId || "System",
+      entityType: String(row.entity_type ?? "unknown"),
+    };
+  });
 }
 
 async function settingsAction(formData: FormData) {
@@ -333,7 +391,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   const supabase = await createServiceRoleSupabaseClient();
 
   const settingsReadSelect =
-    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin";
+    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin,passport_photo_url";
   const { data: msmeSettings, error: msmeSettingsError } = await supabase
     .from("msmes")
     .select(settingsReadSelect)
@@ -365,7 +423,11 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
     redirect("/dashboard/msme/settings?error=read_failed");
   }
 
-  const completeness = deriveProfileCompleteness(workspace);
+  const completenessSignals = deriveProfileCompletenessSignals({
+    msme: msmeSettings,
+    provider: { id: workspace.provider.id, description: workspace.provider.description, logo_url: workspace.provider.logo_url },
+  });
+  const activityRows = await loadSettingsActivityLog({ supabase, workspace });
   const errorCode: SettingsErrorCode = (params.error as SettingsErrorCode) || "unknown_save_error";
   const errorMessage = SETTINGS_ERROR_MESSAGES[errorCode] ?? SETTINGS_ERROR_MESSAGES.unknown_save_error;
 
@@ -432,7 +494,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
-              <LogoUploadCard initialLogoUrl={workspace.provider.logo_url} />
+              <LogoUploadCard initialLogoUrl={workspace.provider.logo_url ?? msmeSettings.passport_photo_url} />
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 sm:col-span-2">
@@ -650,10 +712,35 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           <section id="activity-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-slate-900">Activity Log</h3>
-              <SectionStatusBadge tone="coming-soon">Coming soon</SectionStatusBadge>
+              <SectionStatusBadge tone="read-only">Read-only</SectionStatusBadge>
             </div>
-            <p className="mt-1 text-sm text-slate-600">Activity timeline will appear here when audit stream integration is enabled.</p>
-            <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">No activity rows are displayed in this release.</p>
+            <p className="mt-1 text-sm text-slate-600">Latest settings-adjacent activity in your MSME workspace.</p>
+            {activityRows.length === 0 ? (
+              <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">No recent activity yet</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Timestamp</th>
+                      <th className="px-3 py-2 font-semibold">Action</th>
+                      <th className="px-3 py-2 font-semibold">Actor</th>
+                      <th className="px-3 py-2 font-semibold">Entity Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityRows.map((row) => (
+                      <tr key={`${row.timestamp}-${row.action}-${row.actor}`} className="border-t border-slate-200">
+                        <td className="px-3 py-2 text-slate-700">{row.timestamp ? new Date(row.timestamp).toLocaleString() : "—"}</td>
+                        <td className="px-3 py-2 font-medium text-slate-800">{row.action}</td>
+                        <td className="px-3 py-2 text-slate-700">{row.actor}</td>
+                        <td className="px-3 py-2 text-slate-700">{row.entityType}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -673,27 +760,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Profile Completeness</h3>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-emerald-600 text-lg font-semibold text-slate-900">
-                {completeness.percentage}%
-              </div>
-              <p className="text-sm text-slate-600">Your profile is almost complete.</p>
-            </div>
-            <ul className="mt-4 space-y-2">
-              {completeness.items.map((item) => (
-                <li key={item.label} className="flex items-start gap-2 text-sm">
-                  {item.complete ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <CircleAlert className="mt-0.5 h-4 w-4 text-amber-500" />
-                  )}
-                  <span className={item.complete ? "text-slate-700" : "text-slate-500"}>{item.label}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <ProfileCompletenessCard initialSignals={completenessSignals} />
 
           <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Tips</h3>
