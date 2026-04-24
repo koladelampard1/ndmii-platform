@@ -6,9 +6,10 @@ import { MAX_PROVIDER_LOGO_BYTES, validateProviderLogoFile } from "@/lib/msme/pr
 
 type Props = {
   initialLogoUrl: string | null;
+  onUploadSuccess?: (logoUrl: string) => void;
 };
 
-export function LogoUploadCard({ initialLogoUrl }: Props) {
+export function LogoUploadCard({ initialLogoUrl, onUploadSuccess }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl ?? "");
   const [previewUrl, setPreviewUrl] = useState(initialLogoUrl ?? "");
@@ -69,6 +70,8 @@ export function LogoUploadCard({ initialLogoUrl }: Props) {
       setLogoUrl(nextLogoUrl);
       setPreviewUrl(nextLogoUrl);
       setSuccess("Logo uploaded and saved successfully.");
+      window.dispatchEvent(new CustomEvent("ndmii:logo-uploaded", { detail: { logoUrl: nextLogoUrl } }));
+      onUploadSuccess?.(nextLogoUrl);
     } catch {
       setError("Logo upload failed. Please check your connection and retry.");
     } finally {
