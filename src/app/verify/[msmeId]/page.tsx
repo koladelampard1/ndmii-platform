@@ -56,7 +56,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
     supabase.from("validation_results").select("cac_status,tin_status,validated_at").eq("msme_id", msme.id).maybeSingle(),
   ]);
 
-  const verificationUrl = digitalId?.qr_code_ref ?? `https://ndmii.gov.ng/verify/${resolvedId}`;
+  const verificationUrl = digitalId?.qr_code_ref ?? `https://bin.gov.ng/verify/${resolvedId}`;
   const qrDataUrl = await QRCode.toDataURL(verificationUrl);
   const issuedDate = formatDate(digitalId?.issued_at ?? msme.issued_at);
   const lastValidated = formatDate(validation?.validated_at ?? digitalId?.issued_at ?? msme.issued_at);
@@ -140,7 +140,12 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
               </section>
             </div>
 
-            <QRCodeVerificationPanel qrDataUrl={qrDataUrl} verificationUrl={verificationUrl} issueDate={issuedDate} />
+            <QRCodeVerificationPanel
+              qrDataUrl={qrDataUrl}
+              verificationUrl={verificationUrl}
+              issueDate={issuedDate}
+              businessId={resolvedId}
+            />
           </div>
         </section>
 

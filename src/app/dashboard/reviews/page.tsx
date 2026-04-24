@@ -79,7 +79,7 @@ async function reviewAction(formData: FormData) {
       msme_id: id,
       ndmii_id: ndmiiId,
       issued_at: nowIso,
-      qr_code_ref: `https://ndmii.gov.ng/verify/${ndmiiId}`,
+      qr_code_ref: `https://bin.gov.ng/verify/${ndmiiId}`,
       status: "active",
       validation_snapshot: {
         overall_status: validation.overallStatus,
