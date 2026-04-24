@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CheckCircle2, CircleAlert, CircleHelp, ExternalLink, Info } from "lucide-react";
+import { CheckCircle2, CircleAlert, ExternalLink, Info } from "lucide-react";
 import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -77,6 +77,23 @@ const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   msme_save_failed: "Your MSME settings could not be saved. Please try again.",
   unknown_save_error: "Something went wrong while saving. Please retry.",
 };
+
+function SectionStatusBadge({
+  tone,
+  children,
+}: {
+  tone: "editable" | "read-only" | "deep-link" | "coming-soon";
+  children: React.ReactNode;
+}) {
+  const toneClasses = {
+    editable: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    "read-only": "border-slate-200 bg-slate-100 text-slate-700",
+    "deep-link": "border-blue-200 bg-blue-50 text-blue-700",
+    "coming-soon": "border-amber-200 bg-amber-50 text-amber-700",
+  } as const;
+
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClasses[tone]}`}>{children}</span>;
+}
 
 function deriveProfileCompleteness(workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>) {
   const items: CompletenessItem[] = [
@@ -408,7 +425,10 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="business-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Business Logo / Profile Image</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Business Logo / Profile Image</h3>
+              <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
+            </div>
             <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
@@ -456,14 +476,17 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                     disabled
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-500 outline-none ring-emerald-200 transition focus:ring"
                   />
-                  <span className="block text-xs text-slate-500">Not editable here yet (no mapped schema column in this workspace).</span>
+                  <span className="block text-xs text-slate-500">Field will be enabled when regulatory schema activated.</span>
                 </label>
               </div>
             </div>
           </section>
 
           <section id="contact-address" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Business Owner / Contact Person</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Business Owner / Contact Person</h3>
+              <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-slate-600">Full Name</span>
@@ -521,7 +544,10 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="about-business" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">About Your Business</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">About Your Business</h3>
+              <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
+            </div>
             <p className="mt-1 text-sm text-slate-600">Tell us more about your business.</p>
             <label className="mt-4 block space-y-1">
               <span className="text-xs font-medium text-slate-600">Business Description</span>
@@ -536,8 +562,11 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="banking-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Banking Information</h3>
-            <p className="mt-1 text-sm text-slate-600">Bank account details are managed in your tax and compliance workspace.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Banking Information</h3>
+              <SectionStatusBadge tone="deep-link">Deep-link</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Managed elsewhere: Bank account details are maintained in the payments workspace.</p>
             <div className="mt-3">
               <Link href="/dashboard/payments" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
                 Manage banking and VAT profile <ExternalLink className="h-4 w-4" />
@@ -546,8 +575,14 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="tax-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Tax Information</h3>
-            <p className="mt-1 text-sm text-slate-600">Tax and VAT fields are managed in the dedicated Tax / VAT workspace.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Tax Information</h3>
+              <div className="flex items-center gap-2">
+                <SectionStatusBadge tone="read-only">Read-only</SectionStatusBadge>
+                <SectionStatusBadge tone="deep-link">Deep-link</SectionStatusBadge>
+              </div>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Managed elsewhere: Tax and VAT fields are updated in the Tax / VAT workspace.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-slate-600">TIN (read-only here)</span>
@@ -572,34 +607,53 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           </section>
 
           <section id="verification-documents" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Verification Documents</h3>
-            <p className="mt-1 text-sm text-slate-600">Your KYC and verification records can be reviewed and updated in compliance.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Verification Documents</h3>
+              <SectionStatusBadge tone="deep-link">Deep-link</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Managed elsewhere: Your KYC and verification records are handled in compliance.</p>
             <Link href="/dashboard/msme/compliance" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
               Open verification workspace <ExternalLink className="h-4 w-4" />
             </Link>
           </section>
 
           <section id="notification-preferences" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Notification Preferences</h3>
-            <p className="mt-1 text-sm text-slate-600">Visual-only section for now. Notification delivery channels are coming soon.</p>
-            <p className="mt-2 text-xs font-medium text-slate-500">No local save action is wired for this section yet.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Notification Preferences</h3>
+              <SectionStatusBadge tone="coming-soon">Coming soon</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Notification preferences configurable in future release.</p>
           </section>
 
           <section id="account-security" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Account & Security</h3>
-            <p className="mt-1 text-sm text-slate-600">For password updates, use your account access settings from your sign-in provider.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Account & Security</h3>
+              <SectionStatusBadge tone="read-only">Read-only</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Password managed through authentication provider.</p>
           </section>
 
           <section id="integrations" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Integrations</h3>
-            <p className="mt-1 text-sm text-slate-600">NIN, BVN, CAC, and TIN integrations are connected through simulation adapters.</p>
-            <p className="mt-2 text-xs font-medium text-slate-500">Read-only status summary; configuration is managed in module workspaces.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Integrations</h3>
+              <SectionStatusBadge tone="read-only">Read-only</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Status summary only (managed elsewhere).</p>
+            <ul className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+              <li className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">NIN Adapter: Connected (simulated)</li>
+              <li className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">BVN Adapter: Connected (simulated)</li>
+              <li className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">CAC Adapter: Connected (simulated)</li>
+              <li className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">TIN Adapter: Connected (simulated)</li>
+            </ul>
           </section>
 
           <section id="activity-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Activity Log</h3>
-            <p className="mt-1 text-sm text-slate-600">Recent account activity is tracked automatically across onboarding and compliance flows.</p>
-            <p className="mt-2 text-xs font-medium text-slate-500">This section is informational and does not submit with Save Changes.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Activity Log</h3>
+              <SectionStatusBadge tone="coming-soon">Coming soon</SectionStatusBadge>
+            </div>
+            <p className="mt-1 text-sm text-slate-600">Activity timeline will appear here when audit stream integration is enabled.</p>
+            <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">No activity rows are displayed in this release.</p>
           </section>
 
           <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -644,23 +698,13 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
           <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Tips</h3>
             <p className="mt-2 text-sm text-slate-600">Keeping your information updated helps you stay verified and unlock more opportunities.</p>
-            <button
-              type="button"
-              className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
-            >
-              Learn More <ExternalLink className="h-4 w-4" />
-            </button>
+            <p className="mt-4 text-xs font-medium text-emerald-700">Managed elsewhere: Guidance links are available in the Help Center module.</p>
           </section>
 
           <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Need Help?</h3>
             <p className="mt-2 text-sm text-slate-600">If you need assistance updating your information, our support team is ready to help.</p>
-            <button
-              type="button"
-              className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-blue-200 bg-white px-3 text-sm font-medium text-blue-700 hover:bg-blue-100"
-            >
-              Contact Support <CircleHelp className="h-4 w-4" />
-            </button>
+            <p className="mt-4 text-xs font-medium text-blue-700">Coming soon: in-app support request flow.</p>
           </section>
         </aside>
       </form>
