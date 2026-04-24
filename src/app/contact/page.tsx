@@ -18,15 +18,15 @@ export default async function ContactPage({
 
   return (
     <PublicPageShell
-      eyebrow="Contact the Business Identity Network"
-      title="Reach the NDMII Business Identity Network operations desk"
-      description="Need support with identity onboarding, verification, regulatory workflows, or institutional adoption? Send a request and NDMII will route it to the right Business Identity Network desk."
-      primaryCta={{ label: "Register your MSME", href: "/register/msme" }}
+      eyebrow="Contact Business Identity Network (BIN)"
+      title="Reach the Business Identity Network operations desk"
+      description="Need support with identity onboarding, verification, regulatory workflows, or institutional adoption? Send a request and BIN will route it to the right team."
+      primaryCta={{ label: "Register your business", href: "/register/msme" }}
       secondaryCta={{ label: "Open verification portal", href: "/verify" }}
     >
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-slate-900">Business Identity Network support request</h2>
-        <p className="mt-2 text-sm text-slate-600">Use this intake form to reach NDMII service teams supporting MSMEs, associations, regulators, and public-sector buyers.</p>
+        <p className="mt-2 text-sm text-slate-600">Use this intake form to reach BIN service teams supporting MSMEs, associations, regulators, and public-sector buyers.</p>
         <form className="mt-5 grid gap-3 md:grid-cols-2">
           <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Full name" />
           <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Email address" />
@@ -42,7 +42,7 @@ export default async function ContactPage({
           </button>
         </form>
         <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Business Identity Network live channels are being expanded. For immediate access to core NDMII services, use the routes below.
+          Business Identity Network live channels are being expanded. For immediate access to core BIN services, use the routes below.
           <div className="mt-2 flex flex-wrap gap-3">
             <Link href="/marketplace" className="font-medium">Browse marketplace</Link>
             <Link href="/verify" className="font-medium">Verify Business Identity Number</Link>
