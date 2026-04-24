@@ -20,6 +20,11 @@ type DigitalIdWorkspaceProps = {
   qrDataUrl: string;
 };
 
+const A4_LANDSCAPE_WIDTH_PT = 841.89;
+const A4_LANDSCAPE_HEIGHT_PT = 595.28;
+const POCKET_CARD_WIDTH_PX = 1712;
+const POCKET_CARD_HEIGHT_PX = 1080;
+
 function formatStatus(value: string) {
   return value
     .replace(/_/g, " ")
@@ -33,6 +38,231 @@ function downloadBlob(blob: Blob, fileName: string) {
   anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function escapePdfText(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+async function loadImage(src: string) {
+  return await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    image.src = src;
+  });
+}
+
+async function toJpegBlob(canvas: HTMLCanvasElement, quality = 0.94) {
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Unable to generate image data."));
+        return;
+      }
+
+      resolve(blob);
+    }, "image/jpeg", quality);
+  });
+}
+
+async function toPngBlob(canvas: HTMLCanvasElement) {
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Unable to generate PNG data."));
+        return;
+      }
+
+      resolve(blob);
+    }, "image/png", 1);
+  });
+}
+
+async function buildPdfFromJpeg(jpegBlob: Blob, fileName: string) {
+  const imageBuffer = await jpegBlob.arrayBuffer();
+  const bytes = new Uint8Array(imageBuffer);
+
+  const margin = 24;
+  const imageW = A4_LANDSCAPE_WIDTH_PT - margin * 2;
+  const imageH = A4_LANDSCAPE_HEIGHT_PT - margin * 2;
+
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_LANDSCAPE_WIDTH_PT.toFixed(2)} ${A4_LANDSCAPE_HEIGHT_PT.toFixed(2)}] /Resources << /XObject << /Im0 4 0 R >> /ProcSet [/PDF /ImageC] >> /Contents 5 0 R >> endobj`,
+    `4 0 obj << /Type /XObject /Subtype /Image /Width ${POCKET_CARD_WIDTH_PX} /Height ${POCKET_CARD_HEIGHT_PX} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >> stream\n__IMAGE_STREAM__\nendstream\nendobj`,
+    `5 0 obj << /Length ${["q", `${imageW.toFixed(2)} 0 0 ${imageH.toFixed(2)} ${margin.toFixed(2)} ${margin.toFixed(2)} cm`, "/Im0 Do", "Q"].join("\n").length} >> stream\nq\n${imageW.toFixed(2)} 0 0 ${imageH.toFixed(2)} ${margin.toFixed(2)} ${margin.toFixed(2)} cm\n/Im0 Do\nQ\nendstream\nendobj`,
+    `6 0 obj << /Title (${escapePdfText(fileName)}) >> endobj`,
+  ];
+
+  const header = "%PDF-1.4\n%âãÏÓ\n";
+  let offset = header.length;
+  const chunks: BlobPart[] = [header];
+  const xref: number[] = [0];
+
+  for (const object of objects) {
+    xref.push(offset);
+    if (object.includes("__IMAGE_STREAM__")) {
+      const [before, after] = object.split("__IMAGE_STREAM__");
+      chunks.push(before);
+      offset += before.length;
+      chunks.push(imageBuffer);
+      offset += bytes.length;
+      chunks.push(after);
+      offset += after.length;
+    } else {
+      chunks.push(object + "\n");
+      offset += object.length + 1;
+    }
+  }
+
+  const xrefStart = offset;
+  let xrefText = `xref\n0 ${xref.length}\n`;
+  xrefText += "0000000000 65535 f \n";
+  for (let i = 1; i < xref.length; i += 1) {
+    xrefText += `${String(xref[i]).padStart(10, "0")} 00000 n \n`;
+  }
+
+  const trailer = `trailer\n<< /Size ${xref.length} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  chunks.push(xrefText);
+  chunks.push(trailer);
+
+  const pdfBlob = new Blob(chunks, { type: "application/pdf" });
+  downloadBlob(pdfBlob, fileName);
+}
+
+async function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#032E24");
+  gradient.addColorStop(0.6, "#074537");
+  gradient.addColorStop(1, "#0A6A4E");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  for (let i = 0; i < 14; i += 1) {
+    ctx.strokeStyle = `rgba(167,243,208,${0.08 - i * 0.004})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-120, 40 + i * 78);
+    ctx.bezierCurveTo(width * 0.3, 10 + i * 62, width * 0.7, 106 + i * 68, width + 100, 58 + i * 70);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(width * 0.63, height * 0.33, height * 0.26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+async function drawPocketCard(
+  ctx: CanvasRenderingContext2D,
+  data: {
+    businessName: string;
+    ownerName: string;
+    businessCategory: string;
+    businessType: string;
+    msmeId: string;
+    displayStatus: string;
+    expiryDate: string;
+    qrDataUrl: string;
+    passportPhotoUrl?: string | null;
+  },
+) {
+  await drawBackground(ctx, POCKET_CARD_WIDTH_PX, POCKET_CARD_HEIGHT_PX);
+
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.font = "700 38px Inter, Arial";
+  ctx.fillText("FEDERAL REPUBLIC OF NIGERIA", 70, 84);
+
+  ctx.font = "900 72px Inter, Arial";
+  ctx.textAlign = "right";
+  ctx.fillText("NDMII", POCKET_CARD_WIDTH_PX - 70, 94);
+  ctx.textAlign = "left";
+
+  ctx.font = "700 68px Inter, Arial";
+  ctx.fillText(data.businessName, 70, 190, 1100);
+  ctx.font = "600 52px Inter, Arial";
+  ctx.fillStyle = "#c8f79a";
+  ctx.fillText(`${data.businessCategory} • ${data.businessType}`, 70, 266, 980);
+
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.fillRect(70, 304, POCKET_CARD_WIDTH_PX - 140, 2);
+
+  ctx.save();
+  ctx.beginPath();
+  const photoW = 286;
+  const photoH = 346;
+  const photoX = 70;
+  const photoY = 348;
+  const radius = 22;
+  ctx.moveTo(photoX + radius, photoY);
+  ctx.lineTo(photoX + photoW - radius, photoY);
+  ctx.arcTo(photoX + photoW, photoY, photoX + photoW, photoY + radius, radius);
+  ctx.lineTo(photoX + photoW, photoY + photoH - radius);
+  ctx.arcTo(photoX + photoW, photoY + photoH, photoX + photoW - radius, photoY + photoH, radius);
+  ctx.lineTo(photoX + radius, photoY + photoH);
+  ctx.arcTo(photoX, photoY + photoH, photoX, photoY + photoH - radius, radius);
+  ctx.lineTo(photoX, photoY + radius);
+  ctx.arcTo(photoX, photoY, photoX + radius, photoY, radius);
+  ctx.closePath();
+  ctx.clip();
+
+  if (data.passportPhotoUrl) {
+    try {
+      const photoImage = await loadImage(data.passportPhotoUrl);
+      ctx.drawImage(photoImage, photoX, photoY, photoW, photoH);
+    } catch {
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.fillRect(photoX, photoY, photoW, photoH);
+      ctx.fillStyle = "#d1fae5";
+      ctx.font = "600 26px Inter, Arial";
+      ctx.fillText("Passport unavailable", photoX + 22, photoY + photoH / 2);
+    }
+  } else {
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(photoX, photoY, photoW, photoH);
+    ctx.fillStyle = "#d1fae5";
+    ctx.font = "600 26px Inter, Arial";
+    ctx.fillText("Passport unavailable", photoX + 22, photoY + photoH / 2);
+  }
+  ctx.restore();
+
+  const qr = await loadImage(data.qrDataUrl);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(POCKET_CARD_WIDTH_PX - 284, 372, 214, 214);
+  ctx.drawImage(qr, POCKET_CARD_WIDTH_PX - 275, 381, 196, 196);
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "700 26px Inter, Arial";
+  ctx.fillText("MSME ID", 390, 420);
+  ctx.font = "700 40px Inter, Arial";
+  ctx.fillText(data.msmeId, 390, 470);
+
+  ctx.font = "700 26px Inter, Arial";
+  ctx.fillText("Owner", 390, 536);
+  ctx.font = "700 44px Inter, Arial";
+  ctx.fillText(data.ownerName, 390, 590, 770);
+
+  ctx.font = "700 26px Inter, Arial";
+  ctx.fillText("Status", 390, 652);
+  ctx.font = "700 44px Inter, Arial";
+  ctx.fillStyle = data.displayStatus.toLowerCase() === "verified" ? "#86efac" : "#fde68a";
+  ctx.fillText(data.displayStatus, 390, 706);
+
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.fillRect(0, POCKET_CARD_HEIGHT_PX - 120, POCKET_CARD_WIDTH_PX, 120);
+  ctx.fillStyle = "#f0fdf4";
+  ctx.font = "700 36px Inter, Arial";
+  ctx.fillText(`Expiry: ${data.expiryDate}`, 70, POCKET_CARD_HEIGHT_PX - 46);
+  ctx.textAlign = "right";
+  ctx.fillText("Verified • Trusted • Empowered", POCKET_CARD_WIDTH_PX - 70, POCKET_CARD_HEIGHT_PX - 46);
+  ctx.textAlign = "left";
 }
 
 export function DigitalIdWorkspace({
@@ -50,7 +280,8 @@ export function DigitalIdWorkspace({
   verifyUrl,
   qrDataUrl,
 }: DigitalIdWorkspaceProps) {
-  const [busy, setBusy] = useState<"none" | "png" | "share">("none");
+  const [busy, setBusy] = useState<"none" | "pdf" | "png" | "share">("none");
+  const [error, setError] = useState<string | null>(null);
 
   const displayStatus = useMemo(() => formatStatus(verificationStatus || "pending_review"), [verificationStatus]);
   const isVerified = useMemo(() => displayStatus.toLowerCase() === "verified", [displayStatus]);
@@ -58,6 +289,8 @@ export function DigitalIdWorkspace({
 
   const shareCard = useCallback(async () => {
     setBusy("share");
+    setError(null);
+
     try {
       if (navigator.share) {
         await navigator.share({
@@ -71,92 +304,80 @@ export function DigitalIdWorkspace({
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(verifyUrl);
       }
+    } catch {
+      setError("Unable to share right now. Please try again.");
     } finally {
       setBusy("none");
     }
   }, [msmeId, verifyUrl]);
 
-  const downloadCredential = useCallback(async () => {
+  const downloadPocketPng = useCallback(async () => {
     setBusy("png");
+    setError(null);
+
     try {
       const canvas = document.createElement("canvas");
-      const width = 1800;
-      const height = 1140;
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = POCKET_CARD_WIDTH_PX;
+      canvas.height = POCKET_CARD_HEIGHT_PX;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, "#063C2E");
-      gradient.addColorStop(1, "#0A5F47");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-
-      for (let i = 0; i < 16; i += 1) {
-        ctx.strokeStyle = `rgba(110,231,183,${0.08 - i * 0.004})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, 60 + i * 70);
-        ctx.bezierCurveTo(width * 0.3, 30 + i * 55, width * 0.7, 100 + i * 58, width, 70 + i * 60);
-        ctx.stroke();
+      if (!ctx) {
+        throw new Error("Could not initialize image renderer.");
       }
 
-      ctx.fillStyle = "rgba(255,255,255,0.92)";
-      ctx.font = "700 26px Inter, Arial";
-      ctx.fillText("FEDERAL REPUBLIC OF NIGERIA", 70, 92);
-      ctx.font = "700 62px Inter, Arial";
-      ctx.fillText("National Digital MSME Identity Initiative", 70, 164);
-      ctx.font = "500 44px Inter, Arial";
-      ctx.fillText("Official Business Identity Credential", 70, 220);
-
-      ctx.font = "800 80px Inter, Arial";
-      ctx.textAlign = "right";
-      ctx.fillText("NDMII", width - 70, 164);
-      ctx.font = "600 30px Inter, Arial";
-      ctx.fillText("Verified • Trusted • Empowered", width - 70, 214);
-      ctx.textAlign = "left";
-
-      ctx.fillStyle = "rgba(255,255,255,0.95)";
-      ctx.fillRect(70, 280, width - 140, height - 520);
-
-      const qrImage = new Image();
-      await new Promise<void>((resolve) => {
-        qrImage.onload = () => resolve();
-        qrImage.src = qrDataUrl;
+      await drawPocketCard(ctx, {
+        businessName,
+        ownerName,
+        businessCategory,
+        businessType,
+        msmeId,
+        displayStatus,
+        expiryDate,
+        qrDataUrl,
+        passportPhotoUrl,
       });
-      ctx.drawImage(qrImage, 94, height - 216, 120, 120);
 
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "700 28px Inter, Arial";
-      ctx.fillText("SCAN TO VERIFY", 238, height - 150);
-      ctx.font = "500 26px Inter, Arial";
-      ctx.fillText("Instantly verify this MSME identity on the NDMII portal", 238, height - 112);
-
-      ctx.font = "700 28px Inter, Arial";
-      ctx.fillText("MSME ID", 760, height - 150);
-      ctx.font = "800 48px Inter, Arial";
-      ctx.fillText(msmeId, 760, height - 94);
-
-      ctx.font = "700 28px Inter, Arial";
-      ctx.fillText("STATUS", 1240, height - 150);
-      ctx.font = "700 40px Inter, Arial";
-      ctx.fillStyle = isVerified ? "#15803d" : "#ca8a04";
-      ctx.fillText(isVerified ? "Verified" : "Pending Review", 1240, height - 98);
-
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "700 28px Inter, Arial";
-      ctx.fillText("EXPIRY DATE", 1510, height - 150);
-      ctx.font = "700 46px Inter, Arial";
-      ctx.fillText(expiryDate, 1510, height - 94);
-
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png", 1));
-      if (!blob) return;
-      downloadBlob(blob, `${msmeId.toLowerCase()}-digital-credential.png`);
+      const pngBlob = await toPngBlob(canvas);
+      downloadBlob(pngBlob, `${msmeId.toLowerCase()}-pocket-id.png`);
+    } catch {
+      setError("Could not generate PNG pocket ID. Please retry.");
     } finally {
       setBusy("none");
     }
-  }, [expiryDate, isVerified, msmeId, qrDataUrl]);
+  }, [businessCategory, businessName, businessType, displayStatus, expiryDate, msmeId, ownerName, passportPhotoUrl, qrDataUrl]);
+
+  const downloadPdf = useCallback(async () => {
+    setBusy("pdf");
+    setError(null);
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = POCKET_CARD_WIDTH_PX;
+      canvas.height = POCKET_CARD_HEIGHT_PX;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Could not initialize PDF renderer.");
+      }
+
+      await drawPocketCard(ctx, {
+        businessName,
+        ownerName,
+        businessCategory,
+        businessType,
+        msmeId,
+        displayStatus,
+        expiryDate,
+        qrDataUrl,
+        passportPhotoUrl,
+      });
+
+      const jpegBlob = await toJpegBlob(canvas);
+      await buildPdfFromJpeg(jpegBlob, `${msmeId.toLowerCase()}-digital-id.pdf`);
+    } catch {
+      setError("Could not generate PDF. Please retry.");
+    } finally {
+      setBusy("none");
+    }
+  }, [businessCategory, businessName, businessType, displayStatus, expiryDate, msmeId, ownerName, passportPhotoUrl, qrDataUrl]);
 
   return (
     <section className="space-y-6 pb-8">
@@ -176,14 +397,26 @@ export function DigitalIdWorkspace({
           </button>
           <button
             type="button"
-            onClick={downloadCredential}
+            onClick={downloadPdf}
             disabled={busy !== "none"}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
           >
-            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing..." : "Download Credential"}
+            <Download className="h-4 w-4" /> {busy === "pdf" ? "Preparing PDF..." : "Download PDF"}
+          </button>
+          <button
+            type="button"
+            onClick={downloadPocketPng}
+            disabled={busy !== "none"}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download PNG (Pocket ID)"}
           </button>
         </div>
       </header>
+
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+      ) : null}
 
       <article className="relative overflow-hidden rounded-2xl border border-emerald-300/20 bg-[linear-gradient(135deg,#063C2E,#0A5F47)] p-4 shadow-2xl ring-1 ring-white/20 sm:p-7">
         <div className="pointer-events-none absolute inset-0 opacity-10 [background:repeating-linear-gradient(135deg,rgba(255,255,255,.14)_0_2px,transparent_2px_16px)]" />
@@ -200,7 +433,7 @@ export function DigitalIdWorkspace({
           </svg>
         </div>
 
-        <div className="relative z-10 space-y-4">
+        <div className="relative z-10 space-y-4" id="msme-id-card-full-view">
           <div className="flex items-start justify-between gap-4 border-b border-white/20 pb-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-emerald-100">Federal Republic of Nigeria</p>
@@ -270,6 +503,10 @@ export function DigitalIdWorkspace({
           </div>
         </div>
       </article>
+
+      <div aria-hidden="true" className="fixed -left-[9999px] -top-[9999px] h-px w-px overflow-hidden">
+        <article className="h-[540px] w-[856px]" id="msme-pocket-id-export-template" />
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
