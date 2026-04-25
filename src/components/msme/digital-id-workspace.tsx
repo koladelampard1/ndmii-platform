@@ -135,13 +135,16 @@ async function toJpegBlob(canvas: HTMLCanvasElement, quality = 0.95) {
   });
 }
 
-function bytes(value: string) {
-  return new TextEncoder().encode(value);
+function bytes(value: string): Uint8Array<ArrayBuffer> {
+  const encoded = new TextEncoder().encode(value);
+  const normalized = new Uint8Array(encoded.length);
+  normalized.set(encoded);
+  return normalized;
 }
 
 async function buildPdfFromJpeg(jpegBlob: Blob, imageWidth: number, imageHeight: number, fileName: string) {
   const imageBuffer = await jpegBlob.arrayBuffer();
-  const imageBytes = new Uint8Array(imageBuffer);
+  const imageBytes = new Uint8Array(imageBuffer) as Uint8Array<ArrayBuffer>;
 
   const margin = 24;
   const usableW = A4_LANDSCAPE_WIDTH_PT - margin * 2;
@@ -154,7 +157,7 @@ async function buildPdfFromJpeg(jpegBlob: Blob, imageWidth: number, imageHeight:
 
   const stream = `q\n${drawW.toFixed(2)} 0 0 ${drawH.toFixed(2)} ${drawX.toFixed(2)} ${drawY.toFixed(2)} cm\n/Im0 Do\nQ\n`;
 
-  const objects: Array<{ id: number; head: string; streamBytes?: Uint8Array }> = [
+  const objects: Array<{ id: number; head: string; streamBytes?: Uint8Array<ArrayBuffer> }> = [
     { id: 1, head: "<< /Type /Catalog /Pages 2 0 R >>" },
     { id: 2, head: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>" },
     {

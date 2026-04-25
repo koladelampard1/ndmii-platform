@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, ShieldUser, Building2, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -10,7 +10,7 @@ import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profi
 import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -221,5 +221,13 @@ export default function LoginPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-100" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

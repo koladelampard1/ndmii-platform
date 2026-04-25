@@ -25,6 +25,11 @@ type ComplaintQueueRow = {
   msmes?: { msme_id?: string | null; business_name?: string | null } | null;
 };
 
+type OfficerRow = {
+  id: string;
+  full_name: string | null;
+};
+
 function devQueueLog(message: string, payload?: Record<string, unknown>) {
   if (process.env.NODE_ENV !== "production") {
     console.info(`[ndmii][complaint-queue] ${message}`, payload ?? {});
@@ -104,7 +109,11 @@ export default async function FccpcPage({
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
   if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
-  const { data: officers } = await supabase.from("users").select("id,full_name").eq("role", "fccpc_officer");
+  const { data: officerData } = await supabase
+    .from("users")
+    .select("id,full_name")
+    .eq("role", "fccpc_officer");
+  const officers = (officerData ?? []) as OfficerRow[];
 
   const { queue: complaints, querySource } = await fetchComplaintQueue(ctx.role, params);
   const providerIds = (complaints ?? []).map((item) => item.provider_profile_id ?? item.provider_id).filter(Boolean);
@@ -150,6 +159,13 @@ export default async function FccpcPage({
             {(complaints ?? []).map((row) => (
               (() => {
                 const complaintId = String(row.id ?? "").trim();
+                const providerRecord = providerById.get((row.provider_profile_id ?? row.provider_id) as string);
+                const providerDisplayName =
+                  typeof providerRecord?.display_name === "string" ? providerRecord.display_name : "Not linked";
+                const assignedOfficerName = (() => {
+                  const officer = officers.find((x) => x.id === (row.assigned_officer_user_id ?? row.assigned_officer_id));
+                  return typeof officer?.full_name === "string" ? officer.full_name : "Unassigned";
+                })();
 
                 devQueueLog("workspace_link_prepared", {
                   clickedComplaintId: complaintId || null,
@@ -170,13 +186,13 @@ export default async function FccpcPage({
                   {(row.msmes as any)?.business_name ?? row.provider_business_name ?? "Unknown business"}
                   <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id ?? "MSME pending linkage"}</p>
                   <p className="text-xs text-slate-500">
-                    Provider: {providerById.get((row.provider_profile_id ?? row.provider_id) as string)?.display_name ?? "Not linked"}
+                    Provider: {providerDisplayName}
                   </p>
                 </td>
                 <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity ?? "medium"} /></td>
                 <td className="px-3 py-3 text-xs text-slate-600">{row.created_at ? new Date(row.created_at).toLocaleDateString() : "Unknown date"}</td>
                 <td className="px-3 py-3">{row.status ?? "open"}</td>
-                <td className="px-3 py-3">{officers?.find((x) => x.id === (row.assigned_officer_user_id ?? row.assigned_officer_id))?.full_name ?? "Unassigned"}</td>
+                <td className="px-3 py-3">{assignedOfficerName}</td>
                 <td className="space-y-2 px-3 py-3">
                   <form action={complaintAction} className="flex gap-2">
                     <input type="hidden" name="complaint_id" value={complaintId} />
