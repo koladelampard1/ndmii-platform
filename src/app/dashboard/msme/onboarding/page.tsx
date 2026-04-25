@@ -138,7 +138,10 @@ async function saveOnboarding(formData: FormData) {
   );
 
   if (intent === "submit") {
-    const ndmiiId = data.msme_id?.startsWith("NDMII-") ? data.msme_id : generatedMsmeId;
+    const existingId = data.msme_id ?? "";
+    const ndmiiId = existingId.startsWith("BIN-") || existingId.startsWith("NDMII-")
+      ? existingId.replace(/^NDMII-/, "BIN-")
+      : generatedMsmeId;
     const verifyUrl = `https://bin.gov.ng/verify/${ndmiiId}`;
     await supabase.from("digital_ids").upsert(
       {

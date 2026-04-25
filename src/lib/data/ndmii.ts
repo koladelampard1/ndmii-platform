@@ -24,7 +24,7 @@ export type MsmeRecord = {
 const fallbackMsmes: MsmeRecord[] = [
   {
     id: "demo-1",
-    msme_id: "NDMII-LAG-0001",
+    msme_id: "BIN-LAG-0001",
     business_name: "Eko Fresh Foods Ltd",
     owner_name: "Chinedu Eze",
     state: "Lagos",
@@ -39,7 +39,7 @@ const fallbackMsmes: MsmeRecord[] = [
   },
   {
     id: "demo-2",
-    msme_id: "NDMII-KAN-0002",
+    msme_id: "BIN-KAN-0002",
     business_name: "Arewa Retail Hub",
     owner_name: "Musa Idris",
     state: "Kano",
@@ -105,7 +105,7 @@ export function generateMsmeId(state: string) {
   const prefix = (state || "LAG").slice(0, 3).toUpperCase();
   const serial = `${Date.now()}`.slice(-6);
   const checksum = Math.floor(100 + Math.random() * 900);
-  return `NDMII-${prefix}-${serial}${checksum}`;
+  return `BIN-${prefix}-${serial}${checksum}`;
 }
 
 export async function runKycSimulation(payload: Record<VerificationProvider, string>) {
