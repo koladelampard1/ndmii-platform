@@ -35,6 +35,18 @@ type ExistingUserByEmail = {
   role: string | null;
 };
 
+type ExistingUserRecord = {
+  id?: string | null;
+  email?: string | null;
+  role?: string | null;
+};
+
+function getExistingUserRole(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const role = (user as ExistingUserRecord).role;
+  return typeof role === "string" ? role : null;
+}
+
 const REGISTRATION_MODE =
   process.env.NEXT_PUBLIC_REGISTRATION_MODE?.toLowerCase() === "production"
     ? "production"
@@ -153,7 +165,9 @@ export default function RegisterPage() {
       return;
     }
 
-    if (existingUserByEmail?.role && existingUserByEmail.role !== "msme") {
+    const existingRole = getExistingUserRole(existingUserByEmail);
+
+    if (existingRole && existingRole !== "msme") {
       setLoading(false);
       setError("This email is already linked to a non-MSME account. Please use a different email.");
       return;
