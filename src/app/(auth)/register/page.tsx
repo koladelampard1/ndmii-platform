@@ -29,10 +29,10 @@ type RegistrationFormValues = {
   tin: string;
 };
 
-type ExistingUserLookup = {
-  id?: string;
-  email?: string | null;
-  role?: string | null;
+type ExistingUserByEmail = {
+  id: string;
+  email: string | null;
+  role: string | null;
 };
 
 const REGISTRATION_MODE =
@@ -137,13 +137,15 @@ export default function RegisterPage() {
 
     const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-    const { data: existingUserByEmailRaw, error: existingUserError } = await supabase
+    let existingUserByEmail: ExistingUserByEmail | null = null;
+
+    const { data: existingUserData, error: existingUserError } = await supabase
       .from("users")
       .select("id,email,role")
       .eq("email", values.email)
-      .maybeSingle();
+      .maybeSingle<ExistingUserByEmail>();
 
-    const existingUserByEmail = existingUserByEmailRaw as ExistingUserLookup | null;
+    existingUserByEmail = existingUserData ?? null;
 
     if (existingUserError) {
       setLoading(false);

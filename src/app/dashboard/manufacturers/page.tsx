@@ -1,11 +1,25 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
+type ManufacturerListItem = {
+  id: string;
+  product_category: string | null;
+  inspection_status: string | null;
+  counterfeit_risk_flag: boolean | null;
+  compliance_badge: string | null;
+  msmes: {
+    msme_id: string | null;
+    business_name: string | null;
+    state: string | null;
+  } | null;
+};
+
 export default async function ManufacturersPage() {
-  const { data: manufacturers } = await supabase
+  const { data: manufacturerData } = await supabase
     .from("manufacturer_profiles")
     .select("id,product_category,traceability_code,standards_status,inspection_status,counterfeit_risk_flag,compliance_badge,msmes(msme_id,business_name,state)")
     .order("created_at", { ascending: false });
+  const manufacturers = (manufacturerData ?? []) as ManufacturerListItem[];
 
   return (
     <section className="space-y-5">
@@ -13,8 +27,8 @@ export default async function ManufacturersPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {(manufacturers ?? []).map((manufacturer) => (
           <article key={manufacturer.id} className="rounded-xl border bg-white p-4 shadow-sm">
-            <h2 className="font-semibold">{(manufacturer.msmes as any)?.business_name}</h2>
-            <p className="text-xs text-slate-500">{(manufacturer.msmes as any)?.msme_id} • {(manufacturer.msmes as any)?.state}</p>
+            <h2 className="font-semibold">{manufacturer.msmes?.business_name}</h2>
+            <p className="text-xs text-slate-500">{manufacturer.msmes?.msme_id} • {manufacturer.msmes?.state}</p>
             <p className="mt-2 text-sm">Category: {manufacturer.product_category}</p>
             <p className="text-sm">Compliance badge: {manufacturer.compliance_badge}</p>
             <p className="text-sm">Inspection: {manufacturer.inspection_status} • Counterfeit risk: {manufacturer.counterfeit_risk_flag ? "Alert" : "Clear"}</p>

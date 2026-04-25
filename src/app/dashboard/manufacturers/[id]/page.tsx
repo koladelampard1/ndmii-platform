@@ -2,6 +2,32 @@ import { redirect } from "next/navigation";
 import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
 
+type ManufacturerMsme = {
+  msme_id: string | null;
+  business_name: string | null;
+  owner_name: string | null;
+  state: string | null;
+  sector: string | null;
+};
+
+type ManufacturerProfile = {
+  id: string;
+  product_category: string | null;
+  traceability_code: string | null;
+  standards_status: string | null;
+  inspection_status: string | null;
+  counterfeit_risk_flag: boolean | null;
+  compliance_badge: string | null;
+  msmes: ManufacturerMsme | null;
+};
+
+type ManufacturerProduct = {
+  product_name: string | null;
+  product_code: string | null;
+  verification_status: string | null;
+  risk_flag: boolean | null;
+};
+
 async function manufacturerAction(formData: FormData) {
   "use server";
   const id = String(formData.get("id"));
@@ -36,20 +62,24 @@ export default async function ManufacturerDetailPage({ params, searchParams }: {
     .from("manufacturer_profiles")
     .select("id,product_category,traceability_code,standards_status,inspection_status,counterfeit_risk_flag,compliance_badge,msmes(msme_id,business_name,owner_name,state,sector)")
     .eq("id", id)
-    .maybeSingle();
+    .maybeSingle<ManufacturerProfile>();
 
   if (!manufacturer) return <div className="rounded border bg-white p-6">Manufacturer profile not found.</div>;
-  const { data: products } = await supabase.from("manufacturer_products").select("product_name,product_code,verification_status,risk_flag").eq("manufacturer_id", id);
+  const { data: productsData } = await supabase
+    .from("manufacturer_products")
+    .select("product_name,product_code,verification_status,risk_flag")
+    .eq("manufacturer_id", id);
+  const products = (productsData ?? []) as ManufacturerProduct[];
 
   return (
     <section className="space-y-5">
       <h1 className="text-2xl font-semibold">Manufacturer Detail & Product Verification</h1>
       {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Manufacturer action logged.</p>}
       <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">{(manufacturer.msmes as any)?.business_name}</h2>
-        <p className="text-xs text-slate-500">{(manufacturer.msmes as any)?.msme_id} • {(manufacturer.msmes as any)?.state} • {(manufacturer.msmes as any)?.sector}</p>
+        <h2 className="font-semibold">{manufacturer.msmes?.business_name}</h2>
+        <p className="text-xs text-slate-500">{manufacturer.msmes?.msme_id} • {manufacturer.msmes?.state} • {manufacturer.msmes?.sector}</p>
         <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-          <p><strong>Company details:</strong> {(manufacturer.msmes as any)?.owner_name}</p>
+          <p><strong>Company details:</strong> {manufacturer.msmes?.owner_name}</p>
           <p><strong>Compliance badge:</strong> {manufacturer.compliance_badge}</p>
           <p><strong>Product lines:</strong> {manufacturer.product_category}</p>
           <p><strong>Inspection status:</strong> {manufacturer.inspection_status}</p>
