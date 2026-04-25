@@ -35,15 +35,9 @@ type ExistingUserByEmail = {
   role: string | null;
 };
 
-type ExistingUserRecord = {
-  id?: string | null;
-  email?: string | null;
-  role?: string | null;
-};
-
-function getExistingUserRole(user: unknown): string | null {
+function getExistingUserRole(user: ExistingUserByEmail | null | unknown): string | null {
   if (!user || typeof user !== "object") return null;
-  const role = (user as ExistingUserRecord).role;
+  const role = (user as ExistingUserByEmail).role;
   return typeof role === "string" ? role : null;
 }
 
