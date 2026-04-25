@@ -1,6 +1,17 @@
 import { requireRole } from "@/lib/data/authorization-scope";
 import { supabase } from "@/lib/supabase/client";
 
+type AuditLogRow = {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: unknown;
+  created_at: string;
+  actor_user_id: string | null;
+  users?: { full_name?: string | null; role?: string | null } | null;
+};
+
 export default async function AuditTrailPage({
   searchParams,
 }: {
@@ -19,8 +30,9 @@ export default async function AuditTrailPage({
   if (params.from) query = query.gte("created_at", params.from);
   if (params.to) query = query.lte("created_at", params.to);
 
-  const { data: logs } = await query;
-  const filtered = (logs ?? []).filter((log) => (!params.role || (log.users as any)?.role === params.role));
+  const { data: logsRaw } = await query;
+  const logs = (logsRaw as AuditLogRow[] | null) ?? [];
+  const filtered = logs.filter((log) => (!params.role || log.users?.role === params.role));
 
   return (
     <section className="space-y-5">
@@ -39,8 +51,8 @@ export default async function AuditTrailPage({
           <details key={log.id} className="rounded-xl border bg-white p-3">
             <summary className="cursor-pointer text-sm"><strong>{log.action}</strong> • {log.entity_type}:{log.entity_id?.slice(0, 8)} • {new Date(log.created_at).toLocaleString()}</summary>
             <div className="mt-2 text-xs text-slate-600">
-              <p>Actor: {(log.users as any)?.full_name ?? "System"}</p>
-              <p>Role: {(log.users as any)?.role ?? "n/a"}</p>
+              <p>Actor: {log.users?.full_name ?? "System"}</p>
+              <p>Role: {log.users?.role ?? "n/a"}</p>
               <p>Entity type: {log.entity_type}</p>
               <p>Entity id: {log.entity_id}</p>
               <pre className="mt-2 overflow-auto rounded bg-slate-100 p-2">{JSON.stringify(log.metadata ?? {}, null, 2)}</pre>

@@ -29,6 +29,12 @@ type RegistrationFormValues = {
   tin: string;
 };
 
+type ExistingUserLookup = {
+  id?: string;
+  email?: string | null;
+  role?: string | null;
+};
+
 const REGISTRATION_MODE =
   process.env.NEXT_PUBLIC_REGISTRATION_MODE?.toLowerCase() === "production"
     ? "production"
@@ -131,11 +137,13 @@ export default function RegisterPage() {
 
     const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-    const { data: existingUserByEmail, error: existingUserError } = await supabase
+    const { data: existingUserByEmailRaw, error: existingUserError } = await supabase
       .from("users")
-      .select("id,role")
+      .select("id,email,role")
       .eq("email", values.email)
       .maybeSingle();
+
+    const existingUserByEmail = existingUserByEmailRaw as ExistingUserLookup | null;
 
     if (existingUserError) {
       setLoading(false);
@@ -161,12 +169,20 @@ export default function RegisterPage() {
       }
 
       if (profile && (profile.full_name !== values.owner_name || profile.role !== "msme")) {
-        const { data: updatedProfile } = await supabase
+        const profileUpdate = {
+          full_name: values.owner_name,
+          role: "msme",
+          auth_user_id: authUserId,
+        };
+
+        const { data: updatedProfileRaw } = await supabase
           .from("users")
-          .update({ full_name: values.owner_name, role: "msme", auth_user_id: authUserId })
+          .update(profileUpdate as never)
           .eq("id", profile.id)
           .select("id")
           .single();
+
+        const updatedProfile = updatedProfileRaw as { id?: string } | null;
 
         if (updatedProfile?.id) {
           userRow = { id: updatedProfile.id };
@@ -204,7 +220,7 @@ export default function RegisterPage() {
       created_by: userRow.id,
     };
 
-    const { data: existingMsme } = await supabase
+    const { data: existingMsmeRaw } = await supabase
       .from("msmes")
       .select("id,msme_id")
       .eq("created_by", userRow.id)
@@ -212,11 +228,15 @@ export default function RegisterPage() {
       .limit(1)
       .maybeSingle();
 
-    const { data: msme, error: msmeError } = existingMsme?.id
-      ? await supabase.from("msmes").update(payload).eq("id", existingMsme.id).select("id,msme_id").single()
-      : await supabase.from("msmes").insert(payload).select("id,msme_id").single();
+    const existingMsme = existingMsmeRaw as { id?: string; msme_id?: string } | null;
 
-    if (msmeError || !msme?.id) {
+    const { data: msmeRaw, error: msmeError } = existingMsme?.id
+      ? await supabase.from("msmes").update(payload as never).eq("id", existingMsme.id).select("id,msme_id").single()
+      : await supabase.from("msmes").insert(payload as never).select("id,msme_id").single();
+
+    const msme = msmeRaw as { id?: string; msme_id?: string } | null;
+
+    if (msmeError || !msme?.id || !msme.msme_id) {
       setLoading(false);
       setError("Unable to complete MSME registration profile sync.");
       return;
@@ -228,7 +248,7 @@ export default function RegisterPage() {
       checks,
     });
 
-    await supabase.from("activity_logs").insert([
+    const activityLogEntries = [
       {
         actor_user_id: userRow.id,
         action: "msme_registered",
@@ -243,7 +263,9 @@ export default function RegisterPage() {
         entity_id: msme.id,
         metadata: { status: "pending_review" },
       },
-    ]);
+    ];
+
+    await supabase.from("activity_logs").insert(activityLogEntries as never);
 
     setLoading(false);
     setSuccess("Registration completed. Check your inbox to verify your email, then continue onboarding.");
