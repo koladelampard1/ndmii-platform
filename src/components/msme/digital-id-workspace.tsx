@@ -36,7 +36,7 @@ type CredentialModel = {
   businessAddress: string;
   businessId: string;
   displayStatus: string;
-  isVerified: boolean;
+  statusTone: "verified" | "pending_review" | "suspended";
   expiryDate: string;
   passportPhotoUrl?: string | null;
   verifyUrl: string;
@@ -45,9 +45,9 @@ type CredentialModel = {
 
 const A4_LANDSCAPE_WIDTH_PT = 841.89;
 const A4_LANDSCAPE_HEIGHT_PT = 595.28;
-const FULL_EXPORT_WIDTH = 1800;
-const FULL_EXPORT_HEIGHT = 1120;
-const POCKET_CARD_WIDTH_PX = 1011;
+const FULL_EXPORT_WIDTH = 1120;
+const FULL_EXPORT_HEIGHT = 700;
+const POCKET_CARD_WIDTH_PX = 1013;
 const POCKET_CARD_HEIGHT_PX = 638;
 
 function formatStatus(value: string) {
@@ -63,6 +63,23 @@ function sanitizeFileSegment(value: string) {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function normalizeBusinessId(value: string) {
+  return value?.startsWith("NDMII-") ? value.replace(/^NDMII-/, "BIN-") : value;
+}
+
+function resolveStatusTone(value: string): CredentialModel["statusTone"] {
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, "_");
+  if (normalized === "verified") return "verified";
+  if (normalized === "suspended") return "suspended";
+  return "pending_review";
+}
+
+function statusBadgeCopy(statusTone: CredentialModel["statusTone"]) {
+  if (statusTone === "verified") return "Verified";
+  if (statusTone === "suspended") return "Suspended";
+  return "Pending Review";
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -154,7 +171,7 @@ async function buildPdfFromJpeg(jpegBlob: Blob, imageWidth: number, imageHeight:
   ];
 
   const header = bytes("%PDF-1.4\n");
-  const parts: Uint8Array[] = [header];
+  const parts: BlobPart[] = [header];
   const xref: number[] = [0];
   let offset = header.length;
 
@@ -207,6 +224,27 @@ function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: nu
   }
 }
 
+function drawSingleLineText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+) {
+  const content = text || "Not provided";
+  if (ctx.measureText(content).width <= maxWidth) {
+    ctx.fillText(content, x, y);
+    return;
+  }
+
+  const ellipsis = "…";
+  let trimmed = content;
+  while (trimmed.length > 0 && ctx.measureText(`${trimmed}${ellipsis}`).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  ctx.fillText(`${trimmed}${ellipsis}`, x, y);
+}
+
 async function drawPhoto(
   ctx: CanvasRenderingContext2D,
   photoUrl: string | null | undefined,
@@ -252,63 +290,51 @@ async function drawPhoto(
 async function drawPocketCard(ctx: CanvasRenderingContext2D, model: CredentialModel) {
   drawBackground(ctx, POCKET_CARD_WIDTH_PX, POCKET_CARD_HEIGHT_PX);
 
-  ctx.fillStyle = "rgba(255,255,255,0.96)";
-  ctx.font = "700 28px Inter, Arial";
-  ctx.fillText("BUSINESS IDENTITY NETWORK", 38, 52);
-  ctx.font = "800 24px Inter, Arial";
-  ctx.fillStyle = "#d1fae5";
-  ctx.fillText("Verified Business Identity Credential", 38, 82);
-  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.textAlign = "right";
-  ctx.font = "900 54px Inter, Arial";
-  ctx.fillText("BIN", POCKET_CARD_WIDTH_PX - 34, 70);
+  ctx.font = "900 50px Inter, Arial";
+  ctx.fillText("BIN", POCKET_CARD_WIDTH_PX - 34, 62);
   ctx.textAlign = "left";
 
+  await drawPhoto(ctx, model.passportPhotoUrl, 38, 86, 180, 252, 14);
+
   ctx.fillStyle = "#ffffff";
-  ctx.font = "700 42px Inter, Arial";
-  ctx.fillText(model.businessName, 38, 138, 640);
-  ctx.fillStyle = "#bbf7d0";
-  ctx.font = "600 26px Inter, Arial";
-  ctx.fillText(`${model.businessCategory} • ${model.businessType}`, 38, 172, 640);
-
-  await drawPhoto(ctx, model.passportPhotoUrl, 38, 198, 180, 218, 14);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "700 17px Inter, Arial";
-  ctx.fillText("BUSINESS ID", 242, 225);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 26px Inter, Arial";
-  ctx.fillText(model.businessId, 242, 252, 370);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "700 17px Inter, Arial";
-  ctx.fillText("OWNER", 242, 292);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 30px Inter, Arial";
-  ctx.fillText(model.ownerName, 242, 322, 360);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "700 17px Inter, Arial";
-  ctx.fillText("STATUS", 242, 364);
-  ctx.fillStyle = model.isVerified ? "#86efac" : "#fde68a";
-  ctx.font = "700 30px Inter, Arial";
-  ctx.fillText(model.isVerified ? "BIN Verified" : "Pending Review", 242, 395);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "700 17px Inter, Arial";
-  ctx.fillText("EXPIRY", 242, 436);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 25px Inter, Arial";
-  ctx.fillText(model.expiryDate, 242, 466);
+  ctx.font = "700 16px Inter, Arial";
+  ctx.fillText("BUSINESS NAME", 244, 124);
+  ctx.font = "700 34px Inter, Arial";
+  drawSingleLineText(ctx, model.businessName, 244, 160, 420);
+  ctx.font = "700 16px Inter, Arial";
+  ctx.fillText("OWNER NAME", 244, 204);
+  ctx.font = "700 27px Inter, Arial";
+  drawSingleLineText(ctx, model.ownerName, 244, 236, 420);
+  ctx.font = "700 16px Inter, Arial";
+  ctx.fillText("STATUS", 244, 280);
+  ctx.font = "700 27px Inter, Arial";
+  ctx.fillStyle = model.statusTone === "verified" ? "#86efac" : model.statusTone === "suspended" ? "#fca5a5" : "#fde68a";
+  drawSingleLineText(ctx, statusBadgeCopy(model.statusTone), 244, 312, 420);
 
   const qr = await loadImage(model.qrDataUrl);
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(803, 190, 164, 164);
-  ctx.drawImage(qr, 811, 198, 148, 148);
-
+  ctx.fillRect(785, 106, 190, 190);
+  ctx.drawImage(qr, 793, 114, 174, 174);
   ctx.fillStyle = "#dcfce7";
   ctx.font = "700 20px Inter, Arial";
-  ctx.fillText("Scan to verify", 810, 382);
+  ctx.fillText("Scan to verify", 800, 334);
+
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
+  ctx.fillRect(32, 376, POCKET_CARD_WIDTH_PX - 64, 118);
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "700 16px Inter, Arial";
+  ctx.fillText("BUSINESS ID", 50, 420);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 28px Inter, Arial";
+  drawSingleLineText(ctx, model.businessId, 50, 452, 520);
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "700 16px Inter, Arial";
+  ctx.fillText("EXPIRY DATE", 610, 420);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 28px Inter, Arial";
+  drawSingleLineText(ctx, model.expiryDate, 610, 452, 280);
 
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.fillRect(0, POCKET_CARD_HEIGHT_PX - 56, POCKET_CARD_WIDTH_PX, 56);
@@ -319,75 +345,97 @@ async function drawPocketCard(ctx: CanvasRenderingContext2D, model: CredentialMo
 
 async function drawFullCredential(ctx: CanvasRenderingContext2D, model: CredentialModel) {
   drawBackground(ctx, FULL_EXPORT_WIDTH, FULL_EXPORT_HEIGHT);
+  const pad = 32;
+  const cardW = FULL_EXPORT_WIDTH - pad * 2;
+  const cardH = FULL_EXPORT_HEIGHT - pad * 2;
+  const cardX = pad;
+  const cardY = pad;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 54px Inter, Arial";
-  ctx.fillText("Business Identity Network", 68, 108);
-  ctx.fillStyle = "#d1fae5";
-  ctx.font = "600 34px Inter, Arial";
-  ctx.fillText("Verified Business Identity Credential", 68, 152);
+  ctx.fillStyle = "rgba(255,255,255,0.1)";
+  ctx.fillRect(cardX, cardY, cardW, cardH);
 
-  ctx.fillStyle = model.isVerified ? "rgba(110,231,183,0.3)" : "rgba(253,230,138,0.26)";
-  ctx.fillRect(FULL_EXPORT_WIDTH - 352, 58, 280, 62);
-  ctx.fillStyle = model.isVerified ? "#bbf7d0" : "#fde68a";
+  ctx.fillStyle = "#ecfdf5";
+  ctx.font = "700 46px Inter, Arial";
+  ctx.fillText("BIN", cardX + 26, cardY + 56);
+  ctx.font = "700 34px Inter, Arial";
+  ctx.fillText("Verified Business Identity Credential", cardX + 150, cardY + 56);
+
+  const statusStyles = {
+    verified: { bg: "#34d399", text: "#064e3b" },
+    pending_review: { bg: "#f59e0b", text: "#422006" },
+    suspended: { bg: "#ef4444", text: "#ffffff" },
+  }[model.statusTone];
+  const badgeW = 210;
+  const badgeH = 38;
+  const badgeX = cardX + cardW - badgeW - 24;
+  const badgeY = cardY + 18;
+  ctx.fillStyle = statusStyles.bg;
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 19);
+  ctx.fill();
+  ctx.fillStyle = statusStyles.text;
+  ctx.font = "700 20px Inter, Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(statusBadgeCopy(model.statusTone), badgeX + badgeW / 2, badgeY + 26);
+  ctx.textAlign = "left";
+
+  const topOffset = 94;
+  const stripH = 62;
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.fillRect(cardX + 20, cardY + cardH - stripH - 18, cardW - 40, stripH);
+  ctx.fillStyle = "#ecfdf5";
   ctx.font = "700 30px Inter, Arial";
-  ctx.fillText(model.isVerified ? "BIN Verified" : "Pending Review", FULL_EXPORT_WIDTH - 328, 99);
+  ctx.fillText("BIN Verified • Trusted • Shareable", cardX + 40, cardY + cardH - 42);
 
-  await drawPhoto(ctx, model.passportPhotoUrl, 68, 206, 310, 390, 22);
+  const contentY = cardY + topOffset;
+  const contentH = cardH - topOffset - stripH - 30;
+  const leftW = 260;
+  const centerW = 470;
+  const rightW = 260;
+  const colGap = 26;
+  const leftX = cardX + 24;
+  const centerX = leftX + leftW + colGap;
+  const rightX = centerX + centerW + colGap;
 
-  const panelX = 420;
-  const panelY = 206;
-  ctx.fillStyle = "rgba(0,0,0,0.18)";
-  ctx.fillRect(panelX, panelY, FULL_EXPORT_WIDTH - panelX - 68, 568);
+  await drawPhoto(ctx, model.passportPhotoUrl, leftX, contentY + 8, 236, 290, 16);
+  ctx.fillStyle = "#a7f3d0";
+  ctx.font = "600 15px Inter, Arial";
+  ctx.fillText("BUSINESS CATEGORY", leftX, contentY + 334);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 25px Inter, Arial";
+  drawSingleLineText(ctx, model.businessCategory, leftX, contentY + 364, leftW - 20);
+  ctx.fillStyle = "#a7f3d0";
+  ctx.font = "600 15px Inter, Arial";
+  ctx.fillText("BUSINESS TYPE", leftX, contentY + 402);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 25px Inter, Arial";
+  drawSingleLineText(ctx, model.businessType, leftX, contentY + 432, leftW - 20);
 
-  const rows: Array<[string, string]> = [
-    ["Business Name", model.businessName],
-    ["Owner Name", model.ownerName],
-    ["Email", model.ownerEmail],
-    ["Phone", model.phoneNumber],
-    ["Business Category", model.businessCategory],
-    ["Business Type", model.businessType],
-    ["CAC Number", model.cacNumber],
-    ["Business Address", model.businessAddress],
-    ["Business ID", model.businessId],
-    ["Expiry Date", model.expiryDate],
-  ];
-
-  let y = panelY + 56;
-  for (const [label, value] of rows) {
-    ctx.fillStyle = "#a7f3d0";
-    ctx.font = "600 22px Inter, Arial";
-    ctx.fillText(label, panelX + 28, y);
+  const row = (label: string, value: string, y: number) => {
+    ctx.fillStyle = "rgba(236,253,245,0.7)";
+    ctx.font = "600 15px Inter, Arial";
+    ctx.fillText(label.toUpperCase(), centerX, y);
     ctx.fillStyle = "#ffffff";
-    ctx.font = "700 30px Inter, Arial";
-    ctx.fillText(value, panelX + 28, y + 34, 1230);
-    y += 82;
-  }
+    ctx.font = label === "Business Name" ? "600 40px Inter, Arial" : "500 30px Inter, Arial";
+    drawSingleLineText(ctx, value, centerX, y + 36, centerW - 10);
+  };
+  row("Business Name", model.businessName, contentY + 22);
+  row("Owner Name", model.ownerName, contentY + 104);
+  row("Business ID", model.businessId, contentY + 186);
+  row("Status", statusBadgeCopy(model.statusTone), contentY + 268);
+  row("Expiry Date", model.expiryDate, contentY + 350);
 
   const qr = await loadImage(model.qrDataUrl);
+  const qrSize = 196;
+  const qrFrame = 212;
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(68, 648, 188, 188);
-  ctx.drawImage(qr, 76, 656, 172, 172);
+  ctx.fillRect(rightX + rightW - qrFrame, contentY + 42, qrFrame, qrFrame);
+  ctx.drawImage(qr, rightX + rightW - qrFrame + 8, contentY + 50, qrSize, qrSize);
   ctx.fillStyle = "#dcfce7";
-  ctx.font = "700 26px Inter, Arial";
-  ctx.fillText("Scan to verify this business identity", 280, 716);
-  ctx.font = "500 22px Inter, Arial";
-  ctx.fillText("BIN Verified • Trusted • Shareable", 280, 752);
-
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
-  ctx.fillRect(68, 874, FULL_EXPORT_WIDTH - 136, 170);
-  ctx.fillStyle = "#e2e8f0";
-  ctx.font = "500 22px Inter, Arial";
-  ctx.fillText(
-    "Business Identity Network is an independent business identity and verification network designed to support",
-    90,
-    944,
-  );
-  ctx.fillText("partnerships with public institutions, associations, lenders, and marketplaces.", 90, 976);
-}
-
-function renderVisibleStatusBadge(isVerified: boolean) {
-  return isVerified ? "BIN Verified" : "Pending Review";
+  ctx.font = "700 24px Inter, Arial";
+  ctx.textAlign = "right";
+  ctx.fillText("Scan to verify", rightX + rightW, contentY + 282);
+  ctx.textAlign = "left";
 }
 
 export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
@@ -398,7 +446,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
 
   const model = useMemo<CredentialModel>(() => {
     const displayStatus = formatStatus(props.verificationStatus || "pending_review");
-    const isVerified = displayStatus.toLowerCase() === "verified";
+    const statusTone = resolveStatusTone(props.verificationStatus || "pending_review");
 
     return {
       businessName: props.businessName || "Not provided",
@@ -409,9 +457,9 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       cacNumber: props.cacNumber || "Not provided",
       phoneNumber: props.phoneNumber || "Not provided",
       businessAddress: props.businessAddress || "Not provided",
-      businessId: props.msmeId,
+      businessId: normalizeBusinessId(props.msmeId),
       displayStatus,
-      isVerified,
+      statusTone,
       expiryDate: "April 2027",
       passportPhotoUrl: props.passportPhotoUrl,
       verifyUrl: props.verifyUrl,
@@ -481,9 +529,8 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
 
       await drawPocketCard(ctx, model);
       const pngBlob = await toPngBlob(canvas);
-      const safeId = sanitizeFileSegment(model.businessId || "credential");
-      downloadBlob(pngBlob, `business-identity-network-${safeId}-pocket-id.png`);
-      setNotice({ tone: "success", message: "Pocket ID PNG downloaded." });
+      downloadBlob(pngBlob, "credential-idcard.png");
+      setNotice({ tone: "success", message: "Wallet ID Card PNG downloaded." });
     } catch (error) {
       console.error("[business-identity-export][png_failed]", error);
       setNotice({ tone: "error", message: "Could not generate pocket PNG. Please retry." });
@@ -527,9 +574,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
     <section className="space-y-6 pb-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-700">
-            {model.isVerified ? "Verified MSME" : "Pending MSME"}
-          </p>
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-700">{statusBadgeCopy(model.statusTone)} MSME</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Business Identity Credential</h1>
         </div>
         <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
@@ -555,7 +600,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
             disabled={busy !== "none"}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
           >
-            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download PNG (Pocket Credential)"}
+            <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download ID Card (Wallet Size)"}
           </button>
         </div>
       </header>
@@ -574,86 +619,86 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
         </p>
       ) : null}
 
-      <article className="relative overflow-hidden rounded-2xl border border-emerald-300/20 bg-[linear-gradient(135deg,#063C2E,#0A5F47)] p-4 shadow-2xl ring-1 ring-white/20 sm:p-7">
+      <article className="relative overflow-x-auto rounded-2xl border border-emerald-300/20 bg-[linear-gradient(135deg,#063C2E,#0A5F47)] p-4 shadow-2xl ring-1 ring-white/20 sm:p-7">
         <div className="pointer-events-none absolute inset-0 opacity-10 [background:repeating-linear-gradient(135deg,rgba(255,255,255,.14)_0_2px,transparent_2px_16px)]" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background:radial-gradient(circle_at_80%_22%,#fff_0,transparent_38%),radial-gradient(circle_at_88%_78%,#fff_0,transparent_26%)]" />
         <div className="pointer-events-none absolute bottom-6 right-6 h-28 w-28 rounded-full border border-emerald-100/20 bg-white/5 sm:h-44 sm:w-44" />
 
-        <div className="relative z-10 space-y-4" id="msme-id-card-full-view">
-          <div className="flex items-start justify-between gap-4 border-b border-white/20 pb-4">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-emerald-100">Business Identity Network</p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-5xl">Business Identity Network</h2>
-              <p className="mt-1 text-sm text-emerald-50 sm:text-2xl">Verified Business Identity Credential</p>
+        <div className="relative z-10" id="msme-id-card-full-view">
+          <div className="mx-auto h-[700px] w-[1120px] rounded-2xl border border-emerald-100/20 bg-black/20 p-8 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <p className="text-4xl font-bold text-emerald-100">BIN</p>
+                <p className="text-4xl font-bold text-white">Verified Business Identity Credential</p>
+              </div>
+              <span
+                className={`rounded-full px-4 py-1 text-base font-bold ${
+                  model.statusTone === "verified"
+                    ? "bg-emerald-300 text-emerald-950"
+                    : model.statusTone === "suspended"
+                      ? "bg-rose-500 text-white"
+                      : "bg-amber-400 text-amber-950"
+                }`}
+              >
+                {statusBadgeCopy(model.statusTone)}
+              </span>
             </div>
-            <span
-              className={`mt-1 inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide backdrop-blur ${
-                model.isVerified
-                  ? "border-emerald-100/60 bg-emerald-300/20 text-emerald-50"
-                  : "border-amber-100/60 bg-amber-300/20 text-amber-50"
-              }`}
-            >
-              {renderVisibleStatusBadge(model.isVerified)}
-            </span>
-          </div>
 
-          <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-            <div className="space-y-3">
-              <div className="overflow-hidden rounded-2xl border border-emerald-100/40 bg-black/20 p-1 backdrop-blur-sm">
-                <PassportPhoto
-                  src={model.passportPhotoUrl}
-                  alt="Business logo or representative photo"
-                  className="h-72 w-full rounded-xl object-cover"
-                  placeholderClassName="flex h-72 flex-col items-center justify-center rounded-xl bg-black/30 text-emerald-100"
-                  placeholderText="Photo/logo unavailable"
-                />
+            <div className="mt-8 grid h-[520px] grid-cols-[260px_1fr_260px] gap-6">
+              <div className="space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-emerald-100/40 bg-black/20 p-1">
+                  <PassportPhoto
+                    src={model.passportPhotoUrl}
+                    alt="Business logo or representative photo"
+                    className="h-[310px] w-full rounded-xl object-cover"
+                    placeholderClassName="flex h-[310px] flex-col items-center justify-center rounded-xl bg-black/30 text-emerald-100"
+                    placeholderText="Photo/logo unavailable"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Business category</p>
+                  <p className="truncate text-lg font-medium text-white">{model.businessCategory}</p>
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Business type</p>
+                  <p className="truncate text-lg font-medium text-white">{model.businessType}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Business name</p>
+                  <p className="truncate text-3xl font-semibold text-white">{model.businessName}</p>
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Owner name</p>
+                  <p className="truncate text-lg font-medium text-white">{model.ownerName}</p>
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Business ID</p>
+                  <p className="truncate text-lg font-medium text-white">{model.businessId}</p>
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Status</p>
+                  <p className="text-lg font-medium text-white">{statusBadgeCopy(model.statusTone)}</p>
+                </div>
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-70 text-emerald-100">Expiry date</p>
+                  <p className="text-lg font-medium text-white">{model.expiryDate}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end justify-start pt-6">
+                <div className="rounded-xl bg-white p-3">
+                  <img src={model.qrDataUrl} alt="Verification QR" className="h-[180px] w-[180px]" />
+                </div>
+                <p className="mt-3 text-lg font-medium text-emerald-50">Scan to verify</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200/30 bg-black/15 p-4 backdrop-blur-sm sm:p-6">
-              <p className="text-xs text-emerald-100/80">Business Name</p>
-              <p className="text-2xl font-semibold text-white">{model.businessName}</p>
-
-              <div className="mt-4 grid grid-cols-1 gap-x-10 gap-y-4 text-emerald-50 sm:grid-cols-2">
-                <div><p className="text-xs text-emerald-100/80">Owner Name</p><p className="text-base font-medium">{model.ownerName}</p></div>
-                <div><p className="text-xs text-emerald-100/80">Email</p><p className="text-base font-medium [overflow-wrap:anywhere]">{model.ownerEmail}</p></div>
-                <div><p className="text-xs text-emerald-100/80">Business Category</p><p className="text-base font-medium">{model.businessCategory}</p></div>
-                <div><p className="text-xs text-emerald-100/80">Business Type</p><p className="text-base font-medium">{model.businessType}</p></div>
-                <div><p className="text-xs text-emerald-100/80">CAC Number</p><p className="text-base font-medium">{model.cacNumber}</p></div>
-                <div><p className="text-xs text-emerald-100/80">Phone Number</p><p className="text-base font-medium">{model.phoneNumber}</p></div>
-                <div className="sm:col-span-2"><p className="text-xs text-emerald-100/80">Business Address</p><p className="text-base font-medium">{model.businessAddress}</p></div>
-              </div>
+            <div className="mt-2 rounded-xl bg-black/25 px-5 py-3 text-lg font-medium text-emerald-50">
+              BIN Verified • Trusted • Shareable
             </div>
-          </div>
-
-          <div className="grid gap-3 rounded-2xl border border-emerald-200/35 bg-black/20 p-4 backdrop-blur sm:grid-cols-1 md:grid-cols-[1.2fr_1fr_0.9fr_0.7fr] md:items-center">
-            <div className="flex items-center gap-3 border-emerald-100/25 md:border-r md:pr-4">
-              <div className="rounded-lg bg-white p-1.5">
-                <img src={model.qrDataUrl} alt="Verification QR" className="h-20 w-20" />
-              </div>
-              <div className="text-emerald-50">
-                <p className="text-xs uppercase tracking-widest text-emerald-100">Scan to verify this business identity</p>
-                <p className="text-sm">Instantly verify this credential on the Business Identity Network registry.</p>
-              </div>
-            </div>
-            <div className="md:border-r md:border-emerald-100/25 md:pr-4">
-              <p className="text-xs uppercase tracking-widest text-emerald-100">Business ID</p>
-              <p className="text-2xl font-semibold text-white">{model.businessId}</p>
-            </div>
-            <div className="md:border-r md:border-emerald-100/25 md:pr-4">
-              <p className="text-xs uppercase tracking-widest text-emerald-100">Status</p>
-              <p className={`text-xl font-semibold ${model.isVerified ? "text-emerald-200" : "text-amber-200"}`}>
-                {renderVisibleStatusBadge(model.isVerified)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-emerald-100">Expiry Date</p>
-              <p className="text-2xl font-semibold text-white">{model.expiryDate}</p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200/20 bg-black/25 px-4 py-3 text-xs text-emerald-50/95">
-            Business Identity Network is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.
           </div>
         </div>
       </article>

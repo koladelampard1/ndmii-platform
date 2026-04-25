@@ -69,7 +69,10 @@ async function reviewAction(formData: FormData) {
   }, { onConflict: "msme_id" });
 
   if (action === "approve") {
-    const ndmiiId = msme?.msme_id?.startsWith("NDMII-") ? msme.msme_id : generateMsmeId(msme?.state ?? "LAG");
+    const existingId = msme?.msme_id ?? "";
+    const ndmiiId = existingId.startsWith("BIN-") || existingId.startsWith("NDMII-")
+      ? existingId.replace(/^NDMII-/, "BIN-")
+      : generateMsmeId(msme?.state ?? "LAG");
     update.verification_status = "verified";
     update.review_status = "approved";
     update.compliance_tag = "fully compliant";
