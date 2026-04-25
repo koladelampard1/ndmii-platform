@@ -30,9 +30,8 @@ export default async function AuditTrailPage({
   if (params.from) query = query.gte("created_at", params.from);
   if (params.to) query = query.lte("created_at", params.to);
 
-  const { data: logsRaw } = await query;
-  const logs = (logsRaw as AuditLogRow[] | null) ?? [];
-  const filtered = logs.filter((log) => (!params.role || log.users?.role === params.role));
+  const { data } = await query;
+  const filtered = ((data ?? []) as AuditLogRow[]).filter((log) => (!params.role || log.users?.role === params.role));
 
   return (
     <section className="space-y-5">
