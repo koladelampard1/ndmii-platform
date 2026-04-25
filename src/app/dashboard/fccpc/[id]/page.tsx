@@ -4,6 +4,30 @@ import { logActivity } from "@/lib/data/operations";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
+type ComplaintRecord = {
+  id: string;
+  msme_id: string | null;
+  provider_profile_id?: string | null;
+  provider_id?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  status?: string | null;
+  severity?: string | null;
+  complaint_type?: string | null;
+  regulator_target?: string | null;
+  investigation_notes?: string | null;
+  msmes?: {
+    id?: string;
+    msme_id?: string | null;
+    business_name?: string | null;
+    verification_status?: string | null;
+    flagged?: boolean | null;
+    suspended?: boolean | null;
+    compliance_tag?: string | null;
+    enforcement_note?: string | null;
+  } | null;
+};
+
 function devDetailLog(message: string, payload?: Record<string, unknown>) {
   if (process.env.NODE_ENV !== "production") {
     console.info(`[ndmii][complaint-detail] ${message}`, payload ?? {});
@@ -60,7 +84,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
     detailQueryId,
   });
 
-  const { data: complaintFromRichQuery, error: richQueryError } = await supabase
+  const { data: complaintFromRichQueryRaw, error: richQueryError } = await supabase
     .from("complaints")
     .select("*,msmes(id,msme_id,business_name,verification_status,flagged,suspended,compliance_tag,enforcement_note)")
     .eq("id", detailQueryId)
@@ -73,10 +97,12 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
     });
   }
 
-  let complaint = complaintFromRichQuery;
+  const complaintFromRichQuery = complaintFromRichQueryRaw as ComplaintRecord | null;
+
+  let complaint: ComplaintRecord | null = complaintFromRichQuery;
 
   if (!complaint) {
-    const { data: complaintFallback, error: fallbackError } = await supabase
+    const { data: complaintFallbackRaw, error: fallbackError } = await supabase
       .from("complaints")
       .select("id,msme_id,provider_profile_id,provider_id,summary,description,status,severity,complaint_type,regulator_target")
       .eq("id", detailQueryId)
@@ -89,6 +115,7 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
       });
     }
 
+    const complaintFallback = complaintFallbackRaw as ComplaintRecord | null;
     complaint = complaintFallback;
   }
 
@@ -100,17 +127,24 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
 
   if (!complaint) return <div className="rounded border bg-white p-6">Complaint record not found.</div>;
   const providerId = complaint.provider_profile_id ?? complaint.provider_id;
-  const { data: provider } = await supabase
+  const msmeLookupId = complaint.msme_id ?? "";
+  const { data: providerRaw } = await supabase
     .from("provider_profiles")
     .select("id,display_name")
     .eq("id", providerId ?? "")
     .maybeSingle();
 
-  const [{ data: activity }, { data: compliance }, { data: tax }] = await Promise.all([
+  const provider = providerRaw as { display_name?: string | null } | null;
+
+  const [{ data: activityRaw }, { data: complianceRaw }, { data: taxRaw }] = await Promise.all([
     supabase.from("activity_logs").select("action,metadata,created_at").in("entity_type", ["complaint", "msme"]).order("created_at", { ascending: false }).limit(12),
-    supabase.from("compliance_profiles").select("score,overall_status,risk_level").eq("msme_id", complaint.msme_id).maybeSingle(),
-    supabase.from("tax_profiles").select("tax_category,outstanding_amount,compliance_status").eq("msme_id", complaint.msme_id).maybeSingle(),
+    supabase.from("compliance_profiles").select("score,overall_status,risk_level").eq("msme_id", msmeLookupId).maybeSingle(),
+    supabase.from("tax_profiles").select("tax_category,outstanding_amount,compliance_status").eq("msme_id", msmeLookupId).maybeSingle(),
   ]);
+
+  const activity = (activityRaw as { action?: string; created_at?: string }[] | null) ?? [];
+  const compliance = complianceRaw as { score?: number; overall_status?: string; risk_level?: string } | null;
+  const tax = taxRaw as { tax_category?: string; outstanding_amount?: number | string; compliance_status?: string } | null;
 
   return (
     <section className="space-y-5">
@@ -133,16 +167,16 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
 
         <article className="rounded-xl border bg-white p-4">
           <h2 className="font-semibold">Linked MSME</h2>
-          <p className="mt-2 text-sm">{(complaint.msmes as any)?.business_name}</p>
-          <p className="text-xs text-slate-500">{(complaint.msmes as any)?.msme_id}</p>
+          <p className="mt-2 text-sm">{complaint.msmes?.business_name}</p>
+          <p className="text-xs text-slate-500">{complaint.msmes?.msme_id}</p>
           <p className="text-xs text-slate-500">Provider: {provider?.display_name ?? "Not linked"}</p>
-          <p className="mt-2 text-xs">Business Status: {(complaint.msmes as any)?.verification_status}</p>
-          <p className="text-xs">Compliance tag: {(complaint.msmes as any)?.compliance_tag ?? "partially compliant"}</p>
+          <p className="mt-2 text-xs">Business Status: {complaint.msmes?.verification_status}</p>
+          <p className="text-xs">Compliance tag: {complaint.msmes?.compliance_tag ?? "partially compliant"}</p>
           <p className="text-xs">Tax summary: {tax ? `${tax.tax_category} • Outstanding ₦${Number(tax.outstanding_amount).toLocaleString()} • ${tax.compliance_status}` : "No tax profile"}</p>
           <p className="mt-2 text-xs">Compliance profile: {compliance ? `Score ${compliance.score}/100 • ${compliance.overall_status} • ${compliance.risk_level}` : "Not available"}</p>
           <div className="mt-3 flex gap-2">
-            {(complaint.msmes as any)?.flagged && <StatusBadge status="warning" label="Flagged" />}
-            {(complaint.msmes as any)?.suspended && <StatusBadge status="critical" label="Suspended" />}
+            {complaint.msmes?.flagged && <StatusBadge status="warning" label="Flagged" />}
+            {complaint.msmes?.suspended && <StatusBadge status="critical" label="Suspended" />}
           </div>
         </article>
       </div>
@@ -168,11 +202,11 @@ export default async function ComplaintDetailPage({ params, searchParams }: { pa
       <article className="rounded-xl border bg-white p-4">
         <h2 className="font-semibold">Complaint & Enforcement Activity</h2>
         <div className="mt-3 space-y-2 text-sm">
-          {(activity ?? []).length === 0 && <p className="text-slate-500">No activity logs yet.</p>}
-          {(activity ?? []).map((item, idx) => (
+          {activity.length === 0 && <p className="text-slate-500">No activity logs yet.</p>}
+          {activity.map((item, idx) => (
             <div key={idx} className="rounded border p-2">
               <p className="font-medium">{item.action}</p>
-              <p className="text-xs text-slate-600">{new Date(item.created_at).toLocaleString()}</p>
+              <p className="text-xs text-slate-600">{new Date(item.created_at ?? Date.now()).toLocaleString()}</p>
             </div>
           ))}
         </div>
