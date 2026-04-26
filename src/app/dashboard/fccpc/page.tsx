@@ -117,15 +117,31 @@ async function fetchComplaintQueue(role: string, params: Record<string, string |
     queue = (data ?? []) as ComplaintQueueRow[];
   }
 
-  if (params.status) {
-    const requestedStatus = normalizeFccpcStatus(params.status);
+  const cleanParam = (value?: string) => {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return "";
+    const normalized = trimmed.toLowerCase();
+    if (["all statuses", "all severities", "all officers", "all sectors", "all states", "all"].includes(normalized)) {
+      return "";
+    }
+    return trimmed;
+  };
+
+  const statusParam = cleanParam(params.status);
+  const stateParam = cleanParam(params.state);
+  const sectorParam = cleanParam(params.sector);
+  const severityParam = cleanParam(params.severity);
+  const assignedParam = cleanParam(params.assigned);
+
+  if (statusParam) {
+    const requestedStatus = normalizeFccpcStatus(statusParam);
     queue = queue.filter((row) => normalizeFccpcStatus(row.status) === requestedStatus);
   }
-  if (params.state) queue = queue.filter((row) => (row.state ?? "") === params.state);
-  if (params.sector) queue = queue.filter((row) => (row.sector ?? "") === params.sector);
-  if (params.severity) queue = queue.filter((row) => (row.severity ?? "") === params.severity);
-  if (params.assigned) {
-    queue = queue.filter((row) => (row.assigned_officer_user_id ?? row.assigned_officer_id ?? "") === params.assigned);
+  if (stateParam) queue = queue.filter((row) => (row.state ?? "") === stateParam);
+  if (sectorParam) queue = queue.filter((row) => (row.sector ?? "") === sectorParam);
+  if (severityParam) queue = queue.filter((row) => (row.severity ?? "") === severityParam);
+  if (assignedParam) {
+    queue = queue.filter((row) => (row.assigned_officer_user_id ?? row.assigned_officer_id ?? "") === assignedParam);
   }
 
   if (role !== "admin") {
@@ -237,18 +253,18 @@ export default async function FccpcPage({
   ];
 
   return (
-    <section className="space-y-5 pb-8">
-      <header className="rounded-3xl border border-emerald-900/20 bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-800 px-5 py-6 text-white shadow-xl md:px-8">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <section className="w-full max-w-none min-w-0 space-y-4 overflow-x-hidden pb-6">
+      <header className="w-full min-w-0 overflow-hidden rounded-2xl border border-emerald-900/20 bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-800 px-4 py-5 text-white shadow-sm md:px-6">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">FCCPC Workspace</p>
-            <h1 className="mt-2 text-2xl font-semibold md:text-3xl">FCCPC Enforcement Intelligence Console</h1>
-            <p className="mt-2 max-w-3xl text-sm text-emerald-100">
+            <h1 className="mt-1 text-xl font-semibold md:text-2xl">FCCPC Enforcement Intelligence Console</h1>
+            <p className="mt-1 max-w-3xl text-sm text-emerald-100">
               Operational oversight for consumer complaints, investigations and regulatory actions.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/20 bg-white/10 p-3 text-xs text-emerald-50">
-            <p className="font-medium">Query Source: {querySource}</p>
+          <div className="min-w-0 rounded-xl border border-white/20 bg-white/10 p-2.5 text-xs text-emerald-50">
+            <p className="truncate font-medium">Query Source: {querySource}</p>
             <p className="mt-1">Regulatory workflow console</p>
           </div>
         </div>
@@ -258,31 +274,31 @@ export default async function FccpcPage({
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Complaint action saved successfully.</p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid min-w-0 gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {kpis.map(({ label, value, icon: Icon, tone }) => (
-          <article key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <article key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-slate-600">{label}</p>
-              <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}>
+              <p className="truncate text-xs font-medium text-slate-600 sm:text-sm">{label}</p>
+              <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}>
                 <Icon className="h-4 w-4" />
               </span>
             </div>
-            <p className="mt-3 text-3xl font-semibold text-slate-900">{value}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
           </article>
         ))}
       </div>
 
-      <form className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5" method="GET">
+      <form className="w-full min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4" method="GET">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <Filter className="h-4 w-4 text-emerald-700" />
           Structured Filters
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="space-y-1 text-xs font-medium text-slate-600">
             Search MSME / Complaint ID
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input name="q" placeholder="Search MSME, Complaint ID..." className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+              <input name="q" placeholder="Search MSME, Complaint ID..." className="w-full min-w-0 rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
             </div>
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
@@ -306,11 +322,11 @@ export default async function FccpcPage({
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
             Sector
-            <input name="sector" defaultValue={params.sector ?? ""} placeholder="All Sectors" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input name="sector" defaultValue={params.sector ?? ""} placeholder="All Sectors" className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
             State
-            <input name="state" defaultValue={params.state ?? ""} placeholder="All States" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input name="state" defaultValue={params.state ?? ""} placeholder="All States" className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
             Assigned Officer
@@ -323,7 +339,7 @@ export default async function FccpcPage({
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
             Complaint Type
-            <input name="complaint_type" placeholder="All Types" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input name="complaint_type" placeholder="All Types" className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 text-xs font-medium text-slate-600">
             MSME Verification Status
@@ -363,7 +379,7 @@ export default async function FccpcPage({
         </div>
       </form>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Complaints ({complaints.length})</h2>
@@ -379,8 +395,8 @@ export default async function FccpcPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-[1300px] w-full text-left text-sm">
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-3 py-3"><input type="checkbox" className="h-4 w-4 rounded border-slate-300" /></th>
@@ -421,21 +437,21 @@ export default async function FccpcPage({
                 return (
                   <tr key={row.id} className="border-t border-slate-100 align-top">
                     <td className="px-3 py-3"><input type="checkbox" className="mt-1 h-4 w-4 rounded border-slate-300" /></td>
-                    <td className="space-y-1 px-3 py-3">
-                      <p className="font-semibold text-slate-900">{row.summary ?? row.description ?? "Complaint submitted for regulatory review."}</p>
+                    <td className="space-y-1 px-3 py-3 min-w-0">
+                      <p className="line-clamp-2 break-words font-semibold text-slate-900">{row.summary ?? row.description ?? "Complaint submitted for regulatory review."}</p>
                       <p className="text-xs font-medium text-blue-600">{row.complaint_type ?? "General Complaint"}</p>
-                      <p className="text-xs text-slate-500">{row.state ?? "Unknown State"} • ID: {complaintId || "Unavailable"}</p>
+                      <p className="text-xs text-slate-500 break-words">{row.state ?? "Unknown State"} • ID: {complaintId || "Unavailable"}</p>
                       <p className="text-xs text-slate-500">Submitted: {row.created_at ? new Date(row.created_at).toLocaleDateString() : "Unknown date"}</p>
                     </td>
-                    <td className="space-y-1 px-3 py-3">
-                      <p className="font-medium text-slate-900">{(row.msmes as any)?.business_name ?? row.provider_business_name ?? "Unknown business"}</p>
-                      <p className="text-xs text-slate-500">{(row.msmes as any)?.msme_id ?? "MSME pending linkage"}</p>
+                    <td className="space-y-1 px-3 py-3 min-w-0">
+                      <p className="font-medium text-slate-900 break-words">{(row.msmes as any)?.business_name ?? row.provider_business_name ?? "Unknown business"}</p>
+                      <p className="text-xs text-slate-500 truncate">{(row.msmes as any)?.msme_id ?? "MSME pending linkage"}</p>
                       <p className="text-xs">
                         <span className={`rounded-full border px-2 py-0.5 ${verificationStatus === "Verified" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                           {verificationStatus}
                         </span>
                       </p>
-                      <p className="text-xs text-slate-500">Provider: {providerDisplayName}</p>
+                      <p className="text-xs text-slate-500 truncate">Provider: {providerDisplayName}</p>
                     </td>
                     <td className="space-y-1 px-3 py-3">
                       <span className={`rounded-full border px-2 py-1 text-xs font-medium capitalize ${severityTone(row.severity)}`}>{normalizedSeverity}</span>
@@ -466,11 +482,11 @@ export default async function FccpcPage({
                         {fccpcStatusLabel(row.status)}
                       </span>
                     </td>
-                    <td className="space-y-2 px-3 py-3">
-                      <form action={complaintAction} className="flex items-center gap-2">
+                    <td className="space-y-2 px-3 py-3 min-w-0">
+                      <form action={complaintAction} className="flex min-w-0 items-center gap-2">
                         <input type="hidden" name="complaint_id" value={complaintId} />
                         <input type="hidden" name="kind" value="assign" />
-                        <select name="assigned_officer_user_id" className="rounded-lg border border-slate-300 px-2 py-1 text-xs">
+                        <select name="assigned_officer_user_id" className="min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-xs">
                           <option value="">Unassigned</option>
                           {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.full_name}</option>)}
                         </select>
@@ -478,10 +494,10 @@ export default async function FccpcPage({
                           <UserRound className="h-3.5 w-3.5" /> Assign Officer
                         </button>
                       </form>
-                      <form action={complaintAction} className="flex items-center gap-2">
+                      <form action={complaintAction} className="flex min-w-0 items-center gap-2">
                         <input type="hidden" name="complaint_id" value={complaintId} />
                         <input type="hidden" name="kind" value="status" />
-                        <select name="status" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" defaultValue={normalizeFccpcStatus(row.status)}>
+                        <select name="status" className="min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-xs" defaultValue={normalizeFccpcStatus(row.status)}>
                           {FCCPC_STATUS_OPTIONS.map((status) => (
                             <option key={status} value={status}>{fccpcStatusLabel(status)}</option>
                           ))}
@@ -506,6 +522,59 @@ export default async function FccpcPage({
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="space-y-3 p-3 lg:hidden">
+          {complaints.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+              No complaints found. Queue is currently clear.
+            </div>
+          )}
+          {complaints.map((row) => {
+            const complaintId = String(row.id ?? "").trim();
+            const providerRecord = providerById.get((row.provider_profile_id ?? row.provider_id) as string);
+            const providerDisplayName = typeof providerRecord?.display_name === "string" ? providerRecord.display_name : "Not linked";
+            const assignedOfficerName = (() => {
+              const officer = officers.find((x) => x.id === (row.assigned_officer_user_id ?? row.assigned_officer_id));
+              return typeof officer?.full_name === "string" ? officer.full_name : "Unassigned";
+            })();
+            const age = getCaseAge(row.created_at);
+
+            return (
+              <article key={`mobile-${row.id}`} className="min-w-0 space-y-2 rounded-lg border border-slate-200 p-3">
+                <p className="line-clamp-2 break-words text-sm font-semibold text-slate-900">{row.summary ?? row.description ?? "Complaint submitted for regulatory review."}</p>
+                <p className="text-xs text-slate-500 break-words">ID: {complaintId || "Unavailable"} • {row.state ?? "Unknown State"}</p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className={`rounded-full border px-2 py-0.5 ${severityTone(row.severity)}`}>{row.severity ?? "medium"}</span>
+                  <span className={`rounded-full border px-2 py-0.5 ${statusTone(row.status)}`}>{fccpcStatusLabel(row.status)}</span>
+                </div>
+                <p className="text-xs text-slate-600">MSME: {(row.msmes as any)?.msme_id ?? "Pending linkage"}</p>
+                <p className="text-xs text-slate-600 truncate">Provider: {providerDisplayName}</p>
+                <p className="text-xs text-slate-600">Assigned: {assignedOfficerName}</p>
+                <p className="text-xs text-slate-600">Case age: {age.label}</p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <form action={complaintAction} className="flex min-w-0 items-center gap-2">
+                    <input type="hidden" name="complaint_id" value={complaintId} />
+                    <input type="hidden" name="kind" value="status" />
+                    <select name="status" className="max-w-[11rem] rounded-lg border border-slate-300 px-2 py-1 text-xs" defaultValue={normalizeFccpcStatus(row.status)}>
+                      {FCCPC_STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>{fccpcStatusLabel(status)}</option>
+                      ))}
+                    </select>
+                    <button className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700">Update</button>
+                  </form>
+                  {complaintId && (
+                    <Link
+                      href={`/dashboard/fccpc/${complaintId}?qid=${encodeURIComponent(complaintId)}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"
+                    >
+                      <Flag className="h-3.5 w-3.5" /> Open Case
+                    </Link>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
     </section>
