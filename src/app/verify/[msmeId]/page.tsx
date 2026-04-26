@@ -67,7 +67,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
   const registryStatus = msme.suspended ? "Suspended" : msme.flagged ? "Flagged" : "Good Standing";
 
   return (
-    <main className="bg-slate-50 px-6 py-10">
+    <main className="bg-slate-50 px-4 py-8 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-5xl space-y-6">
         <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <Link href="/" className="inline-flex items-center gap-1 hover:text-slate-700">

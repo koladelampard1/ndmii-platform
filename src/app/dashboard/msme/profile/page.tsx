@@ -88,7 +88,7 @@ export default async function MsmeProfileOverviewPage() {
 
   return (
     <section className="space-y-6 bg-slate-50/60">
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1.5">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">My Business Profile</h1>
           <p className="text-sm text-slate-600 md:text-base">Manage your business information and keep your profile up to date.</p>
@@ -138,7 +138,7 @@ export default async function MsmeProfileOverviewPage() {
             <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm sm:grid-cols-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">MSME ID</p>
-                <p className="mt-1 font-semibold text-slate-900">{valueOrFallback(workspace.msme.msme_id)}</p>
+                <p className="mt-1 break-all font-semibold text-slate-900">{valueOrFallback(workspace.msme.msme_id)}</p>
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Member Since</p>
@@ -207,7 +207,7 @@ export default async function MsmeProfileOverviewPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <article className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-5 flex items-center justify-between gap-3">
             <h3 className="text-xl font-semibold text-slate-900">Business Information</h3>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Core profile data</span>

@@ -283,7 +283,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+    <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-10 lg:px-8">
       <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
         <aside className="rounded-2xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-xl lg:p-8">
           <h1 className="text-3xl font-semibold leading-tight">Join the Digital Business Identity Network (DBIN)</h1>

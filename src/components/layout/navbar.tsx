@@ -15,7 +15,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
         <Link href="/" className="text-lg font-semibold tracking-tight">
           Digital Business Identity Network (DBIN)
         </Link>
-        <nav className="flex flex-wrap items-center gap-3">
+        <nav className="flex w-full flex-wrap items-center gap-2 text-xs sm:w-auto sm:gap-3 sm:text-sm">
           <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">
             Marketplace
           </Link>
@@ -49,7 +49,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
             </>
           ) : (
             <>
-              <Link href="/register/msme">
+              <Link href="/register/msme" className="sm:ml-1">
                 <Button size="sm" className="bg-emerald-500 text-emerald-950 hover:bg-emerald-400">Register</Button>
               </Link>
               <Link href="/login">

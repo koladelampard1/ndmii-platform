@@ -84,7 +84,7 @@ export default async function LandingPage() {
         <div className="pointer-events-none absolute -left-20 top-28 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
         <div className="pointer-events-none absolute -right-8 top-8 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
 
-        <header className="relative mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-5">
+        <header className="relative mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <Link href="/" className="inline-flex items-center gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/90 text-lg font-extrabold">DBIN</span>
             <span className="text-sm font-semibold leading-tight md:text-base">Digital Business Identity Network (DBIN)</span>
@@ -99,18 +99,18 @@ export default async function LandingPage() {
             <Link href="/contact" className="transition hover:text-white">Contact</Link>
           </nav>
 
-          <div className="flex items-center gap-2">
-            <Link href="/login" className="inline-flex h-9 items-center rounded-md border border-white/30 px-3 text-sm font-medium text-white transition hover:bg-white/10">Sign in</Link>
-            <Link href="/register" className="inline-flex h-9 items-center rounded-md bg-emerald-400 px-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300">Register</Link>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Link href="/login" className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-white/30 px-3 text-sm font-medium text-white transition hover:bg-white/10 sm:flex-none">Sign in</Link>
+            <Link href="/register" className="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-emerald-400 px-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300 sm:flex-none">Register</Link>
           </div>
         </header>
 
-        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-6 pb-12 pt-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pb-16">
+        <div className="relative mx-auto grid w-full max-w-7xl gap-8 px-4 pb-12 pt-6 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pb-16">
           <div>
             <p className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-1 text-xs font-semibold tracking-[0.18em] text-emerald-100">
               TRUSTED • VERIFIED • SHAREABLE
             </p>
-            <h1 className="mt-5 text-4xl font-semibold leading-[1.05] md:text-6xl">
+            <h1 className="mt-5 text-3xl font-semibold leading-[1.08] sm:text-4xl md:text-6xl">
               Verify businesses.
               <br />
               Build trust.
@@ -121,9 +121,9 @@ export default async function LandingPage() {
               Digital Business Identity Network (DBIN) helps MSMEs, associations, marketplaces, lenders, and institutions create trusted business identities, verify credentials, and connect with reliable businesses.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <Link href="/register" className="inline-flex h-11 items-center rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300">Register Your Business</Link>
-              <Link href="/marketplace" className="inline-flex h-11 items-center rounded-md border border-white/35 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/15">Find Verified Businesses</Link>
-              <Link href="/verify" className="inline-flex h-11 items-center gap-1 rounded-md border border-white/35 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10">
+              <Link href="/register" className="inline-flex h-11 w-full items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300 sm:w-auto">Register Your Business</Link>
+              <Link href="/marketplace" className="inline-flex h-11 w-full items-center justify-center rounded-md border border-white/35 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/15 sm:w-auto">Find Verified Businesses</Link>
+              <Link href="/verify" className="inline-flex h-11 w-full items-center justify-center gap-1 rounded-md border border-white/35 bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto">
                 Verify a Business ID <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -140,11 +140,11 @@ export default async function LandingPage() {
               <span className="text-xs font-semibold text-emerald-100">DBIN</span>
             </div>
 
-            <div className="mt-5 grid grid-cols-[84px_1fr_auto] gap-4 rounded-2xl border border-emerald-200/25 bg-emerald-950/30 p-4">
+            <div className="mt-5 grid gap-4 rounded-2xl border border-emerald-200/25 bg-emerald-950/30 p-4 sm:grid-cols-[84px_1fr_auto]">
               <div className="flex h-24 w-20 items-center justify-center rounded-xl bg-gradient-to-b from-cyan-100 to-emerald-100 text-emerald-950">
                 <Users className="h-7 w-7" />
               </div>
-              <div className="space-y-1 text-sm">
+              <div className="min-w-0 space-y-1 text-sm">
                 <h2 className="text-base font-semibold text-white">Kado Engine Works Limited</h2>
                 <p className="text-emerald-100">Category: Automobile</p>
                 <p className="text-emerald-100">Business Type: Rewiring</p>
@@ -152,7 +152,7 @@ export default async function LandingPage() {
                 <p className="text-emerald-100">Owner: Tunde Adeyemi</p>
                 <p className="inline-flex items-center gap-1 text-emerald-200"><BadgeCheck className="h-4 w-4" /> Status: Verified</p>
               </div>
-              <div className="grid place-items-center gap-2">
+              <div className="grid place-items-start gap-2 sm:place-items-center">
                 <div className="rounded-lg bg-white p-2 text-slate-900">
                   <QrCode className="h-12 w-12" />
                 </div>

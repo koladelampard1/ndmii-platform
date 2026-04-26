@@ -33,7 +33,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
     <main className="min-h-screen bg-slate-100 text-slate-900">
       <Navbar />
 
-      <section className="relative overflow-hidden border-b border-emerald-900/30 bg-gradient-to-br from-emerald-950 via-emerald-950 to-emerald-900 px-6 pb-24 pt-14 text-white">
+      <section className="relative overflow-hidden border-b border-emerald-900/30 bg-gradient-to-br from-emerald-950 via-emerald-950 to-emerald-900 px-4 pb-20 pt-10 text-white sm:px-6 sm:pb-24 sm:pt-14">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_38%)]" />
         <div className="pointer-events-none absolute -right-24 top-6 h-56 w-56 rounded-full border border-emerald-400/25 bg-emerald-400/10 blur-sm" />
 
@@ -42,7 +42,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
             <p className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">
               DBIN Public Verification
             </p>
-            <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">Verify a Business Identity Credential</h1>
+            <h1 className="mt-5 text-3xl font-semibold leading-tight sm:text-4xl md:text-5xl">Verify a Business Identity Credential</h1>
             <p className="mt-4 max-w-2xl text-base text-emerald-50/90 md:text-lg">
               Confirm a business credential, verification status, and trust profile on the Digital Business Identity Network (DBIN).
             </p>
@@ -70,7 +70,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
         </div>
       </section>
 
-      <section className="relative z-10 -mt-14 px-6 pb-16">
+      <section className="relative z-10 -mt-12 px-4 pb-14 sm:-mt-14 sm:px-6 sm:pb-16">
         <div className="mx-auto max-w-6xl space-y-8">
           <div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-2xl shadow-slate-400/20 backdrop-blur md:p-8">
             <div className="flex items-start gap-3">

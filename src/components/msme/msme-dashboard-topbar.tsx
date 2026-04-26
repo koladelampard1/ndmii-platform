@@ -51,7 +51,7 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
 
   return (
     <header className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
         <Link
           href="/"
           className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-slate-900 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
@@ -66,7 +66,7 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
             type="button"
             onClick={() => setOpen((previous) => !previous)}
             className={cn(
-              "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-slate-700 transition",
+              "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-2 text-left text-slate-700 transition sm:px-2.5",
               "hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
             )}
             aria-expanded={open}

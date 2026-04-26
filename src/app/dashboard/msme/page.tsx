@@ -163,10 +163,10 @@ export default async function MsmePage() {
 
   return (
     <section className="space-y-5">
-      <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <header className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My Business Dashboard</h1>
+                <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">My Business Dashboard</h1>
                 <p className="mt-1 text-sm text-slate-600">Track your marketplace presence, business records, and verification progress in one view.</p>
               </div>
 
@@ -212,7 +212,7 @@ export default async function MsmePage() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-2xl font-semibold text-slate-900">{workspace.msme.business_name || workspace.provider.display_name}</h2>
+                          <h2 className="break-words text-xl font-semibold text-slate-900 sm:text-2xl">{workspace.msme.business_name || workspace.provider.display_name}</h2>
                           <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                             {isVerified ? "Verified" : "Pending Review"}
                           </span>
@@ -261,7 +261,7 @@ export default async function MsmePage() {
                       <p className="text-xs font-semibold tracking-wide text-emerald-700">DBIN BUSINESS IDENTITY</p>
                       <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{workspace.provider.display_name}</p>
                       <p className="truncate text-xs text-slate-600">{workspace.msme.owner_name}</p>
-                      <p className="mt-2 text-xs text-slate-500">{workspace.msme.msme_id}</p>
+                        <p className="mt-2 break-all text-xs text-slate-500">{workspace.msme.msme_id}</p>
                     </div>
                     <Link
                       href="/dashboard/msme/id-card"
