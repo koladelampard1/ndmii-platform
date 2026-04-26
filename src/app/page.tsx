@@ -16,6 +16,7 @@ import {
   Store,
   Users,
 } from "lucide-react";
+import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { searchMarketplaceProviders } from "@/lib/data/marketplace";
 
 const CATEGORY_CHIPS = [
@@ -85,9 +86,8 @@ export default async function LandingPage() {
         <div className="pointer-events-none absolute -right-8 top-8 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl" />
 
         <header className="relative mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
-          <Link href="/" className="inline-flex items-center gap-3">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/90 text-lg font-extrabold">DBIN</span>
-            <span className="text-sm font-semibold leading-tight md:text-base">Digital Business Identity Network (DBIN)</span>
+          <Link href="/" className="rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+            <DbinBrandLogo textClassName="text-sm font-semibold text-white md:text-base" />
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-emerald-50/90 lg:flex">
