@@ -578,14 +578,14 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-700">{statusBadgeCopy(model.statusTone)} MSME</p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Business Identity Credential</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">My Business Identity Credential</h1>
         </div>
         <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
           <button
             type="button"
             onClick={shareCard}
             disabled={busy !== "none"}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60 sm:w-auto"
           >
             <Share2 className="h-4 w-4" /> {busy === "share" ? "Sharing..." : "Share Credential"}
           </button>
@@ -593,7 +593,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
             type="button"
             onClick={downloadPdf}
             disabled={busy !== "none"}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60 sm:w-auto"
           >
             <Download className="h-4 w-4" /> {busy === "pdf" ? "Preparing PDF..." : "Download PDF"}
           </button>
@@ -601,7 +601,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
             type="button"
             onClick={downloadPocketPng}
             disabled={busy !== "none"}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 disabled:opacity-60 sm:w-auto"
           >
             <Download className="h-4 w-4" /> {busy === "png" ? "Preparing PNG..." : "Download ID Card (Wallet Size)"}
           </button>
@@ -622,12 +622,40 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
         </p>
       ) : null}
 
-      <article className="relative overflow-x-auto rounded-2xl border border-emerald-300/20 bg-[linear-gradient(135deg,#063C2E,#0A5F47)] p-4 shadow-2xl ring-1 ring-white/20 sm:p-7">
+      <article className="relative overflow-hidden rounded-2xl border border-emerald-300/20 bg-[linear-gradient(135deg,#063C2E,#0A5F47)] p-4 shadow-2xl ring-1 ring-white/20 sm:p-7">
         <div className="pointer-events-none absolute inset-0 opacity-10 [background:repeating-linear-gradient(135deg,rgba(255,255,255,.14)_0_2px,transparent_2px_16px)]" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background:radial-gradient(circle_at_80%_22%,#fff_0,transparent_38%),radial-gradient(circle_at_88%_78%,#fff_0,transparent_26%)]" />
         <div className="pointer-events-none absolute bottom-6 right-6 h-28 w-28 rounded-full border border-emerald-100/20 bg-white/5 sm:h-44 sm:w-44" />
 
-        <div className="relative z-10" id="msme-id-card-full-view">
+        <div className="relative z-10 lg:hidden">
+          <div className="rounded-2xl border border-emerald-100/20 bg-black/20 p-4 backdrop-blur-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-emerald-100/80">BIN Credential</p>
+                <p className="truncate text-lg font-semibold text-white">{model.businessName}</p>
+                <p className="mt-1 break-all text-xs text-emerald-100/90">{model.businessId}</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                model.statusTone === "verified" ? "bg-emerald-300 text-emerald-950" : model.statusTone === "suspended" ? "bg-rose-500 text-white" : "bg-amber-400 text-amber-950"
+              }`}>{statusBadgeCopy(model.statusTone)}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-[80px_1fr] gap-3">
+              <PassportPhoto src={model.passportPhotoUrl} alt="Business logo or representative photo" className="h-20 w-20 rounded-xl object-cover" placeholderClassName="flex h-20 w-20 items-center justify-center rounded-xl bg-black/30 text-[10px] text-emerald-100" placeholderText="No photo" />
+              <div className="space-y-1 text-xs text-emerald-50">
+                <p><span className="text-emerald-100/80">Owner:</span> {model.ownerName}</p>
+                <p><span className="text-emerald-100/80">Category:</span> {model.businessCategory}</p>
+                <p><span className="text-emerald-100/80">Type:</span> {model.businessType}</p>
+                <p><span className="text-emerald-100/80">Expiry:</span> {model.expiryDate}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-3 rounded-xl bg-white/10 p-2">
+              <img src={model.qrDataUrl} alt="Verification QR" className="h-20 w-20 rounded bg-white p-1" />
+              <p className="text-xs text-emerald-50">Scan to verify this business on BIN.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 hidden overflow-x-auto lg:block" id="msme-id-card-full-view">
           <div className="mx-auto h-[700px] w-[1120px] rounded-2xl border border-emerald-100/20 bg-black/20 p-8 backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">

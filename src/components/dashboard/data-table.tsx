@@ -2,8 +2,8 @@ import Link from "next/link";
 
 export function DataTable({ rows }: { rows: { msme_id: string; state: string; sector: string; verification_status: string }[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border bg-white">
-      <table className="w-full text-left text-sm">
+    <div className="overflow-x-auto rounded-lg border bg-white">
+      <table className="min-w-[640px] w-full text-left text-sm">
         <thead className="bg-slate-100 text-slate-600">
           <tr>
             <th className="px-4 py-3">MSME ID</th>

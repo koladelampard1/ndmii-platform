@@ -81,10 +81,10 @@ function LoginPageContent() {
     <main className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="text-lg font-semibold tracking-tight text-slate-900">
+          <Link href="/" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
             BIN Business Identity Network
           </Link>
-          <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-700 sm:gap-4">
+          <nav className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-700 sm:w-auto sm:gap-4 sm:text-sm">
             <Link href="/marketplace" className="transition hover:text-emerald-700">Marketplace</Link>
             <Link href="/verify" className="transition hover:text-emerald-700">Verify Business ID</Link>
             <Link href="/resources" className="transition hover:text-emerald-700">Resources</Link>
@@ -101,7 +101,7 @@ function LoginPageContent() {
         </div>
       </header>
 
-      <section className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 sm:py-10 lg:grid-cols-12 lg:gap-0 lg:px-8 lg:py-12">
+      <section className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 sm:px-6 sm:py-10 lg:grid-cols-12 lg:gap-0 lg:px-8 lg:py-12">
         <aside className="overflow-hidden rounded-2xl bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-lg lg:col-span-4 lg:rounded-r-none lg:p-10">
           <div className="space-y-6">
             <div>
@@ -151,7 +151,7 @@ function LoginPageContent() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 lg:col-span-8 lg:rounded-l-none lg:p-12">
           <div className="mx-auto w-full max-w-2xl">
-            <h2 className="text-3xl font-semibold text-slate-900">Sign in to your account</h2>
+            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">Sign in to your account</h2>
             <p className="mt-2 text-slate-600">Access your dashboard and manage your business identity.</p>
 
             <form className="mt-8 space-y-5" onSubmit={onSubmit}>

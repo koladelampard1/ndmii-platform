@@ -67,7 +67,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
   const registryStatus = msme.suspended ? "Suspended" : msme.flagged ? "Flagged" : "Good Standing";
 
   return (
-    <main className="bg-slate-50 px-6 py-10">
+    <main className="bg-slate-50 px-4 py-8 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-5xl space-y-6">
         <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <Link href="/" className="inline-flex items-center gap-1 hover:text-slate-700">
@@ -81,8 +81,8 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
         </nav>
 
         <header className="space-y-3 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Public Business Identity Verification</h1>
-          <p className="text-xl text-slate-600">Credential record on the Business Identity Network (BIN)</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Public Business Identity Verification</h1>
+          <p className="text-lg text-slate-600 sm:text-xl">Credential record on the Business Identity Network (BIN)</p>
           <p className="mx-auto max-w-3xl text-sm text-slate-500">
             This page confirms the registry status of a business identity credential issued within the BIN verification network.
           </p>

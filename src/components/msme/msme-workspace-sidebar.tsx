@@ -103,7 +103,7 @@ function SidebarNav() {
 
 export function MsmeWorkspaceSidebar() {
   return (
-    <aside className="flex h-full flex-col rounded-3xl bg-emerald-950 p-5 text-white shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+    <aside className="flex h-full flex-col rounded-2xl bg-emerald-950 p-4 text-white shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:rounded-3xl lg:p-5">
       <div className="mb-6 border-b border-emerald-900/80 pb-5">
         <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">BIN</p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight">My Workspace</h2>
