@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 
 type NavbarProps = {
   isAuthenticated?: boolean;
@@ -12,8 +13,8 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
   return (
     <header className="border-b border-emerald-950/70 bg-emerald-950 text-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
-          Digital Business Identity Network (DBIN)
+        <Link href="/" className="rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+          <DbinBrandLogo textClassName="text-white" />
         </Link>
         <nav className="flex w-full flex-wrap items-center gap-2 text-xs sm:w-auto sm:gap-3 sm:text-sm">
           <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">

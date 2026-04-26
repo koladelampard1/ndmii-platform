@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, Settings, User, UserCircle2 } from "lucide-react";
+import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { cn } from "@/lib/utils";
 
 type MsmeDashboardTopbarProps = {
@@ -57,8 +58,11 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
           className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-slate-900 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           aria-label="Go to Digital Business Identity Network (DBIN) landing page"
         >
-          <span className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-semibold tracking-wide text-white">DBIN</span>
-          <span className="hidden text-sm font-semibold sm:inline">Digital Business Identity Network (DBIN)</span>
+          <DbinBrandLogo
+            className="gap-2"
+            iconClassName="h-8 w-14 rounded-lg"
+            textClassName="text-sm font-semibold text-slate-900"
+          />
         </Link>
 
         <div className="relative" ref={menuRef}>
