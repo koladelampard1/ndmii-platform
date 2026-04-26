@@ -145,12 +145,12 @@ export default async function SearchPage({
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 pb-14 pt-10 text-white">
-        <div className="mx-auto max-w-7xl px-6">
+      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 pb-12 pt-8 text-white sm:pt-10">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">Marketplace</p>
           <div className="mt-4 grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-end">
             <div>
-              <h1 className="text-4xl font-bold leading-tight md:text-5xl">Find verified businesses you can trust</h1>
+              <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">Find verified businesses you can trust</h1>
               <p className="mt-3 max-w-2xl text-lg text-emerald-100/90">
                 Search, discover, and connect with trusted businesses across Nigeria.
               </p>
@@ -164,7 +164,7 @@ export default async function SearchPage({
             </Link>
           </div>
 
-          <div className="mt-8 flex gap-4 overflow-x-auto pb-2">
+          <div className="mt-8 flex gap-3 overflow-x-auto pb-2">
             {stats.map((item) => (
               <article
                 key={item.label}
@@ -358,13 +358,13 @@ export default async function SearchPage({
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-8">
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-semibold text-slate-900">Verified businesses ({providers.length})</h2>
+            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">Verified businesses ({providers.length})</h2>
             <p className="mt-1 text-sm text-slate-600">Browse trusted businesses that have been verified on BIN.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <button
               type="button"
               aria-label="Grid view"

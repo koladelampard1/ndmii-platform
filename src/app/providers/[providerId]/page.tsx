@@ -85,7 +85,7 @@ export default async function ProviderPublicPage({
     return (
       <main className="min-h-screen bg-slate-50 text-slate-900">
         <section className="border-b border-emerald-900/80 bg-emerald-950 text-white">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
             <Link href="/" className="text-lg font-bold tracking-tight">BIN Business Identity Network</Link>
             <Link href="/marketplace" className="text-sm text-emerald-100">Marketplace</Link>
           </div>
@@ -176,9 +176,9 @@ export default async function ProviderPublicPage({
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-emerald-900 bg-emerald-950 text-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <Link href="/" className="text-lg font-semibold tracking-tight">BIN Business Identity Network</Link>
-          <nav className="flex flex-wrap items-center gap-5 text-sm text-emerald-50">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <Link href="/" className="text-base font-semibold tracking-tight sm:text-lg">BIN Business Identity Network</Link>
+          <nav className="flex w-full flex-wrap items-center gap-3 text-xs text-emerald-50 sm:w-auto sm:gap-5 sm:text-sm">
             <Link href="/marketplace" className="hover:text-white">Marketplace</Link>
             <Link href="/verify" className="hover:text-white">Verify Business ID</Link>
             <Link href="/resources" className="hover:text-white">Resources</Link>
@@ -186,14 +186,14 @@ export default async function ProviderPublicPage({
             <Link href="/about" className="hover:text-white">About</Link>
             <Link href="/contact" className="hover:text-white">Contact</Link>
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <Link href="/login" className="rounded-lg border border-emerald-200/60 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900">Sign in</Link>
             <Link href="/register/msme" className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400">Register</Link>
           </div>
         </div>
       </header>
 
-      <section className="mx-auto max-w-7xl px-6 py-6">
+      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <Link href="/" className="inline-flex items-center gap-1 hover:text-slate-800"><Home className="h-4 w-4" />Home</Link>
           <ChevronRight className="h-4 w-4" />
@@ -221,7 +221,7 @@ export default async function ProviderPublicPage({
 
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">{providerView.business_name}</h1>
+                <h1 className="break-words text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{providerView.business_name}</h1>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                   <BadgeCheck className="h-3.5 w-3.5" /> Verified Provider
                 </span>

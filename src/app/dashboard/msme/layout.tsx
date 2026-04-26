@@ -8,7 +8,7 @@ export default async function MsmeWorkspaceLayout({ children }: { children: Reac
   const publicProfileHref = `/providers/${workspace.provider.public_slug || workspace.provider.slug || workspace.provider.id}`;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1700px] gap-5 p-4 lg:grid-cols-[290px,minmax(0,1fr)] lg:p-6">
+    <div className="mx-auto grid w-full max-w-[1700px] gap-4 p-3 sm:p-4 lg:grid-cols-[290px,minmax(0,1fr)] lg:gap-5 lg:p-6">
       <MsmeWorkspaceSidebar />
       <main className="min-w-0 space-y-5">
         <MsmeDashboardTopbar
