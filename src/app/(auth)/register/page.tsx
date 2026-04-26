@@ -286,7 +286,7 @@ export default function RegisterPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-10 lg:px-8">
       <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
         <aside className="rounded-2xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-xl lg:p-8">
-          <h1 className="text-2xl font-semibold leading-tight sm:text-3xl">Join the Business Identity Network</h1>
+          <h1 className="text-3xl font-semibold leading-tight">Join the Digital Business Identity Network (DBIN)</h1>
           <p className="mt-4 text-sm leading-6 text-emerald-100">
             Create a verified business identity, unlock marketplace visibility, and become discoverable by partners, buyers,
             lenders, and associations.
@@ -307,13 +307,13 @@ export default function RegisterPage() {
           </ul>
 
           <p className="mt-8 rounded-xl border border-emerald-700/60 bg-emerald-900/40 px-4 py-3 text-sm text-emerald-100">
-            BIN is an independent business identity and verification network.
+            DBIN is an independent business identity and verification network.
           </p>
         </aside>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
           <div className="mb-6 border-b border-slate-200 pb-5">
-            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">Create your BIN profile</h2>
+            <h2 className="text-3xl font-semibold text-slate-900">Create your DBIN profile</h2>
             <p className="mt-2 text-slate-600">Start your business verification and marketplace onboarding.</p>
             <p className="mt-3 text-sm font-medium text-emerald-700">Step 1 of 3 · Business Identity Setup</p>
           </div>
@@ -433,12 +433,12 @@ export default function RegisterPage() {
             {error && <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
 
             <Button className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={loading}>
-              {loading ? "Securing your MSME onboarding record..." : "Create BIN Profile"}
+              {loading ? "Securing your MSME onboarding record..." : "Create DBIN Profile"}
             </Button>
           </form>
 
           <p className="mt-4 text-center text-sm text-slate-600">
-            Already have a BIN profile?{" "}
+            Already have a DBIN profile?{" "}
             <Link href="/login" className="font-medium text-emerald-700 hover:underline">
               Sign in
             </Link>

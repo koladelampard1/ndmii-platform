@@ -8,7 +8,7 @@ type Section = {
 const sections: Section[] = [
   {
     title: "Essential cookies",
-    body: "BIN relies on essential cookies and session signals to keep core services available, maintain secure page flow, and support access to authorized public and account experiences.",
+    body: "DBIN relies on essential cookies and session signals to keep core services available, maintain secure page flow, and support access to authorized public and account experiences.",
   },
   {
     title: "Authentication/session cookies",
@@ -16,7 +16,7 @@ const sections: Section[] = [
   },
   {
     title: "Role and access routing cookies",
-    body: "BIN uses session context to route users to role-appropriate dashboards and prevent cross-role access to protected routes and records.",
+    body: "DBIN uses session context to route users to role-appropriate dashboards and prevent cross-role access to protected routes and records.",
   },
   {
     title: "Security cookies",
@@ -24,7 +24,7 @@ const sections: Section[] = [
   },
   {
     title: "Analytics/performance cookies",
-    body: "Performance and analytics storage may be used to understand navigation quality, error trends, and page responsiveness so BIN can improve reliability and usability.",
+    body: "Performance and analytics storage may be used to understand navigation quality, error trends, and page responsiveness so DBIN can improve reliability and usability.",
   },
   {
     title: "User preferences",
@@ -40,7 +40,7 @@ const sections: Section[] = [
   },
   {
     title: "Updates to cookie notice",
-    body: "BIN may update this notice as platform controls evolve. Continued use after updates indicates acceptance of the current cookie and session practices.",
+    body: "DBIN may update this notice as platform controls evolve. Continued use after updates indicates acceptance of the current cookie and session practices.",
   },
 ];
 
@@ -48,8 +48,8 @@ export default function CookiesPage() {
   return (
     <PublicPageShell
       eyebrow="Cookie Notice"
-      title="Cookie and session use on BIN"
-      description="BIN uses cookies and session storage for authentication, dashboard routing, role-based access, security controls, analytics, and everyday usability improvements."
+      title="Cookie and session use on DBIN"
+      description="DBIN uses cookies and session storage for authentication, dashboard routing, role-based access, security controls, analytics, and everyday usability improvements."
       primaryCta={{ label: "Open verification portal", href: "/verify" }}
       secondaryCta={{ label: "Back to homepage", href: "/" }}
       highlights={[

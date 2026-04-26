@@ -40,11 +40,11 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
         <div className="relative mx-auto grid max-w-6xl gap-8 md:grid-cols-[1.2fr_0.8fr] md:items-center">
           <div>
             <p className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">
-              BIN Public Verification
+              DBIN Public Verification
             </p>
             <h1 className="mt-5 text-3xl font-semibold leading-tight sm:text-4xl md:text-5xl">Verify a Business Identity Credential</h1>
             <p className="mt-4 max-w-2xl text-base text-emerald-50/90 md:text-lg">
-              Confirm a business credential, verification status, and trust profile on the Business Identity Network.
+              Confirm a business credential, verification status, and trust profile on the Digital Business Identity Network (DBIN).
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               {trustChips.map((chip) => (
@@ -60,11 +60,11 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
           </div>
 
           <div className="hidden rounded-3xl border border-emerald-400/25 bg-slate-950/30 p-6 shadow-2xl shadow-emerald-950/40 md:block">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-200/80">BIN Public Verification</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-200/80">DBIN Public Verification</p>
             <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-950/80 to-slate-900/70 p-5">
-              <p className="text-sm text-emerald-100/90">Business Identity Network</p>
+              <p className="text-sm text-emerald-100/90">Digital Business Identity Network (DBIN)</p>
               <p className="mt-2 text-lg font-semibold text-white">Credential ready for verification</p>
-              <p className="mt-3 text-sm text-emerald-100/80">Use Business ID, MSME ID, BIN ID, or Business Name.</p>
+              <p className="mt-3 text-sm text-emerald-100/80">Use Business ID, MSME ID, DBIN ID, or Business Name.</p>
             </div>
           </div>
         </div>
@@ -81,8 +81,8 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Verify Business ID</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900 sm:text-2xl">Look up a business identity</h2>
-                <p className="mt-1 text-sm text-slate-600">Label: Business ID, MSME ID, BIN ID, or Business Name</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900">Look up a business identity</h2>
+                <p className="mt-1 text-sm text-slate-600">Label: Business ID, MSME ID, DBIN ID, or Business Name</p>
               </div>
             </div>
 
@@ -102,16 +102,16 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
             {!hasSearch && (
               <div className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-2 md:items-center">
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5">
-                  <p className="text-sm font-semibold text-emerald-900">Business Identity Network</p>
+                  <p className="text-sm font-semibold text-emerald-900">Digital Business Identity Network (DBIN)</p>
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
                     <p className="text-xs uppercase tracking-wide text-slate-500">Credential preview</p>
                     <p className="mt-2 text-base font-semibold text-slate-900">Sample Business Ltd.</p>
-                    <p className="mt-1 text-xs text-slate-500">BIN ID • NDMII-LAG-108168205</p>
+                    <p className="mt-1 text-xs text-slate-500">DBIN ID • NDMII-LAG-108168205</p>
                   </div>
                 </div>
                 <div>
                   <h3 className="text-3xl font-semibold leading-tight text-slate-900">Search to view a verified business credential</h3>
-                  <p className="mt-2 text-slate-600">Find and confirm a business identity record in the BIN registry.</p>
+                  <p className="mt-2 text-slate-600">Find and confirm a business identity record in the DBIN registry.</p>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Link href="/sample-id-card" className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50">
                       View sample ID card
@@ -176,7 +176,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
           </section>
 
           <section>
-            <h2 className="text-center text-2xl font-semibold text-slate-900">Why verify on BIN?</h2>
+            <h2 className="text-center text-2xl font-semibold text-slate-900">Why verify on DBIN?</h2>
             <div className="mt-5 grid gap-4 md:grid-cols-3">
               {trustCards.map((card) => (
                 <article key={card.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -195,7 +195,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
               <div>
                 <h2 className="text-3xl font-semibold">Want your business to become verifiable?</h2>
                 <p className="mt-2 text-emerald-50/90">
-                  Create a BIN profile and make your business easier to discover and trust.
+                  Create a DBIN profile and make your business easier to discover and trust.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">

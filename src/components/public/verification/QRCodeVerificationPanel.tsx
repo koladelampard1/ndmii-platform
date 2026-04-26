@@ -24,8 +24,8 @@ export function QRCodeVerificationPanel({ qrDataUrl, verificationUrl, issueDate,
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "BIN Business Verification",
-          text: "Verify this business identity credential on BIN",
+          title: "DBIN Business Verification",
+          text: "Verify this business identity credential on DBIN",
           url: verificationUrl,
         });
         return;

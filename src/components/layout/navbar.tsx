@@ -11,9 +11,9 @@ type NavbarProps = {
 export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
   return (
     <header className="border-b border-emerald-950/70 bg-emerald-950 text-white">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-        <Link href="/" className="text-base font-semibold tracking-tight sm:text-lg">
-          BIN Business Identity Network
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <Link href="/" className="text-lg font-semibold tracking-tight">
+          Digital Business Identity Network (DBIN)
         </Link>
         <nav className="flex w-full flex-wrap items-center gap-2 text-xs sm:w-auto sm:gap-3 sm:text-sm">
           <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">

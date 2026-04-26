@@ -3,7 +3,7 @@ import { BadgeCheck, FileCheck2, Handshake } from "lucide-react";
 const cards = [
   {
     title: "Identity Exists",
-    description: "This credential confirms the business is registered within the BIN network.",
+    description: "This credential confirms the business is registered within the DBIN network.",
     icon: BadgeCheck,
   },
   {

@@ -81,17 +81,17 @@ export default async function VerifyPage({ params }: { params: Promise<{ msmeId:
         </nav>
 
         <header className="space-y-3 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Public Business Identity Verification</h1>
-          <p className="text-lg text-slate-600 sm:text-xl">Credential record on the Business Identity Network (BIN)</p>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Public Business Identity Verification</h1>
+          <p className="text-xl text-slate-600">Credential record on the Digital Business Identity Network (DBIN)</p>
           <p className="mx-auto max-w-3xl text-sm text-slate-500">
-            This page confirms the registry status of a business identity credential issued within the BIN verification network.
+            This page confirms the registry status of a business identity credential issued within the DBIN verification network.
           </p>
         </header>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="space-y-5">
-              <VerificationStatusBadge description="This business identity credential exists on BIN" />
+              <VerificationStatusBadge description="This business identity credential exists on DBIN" />
 
               <BusinessSummaryCard
                 businessName={msme.business_name}

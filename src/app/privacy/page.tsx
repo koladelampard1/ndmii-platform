@@ -8,7 +8,7 @@ type Section = {
 const sections: Section[] = [
   {
     title: "Data we collect",
-    body: "BIN processes business profile data, identity references, verification status, compliance signals, marketplace activity, support and complaint records, and operational logs required to run the platform safely.",
+    body: "DBIN processes business profile data, identity references, verification status, compliance signals, marketplace activity, support and complaint records, and operational logs required to run the platform safely.",
   },
   {
     title: "Business profile data",
@@ -16,7 +16,7 @@ const sections: Section[] = [
   },
   {
     title: "Identity and verification data",
-    body: "BIN stores identity reference fields and verification outcomes linked to submitted records. Sensitive identifiers are minimized and should not be unnecessarily exposed on public pages.",
+    body: "DBIN stores identity reference fields and verification outcomes linked to submitted records. Sensitive identifiers are minimized and should not be unnecessarily exposed on public pages.",
   },
   {
     title: "Compliance and tax/VAT-related data",
@@ -32,7 +32,7 @@ const sections: Section[] = [
   },
   {
     title: "How we use data",
-    body: "BIN uses data to issue business identity records, support verification, route users to role-appropriate dashboards, resolve complaints, improve platform reliability, and monitor abuse.",
+    body: "DBIN uses data to issue business identity records, support verification, route users to role-appropriate dashboards, resolve complaints, improve platform reliability, and monitor abuse.",
   },
   {
     title: "Public verification visibility",
@@ -44,7 +44,7 @@ const sections: Section[] = [
   },
   {
     title: "Data sharing with associations, institutions, regulators, partners, and service providers",
-    body: "BIN may share relevant records with authorized entities supporting onboarding, compliance, service delivery, hosting, analytics, and incident response, subject to operational need and confidentiality safeguards.",
+    body: "DBIN may share relevant records with authorized entities supporting onboarding, compliance, service delivery, hosting, analytics, and incident response, subject to operational need and confidentiality safeguards.",
   },
   {
     title: "Data retention",
@@ -52,19 +52,19 @@ const sections: Section[] = [
   },
   {
     title: "Security controls",
-    body: "BIN applies layered controls such as access restrictions, monitored sessions, audit logs, and secure infrastructure practices. No online platform can guarantee absolute security, but risk reduction is continuously prioritized.",
+    body: "DBIN applies layered controls such as access restrictions, monitored sessions, audit logs, and secure infrastructure practices. No online platform can guarantee absolute security, but risk reduction is continuously prioritized.",
   },
   {
     title: "User responsibilities",
-    body: "Users must protect account credentials, maintain accurate records, and promptly report suspected unauthorized access or data misuse through official BIN support channels.",
+    body: "Users must protect account credentials, maintain accurate records, and promptly report suspected unauthorized access or data misuse through official DBIN support channels.",
   },
   {
     title: "Your rights and correction requests",
-    body: "You may request correction of inaccurate profile or identity-linked records and raise data handling concerns. BIN reviews requests in line with role permissions and applicable obligations.",
+    body: "You may request correction of inaccurate profile or identity-linked records and raise data handling concerns. DBIN reviews requests in line with role permissions and applicable obligations.",
   },
   {
     title: "Contact for privacy/data questions",
-    body: "For privacy enquiries, correction requests, or data governance questions, contact the BIN operations desk through the contact page.",
+    body: "For privacy enquiries, correction requests, or data governance questions, contact the DBIN operations desk through the contact page.",
   },
 ];
 
@@ -72,15 +72,15 @@ export default function PrivacyPage() {
   return (
     <PublicPageShell
       eyebrow="Privacy Policy"
-      title="How BIN handles personal and business data"
-      description="BIN processes business profile data, identity references, verification status, compliance data, marketplace activity, support records, and operational logs to deliver secure, role-based services."
+      title="How DBIN handles personal and business data"
+      description="DBIN processes business profile data, identity references, verification status, compliance data, marketplace activity, support records, and operational logs to deliver secure, role-based services."
       primaryCta={{ label: "Contact operations desk", href: "/contact" }}
       secondaryCta={{ label: "Read cookie notice", href: "/cookies" }}
       highlights={[
         "Sensitive identifiers are minimized and should not be unnecessarily exposed on public pages.",
         "Data is used for identity issuance, verification workflows, support operations, and platform security.",
         "Access to records follows role-based permissions and monitored session controls.",
-        "This policy describes BIN operational practices and does not claim formal government endorsement.",
+        "This policy describes DBIN operational practices and does not claim formal government endorsement.",
       ]}
     >
       <div className="mt-8 space-y-6">

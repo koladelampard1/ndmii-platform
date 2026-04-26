@@ -258,7 +258,7 @@ export default async function MsmePage() {
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
                     <p className="text-center text-sm font-semibold text-emerald-800">Business Identity Credential Preview</p>
                     <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm">
-                      <p className="text-xs font-semibold tracking-wide text-emerald-700">BIN BUSINESS IDENTITY</p>
+                      <p className="text-xs font-semibold tracking-wide text-emerald-700">DBIN BUSINESS IDENTITY</p>
                       <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{workspace.provider.display_name}</p>
                       <p className="truncate text-xs text-slate-600">{workspace.msme.owner_name}</p>
                         <p className="mt-2 break-all text-xs text-slate-500">{workspace.msme.msme_id}</p>

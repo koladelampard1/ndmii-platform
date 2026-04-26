@@ -35,7 +35,7 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
         <Link href="/dashboard/msme/id-registry" className="rounded border px-3 py-2 text-sm">Back to registry</Link>
       </div>
       <div className="rounded-2xl border bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white shadow-xl">
-        <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Business Identity Network • BIN</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Digital Business Identity Network (DBIN) • DBIN</p>
         <div className="mt-4 flex items-start gap-4">
           <PassportPhoto
             src={profile.passport_photo_url}

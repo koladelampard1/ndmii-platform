@@ -2,7 +2,7 @@ import "./globals.css";
 import { ReactNode } from "react";
 
 export const metadata = {
-  title: "Business Identity Network",
+  title: "Digital Business Identity Network (DBIN)",
   description: "Digital MSME identity infrastructure",
 };
 

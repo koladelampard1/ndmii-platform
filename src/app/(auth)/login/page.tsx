@@ -81,8 +81,8 @@ function LoginPageContent() {
     <main className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-            BIN Business Identity Network
+          <Link href="/" className="text-lg font-semibold tracking-tight text-slate-900">
+            Digital Business Identity Network (DBIN)
           </Link>
           <nav className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-700 sm:w-auto sm:gap-4 sm:text-sm">
             <Link href="/marketplace" className="transition hover:text-emerald-700">Marketplace</Link>
@@ -105,11 +105,11 @@ function LoginPageContent() {
         <aside className="overflow-hidden rounded-2xl bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-lg lg:col-span-4 lg:rounded-r-none lg:p-10">
           <div className="space-y-6">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-200">BIN</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-200">DBIN</p>
               <h1 className="mt-2 text-2xl font-semibold leading-tight sm:text-3xl">
                 Welcome to
                 {" "}
-                <span className="text-emerald-300">Business Identity Network</span>
+                <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span>
               </h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-emerald-100/90 sm:text-base">
                 Your trusted platform for business identity verification, secure participation, and compliance-ready growth across Nigeria.
@@ -213,7 +213,7 @@ function LoginPageContent() {
             </form>
 
             <p className="mt-6 text-center text-sm text-slate-600">
-              New to BIN?
+              New to DBIN?
               {" "}
               <Link href="/register" className="font-semibold text-emerald-700 hover:underline">Start onboarding your business</Link>
             </p>
