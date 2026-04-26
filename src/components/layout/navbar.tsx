@@ -13,7 +13,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
     <header className="border-b border-emerald-950/70 bg-emerald-950 text-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
         <Link href="/" className="text-lg font-semibold tracking-tight">
-          BIN Business Identity Network
+          Digital Business Identity Network (DBIN)
         </Link>
         <nav className="flex flex-wrap items-center gap-3">
           <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">

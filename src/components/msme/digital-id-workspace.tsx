@@ -296,7 +296,7 @@ async function drawPocketCard(ctx: CanvasRenderingContext2D, model: CredentialMo
   ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.textAlign = "right";
   ctx.font = "900 50px Inter, Arial";
-  ctx.fillText("BIN", POCKET_CARD_WIDTH_PX - 34, 62);
+  ctx.fillText("DBIN", POCKET_CARD_WIDTH_PX - 34, 62);
   ctx.textAlign = "left";
 
   await drawPhoto(ctx, model.passportPhotoUrl, 38, 86, 180, 252, 14);
@@ -343,7 +343,7 @@ async function drawPocketCard(ctx: CanvasRenderingContext2D, model: CredentialMo
   ctx.fillRect(0, POCKET_CARD_HEIGHT_PX - 56, POCKET_CARD_WIDTH_PX, 56);
   ctx.fillStyle = "#ecfdf5";
   ctx.font = "700 20px Inter, Arial";
-  ctx.fillText("BIN Verified • Trusted • Shareable", 38, POCKET_CARD_HEIGHT_PX - 22);
+  ctx.fillText("DBIN Verified • Trusted • Shareable", 38, POCKET_CARD_HEIGHT_PX - 22);
 }
 
 async function drawFullCredential(ctx: CanvasRenderingContext2D, model: CredentialModel) {
@@ -359,7 +359,7 @@ async function drawFullCredential(ctx: CanvasRenderingContext2D, model: Credenti
 
   ctx.fillStyle = "#ecfdf5";
   ctx.font = "700 46px Inter, Arial";
-  ctx.fillText("BIN", cardX + 26, cardY + 56);
+  ctx.fillText("DBIN", cardX + 26, cardY + 56);
   ctx.font = "700 34px Inter, Arial";
   ctx.fillText("Verified Business Identity Credential", cardX + 150, cardY + 56);
 
@@ -388,7 +388,7 @@ async function drawFullCredential(ctx: CanvasRenderingContext2D, model: Credenti
   ctx.fillRect(cardX + 20, cardY + cardH - stripH - 18, cardW - 40, stripH);
   ctx.fillStyle = "#ecfdf5";
   ctx.font = "700 30px Inter, Arial";
-  ctx.fillText("BIN Verified • Trusted • Shareable", cardX + 40, cardY + cardH - 42);
+  ctx.fillText("DBIN Verified • Trusted • Shareable", cardX + 40, cardY + cardH - 42);
 
   const contentY = cardY + topOffset;
   const contentH = cardH - topOffset - stripH - 30;
@@ -477,8 +477,8 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Business Identity Network Credential",
-          text: "Verify this business identity on Business Identity Network.",
+          title: "Digital Business Identity Network (DBIN) Credential",
+          text: "Verify this business identity on Digital Business Identity Network (DBIN).",
           url: model.verifyUrl,
         });
 
@@ -631,7 +631,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
           <div className="mx-auto h-[700px] w-[1120px] rounded-2xl border border-emerald-100/20 bg-black/20 p-8 backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <p className="text-4xl font-bold text-emerald-100">BIN</p>
+                <p className="text-4xl font-bold text-emerald-100">DBIN</p>
                 <p className="text-4xl font-bold text-white">Verified Business Identity Credential</p>
               </div>
               <span
@@ -700,7 +700,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
             </div>
 
             <div className="mt-2 rounded-xl bg-black/25 px-5 py-3 text-lg font-medium text-emerald-50">
-              BIN Verified • Trusted • Shareable
+              DBIN Verified • Trusted • Shareable
             </div>
           </div>
         </div>
@@ -742,8 +742,8 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        <p className="inline-flex items-center gap-2 font-medium text-slate-800"><CheckCircle2 className="h-4 w-4 text-emerald-700" /> This credential confirms that the business profile has been registered and validated within the Business Identity Network.</p>
-        <p className="mt-1 text-xs text-slate-500">Business Identity Network is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.</p>
+        <p className="inline-flex items-center gap-2 font-medium text-slate-800"><CheckCircle2 className="h-4 w-4 text-emerald-700" /> This credential confirms that the business profile has been registered and validated within the Digital Business Identity Network (DBIN).</p>
+        <p className="mt-1 text-xs text-slate-500">Digital Business Identity Network (DBIN) is an independent business identity and verification network designed to support partnerships with public institutions, associations, lenders, and marketplaces.</p>
       </div>
     </section>
   );

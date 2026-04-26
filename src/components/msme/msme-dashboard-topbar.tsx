@@ -55,10 +55,10 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
         <Link
           href="/"
           className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-slate-900 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-          aria-label="Go to BIN Business Identity Network landing page"
+          aria-label="Go to Digital Business Identity Network (DBIN) landing page"
         >
-          <span className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-semibold tracking-wide text-white">BIN</span>
-          <span className="hidden text-sm font-semibold sm:inline">Business Identity Network</span>
+          <span className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-semibold tracking-wide text-white">DBIN</span>
+          <span className="hidden text-sm font-semibold sm:inline">Digital Business Identity Network (DBIN)</span>
         </Link>
 
         <div className="relative" ref={menuRef}>

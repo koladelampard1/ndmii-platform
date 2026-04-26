@@ -187,7 +187,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
             <p className="text-base font-semibold text-slate-900">{isVerified ? "You are Verified" : "Verification in Progress"}</p>
             <p className="text-sm text-slate-600">
               {isVerified
-                ? "Your account is fully verified and compliant with BIN verification requirements."
+                ? "Your account is fully verified and compliant with DBIN verification requirements."
                 : `Your profile is ${verificationProgress}% complete. Complete pending checks to reach full compliance.`}
             </p>
           </div>

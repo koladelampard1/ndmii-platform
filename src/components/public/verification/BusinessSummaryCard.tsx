@@ -7,7 +7,7 @@ type BusinessSummaryCardProps = {
 };
 
 const items = [
-  { label: "Business Identity Number (BIN ID)", key: "businessId" },
+  { label: "Business Identity Number (DBIN ID)", key: "businessId" },
   { label: "Registry Status", key: "registryStatus" },
   { label: "Jurisdiction", key: "jurisdiction" },
   { label: "Sector Category", key: "category" },

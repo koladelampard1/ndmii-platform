@@ -25,8 +25,8 @@ export function PublicProfileActions({ profileUrl, verificationSummaryUrl }: Pub
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "BIN Business Profile",
-          text: "View this verified business profile on BIN",
+          title: "DBIN Business Profile",
+          text: "View this verified business profile on DBIN",
           url: profileUrl,
         });
         return;

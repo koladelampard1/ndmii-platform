@@ -362,7 +362,7 @@ export default async function SearchPage({
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-3xl font-semibold text-slate-900">Verified businesses ({providers.length})</h2>
-            <p className="mt-1 text-sm text-slate-600">Browse trusted businesses that have been verified on BIN.</p>
+            <p className="mt-1 text-sm text-slate-600">Browse trusted businesses that have been verified on DBIN.</p>
           </div>
           <div className="flex items-center gap-2">
             <button

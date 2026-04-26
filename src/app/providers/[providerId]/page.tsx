@@ -86,7 +86,7 @@ export default async function ProviderPublicPage({
       <main className="min-h-screen bg-slate-50 text-slate-900">
         <section className="border-b border-emerald-900/80 bg-emerald-950 text-white">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <Link href="/" className="text-lg font-bold tracking-tight">BIN Business Identity Network</Link>
+            <Link href="/" className="text-lg font-bold tracking-tight">Digital Business Identity Network (DBIN)</Link>
             <Link href="/marketplace" className="text-sm text-emerald-100">Marketplace</Link>
           </div>
         </section>
@@ -124,7 +124,7 @@ export default async function ProviderPublicPage({
     specialization: null,
     state: "Nigeria",
     lga: null,
-    short_description: "Verified provider listed in the BIN marketplace.",
+    short_description: "Verified provider listed in the DBIN marketplace.",
     verification_status: "verified",
     trust_score: 75,
     avg_rating: 0,
@@ -177,7 +177,7 @@ export default async function ProviderPublicPage({
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-emerald-900 bg-emerald-950 text-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <Link href="/" className="text-lg font-semibold tracking-tight">BIN Business Identity Network</Link>
+          <Link href="/" className="text-lg font-semibold tracking-tight">Digital Business Identity Network (DBIN)</Link>
           <nav className="flex flex-wrap items-center gap-5 text-sm text-emerald-50">
             <Link href="/marketplace" className="hover:text-white">Marketplace</Link>
             <Link href="/verify" className="hover:text-white">Verify Business ID</Link>
@@ -231,7 +231,7 @@ export default async function ProviderPublicPage({
               <p className="mt-3 text-sm leading-relaxed text-slate-700">{providerView.short_description || providerView.long_description}</p>
 
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
-                <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">BIN ID: {providerView.ndmii_id ?? providerView.msme_id ?? "Not available"}</span>
+                <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">DBIN ID: {providerView.ndmii_id ?? providerView.msme_id ?? "Not available"}</span>
                 <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-emerald-700">Public Profile</span>
                 <span className={`rounded-lg border px-2.5 py-1.5 ${statusTone(providerView.verification_status)}`}>
                   {providerView.verification_status === "approved" ? "Approved" : providerView.verification_status === "verified" ? "Active" : providerView.verification_status}
@@ -295,7 +295,7 @@ export default async function ProviderPublicPage({
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex items-center justify-between"><dt className="text-slate-600">Verification Status</dt><dd className="font-semibold text-emerald-700">{providerView.verification_status === "approved" ? "Approved" : "Verified"}</dd></div>
               <div className="flex items-center justify-between"><dt className="text-slate-600">Profile Status</dt><dd className="font-semibold text-emerald-700">Public</dd></div>
-              <div className="flex items-center justify-between"><dt className="text-slate-600">BIN Verified</dt><dd className="font-semibold text-emerald-700">Yes</dd></div>
+              <div className="flex items-center justify-between"><dt className="text-slate-600">DBIN Verified</dt><dd className="font-semibold text-emerald-700">Yes</dd></div>
               <div className="flex items-center justify-between"><dt className="text-slate-600">Reviews Published</dt><dd className="font-semibold text-slate-700">{providerView.review_count}</dd></div>
               <div className="flex items-center justify-between"><dt className="text-slate-600">Last Updated</dt><dd className="font-semibold text-slate-700">{formatDate(providerView.reviews[0]?.created_at)}</dd></div>
             </dl>
@@ -366,7 +366,7 @@ export default async function ProviderPublicPage({
           </aside>
 
           <article className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
-            <p className="inline-flex items-center gap-2 font-medium"><AlertCircle className="h-4 w-4" />Information on this page is provided by the business and verified by BIN.</p>
+            <p className="inline-flex items-center gap-2 font-medium"><AlertCircle className="h-4 w-4" />Information on this page is provided by the business and verified by DBIN.</p>
             <p className="mt-1 text-emerald-800">For official verification documents, use the verification summary action when available.</p>
           </article>
         </section>
@@ -374,8 +374,8 @@ export default async function ProviderPublicPage({
 
       <footer className="mt-8 border-t border-emerald-900/80 bg-emerald-950 text-emerald-50">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4 text-xs">
-          <p>BIN is an independent business identity and verification network.</p>
-          <p>© 2026 Business Identity Network. All rights reserved.</p>
+          <p>DBIN is an independent business identity and verification network.</p>
+          <p>© 2026 Digital Business Identity Network (DBIN). All rights reserved.</p>
         </div>
       </footer>
     </main>

@@ -86,8 +86,8 @@ export default async function LandingPage() {
 
         <header className="relative mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-5">
           <Link href="/" className="inline-flex items-center gap-3">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/90 text-lg font-extrabold">BIN</span>
-            <span className="text-sm font-semibold leading-tight md:text-base">Business Identity Network</span>
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/90 text-lg font-extrabold">DBIN</span>
+            <span className="text-sm font-semibold leading-tight md:text-base">Digital Business Identity Network (DBIN)</span>
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-emerald-50/90 lg:flex">
@@ -118,7 +118,7 @@ export default async function LandingPage() {
               <span className="text-emerald-300">Unlock opportunities.</span>
             </h1>
             <p className="mt-5 max-w-xl text-sm text-emerald-50/90 md:text-base">
-              Business Identity Network helps MSMEs, associations, marketplaces, lenders, and institutions create trusted business identities, verify credentials, and connect with reliable businesses.
+              Digital Business Identity Network (DBIN) helps MSMEs, associations, marketplaces, lenders, and institutions create trusted business identities, verify credentials, and connect with reliable businesses.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link href="/register" className="inline-flex h-11 items-center rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300">Register Your Business</Link>
@@ -134,10 +134,10 @@ export default async function LandingPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-emerald-200">Official Business Identity Credential</p>
                 <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-1 text-xs font-semibold text-emerald-100">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> BIN VERIFIED
+                  <CheckCircle2 className="h-3.5 w-3.5" /> DBIN VERIFIED
                 </p>
               </div>
-              <span className="text-xs font-semibold text-emerald-100">BIN</span>
+              <span className="text-xs font-semibold text-emerald-100">DBIN</span>
             </div>
 
             <div className="mt-5 grid grid-cols-[84px_1fr_auto] gap-4 rounded-2xl border border-emerald-200/25 bg-emerald-950/30 p-4">
@@ -249,7 +249,7 @@ export default async function LandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <h2 className="text-center text-2xl font-semibold">Why join Business Identity Network?</h2>
+        <h2 className="text-center text-2xl font-semibold">Why join Digital Business Identity Network (DBIN)?</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {BENEFITS.map((item) => (
             <article key={item} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -261,7 +261,7 @@ export default async function LandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-12">
-        <h2 className="text-center text-2xl font-semibold">How Business Identity Network works</h2>
+        <h2 className="text-center text-2xl font-semibold">How Digital Business Identity Network (DBIN) works</h2>
         <ol className="mt-6 grid gap-3 md:grid-cols-5">
           {HOW_IT_WORKS.map((step, index) => (
             <li key={step} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
@@ -298,7 +298,7 @@ export default async function LandingPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href="/register" className="inline-flex h-10 items-center rounded-md bg-emerald-300 px-4 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200">Register your business</Link>
             <Link href="/verify" className="inline-flex h-10 items-center rounded-md border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Verify Business ID</Link>
-            <Link href="/partners" className="inline-flex h-10 items-center rounded-md border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Partner with BIN</Link>
+            <Link href="/partners" className="inline-flex h-10 items-center rounded-md border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Partner with DBIN</Link>
           </div>
         </div>
       </section>
@@ -307,8 +307,8 @@ export default async function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[1.2fr_2fr]">
           <div>
             <div className="inline-flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500 text-lg font-extrabold text-white">BIN</span>
-              <span className="font-semibold text-white">Business Identity Network</span>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500 text-lg font-extrabold text-white">DBIN</span>
+              <span className="font-semibold text-white">Digital Business Identity Network (DBIN)</span>
             </div>
             <p className="mt-4 max-w-md text-sm text-slate-400">
               An independent business identity and verification network for MSMEs, associations, marketplaces, lenders, and institutions.

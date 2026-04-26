@@ -18,20 +18,20 @@ export default async function ContactPage({
 
   return (
     <PublicPageShell
-      eyebrow="Contact Business Identity Network (BIN)"
-      title="Reach the Business Identity Network operations desk"
-      description="Need support with identity onboarding, verification, regulatory workflows, or institutional adoption? Send a request and BIN will route it to the right team."
+      eyebrow="Contact Digital Business Identity Network (DBIN)"
+      title="Reach the Digital Business Identity Network (DBIN) operations desk"
+      description="Need support with identity onboarding, verification, regulatory workflows, or institutional adoption? Send a request and DBIN will route it to the right team."
       primaryCta={{ label: "Register your business", href: "/register/msme" }}
       secondaryCta={{ label: "Open verification portal", href: "/verify" }}
     >
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-slate-900">Business Identity Network support request</h2>
-        <p className="mt-2 text-sm text-slate-600">Use this intake form to reach BIN service teams supporting MSMEs, associations, regulators, and public-sector buyers.</p>
+        <h2 className="text-xl font-semibold text-slate-900">Digital Business Identity Network (DBIN) support request</h2>
+        <p className="mt-2 text-sm text-slate-600">Use this intake form to reach DBIN service teams supporting MSMEs, associations, regulators, and public-sector buyers.</p>
         <form className="mt-5 grid gap-3 md:grid-cols-2">
           <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Full name" />
           <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Email address" />
           <select defaultValue={params.topic ?? ""} className="rounded-xl border border-slate-200 px-3 py-2 text-sm md:col-span-2">
-            <option value="">Select Business Identity Network topic</option>
+            <option value="">Select Digital Business Identity Network (DBIN) topic</option>
             {SUPPORT_TOPICS.map((topic) => (
               <option key={topic} value={topic}>{topic}</option>
             ))}
@@ -42,7 +42,7 @@ export default async function ContactPage({
           </button>
         </form>
         <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Business Identity Network live channels are being expanded. For immediate access to core BIN services, use the routes below.
+          Digital Business Identity Network (DBIN) live channels are being expanded. For immediate access to core DBIN services, use the routes below.
           <div className="mt-2 flex flex-wrap gap-3">
             <Link href="/marketplace" className="font-medium">Browse marketplace</Link>
             <Link href="/verify" className="font-medium">Verify Business Identity Number</Link>
