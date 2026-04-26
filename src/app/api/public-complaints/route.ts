@@ -2,6 +2,8 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { resolveProviderPublicContext } from "@/lib/data/provider-profile-resolver";
+import { createComplaintStatusHistory, generateComplaintReference } from "@/lib/data/complaints";
+import { normalizeFccpcStatus } from "@/lib/data/fccpc-complaints";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_EVIDENCE_FILE_BYTES = 10 * 1024 * 1024;
@@ -274,23 +276,61 @@ export async function POST(request: Request) {
       mimeType: string | null;
     } | null = null;
     let warningMessage: string | null = null;
+    const complaintReference = generateComplaintReference();
     const complaintInsertPayload = {
       msme_id: resolvedInternalMsmeUuid,
+      provider_msme_id: resolvedInternalMsmeUuid,
+      provider_id: resolvedProviderId,
+      provider_profile_id: resolvedProviderId,
+      provider_business_name: providerContext.provider?.display_name ?? null,
+      complainant_name,
+      complainant_email,
+      complainant_phone,
+      preferred_contact_method,
       complaint_type,
+      complaint_category: complaint_type,
+      category: complaint_type,
+      title: summary,
+      summary,
       description,
+      severity,
+      priority: severity,
+      complaint_reference: complaintReference,
+      source_channel: "marketplace_public_profile",
+      regulator_target: "fccpc",
+      reporter_name: complainant_name,
+      reporter_email: complainant_email,
       created_at: new Date().toISOString(),
-      status: "open",
+      status: normalizeFccpcStatus("submitted"),
     };
+
+    const complaintInsertPayloadWithOptional = {
+      ...complaintInsertPayload,
+      related_reference,
+    } as Record<string, unknown>;
 
     console.log("[complaint-submit][actual_insert_payload]", complaintInsertPayload);
     const postInsertSelectClause = "id,msme_id,association_id,status,complaint_type";
     console.log("[complaint-submit][post_insert_select_clause]", postInsertSelectClause);
 
-    const { data: complaintRow, error: complaintInsertError } = await supabase
+    let { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(complaintInsertPayload)
+      .insert(complaintInsertPayloadWithOptional)
       .select(postInsertSelectClause)
       .single();
+
+    if (complaintInsertError?.message?.toLowerCase().includes("related_reference")) {
+      complaintInsertPayload.description = related_reference
+        ? `${description}\n\nRelated reference: ${related_reference}`
+        : description;
+      const retryInsert = await supabase
+        .from("complaints")
+        .insert(complaintInsertPayload)
+        .select(postInsertSelectClause)
+        .single();
+      complaintRow = retryInsert.data;
+      complaintInsertError = retryInsert.error;
+    }
 
     console.info("[complaint-submit][insert_result]", {
       ok: !complaintInsertError && Boolean(complaintRow),
@@ -309,6 +349,20 @@ export async function POST(request: Request) {
         `[complaint-submit] complaint_insert_failed: ${complaintInsertError?.message ?? "Unknown insert error"}`
       );
     }
+
+    await createComplaintStatusHistory({
+      complaintId: complaintRow.id,
+      fromStatus: null,
+      toStatus: normalizeFccpcStatus(complaintInsertPayload.status),
+      changedByUserId: null,
+      changedByRole: "public",
+      note: "Public complaint submitted.",
+      metadata: {
+        source: "public_complaint_form",
+        preferred_contact_method: preferred_contact_method || null,
+        related_reference: related_reference || null,
+      },
+    });
 
     console.log("[complaint-submit][inserted_row_actual]", {
       id: complaintRow?.id ?? null,
@@ -421,7 +475,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      redirectPath: `/providers/${canonicalSlug}?notice=complaint_submitted`,
+      redirectPath: `/providers/${canonicalSlug}/complaints/success?ref=${encodeURIComponent(complaintReference)}`,
       warning: warningMessage,
     });
   } catch (error) {

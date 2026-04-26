@@ -2,8 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { logActivity } from "@/lib/data/operations";
-import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { createComplaintStatusHistory } from "@/lib/data/complaints";
+import { FCCPC_STATUS_OPTIONS, fccpcStatusLabel, normalizeFccpcStatus } from "@/lib/data/fccpc-complaints";
 
 type ComplaintQueueRow = {
   id: string;
@@ -37,6 +39,7 @@ function devQueueLog(message: string, payload?: Record<string, unknown>) {
 }
 
 async function fetchComplaintQueue(role: string, params: Record<string, string | undefined>) {
+  const supabase = await createServiceRoleSupabaseClient();
   const querySource = role === "admin" ? "dashboard/fccpc (admin_all)" : "dashboard/fccpc (fccpc_routed)";
   let queue: ComplaintQueueRow[] = [];
   let schemaMismatchError: string | null = null;
@@ -54,7 +57,10 @@ async function fetchComplaintQueue(role: string, params: Record<string, string |
     queue = (data ?? []) as ComplaintQueueRow[];
   }
 
-  if (params.status) queue = queue.filter((row) => (row.status ?? "open") === params.status);
+  if (params.status) {
+    const requestedStatus = normalizeFccpcStatus(params.status);
+    queue = queue.filter((row) => normalizeFccpcStatus(row.status) === requestedStatus);
+  }
   if (params.state) queue = queue.filter((row) => (row.state ?? "") === params.state);
   if (params.sector) queue = queue.filter((row) => (row.sector ?? "") === params.sector);
   if (params.severity) queue = queue.filter((row) => (row.severity ?? "") === params.severity);
@@ -81,6 +87,7 @@ async function fetchComplaintQueue(role: string, params: Record<string, string |
 
 async function complaintAction(formData: FormData) {
   "use server";
+  const supabase = await createServiceRoleSupabaseClient();
   const ctx = await getCurrentUserContext();
   if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const complaintId = String(formData.get("complaint_id"));
@@ -88,13 +95,34 @@ async function complaintAction(formData: FormData) {
 
   if (kind === "assign") {
     const assignedOfficer = String(formData.get("assigned_officer_user_id") ?? "");
+    const { data: currentRow } = await supabase.from("complaints").select("status").eq("id", complaintId).maybeSingle();
     await supabase.from("complaints").update({ assigned_officer_user_id: assignedOfficer || null }).eq("id", complaintId);
+    await createComplaintStatusHistory({
+      complaintId,
+      fromStatus: normalizeFccpcStatus(currentRow?.status ?? null),
+      toStatus: normalizeFccpcStatus(currentRow?.status ?? null),
+      changedByUserId: ctx.appUserId,
+      changedByRole: ctx.role,
+      note: assignedOfficer ? "Complaint assigned to FCCPC officer." : "Complaint assignment cleared.",
+      metadata: { action: "assign", assigned_officer_user_id: assignedOfficer || null },
+    });
     await logActivity("fccpc_assign_complaint", "complaint", complaintId, { assignedOfficer });
   }
 
   if (kind === "status") {
-    const status = String(formData.get("status") ?? "open");
+    const { data: currentRow } = await supabase.from("complaints").select("status").eq("id", complaintId).maybeSingle();
+    const status = normalizeFccpcStatus(String(formData.get("status") ?? "submitted"));
+    const currentStatus = normalizeFccpcStatus(currentRow?.status ?? null);
     await supabase.from("complaints").update({ status, closed_at: status === "closed" ? new Date().toISOString() : null }).eq("id", complaintId);
+    await createComplaintStatusHistory({
+      complaintId,
+      fromStatus: currentStatus,
+      toStatus: status,
+      changedByUserId: ctx.appUserId,
+      changedByRole: ctx.role,
+      note: "FCCPC status updated from queue.",
+      metadata: { action: "status_update" },
+    });
     await logActivity("fccpc_update_status", "complaint", complaintId, { status });
   }
 
@@ -108,6 +136,7 @@ export default async function FccpcPage({
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
+  const supabase = await createServiceRoleSupabaseClient();
   if (!["fccpc_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   const { data: officerData } = await supabase
     .from("users")
@@ -169,7 +198,7 @@ export default async function FccpcPage({
 
                 devQueueLog("workspace_link_prepared", {
                   clickedComplaintId: complaintId || null,
-                  queueRowStatus: row.status ?? "open",
+                  queueRowStatus: normalizeFccpcStatus(row.status),
                 });
 
                 return (
@@ -191,7 +220,7 @@ export default async function FccpcPage({
                 </td>
                 <td className="px-3 py-3"><StatusBadge status={row.severity === "critical" ? "critical" : row.severity === "high" ? "warning" : "active"} label={row.severity ?? "medium"} /></td>
                 <td className="px-3 py-3 text-xs text-slate-600">{row.created_at ? new Date(row.created_at).toLocaleDateString() : "Unknown date"}</td>
-                <td className="px-3 py-3">{row.status ?? "open"}</td>
+                <td className="px-3 py-3 capitalize">{fccpcStatusLabel(row.status)}</td>
                 <td className="px-3 py-3">{assignedOfficerName}</td>
                 <td className="space-y-2 px-3 py-3">
                   <form action={complaintAction} className="flex gap-2">
@@ -207,7 +236,9 @@ export default async function FccpcPage({
                     <input type="hidden" name="complaint_id" value={complaintId} />
                     <input type="hidden" name="kind" value="status" />
                     <select name="status" className="rounded border px-2 py-1 text-xs">
-                      <option value="open">open</option><option value="investigating">investigating</option><option value="enforcement">enforcement</option><option value="closed">closed</option>
+                      {FCCPC_STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
                     </select>
                     <button className="rounded border px-2 py-1 text-xs">Update</button>
                   </form>
