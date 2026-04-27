@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Menu,
 } from "lucide-react";
+import { FEATURE_FINANCE_READINESS } from "@/lib/finance-readiness";
 
 type WorkspaceLink = {
   href: string;
@@ -54,6 +55,7 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/id-card", label: "My Business Identity Credential", icon: FileBadge2 },
       { href: "/dashboard/msme/compliance", label: "Verification Status", icon: ShieldCheck },
       { href: "/dashboard/payments", label: "Tax / VAT", icon: FileText },
+      ...(FEATURE_FINANCE_READINESS ? [{ href: "/dashboard/msme/finance-readiness", label: "Finance Readiness", icon: FileText }] : []),
     ],
   },
   {
