@@ -10,6 +10,7 @@ import {
   ImageIcon,
   MapPin,
   MessageSquare,
+  PiggyBank,
   NotebookPen,
   Receipt,
   Search,
@@ -22,6 +23,7 @@ import {
 import { fetchProviderQuoteInboxCount } from "@/lib/data/provider-quote-queries";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 type ActivityItem = {
   id: string;
@@ -116,6 +118,14 @@ export default async function MsmePage() {
 
   const verificationStatus = workspace.msme.verification_status?.replaceAll("_", " ") ?? "Pending review";
   const isVerified = verificationStatus.toLowerCase().includes("approved") || workspace.provider.is_verified === true;
+  const financeReadinessEnabled = isFeatureEnabled("FEATURE_FINANCE_READINESS");
+
+  if (process.env.VERCEL_ENV === "preview") {
+    console.info("[msme-dashboard] finance readiness feature flag", {
+      FEATURE_FINANCE_READINESS: process.env.FEATURE_FINANCE_READINESS,
+      financeReadinessEnabled,
+    });
+  }
 
   const quickActions = [
     { href: "/dashboard/msme/profile", label: "Edit Business Profile", icon: NotebookPen },
@@ -124,6 +134,9 @@ export default async function MsmePage() {
     { href: "/dashboard/msme/reviews", label: "View Reviews", icon: Star },
     { href: "/dashboard/msme/complaints", label: "View Complaints", icon: MessageSquare },
     { href: "/dashboard/msme/id-card", label: "Download Business Identity Credential", icon: FileBadge2 },
+    ...(financeReadinessEnabled
+      ? [{ href: "/dashboard/msme/finance-readiness", label: "Check Access to Finance Readiness", icon: PiggyBank }]
+      : []),
   ];
 
   const activity: ActivityItem[] = [
