@@ -76,7 +76,8 @@ const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
 const SAFE_SCHEMA_COLUMNS = {
   provider_profiles: ["display_name", "description", "tagline", "contact_email", "contact_phone", "website", "updated_at"] as const,
   msmes: ["business_name", "owner_name", "sector", "business_type", "contact_email", "contact_phone", "cac_number", "address"] as const,
-  activity_logs: ["created_at", "action", "actor_user_id", "actor", "entity_type", "msme_id"] as const,
+  activity_logs: ["id", "created_at", "action", "entity_type", "entity_id", "actor_user_id", "msme_id"] as const,
+  activity_logs_fallback: ["id", "created_at", "action", "entity_type", "msme_id"] as const,
 } as const;
 
 function pickAllowedPayload<T extends Record<string, unknown>, K extends readonly (keyof T)[]>(payload: T, allowedKeys: K) {
@@ -146,14 +147,32 @@ async function loadSettingsActivityLog(params: {
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
   workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>;
 }): Promise<ActivityLogRow[]> {
-  console.info("[msme-settings][safe-schema-mode]", { activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs });
+  console.info("[msme-settings][safe-schema-mode]", {
+    activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs,
+    activityLogsFallback: SAFE_SCHEMA_COLUMNS.activity_logs_fallback,
+  });
 
-  const { data, error } = await params.supabase
+  const safeRead = await params.supabase
     .from("activity_logs")
     .select(SAFE_SCHEMA_COLUMNS.activity_logs.join(","))
     .eq("msme_id", params.workspace.msme.msme_id)
     .order("created_at", { ascending: false })
     .limit(5);
+
+  let data = safeRead.data;
+  let error = safeRead.error;
+
+  if (error) {
+    const fallbackRead = await params.supabase
+      .from("activity_logs")
+      .select(SAFE_SCHEMA_COLUMNS.activity_logs_fallback.join(","))
+      .eq("msme_id", params.workspace.msme.msme_id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    data = fallbackRead.data;
+    error = fallbackRead.error;
+  }
 
   if (error) {
     console.warn("[activity-log][read-skipped]", { message: error.message, code: error.code ?? null });
@@ -183,11 +202,10 @@ async function loadSettingsActivityLog(params: {
   return rows.map((row) => {
     const actorUserId = String(row.actor_user_id ?? "").trim();
     const actorFromUserTable = actorByUserId.get(actorUserId);
-    const actorFromRow = String(row.actor ?? "").trim();
     return {
       timestamp: String(row.created_at ?? ""),
       action: String(row.action ?? "unknown"),
-      actor: actorFromUserTable || actorFromRow || actorUserId || "System",
+      actor: actorFromUserTable || actorUserId || "System",
       entityType: String(row.entity_type ?? "unknown"),
     };
   });
