@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageSquare,
   NotebookPen,
+  PiggyBank,
   Receipt,
   Search,
   Star,
@@ -29,6 +30,20 @@ type ActivityItem = {
   timestamp: string | null;
   href: string;
   icon: typeof ClipboardList;
+};
+
+type QuickActionItem = {
+  href: string;
+  label: string;
+  icon: typeof ClipboardList;
+  description?: string;
+};
+
+const FINANCE_READINESS_QUICK_ACTION: QuickActionItem = {
+  href: "/dashboard/msme/finance-readiness",
+  label: "Check Access to Finance Readiness",
+  description: "Check loan, grant, and investment readiness",
+  icon: PiggyBank,
 };
 
 function formatDate(value: string | null) {
@@ -117,7 +132,9 @@ export default async function MsmePage() {
   const verificationStatus = workspace.msme.verification_status?.replaceAll("_", " ") ?? "Pending review";
   const isVerified = verificationStatus.toLowerCase().includes("approved") || workspace.provider.is_verified === true;
 
-  const quickActions = [
+  const financeReadinessEnabled = process.env.FEATURE_FINANCE_READINESS === "true";
+
+  const quickActions: QuickActionItem[] = [
     { href: "/dashboard/msme/profile", label: "Edit Business Profile", icon: NotebookPen },
     { href: "/dashboard/msme/services", label: "Add Services", icon: Wrench },
     { href: "/dashboard/msme/portfolio", label: "Upload Portfolio", icon: ImageIcon },
@@ -125,6 +142,10 @@ export default async function MsmePage() {
     { href: "/dashboard/msme/complaints", label: "View Complaints", icon: MessageSquare },
     { href: "/dashboard/msme/id-card", label: "Download Business Identity Credential", icon: FileBadge2 },
   ];
+
+  if (financeReadinessEnabled) {
+    quickActions.push(FINANCE_READINESS_QUICK_ACTION);
+  }
 
   const activity: ActivityItem[] = [
     quoteActivity?.[0]
@@ -285,7 +306,10 @@ export default async function MsmePage() {
                         className="group flex min-h-[108px] flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:bg-emerald-50"
                       >
                         <Icon className="h-5 w-5 text-emerald-700" />
-                        <p className="text-sm font-semibold text-slate-800">{action.label}</p>
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-800">{action.label}</p>
+                          {action.description ? <p className="text-xs text-slate-600">{action.description}</p> : null}
+                        </div>
                       </Link>
                     );
                   })}
