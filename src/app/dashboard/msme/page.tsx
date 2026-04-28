@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleHelp,
   ClipboardList,
+  Coins,
   Eye,
   FileBadge2,
   ImageIcon,
@@ -124,6 +125,7 @@ export default async function MsmePage() {
     { href: "/dashboard/msme/reviews", label: "View Reviews", icon: Star },
     { href: "/dashboard/msme/complaints", label: "View Complaints", icon: MessageSquare },
     { href: "/dashboard/msme/id-card", label: "Download Business Identity Credential", icon: FileBadge2 },
+    { href: "/dashboard/msme/finance-readiness", label: "Access to Finance Readiness", icon: Coins },
   ];
 
   const activity: ActivityItem[] = [
