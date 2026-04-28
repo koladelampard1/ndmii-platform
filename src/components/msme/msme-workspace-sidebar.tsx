@@ -15,6 +15,7 @@ import {
   User,
   Wrench,
   Star,
+  Landmark,
   type LucideIcon,
   Menu,
 } from "lucide-react";
@@ -54,6 +55,7 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/id-card", label: "My Business Identity Credential", icon: FileBadge2 },
       { href: "/dashboard/msme/compliance", label: "Verification Status", icon: ShieldCheck },
       { href: "/dashboard/payments", label: "Tax / VAT", icon: FileText },
+      { href: "/dashboard/msme/finance-readiness", label: "Access to Finance Readiness", icon: Landmark },
     ],
   },
   {
