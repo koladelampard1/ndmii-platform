@@ -8,6 +8,7 @@ import {
   FileText,
   ImageIcon,
   LayoutDashboard,
+  BarChart3,
   MessageSquare,
   Receipt,
   Settings,
@@ -67,12 +68,12 @@ function isLinkActive(pathname: string, link: WorkspaceLink) {
   return pathname === link.href || pathname.startsWith(`${link.href}/`);
 }
 
-function SidebarNav() {
+function SidebarNav({ sections }: { sections: WorkspaceSection[] }) {
   const pathname = usePathname();
 
   return (
     <nav className="space-y-6">
-      {WORKSPACE_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <div key={section.title || "dashboard"}>
           {section.title ? <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-300/95">{section.title}</p> : null}
           <div className="space-y-1.5">
@@ -101,7 +102,25 @@ function SidebarNav() {
   );
 }
 
-export function MsmeWorkspaceSidebar() {
+type MsmeWorkspaceSidebarProps = {
+  financeReadinessEnabled?: boolean;
+};
+
+export function MsmeWorkspaceSidebar({ financeReadinessEnabled = false }: MsmeWorkspaceSidebarProps) {
+  const sections: WorkspaceSection[] = WORKSPACE_SECTIONS.map((section) => ({
+    ...section,
+    links: [...section.links],
+  }));
+
+  if (financeReadinessEnabled) {
+    const businessManagementSection = sections.find((section) => section.title === "Business Management");
+    businessManagementSection?.links.push({
+      label: "Access to Finance Readiness",
+      href: "/dashboard/msme/finance-readiness",
+      icon: BarChart3,
+    });
+  }
+
   return (
     <aside className="flex h-full flex-col rounded-2xl bg-emerald-950 p-4 text-white shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:rounded-3xl lg:p-5">
       <div className="mb-6 border-b border-emerald-900/80 pb-5">
@@ -120,13 +139,13 @@ export function MsmeWorkspaceSidebar() {
             <span className="hidden text-xs text-emerald-200 group-open:inline">Close</span>
           </summary>
           <div className="pt-3">
-            <SidebarNav />
+            <SidebarNav sections={sections} />
           </div>
         </details>
       </div>
 
       <div className="hidden lg:block">
-        <SidebarNav />
+        <SidebarNav sections={sections} />
       </div>
 
       <div className="mt-6 lg:mt-auto lg:pt-6">

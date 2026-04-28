@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  BarChart3,
   Bell,
   CheckCircle2,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { fetchProviderQuoteInboxCount } from "@/lib/data/provider-quote-queries";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type ActivityItem = {
@@ -64,6 +66,10 @@ function profileCompletion({
 }
 
 export default async function MsmePage() {
+  const financeReadinessEnabled = isFeatureEnabled(process.env.FEATURE_FINANCE_READINESS);
+  console.log("FEATURE_FINANCE_READINESS:", process.env.FEATURE_FINANCE_READINESS);
+  console.log("financeReadinessEnabled:", financeReadinessEnabled);
+
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
 
@@ -118,12 +124,31 @@ export default async function MsmePage() {
   const isVerified = verificationStatus.toLowerCase().includes("approved") || workspace.provider.is_verified === true;
 
   const quickActions = [
-    { href: "/dashboard/msme/profile", label: "Edit Business Profile", icon: NotebookPen },
-    { href: "/dashboard/msme/services", label: "Add Services", icon: Wrench },
-    { href: "/dashboard/msme/portfolio", label: "Upload Portfolio", icon: ImageIcon },
-    { href: "/dashboard/msme/reviews", label: "View Reviews", icon: Star },
-    { href: "/dashboard/msme/complaints", label: "View Complaints", icon: MessageSquare },
-    { href: "/dashboard/msme/id-card", label: "Download Business Identity Credential", icon: FileBadge2 },
+    { href: "/dashboard/msme/profile", label: "Edit Business Profile", icon: NotebookPen, description: "Update your public profile", iconName: "profile" },
+    { href: "/dashboard/msme/services", label: "Add Services", icon: Wrench, description: "List the services you provide", iconName: "services" },
+    { href: "/dashboard/msme/portfolio", label: "Upload Portfolio", icon: ImageIcon, description: "Showcase completed projects", iconName: "portfolio" },
+    { href: "/dashboard/msme/reviews", label: "View Reviews", icon: Star, description: "Read customer feedback", iconName: "reviews" },
+    { href: "/dashboard/msme/complaints", label: "View Complaints", icon: MessageSquare, description: "Track and resolve complaints", iconName: "complaints" },
+    {
+      href: "/dashboard/msme/id-card",
+      label: "Download Business Identity Credential",
+      icon: FileBadge2,
+      description: "Get your latest business identity credential",
+      iconName: "identity",
+    },
+    ...(financeReadinessEnabled
+      ? [
+          {
+            title: "Check Access to Finance Readiness",
+            description: "Assess your eligibility for loans, grants and investment support",
+            href: "/dashboard/msme/finance-readiness",
+            icon: "finance",
+            label: "Check Access to Finance Readiness",
+            iconName: "finance",
+            iconComponent: BarChart3,
+          },
+        ]
+      : []),
   ];
 
   const activity: ActivityItem[] = [
@@ -277,7 +302,7 @@ export default async function MsmePage() {
                 <h3 className="text-lg font-semibold text-slate-900">Quick Actions</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {quickActions.map((action) => {
-                    const Icon = action.icon;
+                    const Icon = action.iconName === "finance" ? BarChart3 : action.icon;
                     return (
                       <Link
                         key={action.href}
@@ -285,7 +310,10 @@ export default async function MsmePage() {
                         className="group flex min-h-[108px] flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:bg-emerald-50"
                       >
                         <Icon className="h-5 w-5 text-emerald-700" />
-                        <p className="text-sm font-semibold text-slate-800">{action.label}</p>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{action.title ?? action.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{action.description}</p>
+                        </div>
                       </Link>
                     );
                   })}
