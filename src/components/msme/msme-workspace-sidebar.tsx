@@ -15,6 +15,7 @@ import {
   User,
   Wrench,
   Star,
+  BarChart3,
   type LucideIcon,
   Menu,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/complaints", label: "Complaints", icon: MessageSquare },
       { href: "/dashboard/msme/quotes", label: "Quote Requests", icon: ClipboardList },
       { href: "/dashboard/msme/invoices", label: "Invoices", icon: Receipt },
+      { href: "/dashboard/msme/finance-readiness", label: "Access to Finance Readiness", icon: BarChart3 },
     ],
   },
   {
