@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { getFinanceReadinessAssessment, type FinanceReadinessPathway } from "@/lib/msme/finance-readiness-assessments";
 
-type Pathway = "loan" | "grant" | "investment";
+type Pathway = FinanceReadinessPathway;
 
 const pathwayMeta: Record<Pathway, { title: string }> = {
   loan: { title: "Loan" },
@@ -44,10 +45,13 @@ export async function GET(request: NextRequest) {
   const msmeId = workspace.msme.msme_id || "MSME-ID";
 
   const url = new URL(request.url);
-  const pathway = (url.searchParams.get("pathway") as Pathway | null) ?? "loan";
-  const score = Number.parseInt(url.searchParams.get("score") ?? "0", 10);
-  const completion = Number.parseInt(url.searchParams.get("completion") ?? "0", 10);
-  const band = url.searchParams.get("band") ?? "Early-stage readiness";
+  const assessmentId = url.searchParams.get("assessmentId") ?? "";
+  const persisted = assessmentId ? getFinanceReadinessAssessment(assessmentId) : null;
+
+  const pathway = (persisted?.pathway ?? (url.searchParams.get("pathway") as Pathway | null) ?? "loan");
+  const score = persisted?.score ?? Number.parseInt(url.searchParams.get("score") ?? "0", 10);
+  const completion = persisted?.completion ?? Number.parseInt(url.searchParams.get("completion") ?? "0", 10);
+  const band = persisted?.band ?? url.searchParams.get("band") ?? "Early-stage readiness";
 
   const now = new Date();
   const top = [
