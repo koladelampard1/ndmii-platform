@@ -52,13 +52,16 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
   const band = score >= 80 ? "High readiness" : score >= 60 ? "Moderate readiness" : "Early-stage readiness";
   const categoryScores = sections.map((s) => ({ title: s.title, score: Math.round((s.questions.filter((q) => answers[q.id] === "yes").length / s.questions.length) * 100) }));
 
+  const reportHref = assessmentId
+    ? `/dashboard/msme/finance-readiness/report/${encodeURIComponent(assessmentId)}`
+    : null;
   const downloadHref = assessmentId
     ? `/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(assessmentId)}`
     : `/api/msme/finance-readiness/pdf?pathway=${encodeURIComponent(pathway)}&score=${score}&completion=${completion}&band=${encodeURIComponent(band)}`;
 
   const persistAssessmentAndDownload = async () => {
     if (assessmentId || isPersisting) {
-      window.location.href = downloadHref;
+      window.location.href = reportHref ?? downloadHref;
       return;
     }
 
@@ -82,7 +85,7 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
       }
 
       setAssessmentId(payload.assessmentId);
-      window.location.href = `/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(payload.assessmentId)}`;
+      window.location.href = `/dashboard/msme/finance-readiness/report/${encodeURIComponent(payload.assessmentId)}`;
     } catch {
       window.location.href = downloadHref;
     } finally {
