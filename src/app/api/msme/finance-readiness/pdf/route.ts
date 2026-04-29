@@ -15,19 +15,20 @@ function esc(v: string) { return v.replace(/[()\\]/g, ""); }
 function buildPdf(pages: string[]) {
   const objects: string[] = [];
   const pageIds: number[] = [];
-  let nextId = 3;
+  const fontId = 3;
+  let nextId = 4;
   for (const stream of pages) {
     const contentId = nextId;
     const pageId = nextId + 1;
     objects.push(`${contentId} 0 obj\n<< /Length ${b(stream).length} >>\nstream\n${stream}\nendstream\nendobj\n`);
-    objects.push(`${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R >> >> /Contents ${contentId} 0 R >>\nendobj\n`);
+    objects.push(`${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>\nendobj\n`);
     pageIds.push(pageId);
     nextId += 2;
   }
   const header = "%PDF-1.4\n";
   const root = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
   const pagesObj = `2 0 obj\n<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>\nendobj\n`;
-  const fontObj = `${nextId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
+  const fontObj = `${fontId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
   const all = [header, root, pagesObj, ...objects, fontObj];
   let pdf = "";
   const xref = [0];
@@ -53,6 +54,9 @@ export async function GET(request: NextRequest) {
     }
 
     const pathway = (persisted?.pathway ?? (url.searchParams.get("pathway") as Pathway | null) ?? "loan");
+    if (!pathwayMeta[pathway]) {
+      console.warn("[finance-readiness-pdf][invalid_pathway]", { pathway, assessmentId });
+    }
     const score = persisted?.score ?? Number.parseInt(url.searchParams.get("score") ?? "0", 10);
     const completion = persisted?.completion ?? Number.parseInt(url.searchParams.get("completion") ?? "0", 10);
     const band = persisted?.band ?? url.searchParams.get("band") ?? "Early-stage readiness";
@@ -102,6 +106,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="finance-readiness-report-${msmeId}.pdf"`,
         "Cache-Control": "no-store",
+        "Content-Length": String(pdfBytes.length),
       },
     });
   } catch (error) {
