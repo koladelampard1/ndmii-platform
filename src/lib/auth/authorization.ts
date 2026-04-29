@@ -226,7 +226,6 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/msme/complaints", label: "Complaint Visibility" },
     { href: "/dashboard/msme/quotes", label: "Quote Requests" },
     { href: "/dashboard/msme/invoices", label: "Invoices" },
-    { href: "/dashboard/msme/bookkeeping", label: "Bookkeeping" },
     { href: "/dashboard/msme/revenue", label: "Revenue" },
     { href: "/dashboard/msme/settings", label: "Provider Settings" },
     { href: "/dashboard/msme/onboarding", label: "My Onboarding" },

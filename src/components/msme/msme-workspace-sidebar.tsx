@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   MessageSquare,
   Receipt,
-  Wallet,
   Settings,
   ShieldCheck,
   User,
@@ -48,7 +47,6 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/complaints", label: "Complaints", icon: MessageSquare },
       { href: "/dashboard/msme/quotes", label: "Quote Requests", icon: ClipboardList },
       { href: "/dashboard/msme/invoices", label: "Invoices", icon: Receipt },
-      { href: "/dashboard/msme/bookkeeping", label: "Bookkeeping", icon: Wallet },
     ],
   },
   {
