@@ -44,8 +44,32 @@ const sections: Section[] = [
 ];
 const pathwayMeta = { loan: { title: "Loan", icon: Landmark, desc: "Assesses repayment capacity and debt fitness." }, grant: { title: "Grant", icon: Wallet, desc: "Assesses impact fit and reporting readiness." }, investment: { title: "Investment", icon: TrendingUp, desc: "Assesses growth potential and governance confidence." } };
 
+function parseFileNameFromDisposition(disposition: string | null, fallback: string) {
+  if (!disposition) return fallback;
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const basicMatch = disposition.match(/filename="?([^";]+)"?/i);
+  if (basicMatch?.[1]) return basicMatch[1];
+  return fallback;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(href);
+}
+
+
 export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadinessClientProps) {
-  const [pathway, setPathway] = useState<Pathway>("loan"); const [sectionIndex, setSectionIndex] = useState(0); const [answers, setAnswers] = useState<Record<string, Answer>>({}); const [showReport, setShowReport] = useState(false); const [assessmentId, setAssessmentId] = useState<string | null>(null); const [isPersisting, setIsPersisting] = useState(false);
+  const [pathway, setPathway] = useState<Pathway>("loan"); const [sectionIndex, setSectionIndex] = useState(0); const [answers, setAnswers] = useState<Record<string, Answer>>({}); const [showReport, setShowReport] = useState(false); const [assessmentId, setAssessmentId] = useState<string | null>(null); const [isPersisting, setIsPersisting] = useState(false); const [downloadError, setDownloadError] = useState<string | null>(null);
   const allQ = useMemo(() => sections.flatMap((s) => s.questions), []);
   const answered = allQ.filter((q) => answers[q.id]).length; const score = Math.round((allQ.filter((q) => answers[q.id] === "yes").length / allQ.length) * 100); const completion = Math.round((answered / allQ.length) * 100); const active = sections[sectionIndex];
   const band = score >= 80 ? "High readiness" : score >= 60 ? "Moderate readiness" : "Early-stage readiness";
@@ -55,13 +79,30 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
     ? `/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(assessmentId)}`
     : `/api/msme/finance-readiness/pdf?pathway=${encodeURIComponent(pathway)}&score=${score}&completion=${completion}&band=${encodeURIComponent(band)}`;
 
-  const openPdfReport = (href: string) => {
-    window.location.assign(href);
+  const openPdfReport = async (href: string) => {
+    const response = await fetch(href, { method: "GET" });
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (!response.ok || !contentType.includes("application/pdf")) {
+      throw new Error("PDF generation failed. Please try again.");
+    }
+
+    const blob = await response.blob();
+    if (blob.size < 4096) {
+      throw new Error("Generated PDF is empty or too small. Please try again.");
+    }
+
+    const fileName = parseFileNameFromDisposition(response.headers.get("Content-Disposition"), `finance-readiness-report-${msmeId}.pdf`);
+    downloadBlob(new Blob([blob], { type: "application/pdf" }), fileName);
   };
 
   const persistAssessmentAndDownload = async () => {
     if (assessmentId || isPersisting) {
-      openPdfReport(downloadHref);
+      try {
+        setDownloadError(null);
+        await openPdfReport(downloadHref);
+      } catch (error) {
+        setDownloadError(error instanceof Error ? error.message : "Unable to download PDF report.");
+      }
       return;
     }
 
@@ -74,27 +115,26 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
       });
 
       if (!response.ok) {
-        openPdfReport(downloadHref);
-        return;
+        throw new Error("Could not save assessment before PDF generation.");
       }
 
       const payload = (await response.json()) as { assessmentId?: string };
       if (!payload.assessmentId) {
-        openPdfReport(downloadHref);
-        return;
+        throw new Error("Could not save assessment before PDF generation.");
       }
 
       setAssessmentId(payload.assessmentId);
-      openPdfReport(`/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(payload.assessmentId)}`);
-    } catch {
-      openPdfReport(downloadHref);
+      await openPdfReport(`/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(payload.assessmentId)}`);
+      setDownloadError(null);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "Unable to download PDF report.");
     } finally {
       setIsPersisting(false);
     }
   };
 
 
-  if (showReport) { return <section className="space-y-5 pb-6"><div className="rounded-3xl border bg-white p-4 sm:p-6"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Readiness Report Preview</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Access to Finance Readiness Index (AFRI)</h1></div><button type="button" onClick={() => { void persistAssessmentAndDownload(); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"><Download className="h-4 w-4"/>{isPersisting ? "Preparing download..." : "Download PDF Report"}</button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-emerald-50 p-4"><p className="text-sm">AFRI score</p><p className="text-4xl font-bold">{score}/100</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Readiness band</p><p className="mt-2 text-sm font-semibold">{band}</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Current pathway</p><p className="mt-2 text-sm font-semibold capitalize">{pathway}</p></div></div></div><button onClick={() => setShowReport(false)} className="rounded-xl border px-4 py-2 text-sm">Back to diagnostic</button></section>; }
+  if (showReport) { return <section className="space-y-5 pb-6"><div className="rounded-3xl border bg-white p-4 sm:p-6"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Readiness Report Preview</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Access to Finance Readiness Index (AFRI)</h1></div><button type="button" onClick={() => { void persistAssessmentAndDownload(); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"><Download className="h-4 w-4"/>{isPersisting ? "Preparing download..." : "Download PDF Report"}</button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-emerald-50 p-4"><p className="text-sm">AFRI score</p><p className="text-4xl font-bold">{score}/100</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Readiness band</p><p className="mt-2 text-sm font-semibold">{band}</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Current pathway</p><p className="mt-2 text-sm font-semibold capitalize">{pathway}</p></div></div></div>{downloadError ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{downloadError}</p> : null}<button onClick={() => setShowReport(false)} className="rounded-xl border px-4 py-2 text-sm">Back to diagnostic</button></section>; }
 
   return <section className="space-y-5 pb-24"><div className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 sm:p-6"><h1 className="text-2xl font-bold">Access to Finance Readiness Diagnostic</h1><p className="mt-2 text-sm text-slate-600">Business: {businessName} • {msmeId} • Pathway: <span className="capitalize">{pathway}</span></p></div><div className="grid gap-3 md:grid-cols-3">{(Object.keys(pathwayMeta) as Pathway[]).map((k) => { const Icon = pathwayMeta[k].icon; return <button key={k} onClick={() => setPathway(k)} className={`rounded-2xl border p-4 text-left ${pathway === k ? "border-emerald-500 bg-emerald-50" : "bg-white"}`}><div className="flex items-center gap-2"><Icon className="h-4 w-4 text-emerald-700" /><p className="font-semibold">{pathwayMeta[k].title}</p></div><p className="mt-2 text-sm text-slate-600">{pathwayMeta[k].desc}</p></button>; })}</div><div className="rounded-2xl border bg-white p-4"><p className="text-sm font-semibold">Section {sectionIndex + 1} of 6: {active.title}</p><p className="text-sm text-slate-600">{answered} of {allQ.length} answered</p><div className="mt-2 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-600" style={{ width: `${completion}%` }} /></div></div><div className="space-y-3">{active.questions.map((q) => (<div key={q.id} className="rounded-2xl border bg-white p-4"><p className="font-medium">{q.label}</p><p className="mt-1 text-sm text-slate-600">{q.helper}</p><div className="mt-3 grid grid-cols-2 gap-2 sm:w-[280px]"><button onClick={() => setAnswers((p) => ({ ...p, [q.id]: "yes" }))} className={`rounded-lg border px-4 py-2 ${answers[q.id] === "yes" ? "border-emerald-600 bg-emerald-100" : ""}`}>Yes</button><button onClick={() => setAnswers((p) => ({ ...p, [q.id]: "no" }))} className={`rounded-lg border px-4 py-2 ${answers[q.id] === "no" ? "border-rose-500 bg-rose-50" : ""}`}>No</button></div></div>))}</div><div className="fixed bottom-0 left-0 right-0 z-10 border-t bg-white/95 p-3"><div className="mx-auto flex w-full max-w-6xl flex-col gap-2 sm:flex-row sm:justify-between"><button onClick={() => setSectionIndex((n) => Math.max(0, n - 1))} disabled={sectionIndex === 0} className="inline-flex items-center justify-center gap-1 rounded-lg border px-4 py-2 text-sm disabled:opacity-50"><ArrowLeft className="h-4 w-4" />Back</button>{sectionIndex < sections.length - 1 ? (<button onClick={() => setSectionIndex((n) => Math.min(sections.length - 1, n + 1))} className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Next Section <ArrowRight className="h-4 w-4" /></button>) : (<button onClick={() => setShowReport(true)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 className="h-4 w-4" />View Report</button>)}</div></div></section>;
 }

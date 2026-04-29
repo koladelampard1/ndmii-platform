@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     const now = new Date();
     const top = [
-    "BT /F1 12 Tf 40 800 Td (DBIN · Digital Business Identity Network) Tj ET",
+    "BT /F1 12 Tf 40 800 Td (DBIN - Digital Business Identity Network) Tj ET",
     "BT /F1 18 Tf 40 776 Td (ACCESS TO FINANCE READINESS REPORT) Tj ET",
     "BT /F1 12 Tf 40 756 Td (MSME Readiness Diagnostic Summary) Tj ET",
     `BT /F1 10 Tf 40 740 Td (Report date/time: ${esc(now.toLocaleString("en-NG"))}) Tj ET`,
@@ -122,11 +122,15 @@ export async function GET(request: NextRequest) {
       return htmlError("Generated PDF bytes were invalid.", 500);
     }
 
+    if (pdfBytes.length < 4096) {
+      return htmlError("Generated PDF was unexpectedly small. Please retry.", 500);
+    }
+
     return new NextResponse(pdfBytes, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="finance-readiness-report-${msmeId}.pdf"`,
+        "Content-Disposition": `attachment; filename="finance-readiness-report-${msmeId}.pdf"`,
         "Cache-Control": "no-store",
         "Content-Length": String(pdfBytes.length),
         "X-Content-Type-Options": "nosniff",
