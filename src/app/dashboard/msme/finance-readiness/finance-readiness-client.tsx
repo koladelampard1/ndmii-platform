@@ -44,34 +44,11 @@ const sections: Section[] = [
 ];
 const pathwayMeta = { loan: { title: "Loan", icon: Landmark, desc: "Assesses repayment capacity and debt fitness." }, grant: { title: "Grant", icon: Wallet, desc: "Assesses impact fit and reporting readiness." }, investment: { title: "Investment", icon: TrendingUp, desc: "Assesses growth potential and governance confidence." } };
 
-function d(blob: Blob, fileName: string) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = fileName; a.click(); URL.revokeObjectURL(u); }
-function b(v: string) { return new TextEncoder().encode(v); }
-function esc(v: string) { return v.replace(/[()\\]/g, ""); }
-function buildPdf(pages: string[]) {
-  const objects: string[] = [];
-  const pageIds: number[] = [];
-  let nextId = 3;
-  for (const stream of pages) {
-    const contentId = nextId;
-    const pageId = nextId + 1;
-    objects.push(`${contentId} 0 obj\n<< /Length ${b(stream).length} >>\nstream\n${stream}\nendstream\nendobj\n`);
-    objects.push(`${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R >> >> /Contents ${contentId} 0 R >>\nendobj\n`);
-    pageIds.push(pageId);
-    nextId += 2;
-  }
-  const header = "%PDF-1.4\n";
-  const root = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-  const pagesObj = `2 0 obj\n<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>\nendobj\n`;
-  const fontObj = `${nextId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
-  const all = [header, root, pagesObj, ...objects, fontObj];
-  let pdf = "";
-  const xref = [0];
-  for (const part of all) { xref.push(b(pdf).length); pdf += part; }
-  const start = b(pdf).length;
-  pdf += `xref\n0 ${xref.length}\n0000000000 65535 f \n`;
-  for (let i = 1; i < xref.length; i += 1) pdf += `${String(xref[i]).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${xref.length} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
-  return new Blob([b(pdf)], { type: "application/pdf" });
+function isMobileSafari() {
+  const ua = navigator.userAgent;
+  const iOS = /iP(ad|hone|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const safari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\//i.test(ua);
+  return iOS && safari;
 }
 
 export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadinessClientProps) {
@@ -82,47 +59,21 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
   const categoryScores = sections.map((s) => ({ title: s.title, score: Math.round((s.questions.filter((q) => answers[q.id] === "yes").length / s.questions.length) * 100) }));
 
   const downloadPdf = async () => {
-    const now = new Date();
-    const top = [
-      "BT /F1 12 Tf 40 800 Td (DBIN · Digital Business Identity Network) Tj ET",
-      "BT /F1 18 Tf 40 776 Td (ACCESS TO FINANCE READINESS REPORT) Tj ET",
-      "BT /F1 12 Tf 40 756 Td (MSME Readiness Diagnostic Summary) Tj ET",
-      `BT /F1 10 Tf 40 740 Td (Report date/time: ${esc(now.toLocaleString("en-NG"))}) Tj ET`,
-      `BT /F1 10 Tf 40 714 Td (Business name: ${esc(businessName)}) Tj ET`,
-      `BT /F1 10 Tf 40 700 Td (DBIN/MSME ID: ${esc(msmeId)}) Tj ET`,
-      `BT /F1 10 Tf 40 686 Td (Assessment pathway: ${pathwayMeta[pathway].title}) Tj ET`,
-      "BT /F1 10 Tf 40 672 Td (Funding amount needed: NGN 5,000,000 simulated) Tj ET",
-      `BT /F1 24 Tf 40 632 Td (AFRI Score: ${score}/100) Tj ET`,
-      `BT /F1 11 Tf 40 610 Td (Readiness band: ${band}) Tj ET`,
-      `BT /F1 11 Tf 40 594 Td (Score progress: ${score} percent) Tj ET`,
-      `BT /F1 10 Tf 40 572 Td (Assessment completed: ${completion} percent | Report generated: ${esc(now.toLocaleDateString("en-NG"))}) Tj ET`,
-      `BT /F1 10 Tf 40 556 Td (Next review: ${esc(new Date(now.getTime() + 1000 * 60 * 60 * 24 * 90).toLocaleDateString("en-NG"))}) Tj ET`,
-      "BT /F1 12 Tf 40 530 Td (Category breakdown) Tj ET",
-      ...categoryScores.map((c, i) => `BT /F1 10 Tf 52 ${512 - i * 14} Td (${esc(c.title)}: ${c.score} percent) Tj ET`),
-    ].join("\n");
-    const page2 = [
-      "BT /F1 12 Tf 40 800 Td (Strengths) Tj ET",
-      "BT /F1 10 Tf 52 784 Td (- Solid identity and registration readiness) Tj ET",
-      "BT /F1 10 Tf 52 770 Td (- Structured assessment completion) Tj ET",
-      "BT /F1 12 Tf 40 742 Td (Readiness gaps) Tj ET",
-      "BT /F1 10 Tf 52 726 Td (- Improve periodic reporting discipline) Tj ET",
-      "BT /F1 10 Tf 52 712 Td (- Strengthen risk register documentation) Tj ET",
-      "BT /F1 12 Tf 40 684 Td (Risk flags) Tj ET",
-      "BT /F1 10 Tf 52 668 Td (- Potential financing mismatch risk) Tj ET",
-      "BT /F1 10 Tf 52 654 Td (- Underwriting evidence gaps) Tj ET",
-      "BT /F1 12 Tf 40 626 Td (Recommended next actions) Tj ET",
-      "BT /F1 10 Tf 52 610 Td (1. Consolidate 12-month financials.) Tj ET",
-      "BT /F1 10 Tf 52 596 Td (2. Formalize governance and risk logs.) Tj ET",
-      "BT /F1 10 Tf 52 582 Td (3. Prepare use-of-funds schedule.) Tj ET",
-      `BT /F1 12 Tf 40 554 Td (Funding signal summary: ${esc(band)} with AFRI ${score}/100.) Tj ET`,
-      "BT /F1 11 Tf 40 526 Td (About this report) Tj ET",
-      "BT /F1 10 Tf 52 510 Td (This DBIN simulation report supports MSME finance readiness planning.) Tj ET",
-      "BT /F1 10 Tf 52 496 Td (It is not a final lender decision document.) Tj ET",
-      "BT /F1 11 Tf 40 468 Td (Verify this report / QR placeholder: [ DBIN VERIFY ]) Tj ET",
-      "BT /F1 10 Tf 200 60 Td (Powered by Roseate Forte) Tj ET",
-    ].join("\n");
-    const blob = buildPdf([top, page2]);
-    d(blob, `finance-readiness-report-${msmeId}.pdf`);
+    const endpoint = `/api/msme/finance-readiness/pdf?pathway=${encodeURIComponent(pathway)}&score=${score}&completion=${completion}&band=${encodeURIComponent(band)}`;
+    if (isMobileSafari()) {
+      window.location.assign(endpoint);
+      return;
+    }
+    const response = await fetch(endpoint, { method: "GET", cache: "no-store" });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const fileName = response.headers.get("Content-Disposition")?.match(/filename=\"([^\"]+)\"/)?.[1] ?? `finance-readiness-report-${msmeId}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   if (showReport) { return <section className="space-y-5 pb-6"><div className="rounded-3xl border bg-white p-4 sm:p-6"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Readiness Report Preview</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Access to Finance Readiness Index (AFRI)</h1></div><button onClick={downloadPdf} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"><Download className="h-4 w-4"/>Download PDF Report</button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-emerald-50 p-4"><p className="text-sm">AFRI score</p><p className="text-4xl font-bold">{score}/100</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Readiness band</p><p className="mt-2 text-sm font-semibold">{band}</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Current pathway</p><p className="mt-2 text-sm font-semibold capitalize">{pathway}</p></div></div></div><button onClick={() => setShowReport(false)} className="rounded-xl border px-4 py-2 text-sm">Back to diagnostic</button></section>; }
