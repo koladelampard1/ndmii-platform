@@ -44,13 +44,6 @@ const sections: Section[] = [
 ];
 const pathwayMeta = { loan: { title: "Loan", icon: Landmark, desc: "Assesses repayment capacity and debt fitness." }, grant: { title: "Grant", icon: Wallet, desc: "Assesses impact fit and reporting readiness." }, investment: { title: "Investment", icon: TrendingUp, desc: "Assesses growth potential and governance confidence." } };
 
-function isMobileSafari() {
-  const ua = navigator.userAgent;
-  const iOS = /iP(ad|hone|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const safari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\//i.test(ua);
-  return iOS && safari;
-}
-
 export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadinessClientProps) {
   const [pathway, setPathway] = useState<Pathway>("loan"); const [sectionIndex, setSectionIndex] = useState(0); const [answers, setAnswers] = useState<Record<string, Answer>>({}); const [showReport, setShowReport] = useState(false);
   const allQ = useMemo(() => sections.flatMap((s) => s.questions), []);
@@ -58,22 +51,12 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
   const band = score >= 80 ? "High readiness" : score >= 60 ? "Moderate readiness" : "Early-stage readiness";
   const categoryScores = sections.map((s) => ({ title: s.title, score: Math.round((s.questions.filter((q) => answers[q.id] === "yes").length / s.questions.length) * 100) }));
 
-  const downloadPdf = async () => {
+  const downloadPdf = () => {
     const endpoint = `/api/msme/finance-readiness/pdf?pathway=${encodeURIComponent(pathway)}&score=${score}&completion=${completion}&band=${encodeURIComponent(band)}`;
-    if (isMobileSafari()) {
-      window.location.assign(endpoint);
-      return;
-    }
-    const response = await fetch(endpoint, { method: "GET", cache: "no-store" });
-    if (!response.ok) return;
-    const blob = await response.blob();
-    const fileName = response.headers.get("Content-Disposition")?.match(/filename=\"([^\"]+)\"/)?.[1] ?? `finance-readiness-report-${msmeId}.pdf`;
-    const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
+    anchor.href = endpoint;
+    anchor.rel = "noopener";
     anchor.click();
-    URL.revokeObjectURL(url);
   };
 
   if (showReport) { return <section className="space-y-5 pb-6"><div className="rounded-3xl border bg-white p-4 sm:p-6"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Readiness Report Preview</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Access to Finance Readiness Index (AFRI)</h1></div><button onClick={downloadPdf} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"><Download className="h-4 w-4"/>Download PDF Report</button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-emerald-50 p-4"><p className="text-sm">AFRI score</p><p className="text-4xl font-bold">{score}/100</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Readiness band</p><p className="mt-2 text-sm font-semibold">{band}</p></div><div className="rounded-2xl border bg-slate-50 p-4"><p className="text-sm">Current pathway</p><p className="mt-2 text-sm font-semibold capitalize">{pathway}</p></div></div></div><button onClick={() => setShowReport(false)} className="rounded-xl border px-4 py-2 text-sm">Back to diagnostic</button></section>; }
