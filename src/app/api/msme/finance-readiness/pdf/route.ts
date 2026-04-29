@@ -12,6 +12,18 @@ const pathwayMeta: Record<Pathway, { title: string }> = {
 
 function b(v: string) { return new TextEncoder().encode(v); }
 function esc(v: string) { return v.replace(/[()\\]/g, ""); }
+function htmlError(message: string, status = 500) {
+  const safeMessage = message.replace(/[<>&"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[ch] ?? ch));
+  return new NextResponse(`<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>AFRI PDF Error</title></head><body style="font-family:system-ui,sans-serif;padding:24px;line-height:1.5"><h1>Unable to generate AFRI PDF</h1><p>${safeMessage}</p></body></html>`, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 function buildPdf(pages: string[]) {
   const objects: string[] = [];
   const pageIds: number[] = [];
@@ -42,13 +54,16 @@ function buildPdf(pages: string[]) {
 
 export async function GET(request: NextRequest) {
   try {
+    const url = new URL(request.url);
+    const assessmentId = url.searchParams.get("assessmentId") ?? "";
+    console.info("[finance-readiness-pdf][request]", { assessmentId });
+
     const workspace = await getProviderWorkspaceContext();
     const businessName = workspace.msme.business_name || workspace.provider.display_name || "MSME Business";
     const msmeId = workspace.msme.msme_id || "MSME-ID";
 
-    const url = new URL(request.url);
-    const assessmentId = url.searchParams.get("assessmentId") ?? "";
     const persisted = assessmentId ? getFinanceReadinessAssessment(assessmentId) : null;
+    console.info("[finance-readiness-pdf][assessment_lookup]", { assessmentId, found: Boolean(persisted) });
     if (assessmentId && !persisted) {
       console.warn("[finance-readiness-pdf][assessment_not_found]", { assessmentId });
     }
@@ -100,20 +115,26 @@ export async function GET(request: NextRequest) {
   ].join("\n");
 
     const pdfBytes = buildPdf([top, page2]);
+    const contentType = "application/pdf";
+    console.info("[finance-readiness-pdf][response]", { assessmentId, pdfByteLength: pdfBytes.length, contentType });
+
+    if (!pdfBytes.length || !new TextDecoder().decode(pdfBytes.slice(0, 4)).startsWith("%PDF")) {
+      return htmlError("Generated PDF bytes were invalid.", 500);
+    }
+
     return new NextResponse(pdfBytes, {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
+        "Content-Type": contentType,
         "Content-Disposition": `inline; filename="finance-readiness-report-${msmeId}.pdf"`,
         "Cache-Control": "no-store",
         "Content-Length": String(pdfBytes.length),
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
     console.error("[finance-readiness-pdf][route_error]", error);
-    return NextResponse.json(
-      { error: "Unable to generate finance readiness report PDF." },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
+    const reason = error instanceof Error ? error.message : "Unknown server error";
+    return htmlError(reason, 500);
   }
 }
