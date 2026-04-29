@@ -56,9 +56,16 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
     ? `/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(assessmentId)}`
     : `/api/msme/finance-readiness/pdf?pathway=${encodeURIComponent(pathway)}&score=${score}&completion=${completion}&band=${encodeURIComponent(band)}`;
 
+  const openPdfReport = (href: string) => {
+    const opened = window.open(href, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.assign(href);
+    }
+  };
+
   const persistAssessmentAndDownload = async () => {
     if (assessmentId || isPersisting) {
-      window.location.href = downloadHref;
+      openPdfReport(downloadHref);
       return;
     }
 
@@ -71,20 +78,20 @@ export function FinanceReadinessClient({ businessName, msmeId }: FinanceReadines
       });
 
       if (!response.ok) {
-        window.location.href = downloadHref;
+        openPdfReport(downloadHref);
         return;
       }
 
       const payload = (await response.json()) as { assessmentId?: string };
       if (!payload.assessmentId) {
-        window.location.href = downloadHref;
+        openPdfReport(downloadHref);
         return;
       }
 
       setAssessmentId(payload.assessmentId);
-      window.location.href = `/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(payload.assessmentId)}`;
+      openPdfReport(`/api/msme/finance-readiness/pdf?assessmentId=${encodeURIComponent(payload.assessmentId)}`);
     } catch {
-      window.location.href = downloadHref;
+      openPdfReport(downloadHref);
     } finally {
       setIsPersisting(false);
     }

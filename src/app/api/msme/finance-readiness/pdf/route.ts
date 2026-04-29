@@ -40,21 +40,25 @@ function buildPdf(pages: string[]) {
 }
 
 export async function GET(request: NextRequest) {
-  const workspace = await getProviderWorkspaceContext();
-  const businessName = workspace.msme.business_name || workspace.provider.display_name || "MSME Business";
-  const msmeId = workspace.msme.msme_id || "MSME-ID";
+  try {
+    const workspace = await getProviderWorkspaceContext();
+    const businessName = workspace.msme.business_name || workspace.provider.display_name || "MSME Business";
+    const msmeId = workspace.msme.msme_id || "MSME-ID";
 
-  const url = new URL(request.url);
-  const assessmentId = url.searchParams.get("assessmentId") ?? "";
-  const persisted = assessmentId ? getFinanceReadinessAssessment(assessmentId) : null;
+    const url = new URL(request.url);
+    const assessmentId = url.searchParams.get("assessmentId") ?? "";
+    const persisted = assessmentId ? getFinanceReadinessAssessment(assessmentId) : null;
+    if (assessmentId && !persisted) {
+      console.warn("[finance-readiness-pdf][assessment_not_found]", { assessmentId });
+    }
 
-  const pathway = (persisted?.pathway ?? (url.searchParams.get("pathway") as Pathway | null) ?? "loan");
-  const score = persisted?.score ?? Number.parseInt(url.searchParams.get("score") ?? "0", 10);
-  const completion = persisted?.completion ?? Number.parseInt(url.searchParams.get("completion") ?? "0", 10);
-  const band = persisted?.band ?? url.searchParams.get("band") ?? "Early-stage readiness";
+    const pathway = (persisted?.pathway ?? (url.searchParams.get("pathway") as Pathway | null) ?? "loan");
+    const score = persisted?.score ?? Number.parseInt(url.searchParams.get("score") ?? "0", 10);
+    const completion = persisted?.completion ?? Number.parseInt(url.searchParams.get("completion") ?? "0", 10);
+    const band = persisted?.band ?? url.searchParams.get("band") ?? "Early-stage readiness";
 
-  const now = new Date();
-  const top = [
+    const now = new Date();
+    const top = [
     "BT /F1 12 Tf 40 800 Td (DBIN · Digital Business Identity Network) Tj ET",
     "BT /F1 18 Tf 40 776 Td (ACCESS TO FINANCE READINESS REPORT) Tj ET",
     "BT /F1 12 Tf 40 756 Td (MSME Readiness Diagnostic Summary) Tj ET",
@@ -69,7 +73,7 @@ export async function GET(request: NextRequest) {
     `BT /F1 10 Tf 40 572 Td (Assessment completed: ${completion} percent | Report generated: ${esc(now.toLocaleDateString("en-NG"))}) Tj ET`,
     `BT /F1 10 Tf 40 556 Td (Next review: ${esc(new Date(now.getTime() + 1000 * 60 * 60 * 24 * 90).toLocaleDateString("en-NG"))}) Tj ET`,
   ].join("\n");
-  const page2 = [
+    const page2 = [
     "BT /F1 12 Tf 40 800 Td (Strengths) Tj ET",
     "BT /F1 10 Tf 52 784 Td (- Solid identity and registration readiness) Tj ET",
     "BT /F1 10 Tf 52 770 Td (- Structured assessment completion) Tj ET",
@@ -91,13 +95,20 @@ export async function GET(request: NextRequest) {
     "BT /F1 10 Tf 200 60 Td (Powered by Roseate Forte) Tj ET",
   ].join("\n");
 
-  const pdfBytes = buildPdf([top, page2]);
-  return new NextResponse(pdfBytes, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="finance-readiness-report-${msmeId}.pdf"`,
-      "Cache-Control": "no-store",
-    },
-  });
+    const pdfBytes = buildPdf([top, page2]);
+    return new NextResponse(pdfBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="finance-readiness-report-${msmeId}.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    console.error("[finance-readiness-pdf][route_error]", error);
+    return NextResponse.json(
+      { error: "Unable to generate finance readiness report PDF." },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }
