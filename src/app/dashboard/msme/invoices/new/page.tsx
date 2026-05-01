@@ -86,7 +86,8 @@ export default async function NewMsmeInvoicePage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
-  const { data: quotes, error } = await supabase
+  let quotes: { id: string; requester_name: string | null; request_summary: string | null; status: string | null }[] = [];
+  const { data: quotesData, error: quotesError } = await supabase
     .from("provider_quotes")
     .select("id,requester_name,request_summary,status")
     .eq("provider_profile_id", workspace.provider.id)
@@ -94,7 +95,14 @@ export default async function NewMsmeInvoicePage() {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  if (error) throw new Error(error.message);
+  if (quotesError) {
+    console.error("[invoice-new] failed to fetch provider quotes", {
+      providerId: workspace.provider.id,
+      error: quotesError.message,
+    });
+  } else {
+    quotes = quotesData ?? [];
+  }
 
   return (
     <section className="space-y-4">
@@ -106,7 +114,7 @@ export default async function NewMsmeInvoicePage() {
         <label className="text-sm">Source quote
           <select name="quote_id" className="mt-1 w-full rounded border px-2 py-2 text-sm">
             <option value="">Manual invoice</option>
-            {(quotes ?? []).map((quote) => (
+            {quotes.map((quote) => (
               <option key={quote.id} value={quote.id}>{quote.requester_name} · {quote.request_summary} ({quote.status})</option>
             ))}
           </select>

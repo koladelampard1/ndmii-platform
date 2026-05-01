@@ -320,10 +320,10 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupKey = msme.msme_id;
+  const providerLookupKey = msme.msme_id?.trim() || null;
   const providerSelect =
     "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
-  let provider: {
+  type ProviderRow = {
     id: string;
     msme_id: string;
     public_slug: string | null;
@@ -335,16 +335,25 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     website: string | null;
     is_verified: boolean | null;
     is_active: boolean | null;
-  } | null = null;
+  };
+  let provider: ProviderRow | null = null;
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
 
-  const { data: providerByMsmePublicIdRows, error: providerByMsmePublicIdError } = await supabase
-    .from("provider_profiles")
-    .select(providerSelect)
-    .eq("msme_id", providerLookupKey)
-    .order("updated_at", { ascending: false })
-    .limit(10);
+  let providerByMsmePublicIdRows: ProviderRow[] | null = null;
+  let providerByMsmePublicIdError: Error | null = null;
+  if (providerLookupKey) {
+    const { data, error } = await supabase
+      .from("provider_profiles")
+      .select(providerSelect)
+      .eq("msme_id", providerLookupKey)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+    providerByMsmePublicIdRows = data;
+    providerByMsmePublicIdError = error;
+  } else {
+    providerByMsmePublicIdError = new Error("msme.msme_id is missing for provider lookup");
+  }
 
   providerQueryResultLength = providerByMsmePublicIdRows?.length ?? 0;
   providerQueryError = providerByMsmePublicIdError?.message ?? null;
