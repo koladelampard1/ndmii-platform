@@ -25,8 +25,16 @@ async function createInvoiceAction(formData: FormData) {
     status: normalizeInvoiceStatus("draft"),
     due_date: String(formData.get("due_date") ?? "") || null,
     updated_at: new Date().toISOString(),
-    quote_id: quoteId,
   }, invoiceColumns);
+
+  if ("quote_id" in invoicePayload) {
+    delete (invoicePayload as Record<string, unknown>).quote_id;
+  }
+
+  console.info("[invoice-create:payload]", {
+    invoicePayload,
+    hasQuoteId: "quote_id" in invoicePayload,
+  });
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
@@ -61,7 +69,15 @@ async function createInvoiceAction(formData: FormData) {
   if (quoteId) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     if (linkColumns.has("quote_id") && linkColumns.has("invoice_id")) {
-      await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      const { error: quoteInvoiceLinkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      if (quoteInvoiceLinkError) {
+        console.error("[invoice-conversion:quote-link-failed]", {
+          quoteId,
+          invoiceId: invoice.id,
+          providerId: workspace.provider.id,
+          error: quoteInvoiceLinkError.message,
+        });
+      }
     }
     const quoteColumns = await getTableColumns(supabase, "provider_quotes");
     await supabase.from("provider_quotes").update(filterPayloadByColumns({ status: "converted", updated_at: new Date().toISOString() }, quoteColumns)).eq("id", quoteId).eq("provider_profile_id", workspace.provider.id);
