@@ -470,7 +470,6 @@ async function quoteWorkflowAction(formData: FormData) {
       vat_rate: 7.5,
       status: normalizeInvoiceStatus("draft"),
       updated_at: new Date().toISOString(),
-      quote_id: quote.id,
     };
     const finalInvoiceInsertPayload = buildAdaptiveInsertPayload(availableInvoicesColumnsSet, rawInvoicePayload, [
       "provider_profile_id",
@@ -609,26 +608,13 @@ export default async function MsmeQuoteDetailPage({
   ];
   const quotePromise = loadQuoteForCurrentProvider(supabase, workspace, quoteId, quoteSelectFields);
 
-  const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const canQueryInvoiceQuoteId = invoiceColumns.has("quote_id");
-  const [{ quote }, { data: links, error: linkError }, { data: linkedByQuoteId, error: quoteIdLinkError }] = await Promise.all([
+  const [{ quote }, { data: links, error: linkError }] = await Promise.all([
     quotePromise,
     supabase.from("quote_invoice_links").select("invoice_id,created_at").eq("quote_id", quoteId).order("created_at", { ascending: false }),
-    canQueryInvoiceQuoteId
-      ? supabase
-          .from("invoices")
-          .select("id,created_at")
-          .eq("quote_id", quoteId)
-          .eq("provider_profile_id", workspace.provider.id)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (linkError) {
     console.info("[quote-invoice-links:fallback]", linkError.message);
-  }
-  if (quoteIdLinkError) {
-    console.info("[quote-invoice-links:quote-id-fallback-error]", quoteIdLinkError.message);
   }
   if (!quote) redirect("/dashboard/msme/quotes");
 
@@ -636,12 +622,8 @@ export default async function MsmeQuoteDetailPage({
     invoice_id: link.invoice_id,
     created_at: link.created_at,
   }));
-  const quoteIdRows = (linkedByQuoteId ?? []).map((invoice: { id: string; created_at: string }) => ({
-    invoice_id: invoice.id,
-    created_at: invoice.created_at,
-  }));
   const linkedInvoices = Array.from(
-    new Map([...linkRows, ...quoteIdRows].map((row) => [row.invoice_id, row])).values()
+    new Map([...linkRows].map((row) => [row.invoice_id, row])).values()
   ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const normalizedStatus = String(quote.status ?? "").toLowerCase();

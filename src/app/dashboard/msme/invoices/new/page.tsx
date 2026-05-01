@@ -25,8 +25,10 @@ async function createInvoiceAction(formData: FormData) {
     status: normalizeInvoiceStatus("draft"),
     due_date: String(formData.get("due_date") ?? "") || null,
     updated_at: new Date().toISOString(),
-    quote_id: quoteId,
   }, invoiceColumns);
+
+  console.log("[invoice-create][payload-keys]", Object.keys(invoicePayload));
+  console.log("[invoice-create][has-quote-id]", "quote_id" in invoicePayload);
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
