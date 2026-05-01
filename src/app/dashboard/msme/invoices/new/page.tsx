@@ -8,14 +8,23 @@ import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEv
 async function createInvoiceAction(formData: FormData) {
   "use server";
 
+  console.info("[invoice-create][step:context:start]");
   const workspace = await getProviderWorkspaceContext();
+  console.info("[invoice-create][step:context:resolved]", {
+    providerProfileId: workspace.provider.id,
+    providerMsmeId: workspace.provider.msme_id ?? null,
+    msmeUuid: workspace.msme.id,
+    msmePublicId: workspace.msme.msme_id,
+    role: workspace.role,
+  });
+
   const supabase = await createServiceRoleSupabaseClient();
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
 
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const invoicePayload = filterPayloadByColumns({
     provider_profile_id: workspace.provider.id,
-    msme_id: workspace.msme.id,
+    msme_id: workspace.msme.msme_id,
     invoice_number: generateInvoiceNumber(),
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
@@ -28,15 +37,26 @@ async function createInvoiceAction(formData: FormData) {
     quote_id: quoteId,
   }, invoiceColumns);
 
+  console.info("[invoice-create][step:invoice:insert:start]", { invoicePayload, quoteId });
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
-  if (invoiceError) throw new Error(invoiceError.message);
+  if (invoiceError) {
+    console.error("[invoice-create][step:invoice:insert:error]", {
+      message: invoiceError.message,
+      code: invoiceError.code ?? null,
+      details: invoiceError.details ?? null,
+      hint: invoiceError.hint ?? null,
+      invoicePayload,
+    });
+    throw new Error(invoiceError.message);
+  }
+  console.info("[invoice-create][step:invoice:insert:ok]", { invoiceId: invoice.id });
 
   const quantity = Number(formData.get("quantity") ?? 1);
   const unitPrice = Number(formData.get("unit_price") ?? 0);
   const lineTotal = calculateLineTotal(quantity, unitPrice);
 
   const itemColumns = await getTableColumns(supabase, "invoice_items");
-  const { error: itemError } = await supabase.from("invoice_items").insert(filterPayloadByColumns({
+  const itemPayload = filterPayloadByColumns({
     invoice_id: invoice.id,
     item_name: String(formData.get("item_name") ?? "").trim() || "Service item",
     description: String(formData.get("description") ?? "").trim() || null,
@@ -44,11 +64,33 @@ async function createInvoiceAction(formData: FormData) {
     unit_price: unitPrice,
     line_total: lineTotal,
     vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
-  }, itemColumns));
+  }, itemColumns);
+  console.info("[invoice-create][step:invoice_items:insert:start]", { itemPayload });
+  const { error: itemError } = await supabase.from("invoice_items").insert(itemPayload);
 
-  if (itemError) throw new Error(itemError.message);
+  if (itemError) {
+    console.error("[invoice-create][step:invoice_items:insert:error]", {
+      message: itemError.message,
+      code: itemError.code ?? null,
+      details: itemError.details ?? null,
+      hint: itemError.hint ?? null,
+      itemPayload,
+    });
+    throw new Error(itemError.message);
+  }
+  console.info("[invoice-create][step:invoice_items:insert:ok]", { invoiceId: invoice.id });
 
-  await recalculateInvoiceTotals(invoice.id);
+  console.info("[invoice-create][step:totals:recalculate:start]", { invoiceId: invoice.id });
+  try {
+    await recalculateInvoiceTotals(invoice.id);
+    console.info("[invoice-create][step:totals:recalculate:ok]", { invoiceId: invoice.id });
+  } catch (error) {
+    console.error("[invoice-create][step:totals:recalculate:error]", {
+      invoiceId: invoice.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 
   await logInvoiceEvent(supabase, {
     invoiceId: invoice.id,
@@ -61,7 +103,20 @@ async function createInvoiceAction(formData: FormData) {
   if (quoteId) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     if (linkColumns.has("quote_id") && linkColumns.has("invoice_id")) {
-      await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      console.info("[invoice-create][step:quote_invoice_links:insert:start]", { quoteId, invoiceId: invoice.id });
+      const { error: quoteInvoiceLinkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      if (quoteInvoiceLinkError) {
+        console.error("[invoice-create][step:quote_invoice_links:insert:error]", {
+          message: quoteInvoiceLinkError.message,
+          code: quoteInvoiceLinkError.code ?? null,
+          details: quoteInvoiceLinkError.details ?? null,
+          hint: quoteInvoiceLinkError.hint ?? null,
+          quoteId,
+          invoiceId: invoice.id,
+        });
+        throw new Error(quoteInvoiceLinkError.message);
+      }
+      console.info("[invoice-create][step:quote_invoice_links:insert:ok]", { quoteId, invoiceId: invoice.id });
     }
     const quoteColumns = await getTableColumns(supabase, "provider_quotes");
     await supabase.from("provider_quotes").update(filterPayloadByColumns({ status: "converted", updated_at: new Date().toISOString() }, quoteColumns)).eq("id", quoteId).eq("provider_profile_id", workspace.provider.id);
@@ -79,7 +134,9 @@ async function createInvoiceAction(formData: FormData) {
   console.info("[invoice-create]", { invoiceId: invoice.id, providerId: workspace.provider.id, amount: lineTotal });
 
   revalidatePath("/dashboard/msme/invoices");
-  redirect(`/dashboard/msme/invoices/${invoice.id}`);
+  const redirectTarget = `/dashboard/msme/invoices/${invoice.id}`;
+  console.info("[invoice-create][step:redirect]", { redirectTarget, existsByConvention: true });
+  redirect(redirectTarget);
 }
 
 export default async function NewMsmeInvoicePage() {
