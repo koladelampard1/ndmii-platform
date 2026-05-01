@@ -38,13 +38,16 @@ async function createInvoiceAction(formData: FormData) {
   console.info("[invoice-create][payload]", invoicePayload);
   console.info("[invoice-create][payload-keys]", Object.keys(invoicePayload));
 
-  const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
+  const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id");
   if (invoiceError) throw new Error(invoiceError.message);
-  console.info("[invoice-create][created-invoice-id]", invoice?.id);
-  if (!invoice?.id) throw new Error("Invoice created but invoice.id missing before item insert");
+  const invoiceId = invoice?.[0]?.id;
+  console.info("[invoice-create][created-invoice-id]", invoiceId);
+  if (!invoiceId) {
+    throw new Error("Invoice insert succeeded but invoiceId missing before inserting invoice_items");
+  }
 
   const itemPayload = {
-    invoice_id: invoice.id,
+    invoice_id: invoiceId,
     item_name: String(formData.get("item_name") ?? "").trim() || "Service item",
     description: String(formData.get("description") ?? "").trim() || null,
     quantity,
@@ -59,10 +62,10 @@ async function createInvoiceAction(formData: FormData) {
 
   if (itemError) throw new Error(itemError.message);
 
-  await recalculateInvoiceTotals(invoice.id);
+  await recalculateInvoiceTotals(invoiceId);
 
   await logInvoiceEvent(supabase, {
-    invoiceId: invoice.id,
+    invoiceId,
     eventType: "invoice_created",
     actorRole: workspace.role,
     actorId: workspace.msme.id,
@@ -72,25 +75,25 @@ async function createInvoiceAction(formData: FormData) {
   if (quoteId) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     if (linkColumns.has("quote_id") && linkColumns.has("invoice_id")) {
-      await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoiceId });
     }
     const quoteColumns = await getTableColumns(supabase, "provider_quotes");
     await supabase.from("provider_quotes").update(filterPayloadByColumns({ status: "converted", updated_at: new Date().toISOString() }, quoteColumns)).eq("id", quoteId).eq("provider_profile_id", workspace.provider.id);
-    console.info("[invoice-conversion]", { quoteId, invoiceId: invoice.id, providerId: workspace.provider.id });
+    console.info("[invoice-conversion]", { quoteId, invoiceId, providerId: workspace.provider.id });
   }
 
   await logActivityEvent(supabase, {
     action: "invoice_created",
     entityType: "invoice",
-    entityId: invoice.id,
+    entityId: invoiceId,
     actorUserId: workspace.appUserId,
     metadata: { amount: lineTotal, from_quote: Boolean(quoteId) },
   });
 
-  console.info("[invoice-create]", { invoiceId: invoice.id, providerId: workspace.provider.id, amount: lineTotal });
+  console.info("[invoice-create]", { invoiceId, providerId: workspace.provider.id, amount: lineTotal });
 
   revalidatePath("/dashboard/msme/invoices");
-  redirect(`/dashboard/msme/invoices/${invoice.id}`);
+  redirect(`/dashboard/msme/invoices/${invoiceId}`);
 }
 
 export default async function NewMsmeInvoicePage() {
