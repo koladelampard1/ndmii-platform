@@ -320,7 +320,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupKey = msme.msme_id;
+  const providerLookupKey = msme.id;
+  const providerLegacyLookupKey = msme.msme_id;
   const providerSelect =
     "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
   let provider: {
@@ -339,23 +340,34 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
 
-  const { data: providerByMsmePublicIdRows, error: providerByMsmePublicIdError } = await supabase
+  const { data: providerByMsmeIdRows, error: providerByMsmeIdError } = await supabase
     .from("provider_profiles")
     .select(providerSelect)
     .eq("msme_id", providerLookupKey)
     .order("updated_at", { ascending: false })
     .limit(10);
 
-  providerQueryResultLength = providerByMsmePublicIdRows?.length ?? 0;
-  providerQueryError = providerByMsmePublicIdError?.message ?? null;
-  provider = providerByMsmePublicIdRows?.[0] ?? null;
+  providerQueryResultLength = providerByMsmeIdRows?.length ?? 0;
+  providerQueryError = providerByMsmeIdError?.message ?? null;
+  provider = providerByMsmeIdRows?.[0] ?? null;
+  if (!provider && providerLegacyLookupKey) {
+    const { data: providerByLegacyMsmeIdRows, error: providerByLegacyMsmeIdError } = await supabase
+      .from("provider_profiles")
+      .select(providerSelect)
+      .eq("msme_id", providerLegacyLookupKey)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+    providerQueryResultLength = providerByLegacyMsmeIdRows?.length ?? 0;
+    providerQueryError = providerByLegacyMsmeIdError?.message ?? null;
+    provider = providerByLegacyMsmeIdRows?.[0] ?? null;
+  }
   if (process.env.NODE_ENV !== "production") {
     console.info("[provider-workspace-query]", {
       source,
       route,
         providerProfilesSchemaUsed: {
           table: "provider_profiles",
-          lookupColumn: "msme_id(public MSME ID)",
+          lookupColumn: "msme_id(msmes.id UUID)",
           selectColumns: providerSelect.split(","),
         },
       select: providerSelect,
@@ -389,8 +401,8 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     resolvedProviderMsmeId: provider?.msme_id ?? null,
     decision: provider ? "allow" : "deny",
     reason: provider
-      ? "provider_profile_found_via_msme_public_id_lookup"
-      : "provider_profile_lookup_by_msme_public_id_returned_no_rows",
+      ? "provider_profile_found_via_msme_id_lookup"
+      : "provider_profile_lookup_by_msme_id_returned_no_rows",
     queryClientUsed,
     providerQuery: {
       table: "provider_profiles",
@@ -424,7 +436,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
 
-    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.msme_id);
+    const ownsProvider = Boolean(providerById?.msme_id && (providerById.msme_id === msme.id || providerById.msme_id === msme.msme_id));
     if (providerById && ownsProvider) {
       provider = providerById;
     }
@@ -470,7 +482,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   if (!provider) {
     const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
     const provisioningPayload = {
-      msme_id: msme.msme_id,
+      msme_id: msme.id,
       public_slug: generatedSlug,
       display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
       tagline: `NDMII registered MSME in ${msme.state}.`,
@@ -489,7 +501,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
         route,
         providerProfilesSchemaUsed: {
           table: "provider_profiles",
-          lookupColumn: "msme_id(public MSME ID)",
+          lookupColumn: "msme_id(msmes.id UUID)",
           insertColumns: Object.keys(provisioningPayload),
         },
         lookupKeyUsed: providerLookupKey,
@@ -628,7 +640,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const ownsProvider = provider.msme_id === msme.msme_id;
+  const ownsProvider = provider.msme_id === msme.id || provider.msme_id === msme.msme_id;
   if (!ownsProvider) {
     denyProviderWorkspaceAccess({
       route,

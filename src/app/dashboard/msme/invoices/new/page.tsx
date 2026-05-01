@@ -94,7 +94,15 @@ export default async function NewMsmeInvoicePage() {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("[invoice-new-provider-quotes-query-error]", {
+      providerId: workspace.provider.id,
+      message: error.message,
+      code: error.code ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+    });
+  }
 
   return (
     <section className="space-y-4">
@@ -106,7 +114,7 @@ export default async function NewMsmeInvoicePage() {
         <label className="text-sm">Source quote
           <select name="quote_id" className="mt-1 w-full rounded border px-2 py-2 text-sm">
             <option value="">Manual invoice</option>
-            {(quotes ?? []).map((quote) => (
+            {((error ? [] : quotes) ?? []).map((quote) => (
               <option key={quote.id} value={quote.id}>{quote.requester_name} · {quote.request_summary} ({quote.status})</option>
             ))}
           </select>
