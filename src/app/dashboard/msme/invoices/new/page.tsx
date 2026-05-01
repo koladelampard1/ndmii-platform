@@ -40,9 +40,10 @@ async function createInvoiceAction(formData: FormData) {
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
+  console.info("[invoice-create][created-invoice-id]", invoice?.id);
+  if (!invoice?.id) throw new Error("Invoice created but invoice.id missing before item insert");
 
-  const itemColumns = await getTableColumns(supabase, "invoice_items");
-  const { error: itemError } = await supabase.from("invoice_items").insert(filterPayloadByColumns({
+  const itemPayload = {
     invoice_id: invoice.id,
     item_name: String(formData.get("item_name") ?? "").trim() || "Service item",
     description: String(formData.get("description") ?? "").trim() || null,
@@ -50,7 +51,11 @@ async function createInvoiceAction(formData: FormData) {
     unit_price: unitPrice,
     line_total: lineTotal,
     vat_applicable: vatApplies,
-  }, itemColumns));
+  };
+
+  console.info("[invoice-create][item-payload]", itemPayload);
+
+  const { error: itemError } = await supabase.from("invoice_items").insert(itemPayload);
 
   if (itemError) throw new Error(itemError.message);
 
