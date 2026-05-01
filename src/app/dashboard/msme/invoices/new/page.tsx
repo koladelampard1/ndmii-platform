@@ -13,9 +13,10 @@ async function createInvoiceAction(formData: FormData) {
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
 
   const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoicePayload = filterPayloadByColumns({
+  const workspaceMsmeId = workspace.msme.id ?? workspace.msme.msme_id ?? null;
+  const baseInvoicePayload = {
     provider_profile_id: workspace.provider.id,
-    msme_id: workspace.msme.id,
+    msme_id: workspaceMsmeId,
     invoice_number: generateInvoiceNumber(),
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
@@ -26,7 +27,42 @@ async function createInvoiceAction(formData: FormData) {
     due_date: String(formData.get("due_date") ?? "") || null,
     updated_at: new Date().toISOString(),
     quote_id: quoteId,
-  }, invoiceColumns);
+  };
+  const requiredInvoiceKeys = [
+    "provider_profile_id",
+    "msme_id",
+    "invoice_number",
+    "customer_name",
+    "customer_email",
+    "customer_phone",
+    "due_date",
+    "currency",
+    "vat_rate",
+    "status",
+  ] as const;
+  const filteredInvoicePayload = filterPayloadByColumns(baseInvoicePayload, invoiceColumns);
+  const invoicePayload = Object.fromEntries(
+    Object.entries(baseInvoicePayload).filter(([key]) => {
+      if (invoiceColumns.size > 0) return invoiceColumns.has(key);
+      return requiredInvoiceKeys.includes(key as (typeof requiredInvoiceKeys)[number]) || key === "updated_at" || key === "quote_id";
+    })
+  ) as Record<string, unknown>;
+
+  for (const requiredKey of requiredInvoiceKeys) {
+    if (!(requiredKey in invoicePayload) && filteredInvoicePayload[requiredKey] !== undefined) {
+      invoicePayload[requiredKey] = filteredInvoicePayload[requiredKey];
+    }
+  }
+
+  if (!invoicePayload.msme_id) {
+    console.error("[invoice-create][fatal:missing-msme-id]", { workspace });
+    throw new Error("Missing MSME ID for invoice creation");
+  }
+
+  console.info("[invoice-create][payload]", {
+    invoiceColumns: Array.from(invoiceColumns),
+    invoicePayload,
+  });
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
