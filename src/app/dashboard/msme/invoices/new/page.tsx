@@ -11,29 +11,35 @@ async function createInvoiceAction(formData: FormData) {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
+  const quantity = Number(formData.get("quantity") ?? 1);
+  const unitPrice = Number(formData.get("unit_price") ?? 0);
+  const lineTotal = calculateLineTotal(quantity, unitPrice);
+  const vatRate = Number(formData.get("vat_rate") ?? 7.5);
+  const vatApplies = String(formData.get("vat_applicable") ?? "on") === "on";
+  const vatAmount = vatApplies ? Number((lineTotal * (vatRate / 100)).toFixed(2)) : 0;
+  const totalAmount = Number((lineTotal + vatAmount).toFixed(2));
 
-  const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoicePayload = filterPayloadByColumns({
+  const invoicePayload = {
     provider_profile_id: workspace.provider.id,
     msme_id: workspace.msme.id,
     invoice_number: generateInvoiceNumber(),
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
     customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
-    currency: "NGN",
-    vat_rate: Number(formData.get("vat_rate") ?? 7.5),
-    status: normalizeInvoiceStatus("draft"),
     due_date: String(formData.get("due_date") ?? "") || null,
-    updated_at: new Date().toISOString(),
-    quote_id: quoteId,
-  }, invoiceColumns);
+    currency: "NGN",
+    vat_rate: vatRate,
+    status: normalizeInvoiceStatus("draft"),
+    subtotal: lineTotal,
+    vat_amount: vatAmount,
+    total_amount: totalAmount,
+  };
+
+  console.info("[invoice-create][payload]", invoicePayload);
+  console.info("[invoice-create][payload-keys]", Object.keys(invoicePayload));
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
-
-  const quantity = Number(formData.get("quantity") ?? 1);
-  const unitPrice = Number(formData.get("unit_price") ?? 0);
-  const lineTotal = calculateLineTotal(quantity, unitPrice);
 
   const itemColumns = await getTableColumns(supabase, "invoice_items");
   const { error: itemError } = await supabase.from("invoice_items").insert(filterPayloadByColumns({
@@ -43,7 +49,7 @@ async function createInvoiceAction(formData: FormData) {
     quantity,
     unit_price: unitPrice,
     line_total: lineTotal,
-    vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
+    vat_applicable: vatApplies,
   }, itemColumns));
 
   if (itemError) throw new Error(itemError.message);
