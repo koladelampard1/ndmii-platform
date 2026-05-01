@@ -12,21 +12,53 @@ async function createInvoiceAction(formData: FormData) {
   const supabase = await createServiceRoleSupabaseClient();
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
 
-  const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoicePayload = filterPayloadByColumns({
+  const invoiceNumber = generateInvoiceNumber();
+  const dueDate = String(formData.get("due_date") ?? "").trim();
+  const customerName = String(formData.get("customer_name") ?? "").trim();
+  const vatRate = Number(formData.get("vat_rate") ?? 7.5);
+
+  const invoicePayload = {
     provider_profile_id: workspace.provider.id,
     msme_id: workspace.msme.id,
-    invoice_number: generateInvoiceNumber(),
-    customer_name: String(formData.get("customer_name") ?? "").trim(),
+    invoice_number: invoiceNumber,
+    customer_name: customerName,
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
     customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
     currency: "NGN",
-    vat_rate: Number(formData.get("vat_rate") ?? 7.5),
+    vat_rate: vatRate,
     status: normalizeInvoiceStatus("draft"),
-    due_date: String(formData.get("due_date") ?? "") || null,
+    subtotal: 0,
+    vat_amount: 0,
+    total_amount: 0,
+    due_date: dueDate || null,
     updated_at: new Date().toISOString(),
     quote_id: quoteId,
-  }, invoiceColumns);
+  };
+
+  const requiredInvoiceFields: Array<keyof typeof invoicePayload> = [
+    "provider_profile_id",
+    "msme_id",
+    "invoice_number",
+    "customer_name",
+    "currency",
+    "vat_rate",
+    "status",
+    "subtotal",
+    "vat_amount",
+    "total_amount",
+    "due_date",
+  ];
+
+  const missingInvoiceFields = requiredInvoiceFields.filter((field) => {
+    const value = invoicePayload[field];
+    return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
+  });
+
+  if (missingInvoiceFields.length > 0) {
+    throw new Error(`Invoice payload missing required fields: ${missingInvoiceFields.join(", ")}`);
+  }
+
+  console.info("[invoice-create:payload]", invoicePayload);
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
