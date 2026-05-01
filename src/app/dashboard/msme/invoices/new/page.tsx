@@ -12,6 +12,13 @@ async function createInvoiceAction(formData: FormData) {
   const supabase = await createServiceRoleSupabaseClient();
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
 
+  const quantity = Number(formData.get("quantity") ?? 1);
+  const unitPrice = Number(formData.get("unit_price") ?? 0);
+  const lineTotal = calculateLineTotal(quantity, unitPrice);
+  const vatRate = Number(formData.get("vat_rate") ?? 7.5);
+  const vatAmount = (lineTotal * vatRate) / 100;
+  const totalAmount = lineTotal + vatAmount;
+
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const invoicePayload = filterPayloadByColumns({
     provider_profile_id: workspace.provider.id,
@@ -20,20 +27,19 @@ async function createInvoiceAction(formData: FormData) {
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
     customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
-    currency: "NGN",
-    vat_rate: Number(formData.get("vat_rate") ?? 7.5),
-    status: normalizeInvoiceStatus("draft"),
     due_date: String(formData.get("due_date") ?? "") || null,
-    updated_at: new Date().toISOString(),
-    quote_id: quoteId,
+    currency: "NGN",
+    vat_rate: vatRate,
+    status: normalizeInvoiceStatus("draft"),
+    subtotal: lineTotal,
+    vat_amount: vatAmount,
+    total_amount: totalAmount,
   }, invoiceColumns);
+
+  console.info("[invoice-payload-final]", invoicePayload);
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
-
-  const quantity = Number(formData.get("quantity") ?? 1);
-  const unitPrice = Number(formData.get("unit_price") ?? 0);
-  const lineTotal = calculateLineTotal(quantity, unitPrice);
 
   const itemColumns = await getTableColumns(supabase, "invoice_items");
   const { error: itemError } = await supabase.from("invoice_items").insert(filterPayloadByColumns({
@@ -61,7 +67,15 @@ async function createInvoiceAction(formData: FormData) {
   if (quoteId) {
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     if (linkColumns.has("quote_id") && linkColumns.has("invoice_id")) {
-      await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      const { error: quoteLinkError } = await supabase.from("quote_invoice_links").insert({ quote_id: quoteId, invoice_id: invoice.id });
+      if (quoteLinkError) {
+        console.error("[invoice-quote-link-failed]", {
+          quoteId,
+          invoiceId: invoice.id,
+          providerId: workspace.provider.id,
+          error: quoteLinkError.message,
+        });
+      }
     }
     const quoteColumns = await getTableColumns(supabase, "provider_quotes");
     await supabase.from("provider_quotes").update(filterPayloadByColumns({ status: "converted", updated_at: new Date().toISOString() }, quoteColumns)).eq("id", quoteId).eq("provider_profile_id", workspace.provider.id);
