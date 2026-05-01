@@ -12,10 +12,15 @@ async function createInvoiceAction(formData: FormData) {
   const supabase = await createServiceRoleSupabaseClient();
   const quoteId = String(formData.get("quote_id") ?? "").trim() || null;
 
+  const providerProfileId = workspace.provider.id;
+  const providerMsmeId = workspace.provider.msme_id ?? null;
+  const msmeUuid = workspace.msme.id;
+  const msmePublicId = workspace.msme.msme_id;
+
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const invoicePayload = filterPayloadByColumns({
-    provider_profile_id: workspace.provider.id,
-    msme_id: workspace.msme.id,
+    provider_profile_id: providerProfileId,
+    msme_id: msmeUuid,
     invoice_number: generateInvoiceNumber(),
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
@@ -27,6 +32,15 @@ async function createInvoiceAction(formData: FormData) {
     updated_at: new Date().toISOString(),
     quote_id: quoteId,
   }, invoiceColumns);
+
+  invoicePayload.msme_id = msmeUuid;
+
+  console.log("[invoice-create][resolved-context]", { providerProfileId, providerMsmeId, msmeUuid, msmePublicId });
+  console.log("[invoice-create][final-payload]", invoicePayload);
+
+  if (!invoicePayload.msme_id) {
+    throw new Error("Invoice payload missing msme_id");
+  }
 
   const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id").single();
   if (invoiceError) throw new Error(invoiceError.message);
