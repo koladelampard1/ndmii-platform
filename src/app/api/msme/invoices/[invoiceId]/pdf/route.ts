@@ -79,14 +79,6 @@ function displayValue(value: string | number | null | undefined, fallback = "Not
   return safe || fallback;
 }
 
-function statusDisplay(value: string | null | undefined) {
-  const normalized = safeText(value).toLowerCase();
-  if (normalized === "paid") return "Paid";
-  if (normalized === "issued" || normalized === "pending_payment" || normalized === "overdue") return "Issued";
-  if (normalized === "cancelled") return "Cancelled";
-  return "Draft";
-}
-
 function initialsFor(value: string) {
   const parts = safeText(value).split(" ").filter(Boolean);
   const letters = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : (parts[0] ?? "B").slice(0, 2);
@@ -165,7 +157,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
 
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount")
+      .select("id,invoice_number,customer_name,customer_email,customer_phone,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount")
       .eq("id", invoiceId)
       .eq("provider_profile_id", workspace.provider.id)
       .maybeSingle();
@@ -181,9 +173,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
 
     if (itemError) throw new Error(itemError.message);
 
-    const publicUrl = `/invoice/${invoice.id}`;
-    const publicAbsoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${publicUrl}` || publicUrl;
-    const invoiceStatus = statusDisplay(invoice.status);
     const invoiceNumber = safeText(invoice.invoice_number || invoice.id);
     const providerName = workspace.provider.display_name || workspace.msme.business_name || "Verified MSME";
     const { data: msmeProfile } = await supabase
@@ -265,11 +254,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     commands.push(...labelValue("Invoice No.", invoiceNumber, 360, 740, 428));
     commands.push(...labelValue("Invoice Date", invoiceDate, 360, 720, 428));
     commands.push(...labelValue("Due Date", dueDate, 360, 700, 428));
-    commands.push(colorCommand(invoiceStatus === "Paid" ? GREEN : invoiceStatus === "Cancelled" ? "0.75 0.12 0.16" : NAVY));
-    commands.push(rectCommand(360, 650, 164, 36, "fill"));
-    commands.push(colorCommand(WHITE));
-    commands.push(textCommand({ text: "STATUS", x: 378, y: 664, size: 9, bold: true }));
-    commands.push(textCommand({ text: invoiceStatus.toUpperCase(), x: 452, y: 664, size: 9, bold: true }));
     commands.push(colorCommand(BORDER, "stroke"));
     commands.push(lineCommand(LEFT, 626, RIGHT, 626));
 
@@ -279,15 +263,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     commands.push(textCommand({ text: invoice.customer_name, x: LEFT, y: 574, size: 11, bold: true }));
     commands.push(textCommand({ text: displayValue(invoice.customer_email, "No customer email"), x: LEFT, y: 558, size: 9 }));
     commands.push(textCommand({ text: displayValue(invoice.customer_phone, "No customer phone"), x: LEFT, y: 543, size: 9 }));
-
-    commands.push(colorCommand(SOFT));
-    commands.push(rectCommand(278, 526, 246, 72, "fill"));
-    commands.push(colorCommand(GREEN));
-    commands.push(textCommand({ text: "PUBLIC INVOICE LINK", x: 298, y: 574, size: 9, bold: true }));
-    commands.push(colorCommand(SLATE));
-    addWrappedText(commands, publicAbsoluteUrl, 298, 554, 55, 8, 2, 11);
-    commands.push(colorCommand(MUTED));
-    commands.push(textCommand({ text: "Share this link with your customer to view this invoice.", x: 298, y: 528, size: 7 }));
 
     addTableHeader(490);
     let y = 458;
@@ -323,21 +298,25 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     commands.push(lineCommand(LEFT, y + 12, RIGHT, y + 12));
 
     const totalsY = y - 18;
+    const totalsBoxX = 304;
+    const totalsBoxWidth = 220;
+    const totalsLabelX = totalsBoxX + 14;
+    const totalsAmountRight = totalsBoxX + totalsBoxWidth - 14;
     commands.push(colorCommand(WHITE));
-    commands.push(rectCommand(334, totalsY - 80, 190, 94, "fill"));
+    commands.push(rectCommand(totalsBoxX, totalsY - 80, totalsBoxWidth, 94, "fill"));
     commands.push(colorCommand(BORDER, "stroke"));
-    commands.push(rectCommand(334, totalsY - 80, 190, 94, "stroke"));
+    commands.push(rectCommand(totalsBoxX, totalsY - 80, totalsBoxWidth, 94, "stroke"));
     commands.push(colorCommand(SLATE));
-    commands.push(textCommand({ text: "Subtotal", x: 348, y: totalsY - 4, size: 9 }));
-    commands.push(rightText(money(invoice.subtotal), 506, totalsY - 4, 9));
-    commands.push(textCommand({ text: `VAT (${vatRate}%)`, x: 348, y: totalsY - 26, size: 9 }));
-    commands.push(rightText(money(invoice.vat_amount), 506, totalsY - 26, 9));
+    commands.push(textCommand({ text: "Subtotal", x: totalsLabelX, y: totalsY - 4, size: 9 }));
+    commands.push(rightText(money(invoice.subtotal), totalsAmountRight, totalsY - 4, 9));
+    commands.push(textCommand({ text: `VAT (${vatRate}%)`, x: totalsLabelX, y: totalsY - 26, size: 9 }));
+    commands.push(rightText(money(invoice.vat_amount), totalsAmountRight, totalsY - 26, 9));
     commands.push(colorCommand(BORDER, "stroke"));
-    commands.push(lineCommand(348, totalsY - 44, 510, totalsY - 44));
+    commands.push(lineCommand(totalsLabelX, totalsY - 44, totalsAmountRight, totalsY - 44));
     commands.push(colorCommand(NAVY));
-    commands.push(textCommand({ text: "TOTAL AMOUNT", x: 348, y: totalsY - 64, size: 10, bold: true }));
+    commands.push(textCommand({ text: "TOTAL AMOUNT", x: totalsLabelX, y: totalsY - 64, size: 8, bold: true }));
     commands.push(colorCommand(GREEN));
-    commands.push(rightText(money(invoice.total_amount), 510, totalsY - 64, 13, true));
+    commands.push(rightText(money(invoice.total_amount), totalsAmountRight, totalsY - 64, 10, true));
 
     commands.push(colorCommand(GREEN));
     commands.push(textCommand({ text: "PAYMENT INSTRUCTIONS", x: LEFT, y: totalsY - 2, size: 9, bold: true }));
