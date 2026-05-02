@@ -5,12 +5,32 @@ import { CalendarDays, Check, Clipboard, Copy, Download, Edit3, Info, Mail, Plus
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
-import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent, normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
+import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent } from "@/lib/data/commercial-ops";
 
 async function loadInvoiceTotalsSnapshot(invoiceId: string) {
   const supabase = await createServiceRoleSupabaseClient();
   const { data, error } = await supabase.from("invoices").select("id,subtotal,vat_amount,total_amount,status").eq("id", invoiceId).maybeSingle();
   return { data, error };
+}
+
+function buildInvoiceStatusPayload(action: string, nowIso: string, invoiceColumns: Set<string>, paidAtIso?: string) {
+  const status = action === "issue_invoice" ? "issued" : action === "mark_paid" ? "paid" : "cancelled";
+  const payload: Record<string, unknown> = { status };
+
+  if (action === "issue_invoice" && invoiceColumns.has("issued_at")) payload.issued_at = nowIso;
+  if (action === "mark_paid" && invoiceColumns.has("paid_at")) payload.paid_at = paidAtIso ?? nowIso;
+  if (action === "cancel_invoice" && invoiceColumns.has("cancelled_at")) payload.cancelled_at = nowIso;
+  if (invoiceColumns.has("updated_at")) payload.updated_at = nowIso;
+
+  return payload;
+}
+
+function invoiceStatusSelect(invoiceColumns: Set<string>) {
+  const columns = ["id", "status"];
+  for (const column of ["issued_at", "paid_at", "cancelled_at", "updated_at"]) {
+    if (invoiceColumns.has(column)) columns.push(column);
+  }
+  return columns.join(",");
 }
 
 async function invoiceMutationAction(formData: FormData) {
@@ -107,14 +127,11 @@ async function invoiceMutationAction(formData: FormData) {
 
   if (action === "issue_invoice" || action === "cancel_invoice") {
     const invoiceColumns = await getTableColumns(supabase, "invoices");
-    const payload = filterPayloadByColumns(
-      {
-        status: normalizeInvoiceStatus(action === "issue_invoice" ? "issued" : "cancelled"),
-        issued_at: action === "issue_invoice" ? nowIso : undefined,
-        updated_at: nowIso,
-      },
-      invoiceColumns
-    );
+    const payload = buildInvoiceStatusPayload(action, nowIso, invoiceColumns);
+    const selectColumns = invoiceStatusSelect(invoiceColumns);
+    console.info("[invoice-status][action]", action);
+    console.info("[invoice-status][invoice-id]", invoiceId);
+    console.info("[invoice-status][update-payload]", payload);
     console.info("[invoice-mutation:status-update:before]", { invoiceId, currentStatus: invoice.status });
     console.info("[invoice-mutation:status-update:payload]", { invoiceId, action, payload });
     const { data: updatedRows, error } = await supabase
@@ -122,12 +139,13 @@ async function invoiceMutationAction(formData: FormData) {
       .update(payload)
       .eq("id", invoiceId)
       .eq("provider_profile_id", workspace.provider.id)
-      .select("id,status,issued_at,updated_at");
+      .select(selectColumns);
+    console.info("[invoice-status][update-result]", { data: updatedRows, error: error?.message ?? null });
     if (error) throw new Error(error.message);
     console.info("[invoice-mutation:status-update:result]", updatedRows);
     const { data: resultingInvoice, error: resultingError } = await supabase
       .from("invoices")
-      .select("id,status,issued_at,updated_at,subtotal,vat_amount,total_amount")
+      .select(`${selectColumns},subtotal,vat_amount,total_amount`)
       .eq("id", invoiceId)
       .maybeSingle();
     console.info("[invoice-mutation:status-update:after]", { resultingInvoice, resultingError: resultingError?.message ?? null });
@@ -160,15 +178,18 @@ async function invoiceMutationAction(formData: FormData) {
     }
 
     const invoiceColumns = await getTableColumns(supabase, "invoices");
-    const invoiceUpdate = filterPayloadByColumns(
-      {
-        status: "paid",
-        paid_at: paidAtIso,
-        updated_at: nowIso,
-      },
-      invoiceColumns
-    );
-    const { error: updateError } = await supabase.from("invoices").update(invoiceUpdate).eq("id", invoiceId).eq("provider_profile_id", workspace.provider.id);
+    const invoiceUpdate = buildInvoiceStatusPayload(action, nowIso, invoiceColumns, paidAtIso);
+    const selectColumns = invoiceStatusSelect(invoiceColumns);
+    console.info("[invoice-status][action]", action);
+    console.info("[invoice-status][invoice-id]", invoiceId);
+    console.info("[invoice-status][update-payload]", invoiceUpdate);
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("invoices")
+      .update(invoiceUpdate)
+      .eq("id", invoiceId)
+      .eq("provider_profile_id", workspace.provider.id)
+      .select(selectColumns);
+    console.info("[invoice-status][update-result]", { data: updatedRows, error: updateError?.message ?? null });
     if (updateError) throw new Error(updateError.message);
 
     await logInvoiceEvent(supabase, {
