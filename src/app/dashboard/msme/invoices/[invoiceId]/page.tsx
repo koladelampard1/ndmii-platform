@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CalendarDays, Check, Clipboard, Copy, Download, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
+import { CalendarDays, Check, Clipboard, Download, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
@@ -360,22 +359,6 @@ export default async function MsmeInvoiceDetailPage({
                 </div>
               </div>
 
-              <div>
-                <p className="text-sm font-semibold text-slate-700">Public invoice link</p>
-                <div className="mt-2 flex min-w-0 items-center gap-2">
-                  <Link className="min-w-0 flex-1 truncate text-sm font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-800" href={publicInvoiceUrl}>
-                    {publicInvoiceAbsoluteUrl || publicInvoiceUrl}
-                  </Link>
-                  <button
-                    type="button"
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                    aria-label="Copy public invoice link"
-                    title="Copy public invoice link"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
             </div>
           </header>
 
