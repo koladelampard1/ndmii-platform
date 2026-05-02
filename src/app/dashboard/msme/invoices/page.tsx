@@ -3,7 +3,7 @@ import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, FileText, Search,
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
-import { getTableColumns, normalizeInvoiceStatus, pickExistingColumns } from "@/lib/data/commercial-ops";
+import { normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
 
 type PageParams = {
   status?: string;
@@ -20,6 +20,8 @@ type EnrichedInvoice = {
   customer_name: string;
   customer_email: string;
   due_date: string | null;
+  subtotal: number;
+  vat_amount: number;
   total_amount: number;
   status: string;
   created_at: string | null;
@@ -53,28 +55,40 @@ function formatDateTimeSafe(value: string | null | undefined, fallback = "Date u
   });
 }
 
-function statusToLabel(status: string) {
-  if (status === "pending_payment" || status === "issued") return "Outstanding";
-  if (status === "paid") return "Paid";
-  if (status === "overdue") return "Overdue";
-  if (status === "cancelled") return "Cancelled";
+function isBeforeToday(value: string | null | undefined) {
+  if (!value) return false;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  return dueDay.getTime() < today.getTime();
+}
+
+function invoiceStatusBucket(invoice: Pick<EnrichedInvoice, "status" | "due_date">) {
+  const status = normalizeInvoiceStatus(invoice.status);
+  if (status === "paid") return "paid";
+  if (status === "cancelled") return "cancelled";
+  if (status === "overdue" || ((status === "issued" || status === "pending_payment") && isBeforeToday(invoice.due_date))) return "overdue";
+  if (status === "issued" || status === "pending_payment") return "outstanding";
+  return "draft";
+}
+
+function statusToLabel(bucket: string) {
+  if (bucket === "outstanding") return "Outstanding";
+  if (bucket === "paid") return "Paid";
+  if (bucket === "overdue") return "Overdue";
+  if (bucket === "cancelled") return "Cancelled";
   return "Draft";
 }
 
-function statusBadgeClasses(status: string) {
-  if (status === "pending_payment" || status === "issued") return "bg-amber-100 text-amber-700";
-  if (status === "paid") return "bg-emerald-100 text-emerald-700";
-  if (status === "overdue") return "bg-rose-100 text-rose-700";
-  if (status === "cancelled") return "bg-slate-200 text-slate-700";
+function statusBadgeClasses(bucket: string) {
+  if (bucket === "outstanding") return "bg-amber-100 text-amber-700";
+  if (bucket === "paid") return "bg-emerald-100 text-emerald-700";
+  if (bucket === "overdue") return "bg-rose-100 text-rose-700";
+  if (bucket === "cancelled") return "bg-slate-200 text-slate-700";
   return "bg-slate-100 text-slate-700";
-}
-
-function statusToTab(status: string) {
-  if (status === "pending_payment" || status === "issued") return "outstanding";
-  if (status === "paid") return "paid";
-  if (status === "overdue") return "overdue";
-  if (status === "cancelled") return "cancelled";
-  return "draft";
 }
 
 function dueDateContext(dueDate: string | null | undefined) {
@@ -110,23 +124,9 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
 
-  const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoiceSelect = pickExistingColumns(invoiceColumns, [
-    "id",
-    "invoice_number",
-    "customer_name",
-    "customer_email",
-    "due_date",
-    "total_amount",
-    "status",
-    "issued_at",
-    "created_at",
-    "provider_profile_id",
-  ]).join(",");
-
   let query = supabase
     .from("invoices")
-    .select(invoiceSelect || "id")
+    .select("id,invoice_number,customer_name,customer_email,due_date,created_at,status,subtotal,vat_amount,total_amount")
     .eq("provider_profile_id", workspace.provider.id)
     .order("created_at", { ascending: false });
 
@@ -146,6 +146,8 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
     customer_name: String(invoice.customer_name ?? "Unknown customer"),
     customer_email: String(invoice.customer_email ?? "No email available"),
     due_date: invoice.due_date ? String(invoice.due_date) : null,
+    subtotal: Number(invoice.subtotal ?? 0),
+    vat_amount: Number(invoice.vat_amount ?? 0),
     total_amount: Number(invoice.total_amount ?? 0),
     status: normalizeInvoiceStatus(String(invoice.status ?? "draft")),
     created_at: invoice.created_at ? String(invoice.created_at) : null,
@@ -164,7 +166,7 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
       return haystack.includes(searchTerm);
     })
     .filter((invoice) => (selectedCustomer === "all" ? true : invoice.customer_name === selectedCustomer))
-    .filter((invoice) => (selectedTab === "all" ? true : statusToTab(invoice.status) === selectedTab))
+    .filter((invoice) => (selectedTab === "all" ? true : invoiceStatusBucket(invoice) === selectedTab))
     .filter((invoice) => {
       if (selectedDate === "all") return true;
       const stamp = new Date(String(invoice.created_at ?? "")).getTime();
@@ -184,15 +186,15 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
 
   const statusCounts = {
     all: invoiceList.length,
-    draft: invoiceList.filter((item) => statusToTab(item.status) === "draft").length,
-    outstanding: invoiceList.filter((item) => statusToTab(item.status) === "outstanding").length,
-    overdue: invoiceList.filter((item) => item.status === "overdue").length,
-    paid: invoiceList.filter((item) => item.status === "paid").length,
-    cancelled: invoiceList.filter((item) => item.status === "cancelled").length,
+    draft: invoiceList.filter((item) => invoiceStatusBucket(item) === "draft").length,
+    outstanding: invoiceList.filter((item) => invoiceStatusBucket(item) === "outstanding").length,
+    overdue: invoiceList.filter((item) => invoiceStatusBucket(item) === "overdue").length,
+    paid: invoiceList.filter((item) => invoiceStatusBucket(item) === "paid").length,
+    cancelled: invoiceList.filter((item) => invoiceStatusBucket(item) === "cancelled").length,
   };
 
   const totalOutstandingAmount = invoiceList
-    .filter((item) => item.status === "overdue" || statusToTab(item.status) === "outstanding")
+    .filter((item) => invoiceStatusBucket(item) === "overdue" || invoiceStatusBucket(item) === "outstanding")
     .reduce((sum, item) => sum + item.total_amount, 0);
 
   const dueInNext7DaysCount = invoiceList.filter((item) => {
@@ -394,6 +396,7 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
                   </thead>
                   <tbody>
                     {filteredInvoices.map((invoice) => {
+                      const statusBucket = invoiceStatusBucket(invoice);
                       const dueHint = dueDateContext(invoice.due_date);
                       const dueHintClass =
                         dueHint === "Overdue"
@@ -418,8 +421,8 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
                           </td>
                           <td className="px-4 py-4 font-semibold text-slate-900">{formatNaira(invoice.total_amount)}</td>
                           <td className="px-4 py-4">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses(invoice.status)}`}>
-                              {statusToLabel(invoice.status)}
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses(statusBucket)}`}>
+                              {statusToLabel(statusBucket)}
                             </span>
                           </td>
                           <td className="px-4 py-4">
