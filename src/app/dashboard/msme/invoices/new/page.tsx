@@ -38,9 +38,14 @@ async function createInvoiceAction(formData: FormData) {
   console.info("[invoice-create][payload]", invoicePayload);
   console.info("[invoice-create][payload-keys]", Object.keys(invoicePayload));
 
-  const { data: invoice, error: invoiceError } = await supabase.from("invoices").insert(invoicePayload).select("id");
+  const { data: invoice, error: invoiceError } = await supabase
+  .from("invoices")
+  .insert(invoicePayload)
+  .select()
+  .single();
+
   if (invoiceError) throw new Error(invoiceError.message);
-  const invoiceId = invoice?.[0]?.id;
+  const invoiceId = invoice?.id;
   console.info("[invoice-create][created-invoice-id]", invoiceId);
   if (!invoiceId) {
     throw new Error("Invoice insert succeeded but invoiceId missing before inserting invoice_items");
@@ -108,7 +113,10 @@ export default async function NewMsmeInvoicePage() {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+  console.error("[invoice-new][quotes:error]", error);
+}
+
 
   return (
     <section className="space-y-4">
