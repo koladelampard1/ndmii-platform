@@ -34,36 +34,28 @@ async function invoiceMutationAction(formData: FormData) {
   console.info("[invoice-mutation:invoice-loaded]", { invoiceId, status: invoice.status, totalAmount: invoice.total_amount });
 
   if (action === "add_item") {
+    if (!invoiceId) throw new Error("Missing invoiceId before adding invoice item");
     const quantity = Number(formData.get("quantity") ?? 1);
     const unitPrice = Number(formData.get("unit_price") ?? 0);
     const lineTotal = calculateLineTotal(quantity, unitPrice);
-    const itemColumns = await getTableColumns(supabase, "invoice_items");
-    const payload = filterPayloadByColumns(
-      {
-        invoice_id: invoiceId,
-        item_name: String(formData.get("item_name") ?? "").trim(),
-        description: String(formData.get("description") ?? "").trim() || null,
-        quantity,
-        unit_price: unitPrice,
-        line_total: lineTotal,
-        vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
-      },
-      itemColumns
-    );
-    console.info("[invoice-mutation:add-item:payload]", {
-      invoiceId,
-      payload,
-      selectedItemColumns: Array.from(itemColumns).sort(),
+    const payload = {
+      invoice_id: invoiceId,
+      item_name: String(formData.get("item_name") ?? "").trim(),
+      description: String(formData.get("description") ?? "").trim() || null,
       quantity,
-      unitPrice,
-      vatApplicable: String(formData.get("vat_applicable") ?? "on") === "on",
-      computedLineTotal: lineTotal,
-    });
+      unit_price: unitPrice,
+      line_total: lineTotal,
+      vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
+    };
+    console.info("[invoice-mutation:add-item:invoice-id]", invoiceId);
+    console.info("[invoice-mutation:add-item:payload]", payload);
     const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
     console.info("[invoice-mutation:add-item:totals-before]", beforeTotals);
     const { data: insertedRows, error } = await supabase.from("invoice_items").insert(payload).select("id,invoice_id,item_name,quantity,unit_price,line_total,vat_applicable");
     if (error) throw new Error(error.message);
     console.info("[invoice-mutation:add-item:insert-result]", insertedRows);
+    const recalculatedTotals = await recalculateInvoiceTotals(invoiceId);
+    console.info("[invoice-mutation:add-item:totals-recalculated]", { invoiceId, recalculatedTotals });
   }
 
   if (action === "update_item") {
