@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CalendarDays, Check, Clipboard, Copy, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
+import { CalendarDays, Check, Clipboard, Copy, Download, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
@@ -266,6 +266,7 @@ export default async function MsmeInvoiceDetailPage({
 
   const publicInvoiceUrl = `/invoice/${invoice.id}`;
   const publicInvoiceAbsoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${publicInvoiceUrl}`;
+  const invoicePdfUrl = `/api/msme/invoices/${invoice.id}/pdf`;
   const emailSubject = encodeURIComponent(`Invoice ${invoice.invoice_number} from ${workspace.provider.display_name}`);
   const emailBody = encodeURIComponent(
     [
@@ -620,6 +621,14 @@ export default async function MsmeInvoiceDetailPage({
               <h3 className="text-xl font-bold text-slate-950">Status actions</h3>
               <p className="mt-1 text-sm font-medium text-slate-500">Update lifecycle and payment state.</p>
             </div>
+            <a
+              href={invoicePdfUrl}
+              download
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm font-bold text-blue-800 hover:bg-blue-100"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </a>
             <form action={invoiceMutationAction}>
               <input type="hidden" name="action" value="issue_invoice" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
