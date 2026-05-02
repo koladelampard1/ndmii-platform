@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { calculateLineTotal, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
+import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent, normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
 
 async function loadInvoiceTotalsSnapshot(invoiceId: string) {
@@ -280,20 +280,45 @@ export default async function MsmeInvoiceDetailPage({
     `Hello ${invoice.customer_name}, your invoice ${invoice.invoice_number} is ready: ${publicInvoiceAbsoluteUrl}`
   );
   const whatsappHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${whatsappBody}` : null;
+  const invoiceItems = items ?? [];
+  const invoiceStatus = String(invoice.status ?? "draft");
+  const invoiceStatusLabel = invoiceStatus.replaceAll("_", " ");
+  const dueDateLabel = formatDate(invoice.due_date);
 
   return (
-    <section className="space-y-4">
-      <header className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Invoice</p>
-            <h2 className="text-xl font-semibold">{invoice.invoice_number}</h2>
-            <p className="text-sm text-slate-600">{invoice.customer_name} · {invoice.customer_email ?? "No email"}</p>
+    <section className="space-y-5">
+      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Invoice workspace</p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">{invoice.invoice_number}</h2>
+            </div>
+            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>
+              {invoiceStatusLabel}
+            </span>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs uppercase ${invoiceStatusClasses(String(invoice.status ?? "draft"))}`}>{invoice.status}</span>
         </div>
-        <p className="mt-2 text-sm text-slate-500">Public link: <Link className="text-indigo-700 hover:underline" href={publicInvoiceUrl}>{publicInvoiceUrl}</Link></p>
+        <div className="grid gap-4 px-4 py-5 sm:px-5 lg:grid-cols-[1.2fr_1fr_1fr]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</p>
+            <p className="mt-1 text-base font-semibold text-slate-900">{invoice.customer_name}</p>
+            <p className="mt-1 break-all text-sm text-slate-600">{invoice.customer_email ?? "No email on file"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Due date</p>
+            <p className="mt-1 text-base font-semibold text-slate-900">{dueDateLabel}</p>
+            <p className="mt-1 text-sm text-slate-500">{invoice.customer_phone ?? "No customer phone"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Public invoice link</p>
+            <Link className="mt-1 block break-all text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline" href={publicInvoiceUrl}>
+              {publicInvoiceUrl}
+            </Link>
+          </div>
+        </div>
       </header>
+
       {query.notice ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {query.notice === "invoice_issued"
@@ -308,79 +333,171 @@ export default async function MsmeInvoiceDetailPage({
         </p>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <article className="space-y-3 rounded-xl border bg-white p-4">
-          <h3 className="font-semibold">Invoice items</h3>
-          {(items ?? []).map((item) => (
-            <form key={item.id} action={invoiceMutationAction} className="grid gap-2 rounded-lg border p-3 md:grid-cols-5">
-              <input type="hidden" name="action" value="update_item" />
-              <input type="hidden" name="invoice_id" value={invoice.id} />
-              <input type="hidden" name="item_id" value={item.id} />
-              <input name="item_name" defaultValue={item.item_name} className="rounded border px-2 py-1 text-sm" />
-              <input name="description" defaultValue={item.description ?? ""} className="rounded border px-2 py-1 text-sm" />
-              <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="rounded border px-2 py-1 text-sm" />
-              <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="rounded border px-2 py-1 text-sm" />
-              <div className="flex items-center gap-2">
-                <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} />VAT</label>
-                <button type="submit" className="rounded border px-2 py-1 text-xs">Save</button>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+            <h3 className="text-lg font-semibold text-slate-950">Invoice items</h3>
+            <p className="mt-1 text-sm text-slate-500">Review line items, VAT treatment, and totals before sending.</p>
+          </div>
+
+          <div className="hidden overflow-x-auto lg:block">
+            <div className="min-w-[980px]">
+              <div className="grid grid-cols-[1.15fr_1.35fr_0.5fr_0.75fr_0.45fr_0.8fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>Item</span>
+                <span>Description</span>
+                <span>Qty</span>
+                <span>Unit price</span>
+                <span>VAT</span>
+                <span className="text-right">Line total</span>
+                <span className="text-right">Actions</span>
               </div>
-              <p className="text-xs text-slate-500 md:col-span-4">Line total: {formatNaira(item.line_total)}</p>
-            </form>
-          ))}
+              {invoiceItems.map((item) => (
+                <div key={item.id} className="grid grid-cols-[1.15fr_1.35fr_0.5fr_0.75fr_0.45fr_0.8fr_0.85fr] gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0">
+                  <form id={`update-item-${item.id}`} action={invoiceMutationAction} className="contents">
+                    <input type="hidden" name="action" value="update_item" />
+                    <input type="hidden" name="invoice_id" value={invoice.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <input name="item_name" defaultValue={item.item_name} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="description" defaultValue={item.description ?? ""} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <label className="inline-flex h-10 items-center gap-2 text-sm font-medium text-slate-700">
+                      <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
+                      VAT
+                    </label>
+                    <p className="flex h-10 items-center justify-end font-semibold text-slate-950">{formatNaira(item.line_total)}</p>
+                  </form>
+                  <div className="flex h-10 items-center justify-end gap-2">
+                    <button type="submit" form={`update-item-${item.id}`} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                      Save
+                    </button>
+                    <form action={invoiceMutationAction}>
+                      <input type="hidden" name="action" value="remove_item" />
+                      <input type="hidden" name="invoice_id" value={invoice.id} />
+                      <input type="hidden" name="item_id" value={item.id} />
+                      <button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">
+                        Remove
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-          {(items ?? []).map((item) => (
-            <form key={`${item.id}-remove`} action={invoiceMutationAction}>
-              <input type="hidden" name="action" value="remove_item" />
-              <input type="hidden" name="invoice_id" value={invoice.id} />
-              <input type="hidden" name="item_id" value={item.id} />
-              <button className="text-xs text-red-700 hover:underline">Remove {item.item_name}</button>
-            </form>
-          ))}
+          <div className="grid gap-3 p-4 lg:hidden">
+            {invoiceItems.map((item) => (
+              <article key={item.id} className="rounded-xl border border-slate-200 p-3">
+                <form id={`mobile-update-item-${item.id}`} action={invoiceMutationAction} className="space-y-3">
+                  <input type="hidden" name="action" value="update_item" />
+                  <input type="hidden" name="invoice_id" value={invoice.id} />
+                  <input type="hidden" name="item_id" value={item.id} />
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Item name</label>
+                    <input name="item_name" defaultValue={item.item_name} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</label>
+                    <input name="description" defaultValue={item.description ?? ""} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantity</label>
+                      <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Unit price</label>
+                      <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
+                      VAT applicable
+                    </label>
+                    <span className="text-sm font-semibold text-slate-950">{formatNaira(item.line_total)}</span>
+                  </div>
+                </form>
+                <div className="mt-3 flex gap-2">
+                  <button type="submit" form={`mobile-update-item-${item.id}`} className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    Save item
+                  </button>
+                  <form action={invoiceMutationAction} className="flex-1">
+                    <input type="hidden" name="action" value="remove_item" />
+                    <input type="hidden" name="invoice_id" value={invoice.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <button className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">
+                      Remove
+                    </button>
+                  </form>
+                </div>
+              </article>
+            ))}
+          </div>
 
-          <form action={invoiceMutationAction} className="grid gap-2 rounded-lg border border-dashed p-3 md:grid-cols-5">
+          <form action={invoiceMutationAction} className="grid gap-3 border-t border-dashed border-slate-200 bg-slate-50/70 p-4 sm:p-5 lg:grid-cols-[1fr_1.2fr_0.55fr_0.75fr_0.45fr_auto]">
             <input type="hidden" name="action" value="add_item" />
             <input type="hidden" name="invoice_id" value={invoice.id} />
-            <input required name="item_name" placeholder="Item name" className="rounded border px-2 py-1 text-sm" />
-            <input name="description" placeholder="Description" className="rounded border px-2 py-1 text-sm" />
-            <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={1} className="rounded border px-2 py-1 text-sm" />
-            <input name="unit_price" type="number" step={0.01} min={0} defaultValue={0} className="rounded border px-2 py-1 text-sm" />
-            <label className="inline-flex items-center gap-2 text-xs"><input type="checkbox" name="vat_applicable" defaultChecked />VAT</label>
-            <button type="submit" className="rounded border px-2 py-1 text-xs md:col-span-5">Add item</button>
+            <input required name="item_name" placeholder="Item name" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+            <input name="description" placeholder="Description" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+            <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={1} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+            <input name="unit_price" type="number" step={0.01} min={0} defaultValue={0} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+            <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"><input type="checkbox" name="vat_applicable" defaultChecked className="h-4 w-4 rounded border-slate-300 text-emerald-700" />VAT</label>
+            <button type="submit" className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Add item</button>
           </form>
         </article>
 
-        <aside className="space-y-3 rounded-xl border bg-white p-4">
-          <h3 className="font-semibold">Totals</h3>
-          <p className="flex justify-between text-sm"><span>Subtotal</span><span>{formatNaira(invoice.subtotal)}</span></p>
-          <p className="flex justify-between text-sm"><span>VAT ({invoice.vat_rate}%)</span><span>{formatNaira(invoice.vat_amount)}</span></p>
-          <p className="flex justify-between border-t pt-2 text-base font-semibold"><span>Total</span><span>{formatNaira(invoice.total_amount)}</span></p>
-          <p className="text-xs text-slate-500">Due date: {invoice.due_date ?? "Not set"}</p>
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-slate-950">Totals</h3>
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>{invoiceStatusLabel}</span>
+            </div>
+            <div className="mt-4 space-y-3">
+              <p className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-medium text-slate-900">{formatNaira(invoice.subtotal)}</span></p>
+              <p className="flex justify-between text-sm text-slate-600"><span>VAT ({invoice.vat_rate}%)</span><span className="font-medium text-slate-900">{formatNaira(invoice.vat_amount)}</span></p>
+              <div className="rounded-xl bg-slate-950 px-4 py-3 text-white">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Total amount</p>
+                <p className="mt-1 text-2xl font-semibold">{formatNaira(invoice.total_amount)}</p>
+              </div>
+              <p className="flex justify-between text-sm text-slate-600"><span>Due date</span><span className="font-medium text-slate-900">{dueDateLabel}</span></p>
+            </div>
+          </section>
 
-          <form action={invoiceMutationAction}>
-            <input type="hidden" name="action" value="issue_invoice" />
-            <input type="hidden" name="invoice_id" value={invoice.id} />
-            <button type="submit" className="w-full rounded bg-indigo-900 px-3 py-2 text-sm text-white">Issue invoice</button>
-          </form>
-          <form action={invoiceMutationAction} className="space-y-2 rounded border p-2">
-            <input type="hidden" name="action" value="mark_paid" />
-            <input type="hidden" name="invoice_id" value={invoice.id} />
-            <input name="payment_reference" placeholder="Payment reference" className="w-full rounded border px-2 py-1 text-xs" />
-            <input name="payment_date" type="date" className="w-full rounded border px-2 py-1 text-xs" />
-            <input name="payment_note" placeholder="Optional payment note" className="w-full rounded border px-2 py-1 text-xs" />
-            <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Mark invoice paid</button>
-          </form>
-          <form action={invoiceMutationAction}>
-            <input type="hidden" name="action" value="cancel_invoice" />
-            <input type="hidden" name="invoice_id" value={invoice.id} />
-            <button className="w-full rounded border border-red-300 px-3 py-2 text-sm text-red-700">Cancel invoice</button>
-          </form>
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div>
+              <h3 className="text-base font-semibold text-slate-950">Status actions</h3>
+              <p className="mt-1 text-sm text-slate-500">Update lifecycle and payment state.</p>
+            </div>
+            <form action={invoiceMutationAction}>
+              <input type="hidden" name="action" value="issue_invoice" />
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <button type="submit" className="w-full rounded-lg bg-indigo-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800">Issue invoice</button>
+            </form>
+            <form action={invoiceMutationAction} className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+              <input type="hidden" name="action" value="mark_paid" />
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <input name="payment_reference" placeholder="Payment reference" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+              <input name="payment_date" type="date" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+              <input name="payment_note" placeholder="Optional payment note" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+              <button className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Mark invoice paid</button>
+            </form>
+            <form action={invoiceMutationAction}>
+              <input type="hidden" name="action" value="cancel_invoice" />
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <button className="w-full rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50">Cancel invoice</button>
+            </form>
+          </section>
 
-          <div className="space-y-2 rounded border border-slate-200 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Send invoice</p>
+          <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div>
+              <h3 className="text-base font-semibold text-slate-950">Send invoice</h3>
+              <p className="mt-1 text-sm text-slate-500">Share the public invoice with the customer.</p>
+            </div>
             <a
               href={invoice.customer_email ? `mailto:${invoice.customer_email}?subject=${emailSubject}&body=${emailBody}` : "#"}
-              className={`block w-full rounded px-3 py-2 text-center text-sm ${
-                invoice.customer_email ? "bg-indigo-900 text-white" : "cursor-not-allowed bg-slate-100 text-slate-400"
+              className={`block w-full rounded-lg px-3 py-2.5 text-center text-sm font-semibold ${
+                invoice.customer_email ? "bg-slate-950 text-white hover:bg-slate-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
               }`}
               aria-disabled={!invoice.customer_email}
             >
@@ -390,14 +507,14 @@ export default async function MsmeInvoiceDetailPage({
               href={whatsappHref ?? "#"}
               target={whatsappHref ? "_blank" : undefined}
               rel={whatsappHref ? "noreferrer" : undefined}
-              className={`block w-full rounded px-3 py-2 text-center text-sm ${
-                whatsappHref ? "bg-emerald-700 text-white" : "cursor-not-allowed bg-slate-100 text-slate-400"
+              className={`block w-full rounded-lg px-3 py-2.5 text-center text-sm font-semibold ${
+                whatsappHref ? "bg-emerald-700 text-white hover:bg-emerald-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
               }`}
               aria-disabled={!whatsappHref}
             >
               Send via WhatsApp
             </a>
-          </div>
+          </section>
         </aside>
       </div>
     </section>
