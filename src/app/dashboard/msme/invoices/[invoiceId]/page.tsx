@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { CalendarDays, Check, Clipboard, Copy, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
@@ -283,42 +284,11 @@ export default async function MsmeInvoiceDetailPage({
   const invoiceItems = items ?? [];
   const invoiceStatus = String(invoice.status ?? "draft");
   const invoiceStatusLabel = invoiceStatus.replaceAll("_", " ");
+  const invoiceDateLabel = formatDate(invoice.issued_at ?? invoice.due_date);
   const dueDateLabel = formatDate(invoice.due_date);
 
   return (
-    <section className="space-y-5">
-      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Invoice workspace</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">{invoice.invoice_number}</h2>
-            </div>
-            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>
-              {invoiceStatusLabel}
-            </span>
-          </div>
-        </div>
-        <div className="grid gap-4 px-4 py-5 sm:px-5 lg:grid-cols-[1.2fr_1fr_1fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</p>
-            <p className="mt-1 text-base font-semibold text-slate-900">{invoice.customer_name}</p>
-            <p className="mt-1 break-all text-sm text-slate-600">{invoice.customer_email ?? "No email on file"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Due date</p>
-            <p className="mt-1 text-base font-semibold text-slate-900">{dueDateLabel}</p>
-            <p className="mt-1 text-sm text-slate-500">{invoice.customer_phone ?? "No customer phone"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Public invoice link</p>
-            <Link className="mt-1 block break-all text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline" href={publicInvoiceUrl}>
-              {publicInvoiceUrl}
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <section className="space-y-6">
       {query.notice ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {query.notice === "invoice_issued"
@@ -333,187 +303,376 @@ export default async function MsmeInvoiceDetailPage({
         </p>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
-            <h3 className="text-lg font-semibold text-slate-950">Invoice items</h3>
-            <p className="mt-1 text-sm text-slate-500">Review line items, VAT treatment, and totals before sending.</p>
-          </div>
-
-          <div className="hidden overflow-x-auto lg:block">
-            <div className="min-w-[980px]">
-              <div className="grid grid-cols-[1.15fr_1.35fr_0.5fr_0.75fr_0.45fr_0.8fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span>Item</span>
-                <span>Description</span>
-                <span>Qty</span>
-                <span>Unit price</span>
-                <span>VAT</span>
-                <span className="text-right">Line total</span>
-                <span className="text-right">Actions</span>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
+          <header className="rounded-lg border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Invoice</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <h2 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{invoice.invoice_number}</h2>
+                  <span className={`inline-flex w-fit rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>
+                    {invoiceStatusLabel}
+                  </span>
+                </div>
               </div>
+            </div>
+
+            <div className="mt-7 grid gap-6 lg:grid-cols-[1.15fr_0.75fr_1fr]">
+              <div className="flex items-start gap-3">
+                <User className="mt-0.5 h-5 w-5 text-slate-500" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Customer</p>
+                  <p className="mt-2 text-base font-bold text-slate-900">{invoice.customer_name}</p>
+                  <p className="mt-1 break-all text-sm font-medium text-slate-600">{invoice.customer_email ?? "No email on file"}</p>
+                  <p className="mt-1 text-sm font-medium text-slate-600">{invoice.customer_phone ?? "No customer phone"}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="mt-0.5 h-5 w-5 text-slate-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Invoice date</p>
+                    <p className="mt-2 text-base font-bold text-slate-900">{invoiceDateLabel}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="mt-0.5 h-5 w-5 text-slate-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Due date</p>
+                    <p className="mt-2 text-base font-bold text-slate-900">{dueDateLabel}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Public invoice link</p>
+                <div className="mt-2 flex min-w-0 items-center gap-2">
+                  <Link className="min-w-0 flex-1 truncate text-sm font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-800" href={publicInvoiceUrl}>
+                    {publicInvoiceAbsoluteUrl || publicInvoiceUrl}
+                  </Link>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    aria-label="Copy public invoice link"
+                    title="Copy public invoice link"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+              <div>
+                <h3 className="text-xl font-bold text-slate-950">Invoice items</h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">Review line items, VAT treatment, and totals before sending.</p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-3.5 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+              >
+                <Plus className="h-4 w-4" />
+                Add item
+              </button>
+            </div>
+
+            <div className="hidden overflow-x-auto lg:block">
+              <div className="min-w-[980px] p-5">
+                <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <div className="grid grid-cols-[1.1fr_1.75fr_0.45fr_0.8fr_0.55fr_0.85fr_0.7fr] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase text-slate-500">
+                    <span>Item</span>
+                    <span>Description</span>
+                    <span className="text-center">Qty</span>
+                    <span className="text-right">Unit price</span>
+                    <span className="text-center">VAT</span>
+                    <span className="text-right">Line total</span>
+                    <span className="text-right">Actions</span>
+                  </div>
+                  {invoiceItems.map((item) => (
+                    <div key={item.id} className="grid grid-cols-[1.1fr_1.75fr_0.45fr_0.8fr_0.55fr_0.85fr_0.7fr] gap-4 border-b border-slate-100 px-4 py-4 last:border-b-0">
+                      <form id={`update-item-${item.id}`} action={invoiceMutationAction} className="contents">
+                        <input type="hidden" name="action" value="update_item" />
+                        <input type="hidden" name="invoice_id" value={invoice.id} />
+                        <input type="hidden" name="item_id" value={item.id} />
+                        <input name="item_name" defaultValue={item.item_name} className="h-10 w-full rounded-md border border-transparent bg-transparent px-0 text-sm font-bold text-slate-900 outline-none focus:border-emerald-300 focus:bg-white focus:px-3 focus:ring-2 focus:ring-emerald-100" />
+                        <input name="description" defaultValue={item.description ?? ""} className="h-10 w-full rounded-md border border-transparent bg-transparent px-0 text-sm font-medium text-slate-700 outline-none focus:border-emerald-300 focus:bg-white focus:px-3 focus:ring-2 focus:ring-emerald-100" />
+                        <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="h-10 w-full rounded-md border border-transparent bg-transparent px-0 text-center text-sm font-bold text-slate-900 outline-none focus:border-emerald-300 focus:bg-white focus:px-2 focus:ring-2 focus:ring-emerald-100" />
+                        <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="h-10 w-full rounded-md border border-transparent bg-transparent px-0 text-right text-sm font-bold text-slate-900 outline-none focus:border-emerald-300 focus:bg-white focus:px-2 focus:ring-2 focus:ring-emerald-100" />
+                        <label className="inline-flex h-10 items-center justify-center gap-2 text-sm font-bold text-slate-700">
+                          <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600" />
+                          <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">VAT</span>
+                        </label>
+                        <p className="flex h-10 items-center justify-end text-sm font-bold text-slate-950">{formatNaira(item.line_total)}</p>
+                      </form>
+                      <div className="flex h-10 items-center justify-end gap-2">
+                        <button
+                          type="submit"
+                          form={`update-item-${item.id}`}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-emerald-700 hover:bg-emerald-50"
+                          aria-label="Save invoice item"
+                          title="Save invoice item"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                        <form action={invoiceMutationAction}>
+                          <input type="hidden" name="action" value="remove_item" />
+                          <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <button
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-100 bg-white text-red-600 hover:bg-red-50"
+                            aria-label="Remove invoice item"
+                            title="Remove invoice item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  ))}
+
+                  <form action={invoiceMutationAction} className="grid grid-cols-[1.1fr_1.75fr_0.45fr_0.8fr_0.55fr_0.85fr_0.7fr] gap-4 bg-white px-4 py-4">
+                    <input type="hidden" name="action" value="add_item" />
+                    <input type="hidden" name="invoice_id" value={invoice.id} />
+                    <input required name="item_name" placeholder="Item name" className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-medium outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="description" placeholder="Description" className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-medium outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={1} className="h-10 rounded-lg border border-slate-200 px-3 text-center text-sm font-medium outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <input name="unit_price" type="number" step={0.01} min={0} defaultValue={0} className="h-10 rounded-lg border border-slate-200 px-3 text-right text-sm font-medium outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    <label className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-slate-700">
+                      <input type="checkbox" name="vat_applicable" defaultChecked className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600" />
+                      VAT
+                    </label>
+                    <p className="flex h-10 items-center justify-end text-sm font-bold text-slate-950">₦0.00</p>
+                    <div className="flex h-10 items-center justify-end gap-2">
+                      <button
+                        type="submit"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-emerald-700 hover:bg-emerald-50"
+                        aria-label="Add invoice item"
+                        title="Add invoice item"
+                      >
+                        <Save className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="reset"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        aria-label="Clear invoice item"
+                        title="Clear invoice item"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </form>
+                </div>
+                <p className="mt-4 text-sm font-medium text-slate-500">All amounts in NGN</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 p-4 lg:hidden">
               {invoiceItems.map((item) => (
-                <div key={item.id} className="grid grid-cols-[1.15fr_1.35fr_0.5fr_0.75fr_0.45fr_0.8fr_0.85fr] gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0">
-                  <form id={`update-item-${item.id}`} action={invoiceMutationAction} className="contents">
+                <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <form id={`mobile-update-item-${item.id}`} action={invoiceMutationAction} className="space-y-3">
                     <input type="hidden" name="action" value="update_item" />
                     <input type="hidden" name="invoice_id" value={invoice.id} />
                     <input type="hidden" name="item_id" value={item.id} />
-                    <input name="item_name" defaultValue={item.item_name} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    <input name="description" defaultValue={item.description ?? ""} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    <label className="inline-flex h-10 items-center gap-2 text-sm font-medium text-slate-700">
-                      <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
-                      VAT
-                    </label>
-                    <p className="flex h-10 items-center justify-end font-semibold text-slate-950">{formatNaira(item.line_total)}</p>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Item</label>
+                      <input name="item_name" defaultValue={item.item_name} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Description</label>
+                      <input name="description" defaultValue={item.description ?? ""} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Qty</label>
+                        <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Unit price</label>
+                        <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                      <label className="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
+                        VAT
+                      </label>
+                      <span className="text-sm font-bold text-slate-950">{formatNaira(item.line_total)}</span>
+                    </div>
                   </form>
-                  <div className="flex h-10 items-center justify-end gap-2">
-                    <button type="submit" form={`update-item-${item.id}`} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
-                      Save
+                  <div className="mt-3 flex gap-2">
+                    <button type="submit" form={`mobile-update-item-${item.id}`} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-100">
+                      <Save className="h-4 w-4" />
+                      Save item
                     </button>
-                    <form action={invoiceMutationAction}>
+                    <form action={invoiceMutationAction} className="flex-1">
                       <input type="hidden" name="action" value="remove_item" />
                       <input type="hidden" name="invoice_id" value={invoice.id} />
                       <input type="hidden" name="item_id" value={item.id} />
-                      <button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">
+                      <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-50">
+                        <Trash2 className="h-4 w-4" />
                         Remove
                       </button>
                     </form>
                   </div>
-                </div>
+                </article>
               ))}
-            </div>
-          </div>
 
-          <div className="grid gap-3 p-4 lg:hidden">
-            {invoiceItems.map((item) => (
-              <article key={item.id} className="rounded-xl border border-slate-200 p-3">
-                <form id={`mobile-update-item-${item.id}`} action={invoiceMutationAction} className="space-y-3">
-                  <input type="hidden" name="action" value="update_item" />
-                  <input type="hidden" name="invoice_id" value={invoice.id} />
-                  <input type="hidden" name="item_id" value={item.id} />
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Item name</label>
-                    <input name="item_name" defaultValue={item.item_name} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</label>
-                    <input name="description" defaultValue={item.description ?? ""} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantity</label>
-                      <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={item.quantity} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Unit price</label>
-                      <input name="unit_price" type="number" step={0.01} min={0} defaultValue={item.unit_price} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
-                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                      <input type="checkbox" name="vat_applicable" defaultChecked={item.vat_applicable} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
-                      VAT applicable
-                    </label>
-                    <span className="text-sm font-semibold text-slate-950">{formatNaira(item.line_total)}</span>
-                  </div>
-                </form>
-                <div className="mt-3 flex gap-2">
-                  <button type="submit" form={`mobile-update-item-${item.id}`} className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                    Save item
-                  </button>
-                  <form action={invoiceMutationAction} className="flex-1">
-                    <input type="hidden" name="action" value="remove_item" />
-                    <input type="hidden" name="invoice_id" value={invoice.id} />
-                    <input type="hidden" name="item_id" value={item.id} />
-                    <button className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">
-                      Remove
-                    </button>
-                  </form>
+              <form action={invoiceMutationAction} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+                <input type="hidden" name="action" value="add_item" />
+                <input type="hidden" name="invoice_id" value={invoice.id} />
+                <input required name="item_name" placeholder="Item name" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                <input name="description" placeholder="Description" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                <div className="grid grid-cols-2 gap-3">
+                  <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={1} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                  <input name="unit_price" type="number" step={0.01} min={0} defaultValue={0} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
-              </article>
-            ))}
-          </div>
-
-          <form action={invoiceMutationAction} className="grid gap-3 border-t border-dashed border-slate-200 bg-slate-50/70 p-4 sm:p-5 lg:grid-cols-[1fr_1.2fr_0.55fr_0.75fr_0.45fr_auto]">
-            <input type="hidden" name="action" value="add_item" />
-            <input type="hidden" name="invoice_id" value={invoice.id} />
-            <input required name="item_name" placeholder="Item name" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-            <input name="description" placeholder="Description" className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-            <input name="quantity" type="number" step={0.01} min={0.01} defaultValue={1} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-            <input name="unit_price" type="number" step={0.01} min={0} defaultValue={0} className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-            <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"><input type="checkbox" name="vat_applicable" defaultChecked className="h-4 w-4 rounded border-slate-300 text-emerald-700" />VAT</label>
-            <button type="submit" className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Add item</button>
-          </form>
-        </article>
-
-        <aside className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-slate-950">Totals</h3>
-              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>{invoiceStatusLabel}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="inline-flex items-center gap-2 rounded-lg bg-white text-sm font-bold text-slate-700">
+                    <input type="checkbox" name="vat_applicable" defaultChecked className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
+                    VAT
+                  </label>
+                  <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
+                    <Save className="h-4 w-4" />
+                    Add item
+                  </button>
+                </div>
+              </form>
+              <p className="px-1 text-sm font-medium text-slate-500">All amounts in NGN</p>
             </div>
-            <div className="mt-4 space-y-3">
-              <p className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-medium text-slate-900">{formatNaira(invoice.subtotal)}</span></p>
-              <p className="flex justify-between text-sm text-slate-600"><span>VAT ({invoice.vat_rate}%)</span><span className="font-medium text-slate-900">{formatNaira(invoice.vat_amount)}</span></p>
-              <div className="rounded-xl bg-slate-950 px-4 py-3 text-white">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Total amount</p>
-                <p className="mt-1 text-2xl font-semibold">{formatNaira(invoice.total_amount)}</p>
-              </div>
-              <p className="flex justify-between text-sm text-slate-600"><span>Due date</span><span className="font-medium text-slate-900">{dueDateLabel}</span></p>
+          </article>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <h3 className="text-xl font-bold text-slate-950">Invoice timeline</h3>
+            <div className="mt-5 space-y-0">
+              {[
+                { icon: Clipboard, title: "Invoice created", body: "Invoice has been created as a draft.", time: invoiceDateLabel },
+                { icon: Edit3, title: "Draft saved", body: "Invoice details updated.", time: query.notice ? "Just now" : invoiceDateLabel },
+                { icon: Clipboard, title: "Awaiting issuance", body: "When you are ready, issue this invoice to your customer.", time: invoiceStatus === "draft" ? "—" : invoiceStatusLabel },
+              ].map((event, index, events) => {
+                const Icon = event.icon;
+                return (
+                  <div key={event.title} className="grid grid-cols-[36px_minmax(0,1fr)_auto] gap-4">
+                    <div className="flex flex-col items-center">
+                      <span
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
+                          index === 0 ? "bg-emerald-100 text-emerald-700" : index === 1 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      {index < events.length - 1 ? <span className="h-9 w-px bg-slate-200" /> : null}
+                    </div>
+                    <div className="pb-7">
+                      <p className="text-sm font-bold text-slate-900">{event.title}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-600">{event.body}</p>
+                    </div>
+                    <p className="hidden whitespace-nowrap text-sm font-medium text-slate-500 sm:block">{event.time}</p>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
-          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800">
+            <Check className="mr-2 inline h-4 w-4" />
+            Tip: Issue your invoice when you are ready to notify the customer. You can still edit while in draft mode.
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 p-5">
+              <h3 className="text-xl font-bold text-slate-950">Summary</h3>
+              <div className="mt-5 space-y-4">
+                <p className="flex justify-between gap-4 text-base font-semibold text-slate-700">
+                  <span>Subtotal</span>
+                  <span className="text-right font-bold text-slate-950">{formatNaira(invoice.subtotal)}</span>
+                </p>
+                <p className="flex justify-between gap-4 text-base font-semibold text-slate-700">
+                  <span>VAT ({invoice.vat_rate}%)</span>
+                  <span className="text-right font-bold text-slate-950">{formatNaira(invoice.vat_amount)}</span>
+                </p>
+              </div>
+            </div>
+            <div className="border-b border-slate-100 p-5">
+              <div className="rounded-lg bg-emerald-50/55 px-4 py-4">
+                <p className="text-base font-bold text-slate-800">Total amount</p>
+                <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">{formatNaira(invoice.total_amount)}</p>
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-base font-bold text-slate-900">Invoice status</p>
+                  <p className="mt-2 text-sm font-medium text-slate-500">Created on {invoiceDateLabel}</p>
+                </div>
+                <span className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>{invoiceStatusLabel}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div>
-              <h3 className="text-base font-semibold text-slate-950">Status actions</h3>
-              <p className="mt-1 text-sm text-slate-500">Update lifecycle and payment state.</p>
+              <h3 className="text-xl font-bold text-slate-950">Status actions</h3>
+              <p className="mt-1 text-sm font-medium text-slate-500">Update lifecycle and payment state.</p>
             </div>
             <form action={invoiceMutationAction}>
               <input type="hidden" name="action" value="issue_invoice" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
-              <button type="submit" className="w-full rounded-lg bg-indigo-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800">Issue invoice</button>
+              <button type="submit" className="w-full rounded-lg bg-emerald-700 px-3 py-3 text-sm font-bold text-white shadow-sm hover:bg-emerald-800">Issue invoice</button>
             </form>
-            <form action={invoiceMutationAction} className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+            <form action={invoiceMutationAction} className="space-y-2">
               <input type="hidden" name="action" value="mark_paid" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
               <input name="payment_reference" placeholder="Payment reference" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
               <input name="payment_date" type="date" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
               <input name="payment_note" placeholder="Optional payment note" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-              <button className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Mark invoice paid</button>
+              <button className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50">Mark invoice paid</button>
             </form>
             <form action={invoiceMutationAction}>
               <input type="hidden" name="action" value="cancel_invoice" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
-              <button className="w-full rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50">Cancel invoice</button>
+              <button className="w-full rounded-lg border border-red-300 bg-white px-3 py-3 text-sm font-bold text-red-600 hover:bg-red-50">Cancel invoice</button>
             </form>
           </section>
 
-          <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Send invoice</h3>
-              <p className="mt-1 text-sm text-slate-500">Share the public invoice with the customer.</p>
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="space-y-2 p-5">
+              <div>
+                <h3 className="text-xl font-bold text-slate-950">Send invoice</h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">Share invoice with your customer.</p>
+              </div>
+              <a
+                href={invoice.customer_email ? `mailto:${invoice.customer_email}?subject=${emailSubject}&body=${emailBody}` : "#"}
+                className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-3 text-center text-sm font-bold ${
+                  invoice.customer_email ? "bg-emerald-700 text-white hover:bg-emerald-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
+                }`}
+                aria-disabled={!invoice.customer_email}
+              >
+                <Mail className="h-4 w-4" />
+                Send via email
+              </a>
+              <a
+                href={whatsappHref ?? "#"}
+                target={whatsappHref ? "_blank" : undefined}
+                rel={whatsappHref ? "noreferrer" : undefined}
+                className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-3 text-center text-sm font-bold ${
+                  whatsappHref ? "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                }`}
+                aria-disabled={!whatsappHref}
+              >
+                <Check className="h-4 w-4" />
+                Send via WhatsApp
+              </a>
             </div>
-            <a
-              href={invoice.customer_email ? `mailto:${invoice.customer_email}?subject=${emailSubject}&body=${emailBody}` : "#"}
-              className={`block w-full rounded-lg px-3 py-2.5 text-center text-sm font-semibold ${
-                invoice.customer_email ? "bg-slate-950 text-white hover:bg-slate-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
-              }`}
-              aria-disabled={!invoice.customer_email}
-            >
-              Send via email
-            </a>
-            <a
-              href={whatsappHref ?? "#"}
-              target={whatsappHref ? "_blank" : undefined}
-              rel={whatsappHref ? "noreferrer" : undefined}
-              className={`block w-full rounded-lg px-3 py-2.5 text-center text-sm font-semibold ${
-                whatsappHref ? "bg-emerald-700 text-white hover:bg-emerald-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
-              }`}
-              aria-disabled={!whatsappHref}
-            >
-              Send via WhatsApp
-            </a>
+            <div className="flex gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <p className="text-sm font-medium text-slate-600">Once issued, your customer will be able to view and pay this invoice.</p>
+            </div>
           </section>
         </aside>
       </div>
