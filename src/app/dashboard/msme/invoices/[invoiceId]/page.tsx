@@ -1,10 +1,20 @@
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { CalendarDays, Check, Clipboard, Download, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent } from "@/lib/data/commercial-ops";
+
+type InvoiceEmailNotice =
+  | "invoice_email_sent"
+  | "missing_customer_email"
+  | "missing_invoice_items"
+  | "invalid_invoice_total"
+  | "email_not_configured"
+  | "pdf_generation_failed"
+  | "email_send_failed";
 
 async function loadInvoiceTotalsSnapshot(invoiceId: string) {
   const supabase = await createServiceRoleSupabaseClient();
@@ -30,6 +40,128 @@ function invoiceStatusSelect(invoiceColumns: Set<string>) {
     if (invoiceColumns.has(column)) columns.push(column);
   }
   return columns.join(",");
+}
+
+function redirectWithInvoiceEmailNotice(invoiceId: string, notice: InvoiceEmailNotice): never {
+  const key = notice === "invoice_email_sent" ? "notice" : "error";
+  redirect(`/dashboard/msme/invoices/${invoiceId}?${key}=${notice}`);
+}
+
+function buildAbsoluteUrl(path: string, requestHeaders: Headers) {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (configuredOrigin) return `${configuredOrigin}${path}`;
+
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
+  if (!host) return path;
+  return `${protocol}://${host}${path}`;
+}
+
+function formatEmailAmount(currency: string | null | undefined, totalAmount: number | string | null | undefined) {
+  const amount = Number(totalAmount ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${String(currency ?? "₦")}${amount}`;
+}
+
+async function sendInvoiceEmailAction(formData: FormData) {
+  "use server";
+  const workspace = await getProviderWorkspaceContext();
+  const supabase = await createServiceRoleSupabaseClient();
+  const invoiceId = String(formData.get("invoice_id") ?? "").trim();
+
+  if (!invoiceId) redirect("/dashboard/msme/invoices?error=missing_invoice");
+
+  const { data: invoice, error } = await supabase
+    .from("invoices")
+    .select("id,invoice_number,customer_name,customer_email,due_date,total_amount,currency")
+    .eq("id", invoiceId)
+    .eq("provider_profile_id", workspace.provider.id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!invoice) redirect("/dashboard/msme/invoices?error=missing_invoice");
+
+  const { data: items, error: itemError } = await supabase
+    .from("invoice_items")
+    .select("id")
+    .eq("invoice_id", invoiceId)
+    .limit(1);
+
+  if (itemError) throw new Error(itemError.message);
+
+  const customerEmail = String(invoice.customer_email ?? "").trim();
+  if (!customerEmail) redirectWithInvoiceEmailNotice(invoiceId, "missing_customer_email");
+  if ((items ?? []).length === 0) redirectWithInvoiceEmailNotice(invoiceId, "missing_invoice_items");
+  if (Number(invoice.total_amount ?? 0) <= 0) redirectWithInvoiceEmailNotice(invoiceId, "invalid_invoice_total");
+
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (!resendApiKey) redirectWithInvoiceEmailNotice(invoiceId, "email_not_configured");
+
+  const requestHeaders = await headers();
+  const pdfPath = `/api/msme/invoices/${invoice.id}/pdf`;
+  const pdfDownloadLink = buildAbsoluteUrl(pdfPath, requestHeaders);
+  const pdfResponse = await fetch(pdfDownloadLink, {
+    headers: {
+      cookie: requestHeaders.get("cookie") ?? "",
+    },
+    cache: "no-store",
+  });
+
+  if (!pdfResponse.ok || !pdfResponse.headers.get("content-type")?.includes("application/pdf")) {
+    console.error("[invoice-email:pdf-fetch-failed]", { invoiceId, status: pdfResponse.status, contentType: pdfResponse.headers.get("content-type") });
+    redirectWithInvoiceEmailNotice(invoiceId, "pdf_generation_failed");
+  }
+
+  const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+  const providerName = workspace.provider.display_name || workspace.msme.business_name || "NDMII MSME Provider";
+  const invoiceNumber = String(invoice.invoice_number ?? invoice.id);
+  const subject = `Invoice ${invoiceNumber} from ${providerName}`;
+  const body = [
+    `Hello ${invoice.customer_name},`,
+    "",
+    `Your invoice ${invoiceNumber} is ready.`,
+    "",
+    `Amount: ${formatEmailAmount(invoice.currency, invoice.total_amount)}`,
+    `Due date: ${formatDate(invoice.due_date)}`,
+    "",
+    "Download your invoice:",
+    pdfDownloadLink,
+    "",
+    "Thank you.",
+  ].join("\n");
+  const filename = `invoice-${invoiceNumber}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM ?? "NDMII Invoices <onboarding@resend.dev>";
+
+  const resendResponse = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [customerEmail],
+      subject,
+      text: body,
+      attachments: [{ filename, content: pdfBytes.toString("base64") }],
+    }),
+  });
+
+  const resendResult = (await resendResponse.json().catch(() => null)) as { id?: string; message?: string } | null;
+  if (!resendResponse.ok) {
+    console.error("[invoice-email:send-failed]", { invoiceId, status: resendResponse.status, response: resendResult });
+    redirectWithInvoiceEmailNotice(invoiceId, "email_send_failed");
+  }
+
+  await logInvoiceEvent(supabase, {
+    invoiceId,
+    eventType: "invoice_sent_email",
+    actorRole: workspace.role,
+    actorId: workspace.msme.id,
+    metadata: { customer_email: customerEmail, resend_id: resendResult?.id ?? null, pdf_download_link: pdfDownloadLink },
+  });
+
+  revalidatePath(`/dashboard/msme/invoices/${invoiceId}`);
+  redirectWithInvoiceEmailNotice(invoiceId, "invoice_email_sent");
 }
 
 async function invoiceMutationAction(formData: FormData) {
@@ -251,7 +383,7 @@ export default async function MsmeInvoiceDetailPage({
   searchParams,
 }: {
   params: Promise<{ invoiceId: string }>;
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { invoiceId } = await params;
   const query = await searchParams;
@@ -260,7 +392,7 @@ export default async function MsmeInvoiceDetailPage({
 
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount")
+    .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount,currency")
     .eq("id", invoiceId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
@@ -279,16 +411,6 @@ export default async function MsmeInvoiceDetailPage({
   const publicInvoiceUrl = `/invoice/${invoice.id}`;
   const publicInvoiceAbsoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${publicInvoiceUrl}`;
   const invoicePdfUrl = `/api/msme/invoices/${invoice.id}/pdf`;
-  const emailSubject = encodeURIComponent(`Invoice ${invoice.invoice_number} from ${workspace.provider.display_name}`);
-  const emailBody = encodeURIComponent(
-    [
-      `Hello ${invoice.customer_name},`,
-      "",
-      `Your invoice ${invoice.invoice_number} is ready.`,
-      `View invoice: ${publicInvoiceAbsoluteUrl}`,
-      `Amount due: ${formatNaira(invoice.total_amount)}`,
-    ].join("\n")
-  );
   const phoneDigits = String(invoice.customer_phone ?? "").replace(/\D/g, "");
   const whatsappBody = encodeURIComponent(
     `Hello ${invoice.customer_name}, your invoice ${invoice.invoice_number} is ready: ${publicInvoiceAbsoluteUrl}`
@@ -302,17 +424,37 @@ export default async function MsmeInvoiceDetailPage({
 
   return (
     <section className="space-y-6">
+      {query.error ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {query.error === "missing_customer_email"
+            ? "Add a customer email before sending this invoice."
+            : query.error === "missing_invoice_items"
+              ? "Add at least one invoice item before sending this invoice."
+              : query.error === "invalid_invoice_total"
+                ? "Invoice total must be greater than zero before sending."
+                : query.error === "email_not_configured"
+                  ? "Email sending is not configured. Set RESEND_API_KEY and try again."
+                  : query.error === "pdf_generation_failed"
+                    ? "Unable to generate the invoice PDF attachment."
+                    : query.error === "email_send_failed"
+                      ? "Unable to send invoice email right now."
+                      : "Unable to send invoice email."}
+        </p>
+      ) : null}
+
       {query.notice ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {query.notice === "invoice_issued"
             ? "Invoice issued successfully."
-            : query.notice === "invoice_cancelled"
-              ? "Invoice cancelled successfully."
-              : query.notice === "invoice_paid"
-                ? "Invoice marked as paid successfully."
-                : query.notice === "item_removed"
-                  ? "Invoice item removed and totals refreshed."
-                  : "Invoice item saved and totals refreshed."}
+            : query.notice === "invoice_email_sent"
+              ? "Invoice sent successfully."
+              : query.notice === "invoice_cancelled"
+                ? "Invoice cancelled successfully."
+                : query.notice === "invoice_paid"
+                  ? "Invoice marked as paid successfully."
+                  : query.notice === "item_removed"
+                    ? "Invoice item removed and totals refreshed."
+                    : "Invoice item saved and totals refreshed."}
         </p>
       ) : null}
 
@@ -651,16 +793,16 @@ export default async function MsmeInvoiceDetailPage({
                 <h3 className="text-xl font-bold text-slate-950">Send invoice</h3>
                 <p className="mt-1 text-sm font-medium text-slate-500">Share invoice with your customer.</p>
               </div>
-              <a
-                href={invoice.customer_email ? `mailto:${invoice.customer_email}?subject=${emailSubject}&body=${emailBody}` : "#"}
-                className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-3 text-center text-sm font-bold ${
-                  invoice.customer_email ? "bg-emerald-700 text-white hover:bg-emerald-800" : "cursor-not-allowed bg-slate-100 text-slate-400"
-                }`}
-                aria-disabled={!invoice.customer_email}
-              >
-                <Mail className="h-4 w-4" />
-                Send via email
-              </a>
+              <form action={sendInvoiceEmailAction}>
+                <input type="hidden" name="invoice_id" value={invoice.id} />
+                <button
+                  type="submit"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-3 text-center text-sm font-bold text-white hover:bg-emerald-800"
+                >
+                  <Mail className="h-4 w-4" />
+                  Send via email
+                </button>
+              </form>
               <a
                 href={whatsappHref ?? "#"}
                 target={whatsappHref ? "_blank" : undefined}
