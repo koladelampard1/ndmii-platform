@@ -258,7 +258,7 @@ async function updateQuoteStatus(
     update_scope: "id_only_after_prevalidated_ownership",
   });
 
-  let updateQuery = supabase.from("provider_quotes").update(payload).eq("id", quoteId);
+  const updateQuery = supabase.from("provider_quotes").update(payload).eq("id", quoteId);
 
   const { data: updatedQuote, error } = updateSelect.length
     ? await updateQuery.select(updateSelect.join(",")).maybeSingle()
