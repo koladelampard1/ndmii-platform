@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { getRegistrationMode, mapRegistrationErrorMessage } from "@/lib/auth/registration";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
@@ -32,6 +33,91 @@ function normalizeRegistrationPath(value: unknown) {
   const path = normalizeString(value);
   if (path === "existing_association_member" || path === "new_association_applicant" || path === "independent") return path;
   return "independent";
+}
+
+const MSME_PROFILE_COLUMNS = [
+  "msme_id",
+  "business_name",
+  "owner_name",
+  "state",
+  "sector",
+  "contact_email",
+  "contact_phone",
+  "lga",
+  "address",
+  "business_type",
+  "nin",
+  "bvn",
+  "cac_number",
+  "tin",
+  "registration_path",
+  "association_id",
+  "verification_status",
+  "review_status",
+  "created_by",
+] as const;
+
+const LEGACY_MSME_PROFILE_COLUMNS = [
+  "msme_id",
+  "business_name",
+  "owner_name",
+  "state",
+  "sector",
+  "nin",
+  "bvn",
+  "cac_number",
+  "tin",
+  "association_id",
+  "verification_status",
+  "created_by",
+] as const;
+
+async function getTableColumns(supabase: SupabaseClient, tableName: string, probeColumns: readonly string[], fallbackColumns: readonly string[]) {
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", tableName);
+
+  if (!error) {
+    const columns = new Set((data ?? []).map((row) => String(row.column_name)));
+    if (columns.size > 0) return columns;
+  } else {
+    console.error("[register:schema-column-lookup-failed]", {
+      tableName,
+      error: {
+        message: error.message,
+        code: error.code ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      },
+    });
+  }
+
+  const detectedColumns = new Set<string>();
+  for (const column of probeColumns) {
+    const { error: probeError } = await supabase.from(tableName).select(column).limit(1);
+    if (!probeError) detectedColumns.add(column);
+  }
+
+  return detectedColumns.size > 0 ? detectedColumns : new Set(fallbackColumns);
+}
+
+function filterPayloadByColumns<T extends Record<string, unknown>>(payload: T, columns: Set<string>) {
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => columns.has(key)));
+}
+
+function describeSupabaseError(error: { message?: string; code?: string; details?: string; hint?: string } | null | undefined) {
+  if (!error) return "Unknown Supabase error.";
+
+  return [
+    error.message,
+    error.code ? `code: ${error.code}` : null,
+    error.details ? `details: ${error.details}` : null,
+    error.hint ? `hint: ${error.hint}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export async function POST(request: Request) {
@@ -128,7 +214,7 @@ export async function POST(request: Request) {
 
     const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-    const payload = {
+    const profilePayload = {
       msme_id: msmePublicId,
       business_name: businessName,
       owner_name: ownerName,
@@ -150,6 +236,10 @@ export async function POST(request: Request) {
       created_by: profile.id,
     };
 
+    const msmeColumns = await getTableColumns(supabase, "msmes", MSME_PROFILE_COLUMNS, LEGACY_MSME_PROFILE_COLUMNS);
+    const payload = filterPayloadByColumns(profilePayload, msmeColumns);
+    const payloadKeys = Object.keys(payload);
+
     const { data: existingMsme } = await supabase
       .from("msmes")
       .select("id,msme_id")
@@ -163,7 +253,24 @@ export async function POST(request: Request) {
       : await supabase.from("msmes").insert(payload).select("id,msme_id").single();
 
     if (msmeError || !msme?.id) {
-      return NextResponse.json({ error: "Unable to complete MSME registration profile sync." }, { status: 500 });
+      console.error("[register:profile-sync-failed]", {
+        error: msmeError
+          ? {
+              message: msmeError.message,
+              code: msmeError.code ?? null,
+              details: msmeError.details ?? null,
+              hint: msmeError.hint ?? null,
+            }
+          : "MSME write returned no row.",
+        payloadKeys,
+        registrationPath,
+        associationId: requiresAssociation ? associationId : null,
+      });
+
+      return NextResponse.json(
+        { error: `Unable to complete MSME registration profile sync. ${describeSupabaseError(msmeError)}` },
+        { status: 500 },
+      );
     }
 
     if (requiresAssociation) {
@@ -182,7 +289,22 @@ export async function POST(request: Request) {
       );
 
       if (membershipError) {
-        return NextResponse.json({ error: "Registration was created, but association approval setup failed. Please contact support." }, { status: 500 });
+        console.error("[register:association-membership-failed]", {
+          error: {
+            message: membershipError.message,
+            code: membershipError.code ?? null,
+            details: membershipError.details ?? null,
+            hint: membershipError.hint ?? null,
+          },
+          registrationPath,
+          associationId,
+          msmeId: msme.id,
+        });
+
+        return NextResponse.json(
+          { error: `Registration was created, but association approval setup failed. ${describeSupabaseError(membershipError)}` },
+          { status: 500 },
+        );
       }
     }
 
@@ -205,15 +327,15 @@ export async function POST(request: Request) {
         action: "msme_submitted",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { status: payload.verification_status, registration_path: registrationPath },
+        metadata: { status: profilePayload.verification_status, registration_path: registrationPath },
       },
     ]);
 
     return NextResponse.json({
       ok: true,
       msmeId: msme.msme_id,
-      verificationStatus: payload.verification_status,
-      reviewStatus: payload.review_status,
+      verificationStatus: profilePayload.verification_status,
+      reviewStatus: profilePayload.review_status,
       message: requiresAssociation
         ? "Registration successful. Your association will confirm your membership before DBIN verification."
         : "Registration successful. Your MSME onboarding is now in DBIN verification.",
