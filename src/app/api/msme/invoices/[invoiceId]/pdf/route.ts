@@ -178,13 +178,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     if (itemError) throw new Error(itemError.message);
 
     const invoiceNumber = safeText(invoice.invoice_number || invoice.id);
-    const providerName = workspace.provider.display_name || workspace.msme.business_name || "Business Invoice";
+    const providerName = workspace.provider.display_name || workspace.msme.business_name || "Your Business";
     const { data: msmeProfile } = await supabase
       .from("msmes")
       .select("business_name,contact_email,contact_phone,address,state,lga")
       .eq("id", workspace.msme.id)
       .maybeSingle();
-    const businessName = displayValue(workspace.msme.business_name ?? msmeProfile?.business_name ?? providerName, "Business Invoice");
+    const businessName = displayValue(workspace.msme.business_name ?? msmeProfile?.business_name ?? providerName, "Your Business");
     const businessEmail = displayValue(workspace.provider.contact_email ?? msmeProfile?.contact_email ?? workspace.msme.contact_email);
     const businessPhone = displayValue(workspace.provider.contact_phone ?? msmeProfile?.contact_phone);
     const businessAddress = displayValue(
@@ -200,7 +200,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
 
     const addFooter = () => {
       commands.push(colorCommand(MUTED));
-      commands.push(textCommand({ text: "Powered by DBIN", x: LEFT, y: 12, size: 7 }));
       commands.push(rightText("All amounts are in Nigerian Naira (NGN)", RIGHT, 12, 7));
     };
 

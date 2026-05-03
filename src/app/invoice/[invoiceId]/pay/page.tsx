@@ -110,7 +110,7 @@ export default async function PublicInvoicePayPage({ params }: { params: Promise
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
   const msme = Array.isArray(invoice.msmes) ? invoice.msmes[0] : invoice.msmes;
   const provider = Array.isArray(invoice.provider_profiles) ? invoice.provider_profiles[0] : invoice.provider_profiles;
-  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Business Invoice";
+  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Your Business";
 
   return (
     <section className="mx-auto max-w-3xl space-y-4 py-6">

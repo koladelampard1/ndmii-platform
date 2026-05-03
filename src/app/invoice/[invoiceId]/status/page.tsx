@@ -33,7 +33,7 @@ export default async function PublicInvoiceStatusPage({ params }: { params: Prom
     invoiceRow.msme_id ? supabase.from("msmes").select("business_name").eq("id", invoiceRow.msme_id).maybeSingle() : Promise.resolve({ data: null }),
     invoiceRow.provider_profile_id ? supabase.from("provider_profiles").select("display_name").eq("id", invoiceRow.provider_profile_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Business Invoice";
+  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Your Business";
 
   return (
     <section className="mx-auto max-w-3xl space-y-4 py-6">

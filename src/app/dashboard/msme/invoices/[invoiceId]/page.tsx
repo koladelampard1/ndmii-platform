@@ -64,11 +64,11 @@ function formatEmailAmount(currency: string | null | undefined, totalAmount: num
 }
 
 function resolveBusinessInvoiceName(msmeName?: string | null, providerName?: string | null) {
-  return String(msmeName || providerName || "Business Invoice").trim();
+  return String(msmeName || providerName || "Your Business").trim();
 }
 
 function buildWhiteLabelFromEmail(businessName: string) {
-  return `${businessName.replace(/[<>"]/g, "").trim() || "Business Invoice"} <onboarding@resend.dev>`;
+  return `${businessName.replace(/[<>"]/g, "").trim() || "Your Business"} <onboarding@resend.dev>`;
 }
 
 async function sendInvoiceEmailAction(formData: FormData) {
@@ -136,7 +136,7 @@ async function sendInvoiceEmailAction(formData: FormData) {
     businessName,
   ].join("\n");
   const filename = `${businessName}-invoice-${invoiceNumber}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const fromEmail = process.env.RESEND_FROM_EMAIL ?? buildWhiteLabelFromEmail(businessName);
+  const fromEmail = buildWhiteLabelFromEmail(businessName);
 
   const resendResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",

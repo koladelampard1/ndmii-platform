@@ -47,7 +47,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
 
   const provider = resolveNestedOne(invoice.provider_profiles as { display_name?: string; contact_email?: string; contact_phone?: string } | { display_name?: string; contact_email?: string; contact_phone?: string }[] | null);
   const msme = resolveNestedOne(invoice.msmes as { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string } | { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string }[] | null);
-  const businessName = msme?.business_name || provider?.display_name || "Business Invoice";
+  const businessName = msme?.business_name || provider?.display_name || "Your Business";
   const businessContactEmail = msme?.contact_email ?? provider?.contact_email;
   const businessContactPhone = msme?.contact_phone ?? provider?.contact_phone;
 
