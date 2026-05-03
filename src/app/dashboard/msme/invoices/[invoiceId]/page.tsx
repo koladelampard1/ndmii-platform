@@ -63,6 +63,14 @@ function formatEmailAmount(currency: string | null | undefined, totalAmount: num
   return `${String(currency ?? "₦")}${amount}`;
 }
 
+function resolveBusinessInvoiceName(msmeName?: string | null, providerName?: string | null) {
+  return String(msmeName || providerName || "Business Invoice").trim();
+}
+
+function buildWhiteLabelFromEmail(businessName: string) {
+  return `${businessName.replace(/[<>"]/g, "").trim() || "Business Invoice"} <onboarding@resend.dev>`;
+}
+
 async function sendInvoiceEmailAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
@@ -113,24 +121,22 @@ async function sendInvoiceEmailAction(formData: FormData) {
   }
 
   const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
-  const providerName = workspace.provider.display_name || workspace.msme.business_name || "NDMII MSME Provider";
+  const businessName = resolveBusinessInvoiceName(workspace.msme.business_name, workspace.provider.display_name);
   const invoiceNumber = String(invoice.invoice_number ?? invoice.id);
-  const subject = `Invoice ${invoiceNumber} from ${providerName}`;
+  const subject = `Invoice ${invoiceNumber} from ${businessName}`;
   const body = [
     `Hello ${invoice.customer_name},`,
     "",
-    `Your invoice ${invoiceNumber} is ready.`,
+    `Please find attached your invoice ${invoiceNumber} from ${businessName}.`,
     "",
     `Amount: ${formatEmailAmount(invoice.currency, invoice.total_amount)}`,
     `Due date: ${formatDate(invoice.due_date)}`,
     "",
-    "Download your invoice:",
-    pdfDownloadLink,
-    "",
-    "Thank you.",
+    "Thank you,",
+    businessName,
   ].join("\n");
-  const filename = `invoice-${invoiceNumber}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const fromEmail = process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM ?? "NDMII Invoices <onboarding@resend.dev>";
+  const filename = `${businessName}-invoice-${invoiceNumber}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? buildWhiteLabelFromEmail(businessName);
 
   const resendResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -410,11 +416,16 @@ export default async function MsmeInvoiceDetailPage({
   if (itemError) throw new Error(itemError.message);
 
   const publicInvoiceUrl = `/invoice/${invoice.id}`;
-  const publicInvoiceAbsoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${publicInvoiceUrl}`;
   const invoicePdfUrl = `/api/msme/invoices/${invoice.id}/pdf`;
   const phoneDigits = String(invoice.customer_phone ?? "").replace(/\D/g, "");
+  const businessName = resolveBusinessInvoiceName(workspace.msme.business_name, workspace.provider.display_name);
   const whatsappBody = encodeURIComponent(
-    `Hello ${invoice.customer_name}, your invoice ${invoice.invoice_number} is ready: ${publicInvoiceAbsoluteUrl}`
+    [
+      `Hello ${invoice.customer_name}, your invoice ${invoice.invoice_number} from ${businessName} is ready.`,
+      "",
+      `Amount: ${formatNaira(invoice.total_amount)}`,
+      `Due date: ${formatDate(invoice.due_date)}`,
+    ].join("\n")
   );
   const whatsappHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${whatsappBody}` : null;
   const invoiceItems = items ?? [];
@@ -464,7 +475,7 @@ export default async function MsmeInvoiceDetailPage({
           <header className="rounded-lg border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Invoice</p>
+                <p className="text-sm font-semibold text-slate-900">{businessName}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
                   <h2 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{invoice.invoice_number}</h2>
                   <span className={`inline-flex w-fit rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${invoiceStatusClasses(invoiceStatus)}`}>

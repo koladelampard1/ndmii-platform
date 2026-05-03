@@ -2,6 +2,10 @@ import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatDate, formatNaira, invoiceStatusClasses } from "@/lib/data/invoicing";
 
+function resolveNestedOne<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
 export default async function PublicInvoicePage({ params }: { params: Promise<{ invoiceId: string }> }) {
   const { invoiceId } = await params;
   const supabase = await createServerSupabaseClient();
@@ -9,7 +13,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const { data: invoice, error } = await supabase
     .from("invoices")
     .select(
-      "id,invoice_number,customer_name,customer_email,customer_phone,currency,subtotal,vat_rate,vat_amount,total_amount,status,due_date,issued_at,provider_profiles(display_name,contact_email,contact_phone)"
+      "id,invoice_number,customer_name,customer_email,customer_phone,currency,subtotal,vat_rate,vat_amount,total_amount,status,due_date,issued_at,msmes(business_name,contact_email,contact_phone,address,state,lga),provider_profiles(display_name,contact_email,contact_phone)"
     )
     .eq("id", invoiceId)
     .maybeSingle();
@@ -41,16 +45,20 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     displayTotalsSource: "invoices_table_columns",
   });
 
-  const provider = invoice.provider_profiles as { display_name?: string; contact_email?: string; contact_phone?: string } | null;
+  const provider = resolveNestedOne(invoice.provider_profiles as { display_name?: string; contact_email?: string; contact_phone?: string } | { display_name?: string; contact_email?: string; contact_phone?: string }[] | null);
+  const msme = resolveNestedOne(invoice.msmes as { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string } | { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string }[] | null);
+  const businessName = msme?.business_name || provider?.display_name || "Business Invoice";
+  const businessContactEmail = msme?.contact_email ?? provider?.contact_email;
+  const businessContactPhone = msme?.contact_phone ?? provider?.contact_phone;
 
   return (
     <section className="mx-auto max-w-5xl space-y-4 py-6">
       <header className="rounded-2xl border bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">NDMII trusted billing portal</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">{businessName}</p>
             <h1 className="text-2xl font-semibold">Invoice {invoice.invoice_number}</h1>
-            <p className="mt-1 text-sm text-slate-600">Public payment portal for verified Nigerian MSME services.</p>
+            <p className="mt-1 text-sm text-slate-600">Invoice for {invoice.customer_name}.</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs uppercase ${invoiceStatusClasses(invoice.status)}`}>{invoice.status.replace("_", " ")}</span>
         </div>
@@ -60,9 +68,9 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
         <aside className="space-y-4 rounded-2xl border bg-white p-5">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Provider identity</p>
-            <p className="text-lg font-semibold text-slate-900">{provider?.display_name ?? "Verified provider"}</p>
-            <p className="text-sm text-slate-600">{provider?.contact_email ?? "No provider email supplied"}</p>
-            <p className="text-sm text-slate-600">{provider?.contact_phone ?? "No provider phone supplied"}</p>
+            <p className="text-lg font-semibold text-slate-900">{businessName}</p>
+            <p className="text-sm text-slate-600">{businessContactEmail ?? "No provider email supplied"}</p>
+            <p className="text-sm text-slate-600">{businessContactPhone ?? "No provider phone supplied"}</p>
           </div>
 
           <div className="rounded-xl border bg-slate-50 p-3 text-sm">

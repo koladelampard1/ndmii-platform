@@ -7,6 +7,10 @@ export const INVOICE_PAYMENT_STATUSES = ["initiated", "pending", "success", "fai
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export type InvoicePaymentStatus = (typeof INVOICE_PAYMENT_STATUSES)[number];
 
+export function getInvoicePrefix() {
+  return process.env.INVOICE_PREFIX ?? "DBIN";
+}
+
 export function generateInvoiceNumber(date = new Date()) {
   const y = date.getUTCFullYear();
   const m = `${date.getUTCMonth() + 1}`.padStart(2, "0");
@@ -14,7 +18,7 @@ export function generateInvoiceNumber(date = new Date()) {
   const rnd = Math.floor(Math.random() * 10000)
     .toString()
     .padStart(4, "0");
-  return `NDMII-${y}${m}${d}-${rnd}`;
+  return `${getInvoicePrefix()}-${y}${m}${d}-${rnd}`;
 }
 
 export function calculateLineTotal(quantity: number, unitPrice: number) {

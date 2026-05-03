@@ -79,6 +79,10 @@ function displayValue(value: string | number | null | undefined, fallback = "Not
   return safe || fallback;
 }
 
+function filenamePart(value: string | number | null | undefined, fallback = "invoice") {
+  return safeText(value).toLowerCase().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+}
+
 function initialsFor(value: string) {
   const parts = safeText(value).split(" ").filter(Boolean);
   const letters = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : (parts[0] ?? "B").slice(0, 2);
@@ -174,13 +178,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     if (itemError) throw new Error(itemError.message);
 
     const invoiceNumber = safeText(invoice.invoice_number || invoice.id);
-    const providerName = workspace.provider.display_name || workspace.msme.business_name || "Verified MSME";
+    const providerName = workspace.provider.display_name || workspace.msme.business_name || "Business Invoice";
     const { data: msmeProfile } = await supabase
       .from("msmes")
       .select("business_name,contact_email,contact_phone,address,state,lga")
       .eq("id", workspace.msme.id)
       .maybeSingle();
-    const businessName = displayValue(msmeProfile?.business_name ?? providerName, "Verified MSME");
+    const businessName = displayValue(workspace.msme.business_name ?? msmeProfile?.business_name ?? providerName, "Business Invoice");
     const businessEmail = displayValue(workspace.provider.contact_email ?? msmeProfile?.contact_email ?? workspace.msme.contact_email);
     const businessPhone = displayValue(workspace.provider.contact_phone ?? msmeProfile?.contact_phone);
     const businessAddress = displayValue(
@@ -195,11 +199,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     let commands: string[] = [];
 
     const addFooter = () => {
-      commands.push(colorCommand(NAVY));
-      commands.push(rectCommand(0, 0, PAGE_WIDTH, 28, "fill"));
-      commands.push(colorCommand(WHITE));
-      commands.push(textCommand({ text: `Powered by DBIN | Invoice ${invoiceNumber}`, x: LEFT, y: 10, size: 8 }));
-      commands.push(rightText("All amounts are in Nigerian Naira (NGN)", RIGHT, 10, 8));
+      commands.push(colorCommand(MUTED));
+      commands.push(textCommand({ text: "Powered by DBIN", x: LEFT, y: 12, size: 7 }));
+      commands.push(rightText("All amounts are in Nigerian Naira (NGN)", RIGHT, 12, 7));
     };
 
     const addTableHeader = (y: number) => {
@@ -242,7 +244,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
       colorCommand(NAVY),
       textCommand({ text: businessName, x: 96, y: 773, size: 21, bold: true }),
       colorCommand(GREEN),
-      textCommand({ text: workspace.provider.tagline ?? "Verified NDMII MSME Provider", x: 98, y: 754, size: 8, bold: true }),
+      textCommand({ text: "Invoice from your service provider", x: 98, y: 754, size: 8, bold: true }),
       colorCommand(MUTED),
     ];
     addWrappedText(commands, businessAddress, 98, 735, 52, 8, 2, 11);
@@ -343,7 +345,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     pages.push(commands.join("\n"));
 
     const pdfBytes = buildPdf(pages);
-    const filename = `invoice-${invoiceNumber || invoice.id}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const filename = `${filenamePart(businessName, "business")}-invoice-${filenamePart(invoiceNumber || invoice.id)}.pdf`;
 
     return new NextResponse(pdfBytes, {
       status: 200,

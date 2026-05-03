@@ -8,7 +8,7 @@ export default async function PublicInvoiceStatusPage({ params }: { params: Prom
   const supabase = await createServerSupabaseClient();
 
   const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoiceSelect = pickExistingColumns(invoiceColumns, ["id", "invoice_number", "status", "total_amount", "updated_at"]).join(",");
+  const invoiceSelect = pickExistingColumns(invoiceColumns, ["id", "invoice_number", "status", "total_amount", "updated_at", "msme_id", "provider_profile_id"]).join(",");
   const { data: invoice, error } = await supabase.from("invoices").select(invoiceSelect || "id").eq("id", invoiceId).maybeSingle();
 
   if (error) return <section className="rounded-xl border bg-white p-8 text-center">Invoice status is temporarily unavailable.</section>;
@@ -29,11 +29,16 @@ export default async function PublicInvoiceStatusPage({ params }: { params: Prom
 
   const payments = (paymentsResult.data as any[]) ?? [];
   const events = (eventsResult.data as any[]) ?? [];
+  const [{ data: msme }, { data: provider }] = await Promise.all([
+    invoiceRow.msme_id ? supabase.from("msmes").select("business_name").eq("id", invoiceRow.msme_id).maybeSingle() : Promise.resolve({ data: null }),
+    invoiceRow.provider_profile_id ? supabase.from("provider_profiles").select("display_name").eq("id", invoiceRow.provider_profile_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Business Invoice";
 
   return (
     <section className="mx-auto max-w-3xl space-y-4 py-6">
       <header className="rounded-xl border bg-white p-5">
-        <p className="text-xs uppercase tracking-wide text-slate-500">NDMII payment receipt</p>
+        <p className="text-xs uppercase tracking-wide text-slate-500">{businessName}</p>
         <h1 className="text-2xl font-semibold">Invoice payment status</h1>
         <p className="text-sm text-slate-600">{invoiceRow.invoice_number}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">

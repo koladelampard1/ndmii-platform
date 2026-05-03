@@ -102,12 +102,15 @@ export default async function PublicInvoicePayPage({ params }: { params: Promise
 
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,total_amount,status,provider_profiles(display_name)")
+    .select("id,invoice_number,customer_name,total_amount,status,msmes(business_name),provider_profiles(display_name)")
     .eq("id", invoiceId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
+  const msme = Array.isArray(invoice.msmes) ? invoice.msmes[0] : invoice.msmes;
+  const provider = Array.isArray(invoice.provider_profiles) ? invoice.provider_profiles[0] : invoice.provider_profiles;
+  const businessName = (msme as any)?.business_name || (provider as any)?.display_name || "Business Invoice";
 
   return (
     <section className="mx-auto max-w-3xl space-y-4 py-6">
@@ -115,7 +118,7 @@ export default async function PublicInvoicePayPage({ params }: { params: Promise
         <p className="text-xs uppercase tracking-wide text-slate-500">Secure invoice checkout</p>
         <h1 className="text-2xl font-semibold">Payment simulation</h1>
         <p className="text-sm text-slate-600">
-          Invoice {invoice.invoice_number} · {invoice.customer_name} · {(invoice.provider_profiles as any)?.display_name ?? "Provider"}
+          Invoice {invoice.invoice_number} · {invoice.customer_name} · {businessName}
         </p>
       </header>
 
