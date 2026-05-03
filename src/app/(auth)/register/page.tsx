@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
@@ -64,7 +64,7 @@ function normalizeRegistrationPath(value: string | null): RegistrationPath {
   return "independent";
 }
 
-export default function RegisterPage() {
+function RegisterPageClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -544,5 +544,13 @@ export default function RegisterPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div>Loading registration...</div>}>
+      <RegisterPageClient />
+    </Suspense>
   );
 }
