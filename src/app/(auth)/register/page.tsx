@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { mapRegistrationErrorMessage } from "@/lib/auth/registration";
@@ -10,7 +10,16 @@ import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type FieldErrors = Partial<Record<"email" | "password" | "business_name" | "owner_name" | "state" | "sector", string>>;
+type RegistrationPath = "existing_association_member" | "new_association_applicant" | "independent";
+
+type FieldErrors = Partial<Record<"email" | "password" | "business_name" | "owner_name" | "state" | "sector" | "association_id", string>>;
+
+type AssociationOption = {
+  id: string;
+  name: string;
+  state: string | null;
+  sector: string | null;
+};
 
 type RegistrationFormValues = {
   email: string;
@@ -27,6 +36,8 @@ type RegistrationFormValues = {
   bvn: string;
   cac_number: string;
   tin: string;
+  registration_path: RegistrationPath;
+  association_id: string;
 };
 
 type ExistingUserByEmail = {
@@ -46,13 +57,42 @@ const REGISTRATION_MODE =
     ? "production"
     : "demo";
 
+function normalizeRegistrationPath(value: string | null): RegistrationPath {
+  if (value === "existing_association_member" || value === "new_association_applicant" || value === "independent") {
+    return value;
+  }
+  return "independent";
+}
+
 export default function RegisterPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const registrationPath = normalizeRegistrationPath(searchParams.get("registration_path") ?? searchParams.get("path"));
+  const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [associations, setAssociations] = useState<AssociationOption[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!requiresAssociation) return;
+
+    fetch("/api/auth/register/associations")
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to load associations."))))
+      .then((result) => {
+        if (mounted) setAssociations(result.associations ?? []);
+      })
+      .catch(() => {
+        if (mounted) setError("Unable to load associations. Please refresh and try again.");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [requiresAssociation]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,6 +117,8 @@ export default function RegisterPage() {
       bvn: String(form.get("bvn") ?? "").trim(),
       cac_number: String(form.get("cac_number") ?? "").trim(),
       tin: String(form.get("tin") ?? "").trim(),
+      registration_path: normalizeRegistrationPath(String(form.get("registration_path") ?? "")),
+      association_id: String(form.get("association_id") ?? "").trim(),
     };
 
     const nextFieldErrors: FieldErrors = {};
@@ -86,6 +128,7 @@ export default function RegisterPage() {
     if (!values.owner_name) nextFieldErrors.owner_name = "Owner full name is required.";
     if (!values.state) nextFieldErrors.state = "State is required.";
     if (!values.sector) nextFieldErrors.sector = "Sector is required.";
+    if (requiresAssociation && !values.association_id) nextFieldErrors.association_id = "Association selection is required.";
 
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
@@ -111,7 +154,7 @@ export default function RegisterPage() {
 
       setLoading(false);
       setSuccess(result.message || "Registration successful.");
-      router.replace(`/register/status?msmeId=${encodeURIComponent(result.msmeId)}&status=pending_review`);
+      router.replace(`/register/status?msmeId=${encodeURIComponent(result.msmeId)}&status=${encodeURIComponent(result.verificationStatus ?? "pending_dbin_verification")}`);
       return;
     }
 
@@ -225,7 +268,9 @@ export default function RegisterPage() {
       bvn: kycPayload.BVN,
       cac_number: kycPayload.CAC,
       tin: kycPayload.TIN,
-      verification_status: "pending_review",
+      registration_path: values.registration_path,
+      association_id: requiresAssociation ? values.association_id : null,
+      verification_status: requiresAssociation ? "pending_association_approval" : "pending_dbin_verification",
       review_status: "pending_review",
       created_by: userRow.id,
     };
@@ -252,6 +297,28 @@ export default function RegisterPage() {
       return;
     }
 
+    if (requiresAssociation) {
+      const membershipType = values.registration_path === "existing_association_member" ? "existing_member" : "join_request";
+      const { error: membershipError } = await supabase.from("association_memberships").upsert(
+        {
+          association_id: values.association_id,
+          msme_id: msme.id,
+          user_id: userRow.id,
+          membership_type: membershipType,
+          approval_status: "pending",
+          reviewed_by: null,
+          reviewed_at: null,
+        } as never,
+        { onConflict: "association_id,msme_id" },
+      );
+
+      if (membershipError) {
+        setLoading(false);
+        setError("Registration was created, but association approval setup failed. Please contact support.");
+        return;
+      }
+    }
+
     await ensureWorkflowRecords(supabase, {
       msmeId: msme.id,
       overallStatus,
@@ -271,7 +338,7 @@ export default function RegisterPage() {
         action: "msme_submitted",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { status: "pending_review" },
+        metadata: { status: payload.verification_status, registration_path: values.registration_path },
       },
     ];
 
@@ -279,7 +346,7 @@ export default function RegisterPage() {
 
     setLoading(false);
     setSuccess("Registration completed. Check your inbox to verify your email, then continue onboarding.");
-    router.replace(`/register/status?msmeId=${encodeURIComponent(msme.msme_id)}&status=pending_review`);
+    router.replace(`/register/status?msmeId=${encodeURIComponent(msme.msme_id)}&status=${encodeURIComponent(payload.verification_status)}`);
   }
 
   return (
@@ -316,9 +383,24 @@ export default function RegisterPage() {
             <h2 className="text-3xl font-semibold text-slate-900">Create your DBIN profile</h2>
             <p className="mt-2 text-slate-600">Start your business verification and marketplace onboarding.</p>
             <p className="mt-3 text-sm font-medium text-emerald-700">Step 1 of 3 · Business Identity Setup</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Registration path:{" "}
+              <span className="font-semibold text-slate-900">
+                {registrationPath === "existing_association_member"
+                  ? "Existing association member"
+                  : registrationPath === "new_association_applicant"
+                    ? "New association applicant"
+                    : "Independent registration"}
+              </span>
+              {" · "}
+              <Link href="/register/start" className="font-medium text-emerald-700 hover:underline">
+                Change
+              </Link>
+            </p>
           </div>
 
           <form className="space-y-5" onSubmit={onSubmit}>
+            <input type="hidden" name="registration_path" value={registrationPath} />
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
               <h3 className="mb-4 text-lg font-semibold text-slate-900">1. Account Access</h3>
               <div className="grid gap-4 md:grid-cols-2">
@@ -381,6 +463,22 @@ export default function RegisterPage() {
                   </label>
                   <input id="address" name="address" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter business address" />
                 </div>
+                {requiresAssociation && (
+                  <div className="md:col-span-2 lg:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="association_id">
+                      MSME association
+                    </label>
+                    <select id="association_id" name="association_id" required className="w-full rounded-lg border border-slate-300 px-3 py-2">
+                      <option value="">Select your association</option>
+                      {associations.map((association) => (
+                        <option key={association.id} value={association.id}>
+                          {association.name} ({association.state ?? "Nigeria"} · {association.sector ?? "General"})
+                        </option>
+                      ))}
+                    </select>
+                    {fieldErrors.association_id && <p className="mt-1 text-xs text-rose-600">{fieldErrors.association_id}</p>}
+                  </div>
+                )}
               </div>
             </div>
 

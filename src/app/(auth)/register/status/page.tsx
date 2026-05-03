@@ -1,4 +1,13 @@
 import Link from "next/link";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+function getStatusMessage(status: string) {
+  if (status === "pending_association_approval") return "Your association needs to confirm your membership.";
+  if (status === "pending_dbin_verification") return "Your business is being verified by DBIN.";
+  if (status === "verified") return "Your business is verified.";
+  if (status === "rejected") return "Your business verification was rejected.";
+  return "Your registration is being reviewed.";
+}
 
 export default async function RegistrationStatusPage({
   searchParams,
@@ -6,7 +15,20 @@ export default async function RegistrationStatusPage({
   searchParams: Promise<{ msmeId?: string; status?: string }>;
 }) {
   const params = await searchParams;
-  const statusLabel = params.status?.replaceAll("_", " ") ?? "pending review";
+  let currentStatus = params.status ?? "pending_dbin_verification";
+
+  if (params.msmeId) {
+    const supabase = await createServerSupabaseClient();
+    const { data: msme } = await supabase
+      .from("msmes")
+      .select("verification_status")
+      .eq("msme_id", params.msmeId)
+      .maybeSingle();
+    currentStatus = msme?.verification_status ?? currentStatus;
+  }
+
+  const statusLabel = currentStatus.replaceAll("_", " ");
+  const statusMessage = getStatusMessage(currentStatus);
 
   return (
     <main className="mx-auto max-w-2xl space-y-5 px-6 py-16">
@@ -18,6 +40,9 @@ export default async function RegistrationStatusPage({
         </p>
         <p className="mt-2 text-slate-600">
           Current review state: <span className="font-semibold capitalize text-amber-700">{statusLabel}</span>
+        </p>
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {statusMessage}
         </p>
         <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-slate-600">
           <li>Review officers validate KYC and compliance profile.</li>

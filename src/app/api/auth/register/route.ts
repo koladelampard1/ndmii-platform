@@ -20,10 +20,18 @@ type RegistrationRequest = {
   bvn?: string;
   cac_number?: string;
   tin?: string;
+  registration_path?: string;
+  association_id?: string;
 };
 
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRegistrationPath(value: unknown) {
+  const path = normalizeString(value);
+  if (path === "existing_association_member" || path === "new_association_applicant" || path === "independent") return path;
+  return "independent";
 }
 
 export async function POST(request: Request) {
@@ -39,9 +47,16 @@ export async function POST(request: Request) {
     const ownerName = normalizeString(body.owner_name);
     const state = normalizeString(body.state);
     const sector = normalizeString(body.sector);
+    const registrationPath = normalizeRegistrationPath(body.registration_path);
+    const associationId = normalizeString(body.association_id);
+    const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
 
     if (!email || !password || !businessName || !ownerName || !state || !sector) {
       return NextResponse.json({ error: "Please complete all required fields." }, { status: 400 });
+    }
+
+    if (requiresAssociation && !associationId) {
+      return NextResponse.json({ error: "Please select an MSME association." }, { status: 400 });
     }
 
     if (password.length < 8) {
@@ -128,7 +143,9 @@ export async function POST(request: Request) {
       bvn: kycPayload.BVN,
       cac_number: kycPayload.CAC,
       tin: kycPayload.TIN,
-      verification_status: "pending_review",
+      registration_path: registrationPath,
+      association_id: requiresAssociation ? associationId : null,
+      verification_status: requiresAssociation ? "pending_association_approval" : "pending_dbin_verification",
       review_status: "pending_review",
       created_by: profile.id,
     };
@@ -147,6 +164,26 @@ export async function POST(request: Request) {
 
     if (msmeError || !msme?.id) {
       return NextResponse.json({ error: "Unable to complete MSME registration profile sync." }, { status: 500 });
+    }
+
+    if (requiresAssociation) {
+      const membershipType = registrationPath === "existing_association_member" ? "existing_member" : "join_request";
+      const { error: membershipError } = await supabase.from("association_memberships").upsert(
+        {
+          association_id: associationId,
+          msme_id: msme.id,
+          user_id: profile.id,
+          membership_type: membershipType,
+          approval_status: "pending",
+          reviewed_by: null,
+          reviewed_at: null,
+        },
+        { onConflict: "association_id,msme_id" },
+      );
+
+      if (membershipError) {
+        return NextResponse.json({ error: "Registration was created, but association approval setup failed. Please contact support." }, { status: 500 });
+      }
     }
 
     await ensureWorkflowRecords(supabase, {
@@ -168,15 +205,18 @@ export async function POST(request: Request) {
         action: "msme_submitted",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { status: "pending_review" },
+        metadata: { status: payload.verification_status, registration_path: registrationPath },
       },
     ]);
 
     return NextResponse.json({
       ok: true,
       msmeId: msme.msme_id,
-      reviewStatus: "pending_review",
-      message: "Registration successful. Your MSME onboarding is now in reviewer queue.",
+      verificationStatus: payload.verification_status,
+      reviewStatus: payload.review_status,
+      message: requiresAssociation
+        ? "Registration successful. Your association will confirm your membership before DBIN verification."
+        : "Registration successful. Your MSME onboarding is now in DBIN verification.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to complete registration.";

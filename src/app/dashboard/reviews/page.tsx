@@ -155,7 +155,12 @@ export default async function ReviewsPage({
       <form className="grid gap-2 rounded-lg border bg-white p-3 md:grid-cols-4">
         <input name="state" placeholder="Filter by state" className="rounded border px-3 py-2" defaultValue={params.state} />
         <input name="sector" placeholder="Filter by sector" className="rounded border px-3 py-2" defaultValue={params.sector} />
-        <input name="status" placeholder="Filter by status" className="rounded border px-3 py-2" defaultValue={params.status} />
+        <select name="status" className="rounded border px-3 py-2" defaultValue={params.status ?? ""}>
+          <option value="">All verification statuses</option>
+          <option value="pending_dbin_verification">Pending DBIN verification</option>
+          <option value="pending_review">Pending review</option>
+          <option value="changes_requested">Changes requested</option>
+        </select>
         <Button>Apply Filters</Button>
       </form>
 
@@ -188,7 +193,7 @@ export default async function ReviewsPage({
                       <input type="hidden" name="id" value={row.id} />
                       <input name="note" placeholder="Reviewer note" className="w-full rounded border px-2 py-1 text-xs" />
                       <div className="flex gap-1">
-                        <Button size="sm" name="action" value="approve">Approve</Button>
+                        <Button size="sm" name="action" value="approve">Verify</Button>
                         <Button size="sm" variant="secondary" name="action" value="changes">Request changes</Button>
                         <Button size="sm" variant="secondary" name="action" value="reject">Reject</Button>
                       </div>
