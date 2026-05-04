@@ -1,17 +1,47 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { normalizeUserRole } from "@/lib/auth/authorization";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
-  const response = NextResponse.json({ ok: true });
+  const cookieStore = await cookies();
 
-  response.cookies.set("ndmii_auth", "1", { httpOnly: true, sameSite: "lax", path: "/" });
-  response.cookies.set("ndmii_role", role, { httpOnly: true, sameSite: "lax", path: "/" });
-  response.cookies.set("ndmii_email", email, { httpOnly: true, sameSite: "lax", path: "/" });
-  response.cookies.set("ndmii_auth_user_id", body.userId ?? "", { httpOnly: true, sameSite: "lax", path: "/" });
-  response.cookies.set("ndmii_app_user_id", body.appUserId ?? "", { httpOnly: true, sameSite: "lax", path: "/" });
+  cookieStore.set("ndmii_auth", "1", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  cookieStore.set("ndmii_role", role, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  cookieStore.set("ndmii_email", email, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  cookieStore.set("ndmii_auth_user_id", body.userId ?? "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  cookieStore.set("ndmii_app_user_id", body.appUserId ?? "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[auth-session-write]", {
@@ -24,7 +54,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return response;
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE() {

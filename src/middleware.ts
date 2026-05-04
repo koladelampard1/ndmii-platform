@@ -9,15 +9,28 @@ export function middleware(request: NextRequest) {
   }
 
   const hasAuth = request.cookies.get("ndmii_auth")?.value === "1";
+  const role = request.cookies.get("ndmii_role")?.value;
   const authEmail = request.cookies.get("ndmii_email")?.value ?? null;
-  const rawCookieRole = request.cookies.get("ndmii_role")?.value;
-  const normalizedRole = hasAuth ? normalizeUserRole(rawCookieRole, "public") : "public";
+  const normalizedRole = hasAuth && role ? normalizeUserRole(role, "public") : "public";
   const isAllowed = canAccessRoute(normalizedRole, pathname);
+
+  console.log("[middleware] cookies:", {
+    auth: request.cookies.get("ndmii_auth")?.value,
+    role: request.cookies.get("ndmii_role")?.value,
+    path: request.nextUrl.pathname,
+  });
+
+  if (hasAuth && !role) {
+    console.warn("[middleware] authenticated request missing role cookie", {
+      email: authEmail,
+      path: pathname,
+    });
+  }
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[route-rbac]", {
       email: authEmail,
-      rawCookieRole: rawCookieRole ?? null,
+      rawCookieRole: role ?? null,
       normalizedRole,
       path: pathname,
       canAccessRoute: isAllowed,
@@ -36,12 +49,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(redirectPath, request.url));
   }
 
-  const response = NextResponse.next();
-  if (hasAuth && rawCookieRole !== normalizedRole) {
-    response.cookies.set("ndmii_role", normalizedRole, { httpOnly: true, sameSite: "lax", path: "/" });
-  }
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
