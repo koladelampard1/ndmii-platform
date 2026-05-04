@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { getRegistrationMode, mapRegistrationErrorMessage } from "@/lib/auth/registration";
+import { getTableColumns } from "@/lib/data/commercial-ops";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -35,75 +35,9 @@ function normalizeRegistrationPath(value: unknown) {
   return "independent";
 }
 
-const MSME_PROFILE_COLUMNS = [
-  "msme_id",
-  "business_name",
-  "owner_name",
-  "state",
-  "sector",
-  "contact_email",
-  "contact_phone",
-  "lga",
-  "address",
-  "business_type",
-  "nin",
-  "bvn",
-  "cac_number",
-  "tin",
-  "registration_path",
-  "association_id",
-  "verification_status",
-  "review_status",
-  "created_by",
-] as const;
+const OPTIONAL_ONBOARDING_COLUMNS = ["registration_path", "association_id", "verification_status"] as const;
 
-const LEGACY_MSME_PROFILE_COLUMNS = [
-  "msme_id",
-  "business_name",
-  "owner_name",
-  "state",
-  "sector",
-  "nin",
-  "bvn",
-  "cac_number",
-  "tin",
-  "association_id",
-  "verification_status",
-  "created_by",
-] as const;
-
-async function getTableColumns(supabase: SupabaseClient, tableName: string, probeColumns: readonly string[], fallbackColumns: readonly string[]) {
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name")
-    .eq("table_schema", "public")
-    .eq("table_name", tableName);
-
-  if (!error) {
-    const columns = new Set((data ?? []).map((row) => String(row.column_name)));
-    if (columns.size > 0) return columns;
-  } else {
-    console.error("[register:schema-column-lookup-failed]", {
-      tableName,
-      error: {
-        message: error.message,
-        code: error.code ?? null,
-        details: error.details ?? null,
-        hint: error.hint ?? null,
-      },
-    });
-  }
-
-  const detectedColumns = new Set<string>();
-  for (const column of probeColumns) {
-    const { error: probeError } = await supabase.from(tableName).select(column).limit(1);
-    if (!probeError) detectedColumns.add(column);
-  }
-
-  return detectedColumns.size > 0 ? detectedColumns : new Set(fallbackColumns);
-}
-
-function filterPayloadByColumns<T extends Record<string, unknown>>(payload: T, columns: Set<string>) {
+function pickSupportedOptionalFields<T extends Record<string, unknown>>(payload: T, columns: Set<string>) {
   return Object.fromEntries(Object.entries(payload).filter(([key]) => columns.has(key)));
 }
 
@@ -214,7 +148,8 @@ export async function POST(request: Request) {
 
     const { checks, overallStatus } = await runKycSimulation(kycPayload);
 
-    const profilePayload = {
+    const intendedVerificationStatus = requiresAssociation ? "pending_association_approval" : "pending_dbin_verification";
+    const baseMsmePayload = {
       msme_id: msmePublicId,
       business_name: businessName,
       owner_name: ownerName,
@@ -229,16 +164,28 @@ export async function POST(request: Request) {
       bvn: kycPayload.BVN,
       cac_number: kycPayload.CAC,
       tin: kycPayload.TIN,
-      registration_path: registrationPath,
-      association_id: requiresAssociation ? associationId : null,
-      verification_status: requiresAssociation ? "pending_association_approval" : "pending_dbin_verification",
       review_status: "pending_review",
       created_by: profile.id,
     };
+    const optionalOnboardingPayload = {
+      registration_path: registrationPath,
+      association_id: requiresAssociation ? associationId : null,
+      verification_status: intendedVerificationStatus,
+    };
 
-    const msmeColumns = await getTableColumns(supabase, "msmes", MSME_PROFILE_COLUMNS, LEGACY_MSME_PROFILE_COLUMNS);
-    const payload = filterPayloadByColumns(profilePayload, msmeColumns);
+    const msmeColumns = await getTableColumns(supabase, "msmes");
+    const supportedOptionalPayload = pickSupportedOptionalFields(optionalOnboardingPayload, msmeColumns);
+    const payload = { ...baseMsmePayload, ...supportedOptionalPayload };
     const payloadKeys = Object.keys(payload);
+    const optionalColumnAvailability = Object.fromEntries(OPTIONAL_ONBOARDING_COLUMNS.map((column) => [column, msmeColumns.has(column)]));
+
+    console.info("[register:msme-payload-prepared]", {
+      finalMsmePayloadKeys: payloadKeys,
+      registrationPath,
+      associationId: requiresAssociation ? associationId : null,
+      optionalColumnAvailability,
+      supportedOptionalPayloadKeys: Object.keys(supportedOptionalPayload),
+    });
 
     const { data: existingMsme } = await supabase
       .from("msmes")
@@ -248,6 +195,7 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
+    const writeOperation = existingMsme?.id ? "update" : "insert";
     const { data: msme, error: msmeError } = existingMsme?.id
       ? await supabase.from("msmes").update(payload).eq("id", existingMsme.id).select("id,msme_id").single()
       : await supabase.from("msmes").insert(payload).select("id,msme_id").single();
@@ -262,9 +210,12 @@ export async function POST(request: Request) {
               hint: msmeError.hint ?? null,
             }
           : "MSME write returned no row.",
-        payloadKeys,
+        finalMsmePayloadKeys: payloadKeys,
         registrationPath,
         associationId: requiresAssociation ? associationId : null,
+        optionalColumnAvailability,
+        writeOperation,
+        existingMsmeId: existingMsme?.id ?? null,
       });
 
       return NextResponse.json(
@@ -327,15 +278,15 @@ export async function POST(request: Request) {
         action: "msme_submitted",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { status: profilePayload.verification_status, registration_path: registrationPath },
+        metadata: { status: intendedVerificationStatus, registration_path: registrationPath },
       },
     ]);
 
     return NextResponse.json({
       ok: true,
       msmeId: msme.msme_id,
-      verificationStatus: profilePayload.verification_status,
-      reviewStatus: profilePayload.review_status,
+      verificationStatus: intendedVerificationStatus,
+      reviewStatus: baseMsmePayload.review_status,
       message: requiresAssociation
         ? "Registration successful. Your association will confirm your membership before DBIN verification."
         : "Registration successful. Your MSME onboarding is now in DBIN verification.",

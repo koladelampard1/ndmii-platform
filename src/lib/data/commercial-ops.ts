@@ -3,6 +3,29 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const schemaColumnCache = new Map<string, Set<string>>();
 const TABLE_COLUMN_PROBE_CANDIDATES: Record<string, string[]> = {
+  msmes: [
+    "id",
+    "msme_id",
+    "business_name",
+    "owner_name",
+    "state",
+    "sector",
+    "contact_email",
+    "contact_phone",
+    "lga",
+    "address",
+    "business_type",
+    "nin",
+    "bvn",
+    "cac_number",
+    "tin",
+    "registration_path",
+    "association_id",
+    "verification_status",
+    "review_status",
+    "created_by",
+    "created_at",
+  ],
   provider_profiles: [
     "id",
     "msme_id",
