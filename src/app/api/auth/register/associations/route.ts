@@ -7,18 +7,14 @@ export async function GET() {
     const { data, error } = await supabase
       .from("associations")
       .select("id,name,state,sector,status")
+      .eq("status", "active")
       .order("name", { ascending: true });
 
     if (error) {
       return NextResponse.json({ error: "Unable to load associations." }, { status: 500 });
     }
 
-    const associations = (data ?? []).filter((association) => {
-      const status = String(association.status ?? "active").toLowerCase();
-      return status === "active";
-    });
-
-    return NextResponse.json({ associations });
+    return NextResponse.json({ associations: data ?? [] });
   } catch {
     return NextResponse.json({ associations: [] });
   }

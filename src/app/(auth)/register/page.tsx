@@ -469,7 +469,7 @@ function RegisterPageClient() {
                       MSME association
                     </label>
                     <select id="association_id" name="association_id" required className="w-full rounded-lg border border-slate-300 px-3 py-2">
-                      <option value="">Select your association</option>
+                      <option value="">{associations.length === 0 ? "No associations available yet" : "Select your association"}</option>
                       {associations.map((association) => (
                         <option key={association.id} value={association.id}>
                           {association.name} ({association.state ?? "Nigeria"} · {association.sector ?? "General"})

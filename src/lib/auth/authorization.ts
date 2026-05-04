@@ -207,6 +207,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/executive/complaints", label: "Complaint Monitor" },
     { href: "/dashboard/nrs", label: "NRS Operations" },
     { href: "/dashboard/associations", label: "Associations" },
+    { href: "/dashboard/admin/associations", label: "Admin Association Management" },
     { href: "/admin/associations", label: "Admin Association Upload" },
     { href: "/dashboard/manufacturers", label: "Manufacturers" },
     { href: "/dashboard/reports", label: "Reports & Export" },
