@@ -175,8 +175,8 @@ export async function POST(request: Request) {
 
     const msmeColumns = await getTableColumns(supabase, "msmes");
     const supportedOptionalPayload = pickSupportedOptionalFields(optionalOnboardingPayload, msmeColumns);
-    const payload = { ...baseMsmePayload, ...supportedOptionalPayload };
-    const payloadKeys = Object.keys(payload);
+    const msmePayload = { ...baseMsmePayload, ...supportedOptionalPayload };
+    const payloadKeys = Object.keys(msmePayload);
     const optionalColumnAvailability = Object.fromEntries(OPTIONAL_ONBOARDING_COLUMNS.map((column) => [column, msmeColumns.has(column)]));
 
     console.info("[register:msme-payload-prepared]", {
@@ -195,33 +195,25 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    const writeOperation = existingMsme?.id ? "update" : "insert";
     const { data: msme, error: msmeError } = existingMsme?.id
-      ? await supabase.from("msmes").update(payload).eq("id", existingMsme.id).select("id,msme_id").single()
-      : await supabase.from("msmes").insert(payload).select("id,msme_id").single();
+      ? await supabase.from("msmes").update(msmePayload).eq("id", existingMsme.id).select("id,msme_id").single()
+      : await supabase.from("msmes").insert(msmePayload).select("id,msme_id").single();
 
     if (msmeError || !msme?.id) {
-      console.error("[register:profile-sync-failed]", {
-        error: msmeError
-          ? {
-              message: msmeError.message,
-              code: msmeError.code ?? null,
-              details: msmeError.details ?? null,
-              hint: msmeError.hint ?? null,
-            }
-          : "MSME write returned no row.",
-        finalMsmePayloadKeys: payloadKeys,
+      const safeMsmeInsertError = {
+        error: "MSME_INSERT_FAILED",
+        message: msmeError?.message ?? "MSME write returned no row.",
+        code: msmeError?.code ?? null,
+        details: msmeError?.details ?? null,
+        hint: msmeError?.hint ?? null,
+        payloadKeys: Object.keys(msmePayload),
         registrationPath,
-        associationId: requiresAssociation ? associationId : null,
-        optionalColumnAvailability,
-        writeOperation,
-        existingMsmeId: existingMsme?.id ?? null,
-      });
+        associationIdPresent: Boolean(associationId),
+      };
 
-      return NextResponse.json(
-        { error: `Unable to complete MSME registration profile sync. ${describeSupabaseError(msmeError)}` },
-        { status: 500 },
-      );
+      console.error("[register:profile-sync-failed]", safeMsmeInsertError);
+
+      return NextResponse.json(safeMsmeInsertError, { status: 500 });
     }
 
     if (requiresAssociation) {
