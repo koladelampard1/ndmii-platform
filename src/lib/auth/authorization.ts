@@ -195,27 +195,25 @@ export function canActOnMsme(role: UserRole, action: string, userContext: UserCo
   return false;
 }
 
-export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: string; label: string }>> = {
+export type NavigationItem = { href: string; label: string };
+export type NavigationGroup = { label: string; items: NavigationItem[] };
+
+export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[]> = {
   admin: [
     { href: "/dashboard/executive", label: "Executive Dashboard" },
     { href: "/dashboard/msme", label: "MSME Registry" },
-    { href: "/dashboard/msme/onboarding", label: "Onboarding Wizard" },
+    { href: "/dashboard/reviews", label: "Pending DBIN Verifications" },
     { href: "/dashboard/msme/id-registry", label: "Digital ID Registry" },
-    { href: "/dashboard/reviews", label: "Reviewer Workflow" },
-    { href: "/dashboard/compliance", label: "KYC Simulation" },
-    { href: "/dashboard/fccpc", label: "FCCPC Workspace" },
-    { href: "/dashboard/executive/complaints", label: "Complaint Monitor" },
-    { href: "/dashboard/nrs", label: "NRS Operations" },
-    { href: "/dashboard/associations", label: "Associations" },
-    { href: "/dashboard/admin/associations", label: "Admin Association Management" },
-    { href: "/admin/associations", label: "Admin Association Upload" },
-    { href: "/dashboard/manufacturers", label: "Manufacturers" },
-    { href: "/dashboard/reports", label: "Reports & Export" },
-    { href: "/dashboard/audit", label: "Audit Trail" },
+    { href: "/dashboard/admin/associations", label: "Associations" },
+    { href: "/dashboard/associations", label: "Association Members / Approvals" },
+    { href: "/admin/associations", label: "Bulk Upload" },
+    { href: "/dashboard/executive/complaints", label: "Complaints" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
+    { href: "/verify", label: "Public Verification" },
     { href: "/dashboard/executive/invoices", label: "Invoice Monitor" },
     { href: "/dashboard/executive/revenue", label: "Revenue Monitor" },
-    { href: "/verify", label: "Public Verification" },
+    { href: "/dashboard/reports", label: "Reports & Export" },
+    { href: "/dashboard/audit", label: "Audit Trail" },
   ],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
@@ -267,5 +265,52 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, Array<{ href: s
     { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
+  ],
+};
+
+export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, NavigationGroup[]>> = {
+  admin: [
+    {
+      label: "Overview",
+      items: [{ href: "/dashboard/executive", label: "Executive Dashboard" }],
+    },
+    {
+      label: "MSME Management",
+      items: [
+        { href: "/dashboard/msme", label: "MSME Registry" },
+        { href: "/dashboard/reviews", label: "Pending DBIN Verifications" },
+        { href: "/dashboard/msme/id-registry", label: "Digital ID Registry" },
+      ],
+    },
+    {
+      label: "Association Management",
+      items: [
+        { href: "/dashboard/admin/associations", label: "Associations" },
+        { href: "/dashboard/associations", label: "Association Members / Approvals" },
+        { href: "/admin/associations", label: "Bulk Upload" },
+      ],
+    },
+    {
+      label: "Compliance & Operations",
+      items: [
+        { href: "/dashboard/executive/complaints", label: "Complaints" },
+        { href: "/dashboard/payments", label: "Tax / VAT" },
+        { href: "/verify", label: "Public Verification" },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [
+        { href: "/dashboard/executive/invoices", label: "Invoice Monitor" },
+        { href: "/dashboard/executive/revenue", label: "Revenue Monitor" },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { href: "/dashboard/reports", label: "Reports & Export" },
+        { href: "/dashboard/audit", label: "Audit Trail" },
+      ],
+    },
   ],
 };
