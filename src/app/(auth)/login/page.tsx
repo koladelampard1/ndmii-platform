@@ -55,11 +55,21 @@ function LoginPageContent() {
       role = inferRoleFromEmail(signInData.user.email ?? email);
     }
 
-    await fetch("/api/auth/session", {
+    console.info("[auth-login:session-sync-start]");
+    const sessionResponse = await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
     });
+
+    if (!sessionResponse.ok) {
+      setLoading(false);
+      setError("Authentication succeeded, but the app session could not be created. Please try again.");
+      return;
+    }
+
+    console.info("[auth-login:session-sync-success]", { role });
 
     const targetRoute = role === "msme" ? "/dashboard/msme" : getDefaultDashboardRoute(role);
     if (process.env.NODE_ENV !== "production") {

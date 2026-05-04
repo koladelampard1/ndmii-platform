@@ -1,47 +1,49 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { normalizeUserRole } from "@/lib/auth/authorization";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
-  const cookieStore = await cookies();
+  const response = NextResponse.json({ ok: true, role });
+  const secure = process.env.NODE_ENV === "production";
 
-  cookieStore.set("ndmii_auth", "1", {
+  response.cookies.set("ndmii_auth", "1", {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
   });
 
-  cookieStore.set("ndmii_role", role, {
+  response.cookies.set("ndmii_role", role, {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
   });
 
-  cookieStore.set("ndmii_email", email, {
+  response.cookies.set("ndmii_email", email, {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
   });
 
-  cookieStore.set("ndmii_auth_user_id", body.userId ?? "", {
+  response.cookies.set("ndmii_auth_user_id", typeof body.userId === "string" ? body.userId : "", {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
   });
 
-  cookieStore.set("ndmii_app_user_id", body.appUserId ?? "", {
+  response.cookies.set("ndmii_app_user_id", typeof body.appUserId === "string" ? body.appUserId : "", {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
   });
+
+  console.info("[auth-session:set-cookies]", { role });
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[auth-session-write]", {
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true });
+  return response;
 }
 
 export async function DELETE() {

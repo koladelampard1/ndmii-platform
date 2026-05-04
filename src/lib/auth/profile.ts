@@ -10,6 +10,7 @@ type UserProfileRow = {
 };
 
 const DEMO_ROLE_BY_EMAIL: Record<string, UserRole> = {
+  "admin@ndmii.gov.ng": "admin",
   "admin@bin.gov.ng": "admin",
   "reviewer@bin.gov.ng": "reviewer",
   "officer@fccpc.gov.ng": "fccpc_officer",
