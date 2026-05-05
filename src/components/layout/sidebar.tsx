@@ -3,6 +3,39 @@ import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, type NavigationGroup }
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
 
+const ADMIN_NAV_GROUPS: NavigationGroup[] = [
+  {
+    label: "Overview",
+    items: [{ href: "/dashboard", label: "Admin Dashboard" }],
+  },
+  {
+    label: "MSME Management",
+    items: [
+      { href: "/dashboard/msmes", label: "MSME Registry" },
+      { href: "/dashboard/verifications", label: "Verifications" },
+      { href: "/dashboard/digital-ids", label: "Digital IDs" },
+    ],
+  },
+  {
+    label: "Association Management",
+    items: [
+      { href: "/dashboard/associations", label: "Associations" },
+      { href: "/dashboard/associations", label: "Association Members / Approvals" },
+      { href: "/dashboard/associations/bulk-upload", label: "Bulk Upload" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/dashboard/complaints", label: "Complaints" },
+      { href: "/dashboard/compliance", label: "Tax / VAT" },
+      { href: "/dashboard/digital-ids", label: "Public Verification" },
+      { href: "/dashboard/payments", label: "Invoice Monitor" },
+      { href: "/dashboard/reports", label: "Revenue Monitor" },
+    ],
+  },
+];
+
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
   admin: "Administrator",
@@ -16,9 +49,12 @@ const ROLE_LABEL: Record<UserRole, string> = {
 
 export async function Sidebar() {
   const { role } = await getCurrentUserContext();
-  const navGroups: NavigationGroup[] = role === "public"
-    ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
-    : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];
+  const navGroups: NavigationGroup[] =
+    role === "admin"
+      ? ADMIN_NAV_GROUPS
+      : role === "public"
+        ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
+        : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];
 
   const allowedGroups = navGroups
     .map((group) => ({

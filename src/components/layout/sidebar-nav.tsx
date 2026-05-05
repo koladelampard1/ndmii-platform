@@ -29,7 +29,7 @@ export function SidebarNav({ groups }: SidebarNavProps) {
               const active = isActiveRoute(pathname, item.href);
 
               return (
-                <li key={item.href}>
+                <li key={`${item.href}-${item.label}`}>
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
