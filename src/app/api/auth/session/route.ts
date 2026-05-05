@@ -7,44 +7,28 @@ export async function POST(request: Request) {
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
   const response = NextResponse.json({ ok: true, role });
   const secure = process.env.NODE_ENV === "production";
-
-  response.cookies.set("ndmii_auth", "1", {
+  const cookieOptions = {
     httpOnly: false,
-    secure,
-    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7,
     path: "/",
-  });
+    sameSite: "lax",
+    secure,
+  } as const;
 
-  response.cookies.set("ndmii_role", role, {
-    httpOnly: false,
-    secure,
-    sameSite: "lax",
-    path: "/",
-  });
+  response.cookies.set("ndmii_auth", "1", cookieOptions);
+  response.cookies.set("ndmii_role", role, cookieOptions);
+  response.cookies.set("ndmii_email", email, cookieOptions);
+  response.cookies.set("ndmii_auth_user_id", typeof body.userId === "string" ? body.userId : "", cookieOptions);
+  response.cookies.set("ndmii_app_user_id", typeof body.appUserId === "string" ? body.appUserId : "", cookieOptions);
 
-  response.cookies.set("ndmii_email", email, {
-    httpOnly: false,
-    secure,
-    sameSite: "lax",
-    path: "/",
-  });
-
-  response.cookies.set("ndmii_auth_user_id", typeof body.userId === "string" ? body.userId : "", {
-    httpOnly: false,
-    secure,
-    sameSite: "lax",
-    path: "/",
-  });
-
-  response.cookies.set("ndmii_app_user_id", typeof body.appUserId === "string" ? body.appUserId : "", {
-    httpOnly: false,
-    secure,
-    sameSite: "lax",
-    path: "/",
+  const setCookieHeaders = response.headers.getSetCookie();
+  response.headers.delete("set-cookie");
+  setCookieHeaders.forEach((setCookieHeader) => {
+    response.headers.append("set-cookie", setCookieHeader.replace(/SameSite=lax/g, "SameSite=Lax"));
   });
 
   console.info("[auth-session:set-cookies]", { role });
-  console.log("Set-Cookie header:", response.headers.get("set-cookie"));
+  console.log("[auth-session:final-set-cookie]", response.headers.get("set-cookie"));
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[auth-session-write]", {
