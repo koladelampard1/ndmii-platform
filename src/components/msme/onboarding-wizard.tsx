@@ -64,6 +64,7 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
 
       const response = await fetch("/api/msme/passport-photo", {
         method: "POST",
+        credentials: "include",
         body: uploadFormData,
       });
 

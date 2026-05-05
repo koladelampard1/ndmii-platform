@@ -57,6 +57,7 @@ export function LogoUploadCard({ initialLogoUrl, onUploadSuccess }: Props) {
 
       const response = await fetch("/api/msme/provider-logo", {
         method: "POST",
+        credentials: "include",
         body: formData,
       });
 

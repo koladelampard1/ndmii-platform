@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { normalizeUserRole } from "@/lib/auth/authorization";
+import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
-  const response = NextResponse.json({ ok: true, role });
-  const secure = process.env.NODE_ENV === "production";
+  const response = NextResponse.json({ ok: true, role }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
   const cookieOptions = {
     httpOnly: false,
     maxAge: 60 * 60 * 24 * 7,
     path: "/",
-    sameSite: "lax",
-    secure,
+    sameSite: "none",
+    secure: true,
   } as const;
 
   response.cookies.set("ndmii_auth", "1", cookieOptions);
@@ -20,12 +20,6 @@ export async function POST(request: Request) {
   response.cookies.set("ndmii_email", email, cookieOptions);
   response.cookies.set("ndmii_auth_user_id", typeof body.userId === "string" ? body.userId : "", cookieOptions);
   response.cookies.set("ndmii_app_user_id", typeof body.appUserId === "string" ? body.appUserId : "", cookieOptions);
-
-  const setCookieHeaders = response.headers.getSetCookie();
-  response.headers.delete("set-cookie");
-  setCookieHeaders.forEach((setCookieHeader) => {
-    response.headers.append("set-cookie", setCookieHeader.replace(/SameSite=lax/g, "SameSite=Lax"));
-  });
 
   console.info("[auth-session:set-cookies]", { role });
   console.log("[auth-session:final-set-cookie]", response.headers.get("set-cookie"));
@@ -44,10 +38,17 @@ export async function POST(request: Request) {
   return response;
 }
 
-export async function DELETE() {
-  const response = NextResponse.json({ ok: true });
+export async function DELETE(request: Request) {
+  const response = NextResponse.json({ ok: true }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
   ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"].forEach((name) => {
-    response.cookies.set(name, "", { expires: new Date(0), path: "/" });
+    response.cookies.set(name, "", { expires: new Date(0), httpOnly: false, path: "/", sameSite: "none", secure: true });
   });
   return response;
+}
+
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]),
+  });
 }

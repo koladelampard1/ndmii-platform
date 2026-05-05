@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import { sanitizePassportFileName, validatePassportPhotoFile } from "@/lib/msme/passport-upload";
 
 const PASSPORT_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_MSME_PASSPORT_BUCKET || "msme-passports";
@@ -19,24 +20,26 @@ function toStorageErrorLog(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const corsHeaders = getCredentialedCorsHeaders(request, ["POST", "OPTIONS"]);
+
   try {
     const context = await getCurrentUserContext();
     const { appUserId, role } = context;
 
     if (!appUserId || !["msme", "admin"].includes(role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
     }
 
     const formData = await request.formData();
     const file = formData.get("passport_photo");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No passport photo file uploaded." }, { status: 400 });
+      return NextResponse.json({ error: "No passport photo file uploaded." }, { status: 400, headers: corsHeaders });
     }
 
     const validationResult = validatePassportPhotoFile(file);
     if (!validationResult.ok) {
-      return NextResponse.json({ error: validationResult.message, code: validationResult.error }, { status: 400 });
+      return NextResponse.json({ error: validationResult.message, code: validationResult.error }, { status: 400, headers: corsHeaders });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
         uploadPath,
         error: toStorageErrorLog(uploadError),
       });
-      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+      return NextResponse.json({ error: uploadError.message }, { status: 500, headers: corsHeaders });
     }
 
     const { data: publicUrlData } = supabase.storage.from(PASSPORT_BUCKET).getPublicUrl(uploadPath);
@@ -79,15 +82,25 @@ export async function POST(request: Request) {
       publicUrl: publicUrlData.publicUrl,
     });
 
-    return NextResponse.json({
-      publicUrl: publicUrlData.publicUrl,
-      bucket: PASSPORT_BUCKET,
-      uploadPath,
-    });
+    return NextResponse.json(
+      {
+        publicUrl: publicUrlData.publicUrl,
+        bucket: PASSPORT_BUCKET,
+        uploadPath,
+      },
+      { headers: corsHeaders },
+    );
   } catch (error) {
     console.error("[msme-passport-upload][unexpected_error]", {
       error: toStorageErrorLog(error),
     });
-    return NextResponse.json({ error: "Unable to upload passport photo right now." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to upload passport photo right now." }, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: getCredentialedCorsHeaders(request, ["POST", "OPTIONS"]),
+  });
 }

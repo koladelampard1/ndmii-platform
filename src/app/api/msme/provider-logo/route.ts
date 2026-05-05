@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import { sanitizeProviderLogoFileName, validateProviderLogoFile } from "@/lib/msme/provider-logo-upload";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -23,22 +24,24 @@ function toErrorLog(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const corsHeaders = getCredentialedCorsHeaders(request, ["POST", "OPTIONS"]);
+
   try {
     const context = await getCurrentUserContext();
     if (!context.appUserId || !["msme", "admin"].includes(context.role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
     }
 
     const formData = await request.formData();
     const file = formData.get("logo_file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No logo image uploaded." }, { status: 400 });
+      return NextResponse.json({ error: "No logo image uploaded." }, { status: 400, headers: corsHeaders });
     }
 
     const validationResult = validateProviderLogoFile(file);
     if (!validationResult.ok) {
-      return NextResponse.json({ error: validationResult.message, code: validationResult.error }, { status: 400 });
+      return NextResponse.json({ error: validationResult.message, code: validationResult.error }, { status: 400, headers: corsHeaders });
     }
 
     const supabase = await createServiceRoleSupabaseClient();
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
         linkedMsmeId: context.linkedMsmeId,
         error: toErrorLog(msmeLookupError),
       });
-      return NextResponse.json({ error: "Could not resolve your MSME profile for logo upload." }, { status: 400 });
+      return NextResponse.json({ error: "Could not resolve your MSME profile for logo upload." }, { status: 400, headers: corsHeaders });
     }
 
     const { data: providerRow, error: providerLookupError } = await supabase
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
         msmePublicId: msmeRow.msme_id,
         error: toErrorLog(providerLookupError),
       });
-      return NextResponse.json({ error: "Could not resolve your provider profile for logo upload." }, { status: 400 });
+      return NextResponse.json({ error: "Could not resolve your provider profile for logo upload." }, { status: 400, headers: corsHeaders });
     }
 
     const safeName = sanitizeProviderLogoFileName(file.name);
@@ -117,7 +120,7 @@ export async function POST(request: Request) {
         storagePath,
         error: toErrorLog(uploadError),
       });
-      return NextResponse.json({ error: "Failed to upload logo image to storage." }, { status: 500 });
+      return NextResponse.json({ error: "Failed to upload logo image to storage." }, { status: 500, headers: corsHeaders });
     }
 
     const { data: publicUrlData } = supabase.storage.from(PROVIDER_LOGO_BUCKET).getPublicUrl(storagePath);
@@ -158,7 +161,7 @@ export async function POST(request: Request) {
         logoUrl,
         error: toErrorLog(persistError ?? "no_rows_updated"),
       });
-      return NextResponse.json({ error: "Logo upload succeeded, but profile save failed. Please retry." }, { status: 500 });
+      return NextResponse.json({ error: "Logo upload succeeded, but profile save failed. Please retry." }, { status: 500, headers: corsHeaders });
     }
 
     console.info("[msme-settings][logo-upload][persist-success]", {
@@ -172,15 +175,25 @@ export async function POST(request: Request) {
     revalidatePath("/dashboard/msme/profile");
     revalidatePath(`/providers/${providerRow.id}`);
 
-    return NextResponse.json({
-      logoUrl,
-      bucket: PROVIDER_LOGO_BUCKET,
-      storagePath,
-      providerProfileId: providerRow.id,
-      msmePublicId: providerRow.msme_id,
-    });
+    return NextResponse.json(
+      {
+        logoUrl,
+        bucket: PROVIDER_LOGO_BUCKET,
+        storagePath,
+        providerProfileId: providerRow.id,
+        msmePublicId: providerRow.msme_id,
+      },
+      { headers: corsHeaders },
+    );
   } catch (error) {
     console.error("[msme-settings][logo-upload][unexpected-failure]", { error: toErrorLog(error) });
-    return NextResponse.json({ error: "Unable to upload logo right now." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to upload logo right now." }, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: getCredentialedCorsHeaders(request, ["POST", "OPTIONS"]),
+  });
 }
