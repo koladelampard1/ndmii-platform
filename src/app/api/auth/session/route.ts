@@ -9,41 +9,42 @@ export async function POST(request: Request) {
   const secure = process.env.NODE_ENV === "production";
 
   response.cookies.set("ndmii_auth", "1", {
-    httpOnly: true,
+    httpOnly: false,
     secure,
     sameSite: "lax",
     path: "/",
   });
 
   response.cookies.set("ndmii_role", role, {
-    httpOnly: true,
+    httpOnly: false,
     secure,
     sameSite: "lax",
     path: "/",
   });
 
   response.cookies.set("ndmii_email", email, {
-    httpOnly: true,
+    httpOnly: false,
     secure,
     sameSite: "lax",
     path: "/",
   });
 
   response.cookies.set("ndmii_auth_user_id", typeof body.userId === "string" ? body.userId : "", {
-    httpOnly: true,
+    httpOnly: false,
     secure,
     sameSite: "lax",
     path: "/",
   });
 
   response.cookies.set("ndmii_app_user_id", typeof body.appUserId === "string" ? body.appUserId : "", {
-    httpOnly: true,
+    httpOnly: false,
     secure,
     sameSite: "lax",
     path: "/",
   });
 
   console.info("[auth-session:set-cookies]", { role });
+  console.log("Set-Cookie header:", response.headers.get("set-cookie"));
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[auth-session-write]", {

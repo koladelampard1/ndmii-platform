@@ -59,7 +59,7 @@ function LoginPageContent() {
     const sessionResponse = await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
+      credentials: "include",
       body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
     });
 
