@@ -12,35 +12,22 @@ export function middleware(request: NextRequest) {
   const role = request.cookies.get("ndmii_role")?.value;
   const authEmail = request.cookies.get("ndmii_email")?.value ?? null;
   const normalizedRole = hasAuth && role ? normalizeUserRole(role, "public") : "public";
-  const isAllowed = canAccessRoute(normalizedRole, pathname);
+  let isAllowed = canAccessRoute(normalizedRole, pathname);
 
-  console.log("[middleware] cookies:", {
-    auth: request.cookies.get("ndmii_auth")?.value,
-    role: request.cookies.get("ndmii_role")?.value,
-    path: request.nextUrl.pathname,
+  if (normalizedRole === "admin" && pathname.startsWith("/dashboard")) {
+    isAllowed = true;
+  }
+
+  console.log("[middleware]", {
+    pathname,
+    role: normalizedRole,
+    allowed: isAllowed,
   });
 
   if (hasAuth && !role) {
     console.warn("[middleware] authenticated request missing role cookie", {
       email: authEmail,
       path: pathname,
-    });
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[route-rbac]", {
-      email: authEmail,
-      rawCookieRole: role ?? null,
-      normalizedRole,
-      path: pathname,
-      canAccessRoute: isAllowed,
-      reason: isAllowed
-        ? "allowed_by_route_prefix"
-        : hasAuth
-          ? normalizedRole === "public"
-            ? "deny_authenticated_user_with_unusable_role_cookie"
-            : "deny_route_not_permitted_for_role"
-          : "deny_missing_auth_cookie",
     });
   }
 
