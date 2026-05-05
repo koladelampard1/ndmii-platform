@@ -1,22 +1,136 @@
 import { cookies } from "next/headers";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { UserContext } from "@/lib/auth/authorization";
 import { normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
+type CurrentUser = {
+  authUserId: string | null;
+  appUserId: string;
+  role: UserRole | null;
+  email: string | null;
+  fullName: string | null;
+};
+
+type UserProfileRow = {
+  id: string;
+  email: string | null;
+  role: string | null;
+  full_name: string | null;
+  auth_user_id: string | null;
+};
+
+const VALID_USER_ROLES = new Set<UserRole>([
+  "public",
+  "msme",
+  "association_officer",
+  "reviewer",
+  "fccpc_officer",
+  "nrs_officer",
+  "firs_officer",
+  "admin",
+]);
+
+function toUserRole(value: string | null | undefined): UserRole | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]/g, "_");
+  return VALID_USER_ROLES.has(normalized as UserRole) ? (normalized as UserRole) : null;
+}
+
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  const cookieStore = await cookies();
+  const hasAppSession = cookieStore.get("ndmii_auth")?.value === "1";
+  const authUserId = cookieStore.get("ndmii_auth_user_id")?.value || null;
+  const appUserId = cookieStore.get("ndmii_app_user_id")?.value || null;
+  const email = cookieStore.get("ndmii_email")?.value?.trim().toLowerCase() || null;
+
+  if (!hasAppSession || !authUserId) {
+    return null;
+  }
+
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+
+    const { data: authData, error: authError } = await supabase.auth.admin.getUserById(authUserId);
+    if (authError || !authData.user) {
+      console.warn("[server-auth] unable to verify auth user", {
+        authUserId,
+        error: authError?.message ?? "missing_auth_user",
+      });
+      return null;
+    }
+
+    let profile: UserProfileRow | null = null;
+
+    if (appUserId) {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id,email,role,full_name,auth_user_id")
+        .eq("id", appUserId)
+        .maybeSingle();
+
+      if (error) throw error;
+      profile = data as UserProfileRow | null;
+    }
+
+    if (!profile && authUserId) {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id,email,role,full_name,auth_user_id")
+        .eq("auth_user_id", authUserId)
+        .maybeSingle();
+
+      if (error) throw error;
+      profile = data as UserProfileRow | null;
+    }
+
+    if (!profile && email) {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id,email,role,full_name,auth_user_id")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (error) throw error;
+      profile = data as UserProfileRow | null;
+    }
+
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      authUserId: profile.auth_user_id ?? authUserId,
+      appUserId: profile.id,
+      role: toUserRole(profile.role),
+      email: profile.email ?? email,
+      fullName: profile.full_name ?? profile.email ?? email,
+    };
+  } catch (error) {
+    console.error("[server-auth] failed to resolve current user", {
+      authUserId,
+      appUserId,
+      email,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export async function getCurrentUserContext(): Promise<UserContext> {
   const cookieStore = await cookies();
-  const role = normalizeUserRole(cookieStore.get("ndmii_role")?.value, "public");
+  const currentUser = await getCurrentUser();
+  const role = currentUser?.role ?? normalizeUserRole(cookieStore.get("ndmii_role")?.value, "public");
   const email = cookieStore.get("ndmii_email")?.value ?? null;
-  const authUserId = cookieStore.get("ndmii_auth_user_id")?.value ?? null;
-  let appUserId = cookieStore.get("ndmii_app_user_id")?.value ?? null;
+  const authUserId = currentUser?.authUserId ?? cookieStore.get("ndmii_auth_user_id")?.value ?? null;
+  let appUserId = currentUser?.appUserId ?? cookieStore.get("ndmii_app_user_id")?.value ?? null;
 
   const context: UserContext = {
     authUserId,
     appUserId,
     role,
-    email,
-    fullName: email,
+    email: currentUser?.email ?? email,
+    fullName: currentUser?.fullName ?? email,
     linkedMsmeId: null,
     linkedProviderId: null,
     linkedAssociationId: null,

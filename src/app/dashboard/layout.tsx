@@ -3,12 +3,21 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/layout/navbar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { getCurrentRole } from "@/lib/auth/session";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const role = await getCurrentRole();
+  const user = await getCurrentUser();
 
-  if (role !== "admin") {
+  console.info("[dashboard-layout]", {
+    userId: user?.appUserId ?? user?.authUserId ?? null,
+    role: user?.role ?? null,
+  });
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  if (user.role !== "admin") {
     redirect("/access-denied");
   }
 
