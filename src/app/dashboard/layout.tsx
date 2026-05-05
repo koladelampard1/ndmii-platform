@@ -17,10 +17,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect("/login");
   }
 
-  if (user.role !== "admin") {
-    redirect("/access-denied");
-  }
-
   return (
     <DashboardShell navbar={<Navbar isAuthenticated />} sidebar={<Sidebar />}>
       {children}

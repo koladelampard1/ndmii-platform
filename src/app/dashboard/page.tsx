@@ -1,4 +1,7 @@
+import { redirect } from "next/navigation";
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
+import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
 import Link from "next/link";
@@ -16,6 +19,11 @@ function monthLabel(key: string) {
 }
 
 export default async function DashboardPage() {
+  const ctx = await getCurrentUserContext();
+  if (ctx.role !== "admin") {
+    redirect(getDefaultDashboardRoute(ctx.role));
+  }
+
   const supabase = await createServerSupabaseClient();
   const [
     { data: msmes },
