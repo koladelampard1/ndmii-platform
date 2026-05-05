@@ -1,6 +1,6 @@
 import { AdminComingSoonPage } from "@/components/admin/admin-coming-soon-page";
 
-export default function AdminMsmesPage() {
+export default function MsmesPage() {
   return (
     <AdminComingSoonPage
       title="MSME Registry"

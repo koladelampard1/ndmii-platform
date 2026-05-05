@@ -8,7 +8,7 @@ import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profile";
-import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
+import { normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 function LoginPageContent() {
@@ -71,7 +71,7 @@ function LoginPageContent() {
 
     console.info("[auth-login:session-sync-success]", { role });
 
-    const targetRoute = role === "msme" ? "/dashboard/msme" : getDefaultDashboardRoute(role);
+    const targetRoute = "/dashboard";
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,

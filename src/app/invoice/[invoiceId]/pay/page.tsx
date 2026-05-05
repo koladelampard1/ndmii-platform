@@ -91,7 +91,7 @@ async function simulatePaymentAction(formData: FormData) {
   revalidatePath("/dashboard/nrs/invoice-registry");
   revalidatePath("/dashboard/nrs/vat-monitor");
   revalidatePath("/dashboard/nrs/revenue");
-  revalidatePath("/dashboard/executive/revenue");
+  revalidatePath("/dashboard");
 
   redirect(`/invoice/${invoiceId}/status`);
 }

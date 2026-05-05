@@ -2,7 +2,7 @@ import type { UserRole } from "@/types/roles";
 
 export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed: string[]; denied: string[] }> = {
   admin: {
-    allowed: ["/dashboard/executive", "/dashboard/reviews", "/dashboard/nrs", "/dashboard/msme/id-registry"],
+    allowed: ["/dashboard", "/dashboard/msmes", "/dashboard/verifications", "/dashboard/digital-ids", "/dashboard/associations"],
     denied: [],
   },
   reviewer: {
@@ -11,7 +11,7 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
   },
   msme: {
     allowed: ["/dashboard/msme", "/dashboard/msme/onboarding", "/dashboard/msme/id-card", "/dashboard/payments"],
-    denied: ["/dashboard/reviews", "/dashboard/nrs", "/dashboard/executive"],
+    denied: ["/dashboard/reviews", "/dashboard/nrs", "/dashboard"],
   },
   association_officer: {
     allowed: ["/dashboard/associations", "/dashboard/reports"],

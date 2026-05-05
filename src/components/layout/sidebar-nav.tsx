@@ -10,6 +10,7 @@ type SidebarNavProps = {
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  if (href === "/dashboard") return pathname === "/dashboard";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

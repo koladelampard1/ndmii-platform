@@ -1,9 +1,9 @@
 import { AdminComingSoonPage } from "@/components/admin/admin-coming-soon-page";
 
-export default function AdminVerificationsPage() {
+export default function VerificationsPage() {
   return (
     <AdminComingSoonPage
-      title="Pending DBIN Verifications"
+      title="Verifications"
       description="Track KYC checks, reviewer workflow queues, and identity verification outcomes."
     />
   );

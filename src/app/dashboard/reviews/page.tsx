@@ -120,7 +120,7 @@ async function reviewAction(formData: FormData) {
   });
 
   revalidatePath("/dashboard/msme");
-  revalidatePath("/dashboard/executive");
+  revalidatePath("/dashboard");
   revalidatePath("/dashboard/msme/id-card");
   revalidatePath("/dashboard/compliance");
   revalidatePath("/verify");

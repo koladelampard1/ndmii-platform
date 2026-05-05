@@ -1,9 +1,9 @@
 import { AdminComingSoonPage } from "@/components/admin/admin-coming-soon-page";
 
-export default function AdminDigitalIdsPage() {
+export default function DigitalIdsPage() {
   return (
     <AdminComingSoonPage
-      title="Digital ID Registry"
+      title="Digital IDs"
       description="Inspect generated MSME digital identities, QR verification status, and credential activity."
     />
   );
