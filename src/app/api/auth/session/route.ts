@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { normalizeUserRole } from "@/lib/auth/authorization";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export async function POST(request: Request) {
   const body = await request.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -11,8 +13,8 @@ export async function POST(request: Request) {
     httpOnly: false,
     maxAge: 60 * 60 * 24 * 7,
     path: "/",
-    sameSite: "none",
-    secure: true,
+    sameSite: "lax",
+    secure: isProduction,
   } as const;
 
   response.cookies.set("ndmii_auth", "1", cookieOptions);
@@ -41,7 +43,13 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const response = NextResponse.json({ ok: true }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
   ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"].forEach((name) => {
-    response.cookies.set(name, "", { expires: new Date(0), httpOnly: false, path: "/", sameSite: "none", secure: true });
+    response.cookies.set(name, "", {
+      expires: new Date(0),
+      httpOnly: false,
+      path: "/",
+      sameSite: "lax",
+      secure: isProduction,
+    });
   });
   return response;
 }
