@@ -9,6 +9,9 @@ export function middleware(request: NextRequest) {
   }
 
   const hasAuth = request.cookies.get("ndmii_auth")?.value === "1";
+  const role = request.cookies.get("ndmii_role")?.value ?? null;
+
+  console.info("[middleware-auth]", { path: pathname, hasAuth, role });
 
   if (!isPublicPath(pathname) && !hasAuth) {
     return NextResponse.redirect(new URL("/login", request.url));
