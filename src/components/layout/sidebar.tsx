@@ -3,36 +3,6 @@ import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, type NavigationGroup }
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
 
-const ADMIN_NAV_GROUPS: NavigationGroup[] = [
-  {
-    label: "Overview",
-    items: [{ href: "/dashboard/admin", label: "Admin Dashboard" }],
-  },
-  {
-    label: "MSME Management",
-    items: [
-      { href: "/dashboard/admin/msmes", label: "MSME Registry" },
-      { href: "/dashboard/admin/verifications", label: "Verifications" },
-      { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
-    ],
-  },
-  {
-    label: "Association Management",
-    items: [
-      { href: "/dashboard/admin/associations", label: "Associations" },
-      { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
-      { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { href: "/dashboard/admin/verifications", label: "Complaints" },
-      { href: "/dashboard/admin/digital-ids", label: "Public Verification" },
-    ],
-  },
-];
-
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
   admin: "Administrator",
@@ -48,7 +18,7 @@ export async function Sidebar() {
   const { role } = await getCurrentUserContext();
   const navGroups: NavigationGroup[] =
     role === "admin"
-      ? ADMIN_NAV_GROUPS
+      ? ROLE_NAV_GROUPS.admin ?? [{ label: "Admin", items: ROLE_NAV_ITEMS.admin }]
       : role === "public"
         ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
         : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];

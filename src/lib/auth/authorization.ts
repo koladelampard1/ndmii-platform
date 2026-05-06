@@ -205,6 +205,10 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/verifications", label: "Verifications" },
     { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
     { href: "/dashboard/admin/associations", label: "Associations" },
+    { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
+    { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
+    { href: "/dashboard/admin/complaints", label: "Complaints" },
+    { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
@@ -277,6 +281,15 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       label: "Association Management",
       items: [
         { href: "/dashboard/admin/associations", label: "Associations" },
+        { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
+        { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { href: "/dashboard/admin/complaints", label: "Complaints" },
+        { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },
   ],
