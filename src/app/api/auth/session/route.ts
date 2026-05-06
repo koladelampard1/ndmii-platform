@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
   const headers = getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]);
   headers.set("Cache-Control", "no-store, private");
-  const response = NextResponse.json({ ok: true, role }, { headers });
+  const response = NextResponse.json({ success: true, ok: true, role }, { headers });
   const cookieOptions = {
     ...baseCookieOptions,
     maxAge: 60 * 60 * 24 * 7,
@@ -33,11 +33,25 @@ export async function POST(request: Request) {
   response.cookies.set("ndmii_auth_user_id", authUserId, cookieOptions);
   response.cookies.set("ndmii_app_user_id", appUserId, cookieOptions);
 
+  const debugBody = {
+    success: true,
+    isProduction,
+    cookieNamesSet: [...authCookieNames],
+    requestOrigin: request.headers.get("origin"),
+    requestHost: request.headers.get("host"),
+    responseHasSetCookieHeader: Boolean(response.headers.get("set-cookie")),
+  };
+
+  const debugResponse = NextResponse.json({ ...debugBody, ok: true, role }, { headers: response.headers });
+
   console.info("[auth-session:set-cookies]", {
     isProduction,
     role,
     hasAuthUserId: Boolean(authUserId),
     cookieNamesSet: [...authCookieNames],
+    requestOrigin: debugBody.requestOrigin,
+    requestHost: debugBody.requestHost,
+    responseHasSetCookieHeader: debugBody.responseHasSetCookieHeader,
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -51,7 +65,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return response;
+  return debugResponse;
 }
 
 export async function DELETE(request: Request) {

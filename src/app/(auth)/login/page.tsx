@@ -62,6 +62,7 @@ function LoginPageContent() {
       credentials: "include",
       body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
     });
+    const sessionDebug = await sessionResponse.json().catch(() => null);
 
     if (!sessionResponse.ok) {
       setLoading(false);
@@ -69,7 +70,7 @@ function LoginPageContent() {
       return;
     }
 
-    console.info("[auth-login:session-sync-success]", { role });
+    console.info("[auth-login:session-sync-success]", { role, sessionDebug });
 
     const targetRoute = getDefaultDashboardRoute(role);
     if (process.env.NODE_ENV !== "production") {
