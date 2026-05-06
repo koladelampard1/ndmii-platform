@@ -5,22 +5,29 @@ import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 export const dynamic = "force-dynamic";
 
 const isProduction = process.env.NODE_ENV === "production";
-const authCookieNames = ["ndmii_auth"] as const;
+const authCookieNames = ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"] as const;
 const baseCookieOptions = {
-  httpOnly: false,
+  httpOnly: true,
   path: "/",
   sameSite: "lax",
-  secure: true,
+  secure: isProduction,
 } as const;
 
 export async function POST(request: Request) {
   const body = await request.json();
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const authUserId = typeof body.userId === "string" ? body.userId : "";
+  const appUserId = typeof body.appUserId === "string" ? body.appUserId : "";
   const headers = getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]);
   headers.set("Cache-Control", "no-store, private");
   const response = NextResponse.json({ success: true, ok: true, role, cookieNamesSet: [...authCookieNames] }, { headers });
 
   response.cookies.set("ndmii_auth", "1", baseCookieOptions);
+  response.cookies.set("ndmii_role", role, baseCookieOptions);
+  response.cookies.set("ndmii_email", email, baseCookieOptions);
+  response.cookies.set("ndmii_auth_user_id", authUserId, baseCookieOptions);
+  response.cookies.set("ndmii_app_user_id", appUserId, baseCookieOptions);
 
   const responseSetCookieHeaders = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie")].filter((value): value is string => Boolean(value));
 
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
     console.info("[auth-session-write]", {
       rawRole: body.role ?? null,
       normalizedRole: role,
-      reason: "minimal_cookie_storage_test",
+      reason: "single_response_multi_cookie_storage",
     });
   }
 
