@@ -89,13 +89,41 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
 
     if (profileError) throw profileError;
     if (!profile) {
+      const { data: emailMatchedProfile, error: emailMatchError } = email
+        ? await profileClient
+            .from("users")
+            .select("id,auth_user_id")
+            .eq("email", email)
+            .maybeSingle()
+        : { data: null, error: null };
+
+      if (emailMatchError) throw emailMatchError;
+
+      console.info("[server-auth-role-resolution]", {
+        authUserId,
+        matchedPublicUserId: emailMatchedProfile?.id ?? null,
+        resolvedRole: "public",
+        missingLookupReason: emailMatchedProfile
+          ? emailMatchedProfile.auth_user_id
+            ? "public_users_auth_user_id_mismatch_for_email_match"
+            : "public_users_auth_user_id_missing_for_email_match"
+          : "no_public_users_row_for_auth_user_id",
+      });
       return null;
     }
+
+    const resolvedRole = toUserRole(profile.role);
+    console.info("[server-auth-role-resolution]", {
+      authUserId,
+      matchedPublicUserId: profile.id,
+      resolvedRole: resolvedRole ?? "public",
+      missingLookupReason: resolvedRole ? null : "public_users_role_invalid_or_missing",
+    });
 
     return {
       authUserId,
       appUserId: profile.id,
-      role: toUserRole(profile.role),
+      role: resolvedRole,
       email: profile.email ?? email,
       fullName: profile.full_name ?? profile.email ?? email,
     };
