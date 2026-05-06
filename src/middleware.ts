@@ -1,65 +1,54 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isPublicPath } from "@/lib/auth/authorization";
+import {
+  SUPABASE_ACCESS_TOKEN_COOKIE,
+  SUPABASE_REFRESH_TOKEN_COOKIE,
+  createServerSupabaseClient,
+  setSupabaseAuthCookies,
+} from "@/lib/supabase/server";
 
-function isAuthPath(pathname: string) {
-  return (
-    pathname === "/login" ||
-    pathname.startsWith("/login/") ||
-    pathname.startsWith("/register") ||
-    pathname.startsWith("/signup") ||
-    pathname.startsWith("/auth/") ||
-    pathname === "/reset-password" ||
-    pathname === "/update-password" ||
-    pathname.startsWith("/activate-account/")
-  );
-}
-
-function isProtectedPath(pathname: string) {
-  return pathname === "/dashboard" || pathname.startsWith("/dashboard/") || pathname === "/admin" || pathname.startsWith("/admin/");
-}
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const response = NextResponse.next();
+  response.headers.set("x-debug-path", pathname);
 
   if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.startsWith("/logout") || pathname.includes(".")) {
-    return NextResponse.next();
-  }
-
-  const hasAuth = request.cookies.get("ndmii_auth")?.value === "1";
-  const roleCookie = request.cookies.get("ndmii_role")?.value ?? null;
-  const cookieNames = request.cookies.getAll().map((cookie) => cookie.name);
-
-  console.info("[middleware-auth]", {
-    path: pathname,
-    hasAuth,
-    roleCookie,
-    cookieNames,
-  });
-
-  if (isPublicPath(pathname) || isAuthPath(pathname)) {
-    const response = NextResponse.next();
-    response.headers.set("x-debug-auth", hasAuth ? "present" : "missing");
-    response.headers.set("x-debug-path", pathname);
     return response;
   }
 
-  if (isProtectedPath(pathname)) {
-    if (!hasAuth) {
-      const response = NextResponse.redirect(new URL("/login", request.url));
-      response.headers.set("x-debug-auth", "missing");
-      response.headers.set("x-debug-path", pathname);
-      return response;
+  const accessToken = request.cookies.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value ?? null;
+  const refreshToken = request.cookies.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value ?? null;
+
+  response.headers.set("x-debug-auth", accessToken ? "present" : "missing");
+
+  if (!refreshToken) {
+    return response;
+  }
+
+  try {
+    const supabase = await createServerSupabaseClient();
+    const shouldRefresh = !accessToken || Boolean((await supabase.auth.getUser(accessToken)).error);
+
+    if (shouldRefresh) {
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+      if (!error && data.session) {
+        setSupabaseAuthCookies(response, {
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+          expiresAt: data.session.expires_at ?? null,
+        });
+        response.headers.set("x-debug-auth", "refreshed");
+      } else {
+        response.headers.set("x-debug-auth", "refresh-failed");
+      }
     }
-
-    const response = NextResponse.next();
-    response.headers.set("x-debug-auth", "present");
-    response.headers.set("x-debug-path", pathname);
-    return response;
+  } catch (error) {
+    response.headers.set("x-debug-auth", "refresh-error");
+    console.warn("[middleware-auth-refresh]", {
+      path: pathname,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
-  const response = NextResponse.next();
-  response.headers.set("x-debug-auth", hasAuth ? "present" : "missing");
-  response.headers.set("x-debug-path", pathname);
   return response;
 }
 

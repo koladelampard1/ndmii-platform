@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clearSupabaseAuthCookies } from "@/lib/supabase/server";
 
 const isProduction = process.env.NODE_ENV === "production";
 const authCookieNames = ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"] as const;
@@ -11,6 +12,7 @@ const baseCookieOptions = {
 
 export async function GET(request: Request) {
   const response = NextResponse.redirect(new URL("/login?message=Signed%20out%20successfully", request.url));
+  clearSupabaseAuthCookies(response);
 
   authCookieNames.forEach((name) => {
     response.cookies.set(name, "", {

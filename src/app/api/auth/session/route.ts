@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { normalizeUserRole } from "@/lib/auth/authorization";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
+import {
+  clearSupabaseAuthCookies,
+  setSupabaseAuthCookies,
+  supabaseAuthCookieNames,
+} from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +24,27 @@ export async function POST(request: Request) {
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const authUserId = typeof body.userId === "string" ? body.userId : "";
   const appUserId = typeof body.appUserId === "string" ? body.appUserId : "";
+  const accessToken = typeof body.accessToken === "string" ? body.accessToken : "";
+  const refreshToken = typeof body.refreshToken === "string" ? body.refreshToken : "";
+  const expiresAt = typeof body.expiresAt === "number" ? body.expiresAt : null;
   const headers = getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]);
   headers.set("Cache-Control", "no-store, private");
-  const response = NextResponse.json({ success: true, ok: true, role, cookieNamesSet: [...authCookieNames] }, { headers });
+  if (!accessToken || !refreshToken) {
+    return NextResponse.json({ success: false, ok: false, error: "Missing Supabase session tokens." }, { status: 400, headers });
+  }
+
+  const response = NextResponse.json({
+    success: true,
+    ok: true,
+    role,
+    cookieNamesSet: [...authCookieNames, ...supabaseAuthCookieNames],
+  }, { headers });
+
+  setSupabaseAuthCookies(response, {
+    accessToken,
+    refreshToken,
+    expiresAt,
+  });
 
   response.cookies.set("ndmii_auth", "1", baseCookieOptions);
   response.cookies.set("ndmii_role", role, baseCookieOptions);
@@ -35,8 +58,8 @@ export async function POST(request: Request) {
     isProduction,
     requestOrigin: request.headers.get("origin"),
     requestHost: request.headers.get("host"),
-    cookieNamesSet: [...authCookieNames],
-    cookieCountBeingSet: authCookieNames.length,
+    cookieNamesSet: [...authCookieNames, ...supabaseAuthCookieNames],
+    cookieCountBeingSet: authCookieNames.length + supabaseAuthCookieNames.length,
     responseSetCookieHeaders,
     responseHasSetCookieHeader: responseSetCookieHeaders.length > 0,
   });
@@ -54,6 +77,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const response = NextResponse.json({ ok: true }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
+  clearSupabaseAuthCookies(response);
   authCookieNames.forEach((name) => {
     response.cookies.set(name, "", {
       ...baseCookieOptions,

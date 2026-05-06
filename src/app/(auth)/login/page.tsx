@@ -31,7 +31,7 @@ function LoginPageContent() {
 
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (signInError || !signInData.user) {
+    if (signInError || !signInData.user || !signInData.session) {
       setLoading(false);
       setError(signInError?.message || "Unable to sign in. Please verify your credentials.");
       return;
@@ -60,7 +60,15 @@ function LoginPageContent() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ role, email: signInData.user.email ?? email, userId: signInData.user.id, appUserId }),
+      body: JSON.stringify({
+        role,
+        email: signInData.user.email ?? email,
+        userId: signInData.user.id,
+        appUserId,
+        accessToken: signInData.session.access_token,
+        refreshToken: signInData.session.refresh_token,
+        expiresAt: signInData.session.expires_at ?? null,
+      }),
     });
     const sessionDebug = await sessionResponse.json().catch(() => null);
 

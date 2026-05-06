@@ -1,10 +1,14 @@
 import { cookies } from "next/headers";
-import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import {
+  SUPABASE_ACCESS_TOKEN_COOKIE,
+  SUPABASE_REFRESH_TOKEN_COOKIE,
+  createServerSupabaseClient,
+  createServiceRoleSupabaseClient,
+} from "@/lib/supabase/server";
 import type { UserContext } from "@/lib/auth/authorization";
-import { normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
-type CurrentUser = {
+export type AuthenticatedUser = {
   authUserId: string | null;
   appUserId: string;
   role: UserRole | null;
@@ -37,70 +41,59 @@ function toUserRole(value: string | null | undefined): UserRole | null {
   return VALID_USER_ROLES.has(normalized as UserRole) ? (normalized as UserRole) : null;
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
   const cookieStore = await cookies();
-  const hasAppSession = cookieStore.get("ndmii_auth")?.value === "1";
-  const authUserId = cookieStore.get("ndmii_auth_user_id")?.value || null;
-  const appUserId = cookieStore.get("ndmii_app_user_id")?.value || null;
-  const email = cookieStore.get("ndmii_email")?.value?.trim().toLowerCase() || null;
+  let accessToken = cookieStore.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value ?? null;
+  const refreshToken = cookieStore.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value ?? null;
 
-  if (!hasAppSession || !authUserId) {
+  if (!accessToken && !refreshToken) {
     return null;
   }
 
   try {
-    const supabase = await createServiceRoleSupabaseClient();
+    const authClient = await createServerSupabaseClient();
+    let authUser = null;
+    let authErrorMessage: string | null = null;
 
-    const { data: authData, error: authError } = await supabase.auth.admin.getUserById(authUserId);
-    if (authError || !authData.user) {
-      console.warn("[server-auth] unable to verify auth user", {
-        authUserId,
-        error: authError?.message ?? "missing_auth_user",
+    if (accessToken) {
+      const { data: authData, error: authError } = await authClient.auth.getUser(accessToken);
+      authUser = authData.user;
+      authErrorMessage = authError?.message ?? null;
+    }
+
+    if (!authUser && refreshToken) {
+      const { data: refreshData, error: refreshError } = await authClient.auth.refreshSession({
+        refresh_token: refreshToken,
+      });
+      accessToken = refreshData.session?.access_token ?? accessToken;
+      authUser = refreshData.user ?? null;
+      authErrorMessage = refreshError?.message ?? authErrorMessage;
+    }
+
+    if (!authUser) {
+      console.warn("[server-auth] unable to verify Supabase session", {
+        error: authErrorMessage ?? "missing_auth_user",
       });
       return null;
     }
 
-    let profile: UserProfileRow | null = null;
+    const authUserId = authUser.id;
+    const email = authUser.email?.trim().toLowerCase() || null;
+    const profileClient = await createServiceRoleSupabaseClient();
 
-    if (appUserId) {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id,email,role,full_name,auth_user_id")
-        .eq("id", appUserId)
-        .maybeSingle();
+    const { data: profile, error: profileError } = await profileClient
+      .from("users")
+      .select("id,email,role,full_name,auth_user_id")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
 
-      if (error) throw error;
-      profile = data as UserProfileRow | null;
-    }
-
-    if (!profile && authUserId) {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id,email,role,full_name,auth_user_id")
-        .eq("auth_user_id", authUserId)
-        .maybeSingle();
-
-      if (error) throw error;
-      profile = data as UserProfileRow | null;
-    }
-
-    if (!profile && email) {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id,email,role,full_name,auth_user_id")
-        .eq("email", email)
-        .maybeSingle();
-
-      if (error) throw error;
-      profile = data as UserProfileRow | null;
-    }
-
+    if (profileError) throw profileError;
     if (!profile) {
       return null;
     }
 
     return {
-      authUserId: profile.auth_user_id ?? authUserId,
+      authUserId,
       appUserId: profile.id,
       role: toUserRole(profile.role),
       email: profile.email ?? email,
@@ -108,22 +101,24 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     };
   } catch (error) {
     console.error("[server-auth] failed to resolve current user", {
-      authUserId,
-      appUserId,
-      email,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
   }
 }
 
+type CurrentUser = AuthenticatedUser;
+
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  return getAuthenticatedUser();
+}
+
 export async function getCurrentUserContext(): Promise<UserContext> {
-  const cookieStore = await cookies();
-  const currentUser = await getCurrentUser();
-  const role = currentUser?.role ?? normalizeUserRole(cookieStore.get("ndmii_role")?.value, "public");
-  const email = cookieStore.get("ndmii_email")?.value ?? null;
-  const authUserId = currentUser?.authUserId ?? cookieStore.get("ndmii_auth_user_id")?.value ?? null;
-  let appUserId = currentUser?.appUserId ?? cookieStore.get("ndmii_app_user_id")?.value ?? null;
+  const currentUser = await getAuthenticatedUser();
+  const role = currentUser?.role ?? "public";
+  const email = currentUser?.email ?? null;
+  const authUserId = currentUser?.authUserId ?? null;
+  let appUserId = currentUser?.appUserId ?? null;
 
   const context: UserContext = {
     authUserId,
