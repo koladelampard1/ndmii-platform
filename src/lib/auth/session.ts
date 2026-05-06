@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   SUPABASE_ACCESS_TOKEN_COOKIE,
   SUPABASE_REFRESH_TOKEN_COOKIE,
@@ -35,6 +35,47 @@ const VALID_USER_ROLES = new Set<UserRole>([
   "admin",
 ]);
 
+async function getAuthDiagnosticRequestMeta() {
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "unknown";
+  const rawPathname =
+    headerStore.get("next-url") ??
+    headerStore.get("x-next-url") ??
+    headerStore.get("x-pathname") ??
+    headerStore.get("x-invoke-path") ??
+    headerStore.get("x-matched-path") ??
+    headerStore.get("referer") ??
+    "unknown";
+
+  try {
+    return {
+      host,
+      pathname: rawPathname.startsWith("http") ? new URL(rawPathname).pathname : rawPathname,
+    };
+  } catch {
+    return { host, pathname: rawPathname };
+  }
+}
+
+type AuthRuntimeDiagnostic = {
+  source: "getAuthenticatedUser" | "getCurrentUserContext";
+  requestHost: string;
+  pathname: string;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  authUserId: string | null;
+  authEmail: string | null;
+  matchedPublicUsersRow: Pick<UserProfileRow, "id" | "email" | "role" | "auth_user_id"> | null;
+  publicUsersAuthUserId: string | null;
+  resolvedRole: UserRole | "public";
+  expectedRole: string | null;
+  failureReason: string | null;
+};
+
+function logAuthRuntimeDiagnostic(diagnostic: AuthRuntimeDiagnostic) {
+  console.info("[auth-runtime-diagnostic]", diagnostic);
+}
+
 function toUserRole(value: string | null | undefined): UserRole | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase().replace(/[\s-]/g, "_");
@@ -42,11 +83,29 @@ function toUserRole(value: string | null | undefined): UserRole | null {
 }
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
+  const requestMeta = await getAuthDiagnosticRequestMeta();
   const cookieStore = await cookies();
   let accessToken = cookieStore.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value ?? null;
   const refreshToken = cookieStore.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value ?? null;
+  const baseDiagnostic = {
+    source: "getAuthenticatedUser" as const,
+    requestHost: requestMeta.host,
+    pathname: requestMeta.pathname,
+    hasAccessToken: Boolean(accessToken),
+    hasRefreshToken: Boolean(refreshToken),
+    expectedRole: null,
+  };
 
   if (!accessToken && !refreshToken) {
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId: null,
+      authEmail: null,
+      matchedPublicUsersRow: null,
+      publicUsersAuthUserId: null,
+      resolvedRole: "public",
+      failureReason: "missing_supabase_auth_cookies",
+    });
     return null;
   }
 
@@ -74,6 +133,15 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       console.warn("[server-auth] unable to verify Supabase session", {
         error: authErrorMessage ?? "missing_auth_user",
       });
+      logAuthRuntimeDiagnostic({
+        ...baseDiagnostic,
+        authUserId: null,
+        authEmail: null,
+        matchedPublicUsersRow: null,
+        publicUsersAuthUserId: null,
+        resolvedRole: "public",
+        failureReason: authErrorMessage ?? "missing_auth_user",
+      });
       return null;
     }
 
@@ -92,7 +160,7 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       const { data: emailMatchedProfile, error: emailMatchError } = email
         ? await profileClient
             .from("users")
-            .select("id,auth_user_id")
+            .select("id,email,role,auth_user_id")
             .eq("email", email)
             .maybeSingle()
         : { data: null, error: null };
@@ -109,6 +177,26 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
             : "public_users_auth_user_id_missing_for_email_match"
           : "no_public_users_row_for_auth_user_id",
       });
+      logAuthRuntimeDiagnostic({
+        ...baseDiagnostic,
+        authUserId,
+        authEmail: email,
+        matchedPublicUsersRow: emailMatchedProfile
+          ? {
+              id: emailMatchedProfile.id,
+              email: emailMatchedProfile.email,
+              role: emailMatchedProfile.role,
+              auth_user_id: emailMatchedProfile.auth_user_id,
+            }
+          : null,
+        publicUsersAuthUserId: emailMatchedProfile?.auth_user_id ?? null,
+        resolvedRole: "public",
+        failureReason: emailMatchedProfile
+          ? emailMatchedProfile.auth_user_id
+            ? "public_users_auth_user_id_mismatch_for_email_match"
+            : "public_users_auth_user_id_missing_for_email_match"
+          : "no_public_users_row_for_auth_user_id",
+      });
       return null;
     }
 
@@ -118,6 +206,20 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       matchedPublicUserId: profile.id,
       resolvedRole: resolvedRole ?? "public",
       missingLookupReason: resolvedRole ? null : "public_users_role_invalid_or_missing",
+    });
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId,
+      authEmail: email,
+      matchedPublicUsersRow: {
+        id: profile.id,
+        email: profile.email,
+        role: profile.role,
+        auth_user_id: profile.auth_user_id,
+      },
+      publicUsersAuthUserId: profile.auth_user_id,
+      resolvedRole: resolvedRole ?? "public",
+      failureReason: resolvedRole ? null : "public_users_role_invalid_or_missing",
     });
 
     return {
@@ -131,6 +233,15 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
     console.error("[server-auth] failed to resolve current user", {
       error: error instanceof Error ? error.message : String(error),
     });
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId: null,
+      authEmail: null,
+      matchedPublicUsersRow: null,
+      publicUsersAuthUserId: null,
+      resolvedRole: "public",
+      failureReason: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -142,6 +253,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 }
 
 export async function getCurrentUserContext(): Promise<UserContext> {
+  const requestMeta = await getAuthDiagnosticRequestMeta();
+  const cookieStore = await cookies();
   const currentUser = await getAuthenticatedUser();
   const role = currentUser?.role ?? "public";
   const email = currentUser?.email ?? null;
@@ -158,6 +271,28 @@ export async function getCurrentUserContext(): Promise<UserContext> {
     linkedProviderId: null,
     linkedAssociationId: null,
   };
+
+  logAuthRuntimeDiagnostic({
+    source: "getCurrentUserContext",
+    requestHost: requestMeta.host,
+    pathname: requestMeta.pathname,
+    hasAccessToken: Boolean(cookieStore.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value),
+    hasRefreshToken: Boolean(cookieStore.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value),
+    authUserId,
+    authEmail: email,
+    matchedPublicUsersRow: currentUser
+      ? {
+          id: currentUser.appUserId,
+          email: currentUser.email,
+          role: currentUser.role,
+          auth_user_id: currentUser.authUserId,
+        }
+      : null,
+    publicUsersAuthUserId: currentUser?.authUserId ?? null,
+    resolvedRole: role,
+    expectedRole: null,
+    failureReason: currentUser ? null : "get_authenticated_user_returned_null",
+  });
 
   const supabase = await createServerSupabaseClient();
   if (role === "public") return context;
