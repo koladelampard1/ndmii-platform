@@ -21,8 +21,20 @@ function monthLabel(key: string) {
 export default async function DashboardPage() {
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "admin") {
+    console.info("[admin-dashboard-role-guard]", {
+      resolvedRole: ctx.role,
+      expectedRole: "admin",
+      redirectReason: "admin_dashboard_role_mismatch",
+      currentPathname: "/dashboard/admin",
+    });
     redirect(getDefaultDashboardRoute(ctx.role));
   }
+  console.info("[admin-dashboard-role-guard]", {
+    resolvedRole: ctx.role,
+    expectedRole: "admin",
+    redirectReason: null,
+    currentPathname: "/dashboard/admin",
+  });
 
   const supabase = await createServerSupabaseClient();
   const [
