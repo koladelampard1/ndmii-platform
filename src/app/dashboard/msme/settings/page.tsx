@@ -640,7 +640,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             </div>
             <p className="mt-1 text-sm text-slate-600">Managed elsewhere: Bank account details are maintained in the payments workspace.</p>
             <div className="mt-3">
-              <Link href="/dashboard/payments" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
+              <Link href="/dashboard/msme/payments" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
                 Manage banking and VAT profile <ExternalLink className="h-4 w-4" />
               </Link>
             </div>
@@ -669,7 +669,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
               <label className="space-y-1">
                 <span className="text-xs font-medium text-slate-600">VAT & Tax Workspace (link-out)</span>
                 <Link
-                  href="/dashboard/payments"
+                  href="/dashboard/msme/payments"
                   className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-sm font-medium text-slate-700 hover:bg-slate-100"
                 >
                   Open Tax / VAT Settings

@@ -1,10 +1,5 @@
-import { AdminComingSoonPage } from "@/components/admin/admin-coming-soon-page";
+import { redirect } from "next/navigation";
 
 export default function MsmesPage() {
-  return (
-    <AdminComingSoonPage
-      title="MSME Registry"
-      description="Monitor registered MSMEs, onboarding status, sectors, states, and verification readiness."
-    />
-  );
+  redirect("/dashboard/admin/msmes");
 }

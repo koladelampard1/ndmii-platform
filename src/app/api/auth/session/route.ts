@@ -3,6 +3,13 @@ import { normalizeUserRole } from "@/lib/auth/authorization";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 
 const isProduction = process.env.NODE_ENV === "production";
+const authCookieNames = ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"] as const;
+const baseCookieOptions = {
+  httpOnly: false,
+  path: "/",
+  sameSite: "lax",
+  secure: isProduction,
+} as const;
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -10,11 +17,8 @@ export async function POST(request: Request) {
   const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
   const response = NextResponse.json({ ok: true, role }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
   const cookieOptions = {
-    httpOnly: false,
+    ...baseCookieOptions,
     maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-    sameSite: "lax",
-    secure: isProduction,
   } as const;
 
   response.cookies.set("ndmii_auth", "1", cookieOptions);
@@ -42,13 +46,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const response = NextResponse.json({ ok: true }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
-  ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"].forEach((name) => {
+  authCookieNames.forEach((name) => {
     response.cookies.set(name, "", {
+      ...baseCookieOptions,
       expires: new Date(0),
-      httpOnly: false,
-      path: "/",
-      sameSite: "lax",
-      secure: isProduction,
+      maxAge: 0,
     });
   });
   return response;

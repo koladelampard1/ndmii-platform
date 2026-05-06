@@ -6,32 +6,29 @@ import type { UserRole } from "@/types/roles";
 const ADMIN_NAV_GROUPS: NavigationGroup[] = [
   {
     label: "Overview",
-    items: [{ href: "/dashboard", label: "Admin Dashboard" }],
+    items: [{ href: "/dashboard/admin", label: "Admin Dashboard" }],
   },
   {
     label: "MSME Management",
     items: [
-      { href: "/dashboard/msmes", label: "MSME Registry" },
-      { href: "/dashboard/verifications", label: "Verifications" },
-      { href: "/dashboard/digital-ids", label: "Digital IDs" },
+      { href: "/dashboard/admin/msmes", label: "MSME Registry" },
+      { href: "/dashboard/admin/verifications", label: "Verifications" },
+      { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
     ],
   },
   {
     label: "Association Management",
     items: [
-      { href: "/dashboard/associations", label: "Associations" },
-      { href: "/dashboard/associations", label: "Association Members / Approvals" },
-      { href: "/dashboard/associations/bulk-upload", label: "Bulk Upload" },
+      { href: "/dashboard/admin/associations", label: "Associations" },
+      { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
+      { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
     ],
   },
   {
     label: "Operations",
     items: [
-      { href: "/dashboard/complaints", label: "Complaints" },
-      { href: "/dashboard/compliance", label: "Tax / VAT" },
-      { href: "/dashboard/digital-ids", label: "Public Verification" },
-      { href: "/dashboard/payments", label: "Invoice Monitor" },
-      { href: "/dashboard/reports", label: "Revenue Monitor" },
+      { href: "/dashboard/admin/verifications", label: "Complaints" },
+      { href: "/dashboard/admin/digital-ids", label: "Public Verification" },
     ],
   },
 ];

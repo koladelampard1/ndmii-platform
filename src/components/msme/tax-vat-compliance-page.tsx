@@ -198,7 +198,7 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
 
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/dashboard/compliance"
+              href="/dashboard/msme/compliance"
               className="inline-flex h-10 items-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <FileSearch className="mr-2 h-4 w-4" />
@@ -229,7 +229,7 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
             {complianceIsHealthy ? <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-700" /> : <ShieldX className="mt-0.5 h-5 w-5 text-amber-700" />}
             <div><h2 className="text-base font-semibold text-slate-900">{badge.title}</h2><p className="text-sm text-slate-700">{badge.body}</p></div>
           </div>
-          <Link href="/dashboard/compliance" className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Learn more about tax compliance</Link>
+          <Link href="/dashboard/msme/compliance" className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Learn more about tax compliance</Link>
         </div>
       </article>
 
@@ -272,7 +272,7 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
       <section className="grid gap-4 lg:grid-cols-3">
         <article className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Stay Compliant</h3><ul className="mt-2 space-y-1.5 text-sm text-slate-700"><li>• File your returns on time</li><li>• Keep accurate records</li><li>• Pay outstanding obligations</li><li>• Request reliefs where eligible</li><li>• Stay updated on tax regulations</li></ul></article>
         <article className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Need Help?</h3><p className="mt-2 text-sm text-slate-700">Our support team is here to help you understand your tax obligations and compliance requirements.</p><Button className="mt-4 border border-sky-200 bg-white text-sky-700 hover:bg-sky-100" type="button"><CircleHelp className="mr-1.5 h-4 w-4" />Contact Support</Button></article>
-        <article className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Tax Guides &amp; Resources</h3><p className="mt-2 text-sm text-slate-700">Access helpful guides, FAQs, and resources to manage your taxes with ease.</p><Link href="/dashboard/compliance" className="mt-4 inline-flex h-10 items-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-100">View Tax Guide</Link></article>
+        <article className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Tax Guides &amp; Resources</h3><p className="mt-2 text-sm text-slate-700">Access helpful guides, FAQs, and resources to manage your taxes with ease.</p><Link href="/dashboard/msme/compliance" className="mt-4 inline-flex h-10 items-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-100">View Tax Guide</Link></article>
       </section>
 
       <footer className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800"><p>Your tax information is secure and encrypted. We follow strict security measures to protect your data.</p></footer>

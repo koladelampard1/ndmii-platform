@@ -39,7 +39,7 @@ const ROLE_ALIASES: Record<string, UserRole> = {
 };
 
 const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
-  admin: "/dashboard",
+  admin: "/dashboard/admin",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
   nrs_officer: "/dashboard/nrs",
@@ -51,7 +51,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
 export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
   admin: ["/dashboard", "/admin"],
   nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
-  msme: ["/dashboard/msme", "/dashboard/compliance", "/dashboard/payments"],
+  msme: ["/dashboard/msme"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
   reviewer: ["/dashboard/reviews", "/dashboard/compliance"],
   fccpc_officer: ["/dashboard/fccpc"],
@@ -200,11 +200,11 @@ export type NavigationGroup = { label: string; items: NavigationItem[] };
 
 export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[]> = {
   admin: [
-    { href: "/dashboard", label: "Admin Dashboard" },
-    { href: "/dashboard/msmes", label: "MSME Registry" },
-    { href: "/dashboard/verifications", label: "Verifications" },
-    { href: "/dashboard/digital-ids", label: "Digital IDs" },
-    { href: "/dashboard/associations", label: "Associations" },
+    { href: "/dashboard/admin", label: "Admin Dashboard" },
+    { href: "/dashboard/admin/msmes", label: "MSME Registry" },
+    { href: "/dashboard/admin/verifications", label: "Verifications" },
+    { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
+    { href: "/dashboard/admin/associations", label: "Associations" },
   ],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
@@ -222,7 +222,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/msme/onboarding", label: "My Onboarding" },
     { href: "/dashboard/msme/id-card", label: "My Business Identity Credential" },
     { href: "/dashboard/msme/compliance", label: "My KYC Status" },
-    { href: "/dashboard/payments", label: "My Tax / VAT" },
+    { href: "/dashboard/msme/payments", label: "My Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],
   association_officer: [
@@ -263,20 +263,20 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
   admin: [
     {
       label: "Overview",
-      items: [{ href: "/dashboard", label: "Admin Dashboard" }],
+      items: [{ href: "/dashboard/admin", label: "Admin Dashboard" }],
     },
     {
       label: "MSME Management",
       items: [
-        { href: "/dashboard/msmes", label: "MSME Registry" },
-        { href: "/dashboard/verifications", label: "Verifications" },
-        { href: "/dashboard/digital-ids", label: "Digital IDs" },
+        { href: "/dashboard/admin/msmes", label: "MSME Registry" },
+        { href: "/dashboard/admin/verifications", label: "Verifications" },
+        { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
       ],
     },
     {
       label: "Association Management",
       items: [
-        { href: "/dashboard/associations", label: "Associations" },
+        { href: "/dashboard/admin/associations", label: "Associations" },
       ],
     },
   ],
