@@ -3,6 +3,51 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+function formValue(formData: FormData, key: string) {
+  return String(formData.get(key) ?? "").trim();
+}
+
+function normalizeSlug(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "association"
+  );
+}
+
+async function generateUniqueAssociationSlug(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  name: string,
+) {
+  const baseSlug = normalizeSlug(name);
+  const { data: existingRows, error } = await supabase
+    .from("associations")
+    .select("slug")
+    .ilike("slug", `${baseSlug}%`);
+
+  if (error) {
+    throw new Error(error.message || "Unable to check existing association slugs.");
+  }
+
+  const existingSlugs = new Set((existingRows ?? []).map((row) => row.slug).filter(Boolean));
+  if (!existingSlugs.has(baseSlug)) return baseSlug;
+
+  let suffix = 2;
+  let candidate = `${baseSlug}-${suffix}`;
+  while (existingSlugs.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseSlug}-${suffix}`;
+  }
+
+  return candidate;
+}
+
+function redirectWithAssociationError(message: string) {
+  redirect(`/dashboard/admin/associations?error=${encodeURIComponent(message)}`);
+}
+
 async function associationAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
@@ -13,32 +58,79 @@ async function associationAction(formData: FormData) {
   const associationId = String(formData.get("association_id") ?? "");
 
   if (kind === "create" && ctx.role === "admin") {
-    await supabase.from("associations").insert({
-      name: String(formData.get("name")),
-      sector: String(formData.get("sector_focus") ?? "General"),
-      state: String(formData.get("state")),
-      lga_coverage: String(formData.get("lga_coverage") ?? ""),
-      profile: String(formData.get("profile") ?? ""),
-      contact_email: String(formData.get("contact_email") ?? null) || null,
-      contact_phone: String(formData.get("contact_phone") ?? null) || null,
-      status: String(formData.get("status") ?? "active"),
-    });
+    const name = formValue(formData, "name");
+    const category = formValue(formData, "sector_focus") || "General";
+    const location = formValue(formData, "state");
+    const description = formValue(formData, "profile") || null;
+    let insertedAssociationId: string | null = null;
+
+    try {
+      const payload = {
+        name,
+        status: formValue(formData, "status") || "active",
+        contact_email: formValue(formData, "contact_email") || null,
+        contact_phone: formValue(formData, "contact_phone") || null,
+        description,
+        category,
+        location,
+        slug: await generateUniqueAssociationSlug(supabase, name),
+        created_by_admin_id: ctx.appUserId || null,
+        updated_at: new Date().toISOString(),
+        sector: category,
+        state: location,
+      };
+
+      const { data: insertedAssociation, error } = await supabase
+        .from("associations")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (error || !insertedAssociation?.id) {
+        console.error("[dashboard-admin-associations:create] insert failed", {
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          code: error?.code,
+        });
+        throw new Error(error?.message || "Association creation failed.");
+      }
+
+      insertedAssociationId = insertedAssociation.id;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Association creation failed.";
+      console.error("[dashboard-admin-associations:create] failed", { message });
+      redirectWithAssociationError(message);
+    }
+
+    redirect(`/dashboard/admin/associations?saved=1&id=${insertedAssociationId}`);
   }
 
   if (kind === "update") {
-    await supabase
+    const { error } = await supabase
       .from("associations")
       .update({
-        name: String(formData.get("name")),
-        sector: String(formData.get("sector_focus") ?? "General"),
-        state: String(formData.get("state")),
-        lga_coverage: String(formData.get("lga_coverage") ?? ""),
-        profile: String(formData.get("profile") ?? ""),
-        contact_email: String(formData.get("contact_email") ?? null) || null,
-        contact_phone: String(formData.get("contact_phone") ?? null) || null,
-        status: String(formData.get("status") ?? "active"),
+        name: formValue(formData, "name"),
+        sector: formValue(formData, "sector_focus") || "General",
+        state: formValue(formData, "state"),
+        lga_coverage: formValue(formData, "lga_coverage"),
+        profile: formValue(formData, "profile"),
+        contact_email: formValue(formData, "contact_email") || null,
+        contact_phone: formValue(formData, "contact_phone") || null,
+        status: formValue(formData, "status") || "active",
+        updated_at: new Date().toISOString(),
       })
       .eq("id", associationId);
+
+    if (error) {
+      console.error("[dashboard-admin-associations:update] update failed", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      redirectWithAssociationError(error.message || "Association update failed.");
+    }
   }
 
   redirect("/dashboard/admin/associations?saved=1");
@@ -47,7 +139,7 @@ async function associationAction(formData: FormData) {
 export default async function AssociationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; state?: string; sector?: string; sort?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; state?: string; sector?: string; sort?: string; saved?: string; id?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
@@ -56,7 +148,7 @@ export default async function AssociationsPage({
   const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("associations")
-    .select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone")
+    .select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone,description,category,location")
     .order(params.sort === "members" ? "name" : "created_at", { ascending: true });
 
   const { data: associations } = await query;
@@ -68,21 +160,22 @@ export default async function AssociationsPage({
   let rows = associations ?? [];
   if (params.q) {
     const q = params.q.toLowerCase();
-    rows = rows.filter((a) => a.name.toLowerCase().includes(q) || (a.profile ?? "").toLowerCase().includes(q));
+    rows = rows.filter((a) => a.name.toLowerCase().includes(q) || (a.description ?? a.profile ?? "").toLowerCase().includes(q));
   }
-  if (params.state) rows = rows.filter((a) => a.state === params.state);
-  if (params.sector) rows = rows.filter((a) => a.sector === params.sector);
+  if (params.state) rows = rows.filter((a) => (a.location ?? a.state) === params.state);
+  if (params.sector) rows = rows.filter((a) => (a.category ?? a.sector) === params.sector);
   if (params.sort === "members") rows = [...rows].sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
 
   return (
     <section className="space-y-5">
       <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-semibold">Admin Association Management</h1><Link href="/dashboard/admin/association-upload" className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Bulk upload members</Link></div>
       {params.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Association changes saved.</p>}
+      {params.error && <p className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">Association save failed: {params.error}</p>}
 
       <div className="grid gap-3 md:grid-cols-4">
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Associations</p><p className="text-2xl font-semibold">{rows.length}</p></article>
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total linked members</p><p className="text-2xl font-semibold">{rows.reduce((sum, r) => sum + (counts.get(r.id) ?? 0), 0)}</p></article>
-        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">States covered</p><p className="text-2xl font-semibold">{new Set(rows.map((r) => r.state)).size}</p></article>
+        <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">States covered</p><p className="text-2xl font-semibold">{new Set(rows.map((r) => r.location ?? r.state)).size}</p></article>
         <article className="rounded-lg border bg-white p-4"><p className="text-xs uppercase text-slate-500">Active associations</p><p className="text-2xl font-semibold">{rows.filter((r) => (r.status ?? "active") === "active").length}</p></article>
       </div>
 
@@ -115,7 +208,7 @@ export default async function AssociationsPage({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">{association.name}</h2>
-                <p className="text-sm text-slate-600">{association.sector} • {association.state} • {association.status ?? "active"}</p>
+                <p className="text-sm text-slate-600">{association.category ?? association.sector} • {association.location ?? association.state} • {association.status ?? "active"}</p>
                 <p className="text-xs text-slate-500">Members: {counts.get(association.id) ?? 0} • LGA: {association.lga_coverage || "n/a"}</p>
               </div>
               <Link href={`/dashboard/admin/association-members?association=${association.id}`} className="rounded border px-3 py-1 text-xs">Open members</Link>
