@@ -8,6 +8,8 @@ import { normalizeFccpcStatus } from "@/lib/data/fccpc-complaints";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_EVIDENCE_FILE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_EVIDENCE_BUCKET = "complaint-evidence";
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 8;
 const ALLOWED_EVIDENCE_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "doc", "docx"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -17,6 +19,58 @@ const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+
+type ComplaintFormValidationResult =
+  | {
+      ok: true;
+      fields: {
+        providerPathSegment: string;
+        complainant_name: string;
+        complainant_email: string;
+        complainant_phone: string;
+        preferred_contact_method: string;
+        complaint_type: string;
+        summary: string;
+        description: string;
+        related_reference: string;
+        consent_confirmation: string;
+        providerProfileId: string;
+        providerMsmePublicId: string;
+        formProviderSlug: string;
+        evidenceAttachment: FormDataEntryValue | null;
+        severity: string;
+      };
+    }
+  | {
+      ok: false;
+      response: NextResponse;
+    };
+
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function resolveClientRateLimitKey(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwardedFor || request.headers.get("x-real-ip") || "unknown";
+}
+
+function checkPublicComplaintRateLimit(request: Request) {
+  const key = resolveClientRateLimitKey(request);
+  const now = Date.now();
+  const existing = rateLimitStore.get(key);
+
+  if (!existing || existing.resetAt <= now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { limited: false, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  }
+
+  if (existing.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return { limited: true, remaining: 0, resetAt: existing.resetAt };
+  }
+
+  existing.count += 1;
+  rateLimitStore.set(key, existing);
+  return { limited: false, remaining: RATE_LIMIT_MAX_REQUESTS - existing.count, resetAt: existing.resetAt };
+}
 
 function extractFileExtension(filename: string) {
   const extension = filename.split(".").pop()?.toLowerCase();
@@ -107,15 +161,17 @@ function resolveSeverity(formData: FormData) {
   return "medium";
 }
 
-export async function POST(request: Request) {
-  const formData = await request.formData();
+function validateComplaintForm(formData: FormData): ComplaintFormValidationResult {
   const providerPathSegment = String(formData.get("provider_path_segment") ?? "").trim();
 
   if (!providerPathSegment) {
-    return NextResponse.json(
-      { ok: false, code: "missing_provider", message: "Provider route segment is required." },
-      { status: 400 }
-    );
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, code: "missing_provider", message: "Provider route segment is required." },
+        { status: 400 }
+      ),
+    };
   }
 
   const complainant_name = String(formData.get("full_name") ?? "").trim();
@@ -133,6 +189,108 @@ export async function POST(request: Request) {
   const evidenceAttachment = formData.get("evidence_attachment");
   const severity = resolveSeverity(formData);
 
+  if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, code: "missing_fields", message: "Please complete all required complaint fields." },
+        { status: 400 }
+      ),
+    };
+  }
+
+  if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
+    if (evidenceAttachment.size > MAX_EVIDENCE_FILE_BYTES) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { ok: false, code: "file_too_large", message: "Evidence file is too large. Maximum allowed size is 10 MB." },
+          { status: 400 }
+        ),
+      };
+    }
+    if (!isEvidenceFileAllowed(evidenceAttachment)) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            ok: false,
+            code: "unsupported_file_type",
+            message: "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX.",
+          },
+          { status: 400 }
+        ),
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    fields: {
+      providerPathSegment,
+      complainant_name,
+      complainant_email,
+      complainant_phone,
+      preferred_contact_method,
+      complaint_type,
+      summary,
+      description,
+      related_reference,
+      consent_confirmation,
+      providerProfileId,
+      providerMsmePublicId,
+      formProviderSlug,
+      evidenceAttachment,
+      severity,
+    },
+  };
+}
+
+export async function POST(request: Request) {
+  const rateLimit = checkPublicComplaintRateLimit(request);
+  if (rateLimit.limited) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "rate_limited",
+        message: "Too many complaint submissions. Please wait before retrying.",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
+          "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
+  const formData = await request.formData();
+  const validation = validateComplaintForm(formData);
+
+  if (!validation.ok) {
+    return validation.response;
+  }
+
+  const {
+    providerPathSegment,
+    complainant_name,
+    complainant_email,
+    complainant_phone,
+    preferred_contact_method,
+    complaint_type,
+    summary,
+    description,
+    related_reference,
+    consent_confirmation,
+    providerProfileId,
+    providerMsmePublicId,
+    formProviderSlug,
+    evidenceAttachment,
+    severity,
+  } = validation.fields;
+
   console.info("[complaint-submit][payload]", {
     providerPathSegment,
     complainant_name,
@@ -149,32 +307,6 @@ export async function POST(request: Request) {
     hidden_provider_slug: formProviderSlug,
     hasEvidenceAttachment: evidenceAttachment instanceof File && evidenceAttachment.size > 0,
   });
-
-  if (!complainant_name || !description || !summary || !consent_confirmation || !complaint_type) {
-    return NextResponse.json(
-      { ok: false, code: "missing_fields", message: "Please complete all required complaint fields." },
-      { status: 400 }
-    );
-  }
-
-  if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
-    if (evidenceAttachment.size > MAX_EVIDENCE_FILE_BYTES) {
-      return NextResponse.json(
-        { ok: false, code: "file_too_large", message: "Evidence file is too large. Maximum allowed size is 10 MB." },
-        { status: 400 }
-      );
-    }
-    if (!isEvidenceFileAllowed(evidenceAttachment)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "unsupported_file_type",
-          message: "Unsupported evidence file type. Allowed formats: PDF, PNG, JPG, JPEG, DOC, DOCX.",
-        },
-        { status: 400 }
-      );
-    }
-  }
 
   const supabase = await createServiceRoleSupabaseClient();
 
@@ -300,37 +432,20 @@ export async function POST(request: Request) {
       regulator_target: "fccpc",
       reporter_name: complainant_name,
       reporter_email: complainant_email,
+      related_reference: related_reference || null,
       created_at: new Date().toISOString(),
       status: normalizeFccpcStatus("submitted"),
     };
-
-    const complaintInsertPayloadWithOptional = {
-      ...complaintInsertPayload,
-      related_reference,
-    } as Record<string, unknown>;
 
     console.log("[complaint-submit][actual_insert_payload]", complaintInsertPayload);
     const postInsertSelectClause = "id,msme_id,association_id,status,complaint_type";
     console.log("[complaint-submit][post_insert_select_clause]", postInsertSelectClause);
 
-    let { data: complaintRow, error: complaintInsertError } = await supabase
+    const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
-      .insert(complaintInsertPayloadWithOptional)
+      .insert(complaintInsertPayload)
       .select(postInsertSelectClause)
       .single();
-
-    if (complaintInsertError?.message?.toLowerCase().includes("related_reference")) {
-      complaintInsertPayload.description = related_reference
-        ? `${description}\n\nRelated reference: ${related_reference}`
-        : description;
-      const retryInsert = await supabase
-        .from("complaints")
-        .insert(complaintInsertPayload)
-        .select(postInsertSelectClause)
-        .single();
-      complaintRow = retryInsert.data;
-      complaintInsertError = retryInsert.error;
-    }
 
     console.info("[complaint-submit][insert_result]", {
       ok: !complaintInsertError && Boolean(complaintRow),
