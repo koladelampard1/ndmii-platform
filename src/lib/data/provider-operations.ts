@@ -322,7 +322,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
 
   const providerLookupKey = msme.msme_id;
   const providerSelect =
-    "id,msme_id,public_slug,display_name,tagline,description,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
+    "id,msme_id,public_slug,display_name,tagline,description,logo_url,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
   let provider: {
     id: string;
     msme_id: string;
@@ -330,6 +330,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     display_name: string;
     tagline: string | null;
     description: string | null;
+    logo_url: string | null;
     contact_email: string | null;
     contact_phone: string | null;
     website: string | null;
@@ -708,7 +709,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       long_description: provider.description ?? null,
       slug: provider.public_slug ?? provider.id,
       trust_score: 0,
-      logo_url: msme.passport_photo_url ?? null,
+      logo_url: provider.logo_url ?? null,
     },
   };
 }

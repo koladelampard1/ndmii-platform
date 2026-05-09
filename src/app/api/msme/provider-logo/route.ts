@@ -135,23 +135,22 @@ export async function POST(request: Request) {
       logoUrl,
     });
 
-    const msmeRowId = msmeRow.id;
     const payload = {
-      passport_photo_url: logoUrl,
+      logo_url: logoUrl,
     };
 
-    console.log("[msme-settings][logo-upload][msmes-update-payload]", {
-      table: "msmes",
-      lookup: { id: msmeRowId },
+    console.log("[msme-settings][logo-upload][provider-profile-update-payload]", {
+      table: "provider_profiles",
+      lookup: { id: providerRow.id, msme_id: providerRow.msme_id },
       payload,
     });
 
     const { data: persistedRows, error: persistError } = await supabase
-      .from("msmes")
+      .from("provider_profiles")
       .update(payload)
-      .eq("id", msmeRowId)
       .eq("msme_id", providerRow.msme_id)
-      .select("id,msme_id,passport_photo_url");
+      .eq("id", providerRow.id)
+      .select("id,msme_id,logo_url");
 
     if (persistError || !persistedRows?.length) {
       console.error("[msme-settings][logo-upload][persist-failed]", {

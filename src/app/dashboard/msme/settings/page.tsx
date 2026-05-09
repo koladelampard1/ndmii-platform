@@ -114,7 +114,6 @@ function deriveProfileCompletenessSignals(params: {
     contact_email: string | null;
     contact_phone: string | null;
     address: string | null;
-    passport_photo_url: string | null;
   };
   provider: { id: string | null; description: string | null; logo_url: string | null };
 }): ProfileCompletenessSignals {
@@ -127,7 +126,7 @@ function deriveProfileCompletenessSignals(params: {
     contactInfoPresent: hasText(params.msme.contact_email) && hasText(params.msme.contact_phone),
     addressPresent: hasText(params.msme.address),
     descriptionPresent: hasText(params.provider.description),
-    logoUploaded: hasText(params.provider.logo_url) || hasText(params.msme.passport_photo_url),
+    logoUploaded: hasText(params.provider.logo_url),
     providerProfileExists: hasText(params.provider.id),
   } satisfies ProfileCompletenessSignals;
 
@@ -401,7 +400,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   const supabase = await createServiceRoleSupabaseClient();
 
   const settingsReadSelect =
-    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin,passport_photo_url";
+    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin";
   const { data: msmeSettings, error: msmeSettingsError } = await supabase
     .from("msmes")
     .select(settingsReadSelect)
@@ -504,7 +503,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
-              <LogoUploadCard initialLogoUrl={workspace.provider.logo_url ?? msmeSettings.passport_photo_url} />
+              <LogoUploadCard initialLogoUrl={workspace.provider.logo_url} />
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 sm:col-span-2">
