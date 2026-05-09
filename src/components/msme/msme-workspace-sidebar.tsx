@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardList,
+  BookOpenText,
   FileBadge2,
   FileText,
   ImageIcon,
@@ -44,6 +45,7 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/profile", label: "My Business Profile", icon: User },
       { href: "/dashboard/msme/services", label: "My Services", icon: Wrench },
       { href: "/dashboard/msme/portfolio", label: "Portfolio Gallery", icon: ImageIcon },
+      { href: "/dashboard/msme/business-plan", label: "Business Plan Builder", icon: BookOpenText },
       { href: "/dashboard/msme/reviews", label: "Customer Reviews", icon: Star },
       { href: "/dashboard/msme/complaints", label: "Complaints", icon: MessageSquare },
       { href: "/dashboard/msme/quotes", label: "Quote Requests", icon: ClipboardList },
