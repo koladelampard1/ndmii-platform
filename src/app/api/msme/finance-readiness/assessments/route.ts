@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (!ctx.appUserId || ctx.role === "public") {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  if (!["msme", "admin"].includes(ctx.role)) {
+  if (ctx.role !== "msme") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
