@@ -146,7 +146,7 @@ export default async function AssociationsPage({
   if (ctx.role !== "admin") redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
-  let query = supabase
+  const query = supabase
     .from("associations")
     .select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone,description,category,location")
     .order(params.sort === "members" ? "name" : "created_at", { ascending: true });

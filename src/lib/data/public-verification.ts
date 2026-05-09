@@ -27,11 +27,12 @@ type VerificationDetail = {
   resolvedId: string;
 };
 
-const normalizeLookup = (value: string) => value.trim().toLowerCase();
 const normalizeId = (value: string) => value.trim().toUpperCase();
 const isDev = process.env.NODE_ENV !== "production";
 const msmeSelectFields =
-  "id,msme_id,ndmii_id,business_name,owner_name,state,sector,verification_status,review_status,association_id,passport_photo_url,flagged,suspended";
+  "id,msme_id,business_name,owner_name,state,sector,verification_status,review_status,association_id,passport_photo_url,flagged,suspended,issued_at";
+const digitalIdSelectFields = "id,msme_id,ndmii_id,status,issued_at,qr_code_ref,validation_snapshot";
+const digitalIdWithMsmeSelectFields = `${digitalIdSelectFields},msmes(${msmeSelectFields})`;
 
 function logVerificationDebug(stage: string, payload: Record<string, unknown>) {
   if (!isDev) return;
@@ -41,93 +42,27 @@ function logVerificationDebug(stage: string, payload: Record<string, unknown>) {
   });
 }
 
-function toPublicRecordFromMsme(msme: any): PublicVerificationRecord {
+function toPublicRecord(msme: any, digitalId?: any | null): PublicVerificationRecord {
   const msmeId = normalizeId(msme.msme_id);
-  const ndmiiId = msme.ndmii_id ? normalizeId(msme.ndmii_id) : null;
+  const ndmiiId = digitalId?.ndmii_id ? normalizeId(digitalId.ndmii_id) : null;
 
   return {
     ...msme,
     msme_id: msmeId,
     ndmii_id: ndmiiId,
     route_id: ndmiiId ?? msmeId,
-    digital_status: null,
-    issued_at: msme.issued_at ?? null,
+    digital_id_id: digitalId?.id,
+    qr_code_ref: digitalId?.qr_code_ref ?? null,
+    digital_status: digitalId?.status ?? digitalId?.digital_status ?? null,
+    issued_at: digitalId?.issued_at ?? msme.issued_at ?? null,
   };
 }
 
-function toPublicRecordFromDigitalView(row: any): PublicVerificationRecord {
-  const msmeId = normalizeId(row.msme_id);
-  const ndmiiId = row.ndmii_id ? normalizeId(row.ndmii_id) : null;
+function toPublicRecordFromDigitalRow(row: any): PublicVerificationRecord | null {
+  const msme = Array.isArray(row.msmes) ? row.msmes[0] : row.msmes;
+  if (!msme) return null;
 
-  return {
-    id: row.msme_row_id ?? row.id,
-    msme_id: msmeId,
-    ndmii_id: ndmiiId,
-    route_id: ndmiiId ?? msmeId,
-    business_name: row.business_name,
-    owner_name: row.owner_name,
-    state: row.state,
-    sector: row.sector,
-    verification_status: row.verification_status,
-    review_status: row.review_status,
-    association_id: row.association_id,
-    passport_photo_url: row.passport_photo_url,
-    flagged: row.flagged,
-    suspended: row.suspended,
-    digital_id_id: row.digital_id_id ?? row.id,
-    qr_code_ref: row.qr_code_ref,
-    digital_status: row.digital_status ?? row.status ?? null,
-    issued_at: row.issued_at ?? null,
-  };
-}
-
-async function resolveDigitalFallbackById(lookup: string) {
-  const supabase = await createServiceRoleSupabaseClient();
-  const normalizedId = normalizeId(lookup);
-
-  const { data, error } = await supabase
-    .from("digital_ids")
-    .select(
-      "id,msme_id,ndmii_id,business_name,owner_name,state,sector,verification_status,review_status,association_id,passport_photo_url,flagged,suspended,status,digital_status,issued_at,qr_code_ref,validation_snapshot"
-    )
-    .or(`ndmii_id.eq.${normalizedId},msme_id.eq.${normalizedId}`)
-    .order("issued_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    logVerificationDebug("digital_fallback.error", {
-      source: "public.digital_ids",
-      lookup,
-      error: error.message,
-    });
-    return null;
-  }
-
-  if (!data) {
-    logVerificationDebug("digital_fallback.miss", {
-      source: "public.digital_ids",
-      lookup,
-      matchedIdentifier: normalizedId,
-      rowFound: false,
-    });
-    return null;
-  }
-
-  const msme = toPublicRecordFromDigitalView(data);
-
-  logVerificationDebug("digital_fallback.hit", {
-    source: "public.digital_ids",
-    lookup,
-    matchedIdentifier: data.ndmii_id ? "ndmii_id" : "msme_id",
-    rowFound: true,
-  });
-
-  return {
-    msme,
-    digitalId: data,
-    resolvedId: normalizeId(data.ndmii_id ?? data.msme_id),
-  };
+  return toPublicRecord(msme, row);
 }
 
 export async function searchPublicVerificationRecords(query: string): Promise<PublicVerificationRecord[]> {
@@ -146,7 +81,7 @@ export async function searchPublicVerificationRecords(query: string): Promise<Pu
   const { data: msmeRows, error: msmeError } = await supabase
     .from("msmes")
     .select(msmeSelectFields)
-    .or(`msme_id.ilike.%${trimmed}%,ndmii_id.ilike.%${trimmed}%,business_name.ilike.%${trimmed}%`)
+    .or(`msme_id.ilike.%${trimmed}%,business_name.ilike.%${trimmed}%`)
     .order("issued_at", { ascending: false })
     .limit(20);
 
@@ -158,39 +93,55 @@ export async function searchPublicVerificationRecords(query: string): Promise<Pu
     });
   }
 
-  const msmeMatches = ((msmeRows ?? []) as any[]).map((row) => toPublicRecordFromMsme(row));
+  const msmeRowIds = ((msmeRows ?? []) as any[]).map((row) => row.id).filter(Boolean);
+  const { data: msmeDigitalRows } = msmeRowIds.length > 0
+    ? await supabase
+        .from("digital_ids")
+        .select(digitalIdSelectFields)
+        .in("msme_id", msmeRowIds)
+        .order("issued_at", { ascending: false })
+    : { data: [] };
+  const digitalByMsmeId = new Map<string, any>();
+  for (const row of (msmeDigitalRows ?? []) as any[]) {
+    if (!digitalByMsmeId.has(row.msme_id)) {
+      digitalByMsmeId.set(row.msme_id, row);
+    }
+  }
+  const msmeMatches = ((msmeRows ?? []) as any[]).map((row) => toPublicRecord(row, digitalByMsmeId.get(row.id)));
 
   logVerificationDebug("search.msmes", {
     source: "public.msmes",
     lookup: trimmed,
     rowFound: msmeMatches.length > 0,
-    matchedIdentifier: msmeMatches.length > 0 ? ["ndmii_id", "msme_id", "business_name"] : null,
+    matchedIdentifier: msmeMatches.length > 0 ? ["msme_id", "business_name"] : null,
     results: msmeMatches.length,
   });
 
-  if (msmeMatches.length > 0) {
-    return msmeMatches;
-  }
-
-  const { data: digitalViewRows, error: digitalViewError } = await supabase
+  const { data: digitalRows, error: digitalError } = await supabase
     .from("digital_ids")
-    .select(
-      "id,msme_id,ndmii_id,business_name,owner_name,state,sector,verification_status,review_status,association_id,passport_photo_url,flagged,suspended,status,digital_status,issued_at,qr_code_ref"
-    )
-    .or(`msme_id.ilike.%${trimmed}%,ndmii_id.ilike.%${trimmed}%,business_name.ilike.%${trimmed}%`)
+    .select(digitalIdWithMsmeSelectFields)
+    .ilike("ndmii_id", `%${trimmed}%`)
     .order("issued_at", { ascending: false })
     .limit(20);
 
-  if (digitalViewError) {
+  if (digitalError) {
     logVerificationDebug("search.digital_ids_error", {
       source: "public.digital_ids",
       lookup: trimmed,
-      error: digitalViewError.message,
+      error: digitalError.message,
     });
-    return [];
+    return msmeMatches;
   }
 
-  const digitalMatches = ((digitalViewRows ?? []) as any[]).map((row) => toPublicRecordFromDigitalView(row));
+  const seenMsmeIds = new Set(msmeMatches.map((row) => row.id));
+  const digitalMatches = ((digitalRows ?? []) as any[])
+    .map((row) => toPublicRecordFromDigitalRow(row))
+    .filter((row): row is PublicVerificationRecord => Boolean(row))
+    .filter((row) => {
+      if (seenMsmeIds.has(row.id)) return false;
+      seenMsmeIds.add(row.id);
+      return true;
+    });
 
   logVerificationDebug("search.digital_ids_fallback", {
     source: "public.digital_ids",
@@ -200,7 +151,7 @@ export async function searchPublicVerificationRecords(query: string): Promise<Pu
     results: digitalMatches.length,
   });
 
-  return digitalMatches;
+  return [...msmeMatches, ...digitalMatches].slice(0, 20);
 }
 
 export async function getPublicVerificationDetail(msmeLookup: string): Promise<VerificationDetail | null> {
@@ -208,10 +159,45 @@ export async function getPublicVerificationDetail(msmeLookup: string): Promise<V
   const normalizedId = normalizeId(rawLookup);
   const supabase = await createServiceRoleSupabaseClient();
 
+  const { data: digitalRow, error: digitalError } = await supabase
+    .from("digital_ids")
+    .select(digitalIdWithMsmeSelectFields)
+    .eq("ndmii_id", normalizedId)
+    .order("issued_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (digitalError) {
+    logVerificationDebug("detail.digital_ids_error", {
+      source: "public.digital_ids",
+      lookup: rawLookup,
+      error: digitalError.message,
+    });
+  }
+
+  if (digitalRow) {
+    const msme = toPublicRecordFromDigitalRow(digitalRow);
+    if (msme) {
+      logVerificationDebug("detail.digital_ids_hit", {
+        source: "public.digital_ids",
+        lookup: rawLookup,
+        rowFound: true,
+        matchedIdentifier: "ndmii_id",
+        resolvedId: msme.route_id,
+      });
+
+      return {
+        msme,
+        digitalId: digitalRow,
+        resolvedId: msme.route_id,
+      };
+    }
+  }
+
   const { data: msmeRow, error: msmeError } = await supabase
     .from("msmes")
     .select(msmeSelectFields)
-    .or(`ndmii_id.eq.${normalizedId},msme_id.eq.${normalizedId}`)
+    .eq("msme_id", normalizedId)
     .maybeSingle();
 
   if (msmeError) {
@@ -223,21 +209,20 @@ export async function getPublicVerificationDetail(msmeLookup: string): Promise<V
   }
 
   if (msmeRow) {
-    const msme = toPublicRecordFromMsme(msmeRow);
-
     const { data: digitalRecord } = await supabase
       .from("digital_ids")
-      .select("id,msme_id,ndmii_id,status,issued_at,qr_code_ref,validation_snapshot")
-      .or(`ndmii_id.eq.${normalizedId},msme_id.eq.${normalizedId}`)
+      .select(digitalIdSelectFields)
+      .eq("msme_id", msmeRow.id)
       .order("issued_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    const msme = toPublicRecord(msmeRow, digitalRecord);
 
     logVerificationDebug("detail.msmes_hit", {
       source: "public.msmes",
       lookup: rawLookup,
       rowFound: true,
-      matchedIdentifier: normalizedId === (msme.ndmii_id ?? "") ? "ndmii_id" : "msme_id",
+      matchedIdentifier: "msme_id",
       resolvedId: msme.route_id,
     });
 
@@ -254,11 +239,6 @@ export async function getPublicVerificationDetail(msmeLookup: string): Promise<V
     rowFound: false,
     matchedIdentifier: normalizedId,
   });
-
-  const fallbackById = await resolveDigitalFallbackById(rawLookup);
-  if (fallbackById) {
-    return fallbackById;
-  }
 
   logVerificationDebug("detail.not_found", {
     source: "public.msmes -> public.digital_ids",

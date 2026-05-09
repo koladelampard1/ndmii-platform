@@ -25,7 +25,16 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
     return <p className="rounded border bg-white p-6 text-slate-500">No approved MSME found for {msmeId}.</p>;
   }
 
-  const verifyUrl = `https://bin.gov.ng/verify/${profile.msme_id}`;
+  const { data: digitalId } = await supabase
+    .from("digital_ids")
+    .select("ndmii_id")
+    .eq("msme_id", profile.id)
+    .order("issued_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const verificationId = digitalId?.ndmii_id || profile.msme_id;
+  const verifyUrl = `/verify/${encodeURIComponent(verificationId)}`;
   const qr = await QRCode.toDataURL(verifyUrl);
 
   return (

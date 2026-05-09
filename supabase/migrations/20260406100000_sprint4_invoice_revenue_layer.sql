@@ -132,7 +132,7 @@ where not exists (
 );
 
 with provider_seed as (
-  select p.id as provider_id, p.msme_id, p.display_name, m.owner_name, m.contact_email, m.phone_number,
+  select p.id as provider_id, p.msme_id, p.display_name, m.owner_name, m.contact_email, m.contact_phone as phone_number,
          row_number() over (order by p.created_at asc) as rn
   from provider_profiles p
   join msmes m on m.id = p.msme_id

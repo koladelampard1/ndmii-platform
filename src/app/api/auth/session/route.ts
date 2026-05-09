@@ -3,6 +3,8 @@ import { normalizeUserRole } from "@/lib/auth/authorization";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import {
   clearSupabaseAuthCookies,
+  createServerSupabaseClient,
+  createServiceRoleSupabaseClient,
   setSupabaseAuthCookies,
   supabaseAuthCookieNames,
 } from "@/lib/supabase/server";
@@ -18,12 +20,66 @@ const baseCookieOptions = {
   secure: isProduction,
 } as const;
 
+async function resolveSessionMetadata(accessToken: string) {
+  const authClient = await createServerSupabaseClient();
+  const { data: authData, error: authError } = await authClient.auth.getUser(accessToken);
+  const authUser = authData.user;
+
+  if (authError || !authUser?.id) {
+    return {
+      ok: false as const,
+      status: 401,
+      error: authError?.message || "Invalid Supabase access token.",
+    };
+  }
+
+  const email = authUser.email?.trim().toLowerCase() ?? "";
+  const service = await createServiceRoleSupabaseClient();
+  const { data: profileByAuthId, error: profileByAuthIdError } = await service
+    .from("users")
+    .select("id,email,role,full_name,auth_user_id")
+    .eq("auth_user_id", authUser.id)
+    .maybeSingle();
+
+  if (profileByAuthIdError) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: profileByAuthIdError.message,
+    };
+  }
+
+  const { data: profileByEmail, error: profileByEmailError } = !profileByAuthId && email
+    ? await service
+        .from("users")
+        .select("id,email,role,full_name,auth_user_id")
+        .eq("email", email)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  if (profileByEmailError) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: profileByEmailError.message,
+    };
+  }
+
+  const profile = profileByAuthId ?? (profileByEmail?.auth_user_id ? null : profileByEmail);
+  const role = normalizeUserRole(typeof profile?.role === "string" ? profile.role : undefined, "public");
+
+  return {
+    ok: true as const,
+    role,
+    email: profile?.email?.trim().toLowerCase() || email,
+    authUserId: authUser.id,
+    appUserId: profile?.id ?? "",
+    profileMatchedBy: profileByAuthId ? "auth_user_id" : profile ? "email" : "none",
+  };
+}
+
 export async function POST(request: Request) {
-  const body = await request.json();
-  const role = normalizeUserRole(typeof body.role === "string" ? body.role : undefined, "public");
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const authUserId = typeof body.userId === "string" ? body.userId : "";
-  const appUserId = typeof body.appUserId === "string" ? body.appUserId : "";
+  const body = await request.json().catch(() => ({}));
   const accessToken = typeof body.accessToken === "string" ? body.accessToken : "";
   const refreshToken = typeof body.refreshToken === "string" ? body.refreshToken : "";
   const expiresAt = typeof body.expiresAt === "number" ? body.expiresAt : null;
@@ -33,10 +89,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, ok: false, error: "Missing Supabase session tokens." }, { status: 400, headers });
   }
 
+  const metadata = await resolveSessionMetadata(accessToken);
+  if (!metadata.ok) {
+    return NextResponse.json({ success: false, ok: false, error: metadata.error }, { status: metadata.status, headers });
+  }
+
   const response = NextResponse.json({
     success: true,
     ok: true,
-    role,
+    role: metadata.role,
+    appUserId: metadata.appUserId || null,
+    authUserId: metadata.authUserId,
+    profileMatchedBy: metadata.profileMatchedBy,
     cookieNamesSet: [...authCookieNames, ...supabaseAuthCookieNames],
   }, { headers });
 
@@ -47,10 +111,10 @@ export async function POST(request: Request) {
   });
 
   response.cookies.set("ndmii_auth", "1", baseCookieOptions);
-  response.cookies.set("ndmii_role", role, baseCookieOptions);
-  response.cookies.set("ndmii_email", email, baseCookieOptions);
-  response.cookies.set("ndmii_auth_user_id", authUserId, baseCookieOptions);
-  response.cookies.set("ndmii_app_user_id", appUserId, baseCookieOptions);
+  response.cookies.set("ndmii_role", metadata.role, baseCookieOptions);
+  response.cookies.set("ndmii_email", metadata.email, baseCookieOptions);
+  response.cookies.set("ndmii_auth_user_id", metadata.authUserId, baseCookieOptions);
+  response.cookies.set("ndmii_app_user_id", metadata.appUserId, baseCookieOptions);
 
   const responseSetCookieHeaders = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie")].filter((value): value is string => Boolean(value));
 
@@ -67,8 +131,9 @@ export async function POST(request: Request) {
   if (process.env.NODE_ENV !== "production") {
     console.info("[auth-session-write]", {
       rawRole: body.role ?? null,
-      normalizedRole: role,
-      reason: "single_response_multi_cookie_storage",
+      normalizedRole: metadata.role,
+      profileMatchedBy: metadata.profileMatchedBy,
+      reason: "server_verified_token_and_public_users_role",
     });
   }
 

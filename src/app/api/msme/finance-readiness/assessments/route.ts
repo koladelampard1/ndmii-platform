@@ -3,8 +3,17 @@ import {
   createFinanceReadinessAssessment,
   type FinanceReadinessPathway,
 } from "@/lib/msme/finance-readiness-assessments";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 export async function POST(request: NextRequest) {
+  const ctx = await getCurrentUserContext();
+  if (!ctx.appUserId || ctx.role === "public") {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  if (!["msme", "admin"].includes(ctx.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await request.json().catch(() => null);
   const pathway = body?.pathway;
   const score = Number.parseInt(String(body?.score ?? "0"), 10);

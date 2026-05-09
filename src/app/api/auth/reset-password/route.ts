@@ -21,14 +21,36 @@ function isSupabaseConfigured() {
   return true;
 }
 
+function getApprovedRedirectOrigins(requestOrigin: string) {
+  const origins = new Set([requestOrigin]);
+  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+
+  for (const value of [configuredAppUrl, vercelUrl]) {
+    if (!value) continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      // Ignore malformed deployment origin configuration.
+    }
+  }
+
+  return origins;
+}
+
 function normalizeRedirectUrl(rawRedirectTo: string | undefined, origin: string) {
-  if (!rawRedirectTo) return `${origin}/update-password`;
+  const fallback = `${origin}/update-password`;
+  if (!rawRedirectTo) return fallback;
 
   try {
-    const parsed = new URL(rawRedirectTo);
+    const parsed = new URL(rawRedirectTo, origin);
+    if (!getApprovedRedirectOrigins(origin).has(parsed.origin)) {
+      return fallback;
+    }
+
     return parsed.toString();
   } catch {
-    return `${origin}/update-password`;
+    return fallback;
   }
 }
 

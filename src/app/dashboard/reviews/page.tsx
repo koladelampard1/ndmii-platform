@@ -69,15 +69,21 @@ async function reviewAction(formData: FormData) {
   }, { onConflict: "msme_id" });
 
   if (action === "approve") {
-    const existingId = msme?.msme_id ?? "";
-    const ndmiiId = existingId.startsWith("BIN-") || existingId.startsWith("NDMII-")
-      ? existingId.replace(/^NDMII-/, "BIN-")
-      : generateMsmeId(msme?.state ?? "LAG");
+    const existingMsmePublicId = (msme?.msme_id ?? "").trim();
+    const stableMsmePublicId = existingMsmePublicId || generateMsmeId(msme?.state ?? "LAG");
+    const { data: existingDigitalId } = await supabase
+      .from("digital_ids")
+      .select("ndmii_id")
+      .eq("msme_id", id)
+      .maybeSingle();
+    const ndmiiId = existingDigitalId?.ndmii_id ?? stableMsmePublicId.replace(/^NDMII-/, "BIN-");
     update.verification_status = "verified";
     update.review_status = "approved";
     update.compliance_tag = "fully compliant";
     update.issued_at = nowIso;
-    update.msme_id = ndmiiId;
+    if (!existingMsmePublicId) {
+      update.msme_id = stableMsmePublicId;
+    }
     await supabase.from("digital_ids").upsert({
       msme_id: id,
       ndmii_id: ndmiiId,
@@ -96,7 +102,7 @@ async function reviewAction(formData: FormData) {
     }, { onConflict: "msme_id" });
     await supabase.from("compliance_profiles").upsert({ msme_id: id, overall_status: "verified", admin_override_status: "verified", risk_level: "low", score: 92 }, { onConflict: "msme_id" });
     await supabase.from("tax_profiles").upsert({ msme_id: id, tax_category: "SME_STANDARD", vat_applicable: true, estimated_monthly_obligation: 125000, outstanding_amount: 0, compliance_status: "compliant", last_reviewed_at: nowIso }, { onConflict: "msme_id" });
-    await ensureProviderProfileForPublicMsme({ msmeRowId: id, msmePublicId: ndmiiId });
+    await ensureProviderProfileForPublicMsme({ msmeRowId: id, msmePublicId: stableMsmePublicId });
   }
   if (action === "reject") {
     update.verification_status = "rejected";

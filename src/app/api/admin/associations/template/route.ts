@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { BULK_UPLOAD_COLUMNS } from "@/lib/associations/bulk-upload";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 export async function GET() {
+  const ctx = await getCurrentUserContext();
+  if (!["admin", "association_officer"].includes(ctx.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: ctx.role === "public" ? 401 : 403 });
+  }
+
   const csvHeader = BULK_UPLOAD_COLUMNS.join(",");
   const sampleRow = [
     "Arewa Metal Works",

@@ -26,13 +26,23 @@ export default async function IdCardPage() {
     redirect("/access-denied");
   }
 
-  const { data: compliance } = await supabase
-    .from("compliance_profiles")
-    .select("overall_status")
-    .eq("msme_id", profile.id)
-    .maybeSingle();
+  const [{ data: compliance }, { data: digitalId }] = await Promise.all([
+    supabase
+      .from("compliance_profiles")
+      .select("overall_status")
+      .eq("msme_id", profile.id)
+      .maybeSingle(),
+    supabase
+      .from("digital_ids")
+      .select("ndmii_id")
+      .eq("msme_id", profile.id)
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  const verifyUrl = `https://bin.gov.ng/verify/${profile.msme_id}`;
+  const verificationId = digitalId?.ndmii_id || profile.msme_id;
+  const verifyUrl = `/verify/${encodeURIComponent(verificationId)}`;
   const qr = await QRCode.toDataURL(verifyUrl, {
     width: 512,
     margin: 1,
