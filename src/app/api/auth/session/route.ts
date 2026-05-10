@@ -65,7 +65,41 @@ async function resolveSessionMetadata(accessToken: string) {
     };
   }
 
-  const profile = profileByAuthId ?? (profileByEmail?.auth_user_id ? null : profileByEmail);
+  if (profileByEmail?.auth_user_id && profileByEmail.auth_user_id !== authUser.id) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "User profile email is already linked to a different authenticated account.",
+    };
+  }
+
+  const { data: linkedProfileByEmail, error: linkProfileError } = !profileByAuthId && profileByEmail && !profileByEmail.auth_user_id
+    ? await service
+        .from("users")
+        .update({ auth_user_id: authUser.id })
+        .eq("id", profileByEmail.id)
+        .is("auth_user_id", null)
+        .select("id,email,role,full_name,auth_user_id")
+        .maybeSingle()
+    : { data: null, error: null };
+
+  if (linkProfileError) {
+    return {
+      ok: false as const,
+      status: linkProfileError.code === "23505" ? 409 : 500,
+      error: linkProfileError.message,
+    };
+  }
+
+  if (!profileByAuthId && profileByEmail && !profileByEmail.auth_user_id && !linkedProfileByEmail) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "User profile auth linkage changed while creating the session.",
+    };
+  }
+
+  const profile = profileByAuthId ?? linkedProfileByEmail ?? null;
   const role = normalizeUserRole(typeof profile?.role === "string" ? profile.role : undefined, "public");
 
   return {
@@ -74,7 +108,7 @@ async function resolveSessionMetadata(accessToken: string) {
     email: profile?.email?.trim().toLowerCase() || email,
     authUserId: authUser.id,
     appUserId: profile?.id ?? "",
-    profileMatchedBy: profileByAuthId ? "auth_user_id" : profile ? "email" : "none",
+    profileMatchedBy: profileByAuthId ? "auth_user_id" : linkedProfileByEmail ? "email_backfilled_auth_user_id" : "none",
   };
 }
 
