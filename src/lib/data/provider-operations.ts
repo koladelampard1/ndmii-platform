@@ -101,6 +101,97 @@ function buildProviderSlug(businessName: string, msmePublicId: string): string {
   return [businessSlug || "provider", idSlug || "msme"].join("-");
 }
 
+type OwnedMsmeRow = {
+  id: string;
+  msme_id: string;
+  business_name: string;
+  owner_name: string;
+  state: string;
+  lga: string | null;
+  sector: string;
+  verification_status: string;
+  contact_email: string | null;
+  passport_photo_url: string | null;
+  created_by: string | null;
+};
+
+type ProviderProfileRow = {
+  id: string;
+  msme_id?: string | null;
+  slug?: string | null;
+  public_slug?: string | null;
+  display_name?: string | null;
+  short_description?: string | null;
+  long_description?: string | null;
+  tagline?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  website?: string | null;
+  is_verified?: boolean | null;
+  is_active?: boolean | null;
+  trust_score?: number | null;
+};
+
+function normalizeProviderProfile(row: ProviderProfileRow, msme: OwnedMsmeRow): ProviderWorkspaceContext["provider"] {
+  const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
+  const displayName = row.display_name || msme.business_name || msme.owner_name || "NDMII MSME Provider";
+  const publicSlug = row.public_slug ?? row.slug ?? generatedSlug;
+  const description =
+    row.description ??
+    row.long_description ??
+    `${displayName} is registered on the NDMII platform and is preparing marketplace information.`;
+  const tagline = row.tagline ?? row.short_description ?? `NDMII registered MSME in ${msme.state}.`;
+
+  return {
+    id: row.id,
+    msme_id: row.msme_id ?? msme.id,
+    display_name: displayName,
+    short_description: row.short_description ?? tagline ?? description,
+    long_description: row.long_description ?? description,
+    logo_url: row.logo_url ?? msme.passport_photo_url ?? null,
+    slug: publicSlug || row.id,
+    trust_score: Number(row.trust_score ?? 0),
+    public_slug: publicSlug,
+    tagline,
+    description,
+    contact_email: row.contact_email ?? msme.contact_email ?? null,
+    contact_phone: row.contact_phone ?? null,
+    website: row.website ?? null,
+    is_verified: row.is_verified ?? ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
+    is_active: row.is_active ?? true,
+  };
+}
+
+function buildMinimalProviderProfile(msme: OwnedMsmeRow): ProviderWorkspaceContext["provider"] {
+  const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
+  return normalizeProviderProfile(
+    {
+      id: msme.id,
+      msme_id: msme.id,
+      display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
+      public_slug: generatedSlug,
+      contact_email: msme.contact_email,
+      logo_url: msme.passport_photo_url,
+      is_active: true,
+      is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
+    },
+    msme,
+  );
+}
+
+function providerMatchesOwnedMsme(provider: ProviderProfileRow | null, msme: OwnedMsmeRow, email: string | null) {
+  if (!provider) return false;
+  const providerMsmeId = provider.msme_id?.trim();
+  const providerEmail = provider.contact_email?.trim().toLowerCase();
+  return (
+    providerMsmeId === msme.id ||
+    providerMsmeId === msme.msme_id ||
+    Boolean(email && providerEmail && providerEmail === email.trim().toLowerCase())
+  );
+}
+
 export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceContext> {
   const ctx = await getCurrentUserContext();
   const route = "/dashboard/msme/*";
@@ -149,22 +240,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     resolvedAppUserId = byEmailUser?.id ?? null;
   }
 
-  type OwnedMsmeRow = {
-    id: string;
-    msme_id: string;
-    business_name: string;
-    owner_name: string;
-    state: string;
-    lga: string | null;
-    sector: string;
-    verification_status: string;
-    contact_email: string | null;
-    passport_photo_url: string | null;
-    created_by: string | null;
-  };
-
   let msme: OwnedMsmeRow | null = null;
-  let msmeLookupSource: "created_by" | "contact_email" | "admin_linked_msme_id" | null = null;
   const msmeSelect = "id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,passport_photo_url,created_by";
 
   if (resolvedAppUserId) {
@@ -185,7 +261,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
     msme = byOwner ?? null;
-    msmeLookupSource = msme ? "created_by" : null;
   }
 
   if (!msme && ctx.email) {
@@ -206,7 +281,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
     msme = byEmail ?? null;
-    msmeLookupSource = msme ? "contact_email" : msmeLookupSource;
   }
 
   if (!msme && ctx.role === "admin" && ctx.linkedMsmeId) {
@@ -227,7 +301,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       });
     }
     msme = byLinkedMsme ?? null;
-    msmeLookupSource = msme ? "admin_linked_msme_id" : msmeLookupSource;
   }
 
   if (!msme) {
@@ -288,45 +361,135 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     });
   }
 
-  const providerLookupKey = msme.id;
-  const providerSelect =
-    "id,msme_id,slug,public_slug,display_name,tagline,description,logo_url,contact_email,contact_phone,website,is_verified,is_active,created_at,updated_at";
-  let provider: {
-    id: string;
-    msme_id: string;
-    slug: string;
-    public_slug: string | null;
-    display_name: string;
-    tagline: string | null;
-    description: string | null;
-    logo_url: string | null;
-    contact_email: string | null;
-    contact_phone: string | null;
-    website: string | null;
-    is_verified: boolean | null;
-    is_active: boolean | null;
-  } | null = null;
+  const ownedMsme: OwnedMsmeRow = msme;
+  const providerSelect = "*";
+  let provider: ProviderProfileRow | null = null;
+  let providerLookupKeyUsed: "msmes.id" | "msmes.msme_id" | "contact_email" | "linked_provider_id" | "auto_provisioned" | "minimal_msme_fallback" | null = null;
   let providerQueryResultLength = 0;
   let providerQueryError: string | null = null;
 
-  const { data: providerByMsmeIdRows, error: providerByMsmeIdError } = await supabase
-    .from("provider_profiles")
-    .select(providerSelect)
-    .eq("msme_id", providerLookupKey)
-    .order("updated_at", { ascending: false })
-    .limit(10);
+  async function fetchProviderBy(
+    lookupKey: typeof providerLookupKeyUsed,
+    query: { field: "msme_id" | "contact_email" | "id"; value: string },
+  ) {
+    const { data, error } = await supabase
+      .from("provider_profiles")
+      .select(providerSelect)
+      .eq(query.field, query.value)
+      .order("updated_at", { ascending: false })
+      .limit(10);
 
-  providerQueryResultLength = providerByMsmeIdRows?.length ?? 0;
-  providerQueryError = providerByMsmeIdError?.message ?? null;
-  provider = providerByMsmeIdRows?.[0] ?? null;
-  if (providerByMsmeIdError) {
-    logProviderWorkspaceFailure("provider_profile_owned_msme_lookup_failed", {
-      source,
-      route,
-      ownedMsmeId: providerLookupKey,
-      error: providerByMsmeIdError.message,
-    });
+    if (error) {
+      providerQueryError = error.message;
+      logProviderWorkspaceFailure("provider_profile_lookup_failed", {
+        source,
+        route,
+        lookupKey,
+        field: query.field,
+        code: error.code ?? null,
+        error: error.message,
+      });
+      return null;
+    }
+
+    providerQueryResultLength = data?.length ?? 0;
+    const rows = ((data ?? []) as ProviderProfileRow[]).filter((row) => providerMatchesOwnedMsme(row, ownedMsme, ctx.email));
+    const matched = rows[0] ?? null;
+    if (matched) {
+      providerLookupKeyUsed = lookupKey;
+      return matched;
+    }
+    return null;
   }
+
+  provider =
+    (await fetchProviderBy("msmes.id", { field: "msme_id", value: ownedMsme.id })) ??
+    (await fetchProviderBy("msmes.msme_id", { field: "msme_id", value: ownedMsme.msme_id })) ??
+    (ctx.email ? await fetchProviderBy("contact_email", { field: "contact_email", value: ctx.email.trim().toLowerCase() }) : null);
+
+  if (!provider && ctx.linkedProviderId) {
+    provider = await fetchProviderBy("linked_provider_id", { field: "id", value: ctx.linkedProviderId });
+  }
+
+  if (!provider) {
+    const generatedSlug = buildProviderSlug(ownedMsme.business_name || ownedMsme.owner_name || "provider", ownedMsme.msme_id);
+    const commonPayload = {
+      display_name: ownedMsme.business_name || ownedMsme.owner_name || "NDMII MSME Provider",
+      public_slug: generatedSlug,
+      tagline: `NDMII registered MSME in ${ownedMsme.state}.`,
+      description: `${ownedMsme.business_name || ownedMsme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
+      contact_email: ownedMsme.contact_email ?? null,
+      contact_phone: null,
+      website: null,
+      is_verified: ["approved", "verified"].includes((ownedMsme.verification_status ?? "").toLowerCase()),
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+    const modernPayload = {
+      ...commonPayload,
+      msme_id: ownedMsme.id,
+      slug: generatedSlug,
+      short_description: commonPayload.tagline,
+      long_description: commonPayload.description,
+      logo_url: ownedMsme.passport_photo_url,
+      trust_score: 80,
+      is_featured: false,
+    };
+    const livePayload = {
+      ...commonPayload,
+      msme_id: ownedMsme.msme_id,
+      logo_url: ownedMsme.passport_photo_url,
+    };
+    const liveUuidPayload = {
+      ...commonPayload,
+      msme_id: ownedMsme.id,
+      logo_url: ownedMsme.passport_photo_url,
+    };
+
+    const provisioningAttempts = [modernPayload, livePayload, liveUuidPayload];
+    let provisionErrorMessage: string | null = null;
+
+    for (const payload of provisioningAttempts) {
+      const { data: insertedRows, error } = await supabase
+        .from("provider_profiles")
+        .insert(payload)
+        .select(providerSelect)
+        .limit(1);
+      if (!error && insertedRows?.[0]) {
+        const inserted = insertedRows[0] as ProviderProfileRow;
+        if (providerMatchesOwnedMsme(inserted, ownedMsme, ctx.email)) {
+          provider = inserted;
+          providerLookupKeyUsed = "auto_provisioned";
+          providerQueryResultLength = 1;
+          providerQueryError = null;
+          break;
+        }
+      }
+      provisionErrorMessage = error?.message ?? provisionErrorMessage;
+    }
+
+    if (!provider) {
+      provider =
+        (await fetchProviderBy("msmes.id", { field: "msme_id", value: ownedMsme.id })) ??
+        (await fetchProviderBy("msmes.msme_id", { field: "msme_id", value: ownedMsme.msme_id })) ??
+        (ctx.email ? await fetchProviderBy("contact_email", { field: "contact_email", value: ctx.email.trim().toLowerCase() }) : null);
+    }
+
+    if (!provider) {
+      providerQueryError = provisionErrorMessage ?? providerQueryError;
+      providerLookupKeyUsed = "minimal_msme_fallback";
+      logProviderWorkspaceFailure("provider_profile_using_minimal_msme_fallback", {
+        source,
+        route,
+        email: ctx.email,
+        ownedMsmeId: ownedMsme.id,
+        msmePublicId: ownedMsme.msme_id,
+        provisionError: provisionErrorMessage,
+      });
+    }
+  }
+
+  const resolvedProvider = provider ? normalizeProviderProfile(provider, ownedMsme) : buildMinimalProviderProfile(ownedMsme);
 
   logProviderAccessAudit({
     route,
@@ -339,284 +502,28 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     resolvedMsmePublicId: msme.msme_id,
     linkedMsmeId: ctx.linkedMsmeId,
     linkedProviderId: ctx.linkedProviderId,
-    providerLookupKeyUsed: providerLookupKey,
-    providerRowFound: providerQueryResultLength > 0,
+    providerLookupKeyUsed,
+    providerRowFound: Boolean(provider),
     providerRow: provider
       ? {
           id: provider.id,
           msme_id: provider.msme_id ?? null,
-          display_name: provider.display_name,
+          display_name: provider.display_name ?? resolvedProvider.display_name,
         }
-      : null,
-    resolvedProviderMsmeId: provider?.msme_id ?? null,
-    decision: provider ? "allow" : "deny",
-    reason: provider
-      ? `provider_profile_found_via_owned_msme_id_${msmeLookupSource ?? "unknown"}`
-      : `provider_profile_lookup_by_owned_msme_id_returned_no_rows_${msmeLookupSource ?? "unknown"}`,
-    queryClientUsed,
-    providerQuery: {
-      table: "provider_profiles",
-      select: providerSelect,
-      filters: {
-        msme_id: providerLookupKey,
-      },
-    },
-    providerQueryResultLength,
-    providerQueryError,
-  });
-
-  if (!provider && ctx.linkedProviderId) {
-    const { data: providerByIdRows, error: providerByIdError } = await supabase
-      .from("provider_profiles")
-      .select(providerSelect)
-      .eq("id", ctx.linkedProviderId)
-      .limit(10);
-    const providerById = providerByIdRows?.[0] ?? null;
-    providerQueryResultLength = providerByIdRows?.length ?? 0;
-    providerQueryError = providerByIdError?.message ?? null;
-    if (providerByIdError || (providerById && providerById.msme_id !== msme.id)) {
-      logProviderWorkspaceFailure("linked_provider_id_ignored_for_owned_msme", {
-        source,
-        route,
-        linkedProviderId: ctx.linkedProviderId,
-        ownedMsmeId: msme.id,
-        linkedProviderMsmeId: providerById?.msme_id ?? null,
-        error: providerByIdError?.message ?? null,
-      });
-    }
-
-    const ownsProvider = Boolean(providerById?.msme_id && providerById.msme_id === msme.id);
-    if (providerById && ownsProvider) {
-      provider = providerById;
-    }
-
-    logProviderAccessAudit({
-      route,
-      source,
-      component,
-      email: ctx.email,
-      role: ctx.role,
-      resolvedUserId: resolvedAppUserId,
-      resolvedMsmeId: msme.id,
-      resolvedMsmePublicId: msme.msme_id,
-      linkedMsmeId: ctx.linkedMsmeId,
-      linkedProviderId: ctx.linkedProviderId,
-      providerLookupKeyUsed: providerLookupKey,
-      providerRowFound: providerQueryResultLength > 0,
-      providerRow: providerById
-        ? {
-            id: providerById.id,
-            msme_id: providerById.msme_id ?? null,
-            display_name: providerById.display_name,
-          }
-        : null,
-      resolvedProviderMsmeId: providerById?.msme_id ?? null,
-      decision: provider ? "allow" : "deny",
-      reason: provider
-        ? "provider_profile_found_via_linked_provider_id_fallback"
-        : "linked_provider_id_ignored_then_recovering_by_owned_msme_id",
-      queryClientUsed,
-      providerQuery: {
-        table: "provider_profiles",
-        select: providerSelect,
-        filters: {
-          id: ctx.linkedProviderId,
+      : {
+          id: resolvedProvider.id,
+          msme_id: resolvedProvider.msme_id,
+          display_name: resolvedProvider.display_name,
         },
-      },
-      providerQueryResultLength,
-      providerQueryError,
-    });
-  }
-
-  if (!provider) {
-    const generatedSlug = buildProviderSlug(msme.business_name || msme.owner_name || "provider", msme.msme_id);
-    const provisioningPayload = {
-      msme_id: msme.id,
-      slug: generatedSlug,
-      public_slug: generatedSlug,
-      display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
-      tagline: `NDMII registered MSME in ${msme.state}.`,
-      description: `${msme.business_name || msme.owner_name || "This MSME"} is registered on the NDMII platform and is preparing marketplace information.`,
-      contact_email: msme.contact_email ?? null,
-      contact_phone: null,
-      website: null,
-      is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error: provisionError } = await supabase
-      .from("provider_profiles")
-      .insert(provisioningPayload);
-
-    const { data: providerAfterProvisionRows, error: providerAfterProvisionError } = await supabase
-      .from("provider_profiles")
-      .select(providerSelect)
-      .eq("msme_id", msme.id)
-      .order("updated_at", { ascending: false })
-      .limit(10);
-
-    const providerAfterProvision = providerAfterProvisionRows?.[0] ?? null;
-
-    if (!provisionError && providerAfterProvision) {
-      provider = providerAfterProvision;
-      providerQueryResultLength = providerAfterProvisionRows?.length ?? 1;
-      providerQueryError = providerAfterProvisionError?.message ?? null;
-      if (providerAfterProvisionError) {
-        logProviderWorkspaceFailure("provider_profile_post_insert_requery_failed", {
-          source,
-          route,
-          ownedMsmeId: msme.id,
-          error: providerAfterProvisionError.message,
-        });
-      }
-      logProviderAccessAudit({
-        route,
-        source,
-        component,
-        email: ctx.email,
-        role: ctx.role,
-        resolvedUserId: resolvedAppUserId,
-        resolvedMsmeId: msme.id,
-        resolvedMsmePublicId: msme.msme_id,
-        linkedMsmeId: ctx.linkedMsmeId,
-        linkedProviderId: ctx.linkedProviderId,
-        providerLookupKeyUsed: providerLookupKey,
-        providerRowFound: true,
-        providerRow: {
-          id: provider.id,
-          msme_id: provider.msme_id ?? null,
-          display_name: provider.display_name,
-        },
-        resolvedProviderMsmeId: provider.msme_id ?? null,
-        decision: "allow",
-        reason: "provider_profile_auto_provisioned_for_authenticated_msme",
-        queryClientUsed,
-        providerQuery: {
-          table: "provider_profiles",
-          select: providerSelect,
-          filters: {
-            msme_id: providerLookupKey,
-          },
-        },
-        providerQueryResultLength,
-        providerQueryError,
-      });
-    } else {
-      logProviderWorkspaceFailure("provider_profile_provision_failed", {
-        source,
-        route,
-        email: ctx.email,
-        role: ctx.role,
-        ownedMsmeId: msme.id,
-        msmePublicId: msme.msme_id,
-        generatedSlug,
-        dbErrorMessage: provisionError?.message ?? null,
-        dbErrorCode: provisionError?.code ?? null,
-        dbErrorDetails: provisionError?.details ?? null,
-        dbErrorHint: provisionError?.hint ?? null,
-        postInsertRequeryError: providerAfterProvisionError?.message ?? null,
-        postInsertRequeryRows: providerAfterProvisionRows?.length ?? 0,
-      });
-      providerQueryResultLength = providerAfterProvisionRows?.length ?? 0;
-      providerQueryError = provisionError?.message ?? providerAfterProvisionError?.message ?? null;
-    }
-  }
-
-  if (!provider) {
-    denyProviderWorkspaceAccess({
-      route,
-      source,
-      component,
-      email: ctx.email,
-      role: ctx.role,
-      resolvedUserId: resolvedAppUserId,
-      resolvedMsmeId: msme.id,
-      resolvedMsmePublicId: msme.msme_id,
-      linkedMsmeId: ctx.linkedMsmeId,
-      linkedProviderId: ctx.linkedProviderId,
-      providerLookupKeyUsed: providerLookupKey,
-      providerRowFound: false,
-      providerRow: null,
-      resolvedProviderMsmeId: null,
-      decision: "deny",
-      reason: "provider_profile_not_found_for_owned_msme",
-      queryClientUsed,
-      providerQuery: {
-        table: "provider_profiles",
-        select: providerSelect,
-        filters: {
-          msme_id: providerLookupKey,
-        },
-      },
-      providerQueryResultLength,
-      providerQueryError,
-    });
-  }
-
-  const ownsProvider = provider.msme_id === msme.id;
-  if (!ownsProvider) {
-    denyProviderWorkspaceAccess({
-      route,
-      source,
-      component,
-      email: ctx.email,
-      role: ctx.role,
-      resolvedUserId: resolvedAppUserId,
-      resolvedMsmeId: msme.id,
-      resolvedMsmePublicId: msme.msme_id,
-      linkedMsmeId: ctx.linkedMsmeId,
-      linkedProviderId: ctx.linkedProviderId,
-      providerLookupKeyUsed: providerLookupKey,
-      providerRowFound: true,
-      providerRow: {
-        id: provider.id,
-        msme_id: provider.msme_id ?? null,
-        display_name: provider.display_name,
-      },
-      resolvedProviderMsmeId: provider.msme_id ?? null,
-      decision: "deny",
-      reason: "provider_profile_msme_id_does_not_match_owned_msme",
-      queryClientUsed,
-      providerQuery: {
-        table: "provider_profiles",
-        select: providerSelect,
-        filters: {
-          msme_id: providerLookupKey,
-        },
-      },
-      providerQueryResultLength,
-      providerQueryError,
-    });
-  }
-
-  logProviderAccessAudit({
-    route,
-    source,
-    component,
-    email: ctx.email,
-    role: ctx.role,
-    resolvedUserId: resolvedAppUserId,
-    resolvedMsmeId: msme.id,
-    resolvedMsmePublicId: msme.msme_id,
-    linkedMsmeId: ctx.linkedMsmeId,
-    linkedProviderId: ctx.linkedProviderId,
-    providerLookupKeyUsed: providerLookupKey,
-    providerRowFound: true,
-    providerRow: {
-      id: provider.id,
-      msme_id: provider.msme_id ?? null,
-      display_name: provider.display_name,
-    },
-    resolvedProviderMsmeId: provider.msme_id ?? null,
+    resolvedProviderMsmeId: provider?.msme_id ?? resolvedProvider.msme_id,
     decision: "allow",
-    reason: "msme_role_and_owned_provider_profile_resolved_via_msme_id_chain",
+    reason: provider ? "provider_profile_resolved_with_launch_compatibility_lookup" : "minimal_msme_provider_fallback_for_launch_access",
     queryClientUsed,
     providerQuery: {
       table: "provider_profiles",
       select: providerSelect,
       filters: {
-        msme_id: providerLookupKey,
+        msme_id: ownedMsme.id,
       },
     },
     providerQueryResultLength,
@@ -627,13 +534,6 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
     role: ctx.role,
     appUserId: resolvedAppUserId,
     msme,
-    provider: {
-      ...provider,
-      short_description: provider.tagline ?? provider.description ?? null,
-      long_description: provider.description ?? null,
-      slug: provider.public_slug ?? provider.slug ?? provider.id,
-      trust_score: 0,
-      logo_url: provider.logo_url ?? null,
-    },
+    provider: resolvedProvider,
   };
 }
