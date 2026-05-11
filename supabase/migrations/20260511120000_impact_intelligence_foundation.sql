@@ -4,6 +4,43 @@
 
 create extension if not exists "pgcrypto";
 
+do $$
+declare
+  constraint_record record;
+begin
+  for constraint_record in
+    select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'users'
+      and con.contype = 'c'
+      and pg_get_constraintdef(con.oid) ilike '%role%'
+  loop
+    execute format('alter table public.users drop constraint %I', constraint_record.conname);
+  end loop;
+
+  alter table public.users
+    add constraint users_role_check
+    check (
+      role in (
+        'public',
+        'msme',
+        'association_officer',
+        'reviewer',
+        'boi_executive',
+        'programme_officer',
+        'assessment_officer',
+        'auditor',
+        'fccpc_officer',
+        'firs_officer',
+        'nrs_officer',
+        'admin'
+      )
+    );
+end $$;
+
 create table if not exists public.impact_programmes (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -38,6 +75,40 @@ create table if not exists public.impact_interventions (
   updated_at timestamptz not null default now(),
   metadata jsonb not null default '{}'::jsonb,
   constraint impact_interventions_status_check check (status in ('planned', 'active', 'on_hold', 'completed', 'cancelled'))
+);
+
+create table if not exists public.impact_programme_msmes (
+  id uuid primary key default gen_random_uuid(),
+  programme_id uuid not null references public.impact_programmes(id) on delete cascade,
+  msme_id uuid not null references public.msmes(id) on delete cascade,
+  enrollment_status text not null default 'active',
+  enrolled_at timestamptz not null default now(),
+  exited_at timestamptz,
+  created_by_user_id uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  constraint impact_programme_msmes_unique unique (programme_id, msme_id),
+  constraint impact_programme_msmes_status_check check (enrollment_status in ('active', 'paused', 'completed', 'withdrawn'))
+);
+
+create table if not exists public.impact_intervention_events (
+  id uuid primary key default gen_random_uuid(),
+  intervention_id uuid not null references public.impact_interventions(id) on delete cascade,
+  programme_id uuid references public.impact_programmes(id) on delete set null,
+  msme_id uuid references public.msmes(id) on delete set null,
+  event_type text not null default 'note',
+  from_status text,
+  to_status text,
+  from_stage text,
+  to_stage text,
+  title text not null,
+  note text,
+  actor_user_id uuid references public.users(id) on delete set null,
+  actor_role text,
+  created_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  constraint impact_intervention_events_type_check check (event_type in ('created', 'status_changed', 'stage_changed', 'note', 'documented', 'reviewed'))
 );
 
 create table if not exists public.impact_assessments (
@@ -175,6 +246,13 @@ create index if not exists idx_impact_programmes_code on public.impact_programme
 create index if not exists idx_impact_interventions_programme_id on public.impact_interventions(programme_id);
 create index if not exists idx_impact_interventions_msme_id on public.impact_interventions(msme_id);
 create index if not exists idx_impact_interventions_status on public.impact_interventions(status);
+create index if not exists idx_impact_programme_msmes_programme_id on public.impact_programme_msmes(programme_id);
+create index if not exists idx_impact_programme_msmes_msme_id on public.impact_programme_msmes(msme_id);
+create index if not exists idx_impact_programme_msmes_status on public.impact_programme_msmes(enrollment_status);
+create index if not exists idx_impact_intervention_events_intervention_id on public.impact_intervention_events(intervention_id);
+create index if not exists idx_impact_intervention_events_programme_id on public.impact_intervention_events(programme_id);
+create index if not exists idx_impact_intervention_events_msme_id on public.impact_intervention_events(msme_id);
+create index if not exists idx_impact_intervention_events_created_at on public.impact_intervention_events(created_at);
 create index if not exists idx_impact_assessments_programme_id on public.impact_assessments(programme_id);
 create index if not exists idx_impact_assessments_intervention_id on public.impact_assessments(intervention_id);
 create index if not exists idx_impact_assessments_msme_id on public.impact_assessments(msme_id);
@@ -219,6 +297,11 @@ for each row execute function public.set_impact_intelligence_updated_at();
 drop trigger if exists set_impact_interventions_updated_at on public.impact_interventions;
 create trigger set_impact_interventions_updated_at
 before update on public.impact_interventions
+for each row execute function public.set_impact_intelligence_updated_at();
+
+drop trigger if exists set_impact_programme_msmes_updated_at on public.impact_programme_msmes;
+create trigger set_impact_programme_msmes_updated_at
+before update on public.impact_programme_msmes
 for each row execute function public.set_impact_intelligence_updated_at();
 
 drop trigger if exists set_impact_assessments_updated_at on public.impact_assessments;

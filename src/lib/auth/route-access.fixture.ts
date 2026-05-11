@@ -20,6 +20,22 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     allowed: ["/dashboard/reviews", "/dashboard/compliance"],
     denied: ["/dashboard/nrs", "/dashboard/associations"],
   },
+  boi_executive: {
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
+  programme_officer: {
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/interventions"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
+  assessment_officer: {
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
+  auditor: {
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/interventions"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
   msme: {
     allowed: ["/dashboard/msme", "/dashboard/msme/onboarding", "/dashboard/msme/id-card", "/dashboard/msme/payments"],
     denied: ["/dashboard/reviews", "/dashboard/nrs", "/dashboard"],

@@ -16,6 +16,10 @@ const KNOWN_ROLES: UserRole[] = [
   "msme",
   "association_officer",
   "reviewer",
+  "boi_executive",
+  "programme_officer",
+  "assessment_officer",
+  "auditor",
   "fccpc_officer",
   "nrs_officer",
   "firs_officer",
@@ -27,6 +31,14 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   associationofficer: "association_officer",
   association_officer: "association_officer",
   reviewer: "reviewer",
+  boi: "boi_executive",
+  boi_executive: "boi_executive",
+  programme: "programme_officer",
+  programme_officer: "programme_officer",
+  program_officer: "programme_officer",
+  assessment: "assessment_officer",
+  assessment_officer: "assessment_officer",
+  auditor: "auditor",
   fccpc: "fccpc_officer",
   fccpc_officer: "fccpc_officer",
   nrs: "nrs_officer",
@@ -40,6 +52,10 @@ const ROLE_ALIASES: Record<string, UserRole> = {
 
 const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   admin: "/dashboard/admin",
+  boi_executive: "/dashboard/impact-intelligence",
+  programme_officer: "/dashboard/impact-intelligence",
+  assessment_officer: "/dashboard/impact-intelligence",
+  auditor: "/dashboard/impact-intelligence",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
   nrs_officer: "/dashboard/nrs",
@@ -50,6 +66,10 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
 
 export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
   admin: ["/dashboard", "/admin"],
+  boi_executive: ["/dashboard/impact-intelligence"],
+  programme_officer: ["/dashboard/impact-intelligence"],
+  assessment_officer: ["/dashboard/impact-intelligence"],
+  auditor: ["/dashboard/impact-intelligence"],
   nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
   msme: ["/dashboard/msme"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
@@ -208,7 +228,28 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
     { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
     { href: "/dashboard/admin/complaints", label: "Complaints" },
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
+  ],
+  boi_executive: [
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
+  ],
+  programme_officer: [
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
+  ],
+  assessment_officer: [
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
+  ],
+  auditor: [
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
   ],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
@@ -264,6 +305,10 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
 };
 
 export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, NavigationGroup[]>> = {
+  boi_executive: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.boi_executive }],
+  programme_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.programme_officer }],
+  assessment_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.assessment_officer }],
+  auditor: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.auditor }],
   admin: [
     {
       label: "Overview",
@@ -289,6 +334,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       label: "Operations",
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
+        { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },

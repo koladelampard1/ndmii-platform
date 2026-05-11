@@ -6,6 +6,10 @@ import type { UserRole } from "@/types/roles";
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
   admin: "Administrator",
+  boi_executive: "BOI Executive",
+  programme_officer: "Programme Officer",
+  assessment_officer: "Assessment Officer",
+  auditor: "Auditor",
   reviewer: "Reviewer",
   fccpc_officer: "FCCPC Officer",
   nrs_officer: "NRS Officer",
