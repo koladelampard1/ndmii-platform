@@ -10,7 +10,8 @@ function statusClass(status: string) {
 }
 
 export default async function AssessmentTemplatesPage() {
-  const [ctx, templates] = await Promise.all([getCurrentUserContext(), listAssessmentTemplates({ limit: 100 })]);
+  const ctx = await getCurrentUserContext();
+  const templates = await listAssessmentTemplates(ctx, { limit: 100 });
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
 
   return (

@@ -37,7 +37,8 @@ function formatCurrency(value: number | null) {
 
 export default async function ImpactInterventionDetailPage({ params }: { params: Promise<{ interventionId: string }> }) {
   const { interventionId } = await params;
-  const [ctx, detail] = await Promise.all([getCurrentUserContext(), getImpactInterventionDetail(interventionId)]);
+  const ctx = await getCurrentUserContext();
+  const detail = await getImpactInterventionDetail(interventionId, ctx);
   const { intervention, events } = detail;
   if (!intervention) notFound();
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);

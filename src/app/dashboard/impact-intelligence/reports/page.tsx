@@ -42,9 +42,9 @@ export default async function ReportsPage() {
   const ctx = await getCurrentUserContext();
   assertReportingRole(ctx.role);
   const [reports, programmes, interventions, msmes] = await Promise.all([
-    listImpactReports({ limit: 100 }),
-    listImpactProgrammes({ limit: 100 }),
-    listImpactInterventions({ limit: 100 }),
+    listImpactReports(ctx, { limit: 100 }),
+    listImpactProgrammes(ctx, { limit: 100 }),
+    listImpactInterventions(ctx, { limit: 100 }),
     listMsmePickerOptions({ limit: 150 }),
   ]);
   const canWrite = REPORT_WRITE_ROLES.includes(ctx.role);

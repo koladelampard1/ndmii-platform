@@ -9,7 +9,8 @@ function formatDate(value: string | null) {
 }
 
 export default async function ImpactProgrammesPage() {
-  const [ctx, programmes] = await Promise.all([getCurrentUserContext(), listImpactProgrammes({ limit: 100 })]);
+  const ctx = await getCurrentUserContext();
+  const programmes = await listImpactProgrammes(ctx, { limit: 100 });
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
 
   return (

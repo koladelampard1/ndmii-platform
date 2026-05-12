@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { getAssessmentTemplate } from "@/lib/data/impact-intelligence";
 
 function optionsText(options: unknown) {
@@ -16,7 +17,8 @@ function optionsText(options: unknown) {
 
 export default async function AssessmentTemplateDetailPage({ params }: { params: Promise<{ templateId: string }> }) {
   const { templateId } = await params;
-  const { template, sections, questions } = await getAssessmentTemplate(templateId);
+  const ctx = await getCurrentUserContext();
+  const { template, sections, questions } = await getAssessmentTemplate(templateId, ctx);
   if (!template) notFound();
 
   return (

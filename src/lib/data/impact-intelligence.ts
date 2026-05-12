@@ -6,6 +6,11 @@ type ImpactQueryOptions = {
   limit?: number;
 };
 
+type ImpactReadArgs = {
+  ctx?: UserContext;
+  options: ImpactQueryOptions;
+};
+
 export const IMPACT_READ_ROLES: UserRole[] = ["admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"];
 export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "programme_officer"];
 export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "programme_officer", "assessment_officer"];
@@ -479,6 +484,31 @@ async function createPrivilegedImpactReadClient() {
   return createServiceRoleSupabaseClient();
 }
 
+function resolveImpactReadArgs(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): ImpactReadArgs {
+  if (ctxOrOptions && "role" in ctxOrOptions) {
+    return { ctx: ctxOrOptions, options: maybeOptions };
+  }
+
+  return { options: ctxOrOptions ?? {} };
+}
+
+async function createImpactReadClient(ctx?: UserContext) {
+  if (!ctx) return createServerSupabaseClient();
+  requireImpactRead(ctx);
+  return createPrivilegedImpactReadClient();
+}
+
+async function createReportingReadClient(ctx?: UserContext) {
+  if (!ctx) return createServerSupabaseClient();
+  requireReportingAccess(ctx);
+  return createPrivilegedImpactReadClient();
+}
+
+async function createIntelligenceReadClient(ctx: UserContext) {
+  requireIntelligenceAccess(ctx);
+  return createPrivilegedImpactReadClient();
+}
+
 function requireImpactRead(ctx: UserContext) {
   if (!IMPACT_READ_ROLES.includes(ctx.role)) {
     throw new Error("You do not have permission to read impact intelligence records.");
@@ -625,8 +655,9 @@ export function parseInterventionForm(formData: FormData) {
   };
 }
 
-export async function listImpactProgrammes(options: ImpactQueryOptions = {}): Promise<ImpactProgramme[]> {
-  const supabase = await createServerSupabaseClient();
+export async function listImpactProgrammes(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactProgramme[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  const supabase = await createImpactReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_programmes")
     .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
@@ -677,8 +708,9 @@ export async function createImpactProgramme(ctx: UserContext, formData: FormData
   return data.id as string;
 }
 
-export async function listImpactInterventions(options: ImpactQueryOptions = {}): Promise<ImpactIntervention[]> {
-  const supabase = await createServerSupabaseClient();
+export async function listImpactInterventions(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactIntervention[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  const supabase = await createImpactReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_interventions")
     .select("id,programme_id,msme_id,intervention_type,title,description,status,approved_amount,disbursed_amount,start_date,end_date,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code),msmes(id,business_name,msme_id,state,sector)")
@@ -689,8 +721,8 @@ export async function listImpactInterventions(options: ImpactQueryOptions = {}):
   return (data ?? []) as unknown as ImpactIntervention[];
 }
 
-export async function getImpactInterventionDetail(id: string) {
-  const supabase = await createServerSupabaseClient();
+export async function getImpactInterventionDetail(id: string, ctx?: UserContext) {
+  const supabase = await createImpactReadClient(ctx);
   const [{ data: intervention, error }, { data: events }] = await Promise.all([
     supabase
       .from("impact_interventions")
@@ -743,7 +775,7 @@ export async function createImpactIntervention(ctx: UserContext, formData: FormD
 export async function updateImpactInterventionStatus(ctx: UserContext, interventionId: string, formData: FormData) {
   requireImpactWrite(ctx);
   const supabase = await createPrivilegedImpactWriteClient();
-  const { intervention } = await getImpactInterventionDetail(interventionId);
+  const { intervention } = await getImpactInterventionDetail(interventionId, ctx);
   if (!intervention) throw new Error("Intervention not found.");
 
   const nextStatus = normaliseStatus(textValue(formData, "status"));
@@ -804,7 +836,7 @@ export async function appendImpactInterventionEvent(ctx: UserContext, interventi
 
 export async function appendImpactInterventionNote(ctx: UserContext, interventionId: string, formData: FormData) {
   requireImpactWrite(ctx);
-  const { intervention } = await getImpactInterventionDetail(interventionId);
+  const { intervention } = await getImpactInterventionDetail(interventionId, ctx);
   if (!intervention) throw new Error("Intervention not found.");
   const note = textValue(formData, "note");
   if (!note) throw new Error("Timeline note is required.");
@@ -954,8 +986,9 @@ export async function createAssessmentTemplate(ctx: UserContext, formData: FormD
   return template.id as string;
 }
 
-export async function listAssessmentTemplates(options: ImpactQueryOptions = {}): Promise<ImpactAssessmentTemplate[]> {
-  const supabase = await createServerSupabaseClient();
+export async function listAssessmentTemplates(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactAssessmentTemplate[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  const supabase = await createImpactReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_assessment_templates")
     .select("id,name,description,assessment_type,version,status,created_by_user_id,created_at,updated_at,metadata")
@@ -966,8 +999,8 @@ export async function listAssessmentTemplates(options: ImpactQueryOptions = {}):
   return (data ?? []) as ImpactAssessmentTemplate[];
 }
 
-export async function getAssessmentTemplate(templateId: string) {
-  const supabase = await createServerSupabaseClient();
+export async function getAssessmentTemplate(templateId: string, ctx?: UserContext) {
+  const supabase = await createImpactReadClient(ctx);
   const [{ data: template, error }, { data: sections }, { data: questions }] = await Promise.all([
     supabase
       .from("impact_assessment_templates")
@@ -1001,7 +1034,7 @@ export async function createAssessment(ctx: UserContext, formData: FormData) {
   if (!templateId) throw new Error("Select an assessment template.");
   if (!msmeId) throw new Error("Select an MSME for the assessment.");
 
-  const { template } = await getAssessmentTemplate(templateId);
+  const { template } = await getAssessmentTemplate(templateId, ctx);
   if (!template) throw new Error("Assessment template not found.");
 
   const supabase = await createPrivilegedImpactWriteClient();
@@ -1025,8 +1058,9 @@ export async function createAssessment(ctx: UserContext, formData: FormData) {
   return data.id as string;
 }
 
-export async function listImpactAssessments(options: ImpactQueryOptions = {}): Promise<ImpactAssessment[]> {
-  const supabase = await createServerSupabaseClient();
+export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactAssessment[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  const supabase = await createImpactReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_assessments")
     .select("id,template_id,template_version,programme_id,intervention_id,msme_id,assessment_type,title,status,score,risk_level,conducted_by_user_id,conducted_at,created_at,impact_assessment_templates(id,name,version,assessment_type),impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector)")
@@ -1037,8 +1071,8 @@ export async function listImpactAssessments(options: ImpactQueryOptions = {}): P
   return (data ?? []) as unknown as ImpactAssessment[];
 }
 
-export async function getImpactAssessmentDetail(assessmentId: string) {
-  const supabase = await createServerSupabaseClient();
+export async function getImpactAssessmentDetail(assessmentId: string, ctx?: UserContext) {
+  const supabase = await createImpactReadClient(ctx);
   const { data: assessment, error } = await supabase
     .from("impact_assessments")
     .select("id,template_id,template_version,programme_id,intervention_id,msme_id,assessment_type,title,status,score,risk_level,conducted_by_user_id,conducted_at,created_at,impact_assessment_templates(id,name,version,assessment_type),impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector)")
@@ -1050,7 +1084,7 @@ export async function getImpactAssessmentDetail(assessmentId: string) {
 
   const templateId = (assessment as unknown as ImpactAssessment).template_id;
   const [{ template, sections, questions }, { data: responses }, { data: scores }, { data: reviews }] = await Promise.all([
-    templateId ? getAssessmentTemplate(templateId) : Promise.resolve({ template: null, sections: [], questions: [] }),
+    templateId ? getAssessmentTemplate(templateId, ctx) : Promise.resolve({ template: null, sections: [], questions: [] }),
     supabase
       .from("impact_assessment_responses")
       .select("id,assessment_id,question_id,msme_id,response_text,response_number,response_boolean,response_json,score,max_score,responded_by_user_id,created_at,updated_at")
@@ -1117,7 +1151,7 @@ function responsePayload(question: ImpactAssessmentQuestion, rawValue: FormDataE
 
 export async function saveAssessmentResponse(ctx: UserContext, assessmentId: string, formData: FormData) {
   requireAssessmentManage(ctx);
-  const detail = await getImpactAssessmentDetail(assessmentId);
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
   if (detail.assessment.status === "reviewed" || detail.assessment.status === "approved") {
     throw new Error("Reviewed assessments cannot be edited.");
@@ -1142,12 +1176,12 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
   }
 
   await supabase.from("impact_assessments").update({ status: "in_progress" }).eq("id", assessmentId).eq("status", "draft");
-  await calculateAssessmentScore(assessmentId);
+  await calculateAssessmentScore(assessmentId, ctx);
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_assessment_responses_saved", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role } });
 }
 
-export async function calculateAssessmentScore(assessmentId: string) {
-  const detail = await getImpactAssessmentDetail(assessmentId);
+export async function calculateAssessmentScore(assessmentId: string, ctx?: UserContext) {
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
   const supabase = await createPrivilegedImpactWriteClient();
   const responseByQuestion = new Map(detail.responses.map((response) => [response.question_id, response]));
@@ -1192,13 +1226,13 @@ export async function calculateAssessmentScore(assessmentId: string) {
 
 export async function completeAssessment(ctx: UserContext, assessmentId: string) {
   requireAssessmentManage(ctx);
-  const detail = await getImpactAssessmentDetail(assessmentId);
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
   const answered = new Set(detail.responses.filter((response) => response.response_text || response.response_number !== null || response.response_boolean !== null).map((response) => response.question_id));
   const missing = detail.questions.find((question) => question.is_required && !answered.has(question.id));
   if (missing) throw new Error(`Required question missing: ${missing.question_text}`);
 
-  const total = await calculateAssessmentScore(assessmentId);
+  const total = await calculateAssessmentScore(assessmentId, ctx);
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase
     .from("impact_assessments")
@@ -1212,7 +1246,7 @@ export async function reviewAssessment(ctx: UserContext, assessmentId: string, f
   requireAssessmentReview(ctx);
   const status = textValue(formData, "review_status") ?? "reviewed";
   const reviewStatus = ["reviewed", "approved", "returned"].includes(status) ? status : "reviewed";
-  await calculateAssessmentScore(assessmentId);
+  await calculateAssessmentScore(assessmentId, ctx);
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_assessment_reviews").insert({
     assessment_id: assessmentId,
@@ -1332,7 +1366,7 @@ export async function assignFieldVisit(ctx: UserContext, visitId: string, assign
 }
 
 export async function listFieldVisits(ctx?: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactFieldVisit[]> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createImpactReadClient(ctx);
   let query = supabase
     .from("impact_field_visits")
     .select(fieldVisitSelect())
@@ -1349,12 +1383,13 @@ export async function listFieldVisits(ctx?: UserContext, options: ImpactQueryOpt
   return (data ?? []) as unknown as ImpactFieldVisit[];
 }
 
-export async function listImpactFieldVisits(options: ImpactQueryOptions = {}): Promise<ImpactFieldVisit[]> {
-  return listFieldVisits(undefined, options);
+export async function listImpactFieldVisits(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactFieldVisit[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  return listFieldVisits(ctx, options);
 }
 
 export async function getFieldVisit(ctx: UserContext, visitId: string) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createImpactReadClient(ctx);
   const [{ data: visit, error }, { data: assignments }, { data: checklist }, { data: notes }, { data: evidence }] = await Promise.all([
     supabase.from("impact_field_visits").select(fieldVisitSelect()).eq("id", visitId).maybeSingle(),
     supabase.from("impact_field_visit_assignments").select("id,field_visit_id,assigned_to_user_id,assigned_by_user_id,assignment_status,assigned_at,completed_at").eq("field_visit_id", visitId).order("assigned_at", { ascending: false }),
@@ -1506,7 +1541,7 @@ export async function linkEvidenceToEntity(ctx: UserContext, evidenceId: string,
 }
 
 export async function listEvidence(ctx?: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactEvidenceFile[]> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createImpactReadClient(ctx);
   let query = supabase
     .from("impact_evidence_files")
     .select(evidenceSelect())
@@ -1526,7 +1561,7 @@ export async function listEvidence(ctx?: UserContext, options: ImpactQueryOption
 }
 
 export async function getEvidence(ctx: UserContext, evidenceId: string) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createImpactReadClient(ctx);
   const [{ data: evidence, error }, { data: links }] = await Promise.all([
     supabase.from("impact_evidence_files").select(evidenceSelect()).eq("id", evidenceId).maybeSingle(),
     supabase.from("impact_evidence_links").select("id,evidence_id,programme_id,intervention_id,assessment_id,field_visit_id,msme_id,link_type,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),
@@ -1579,8 +1614,7 @@ function normaliseReportType(value: string | null): ImpactReportType {
 }
 
 export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<ExecutiveDashboardMetrics> {
-  if (ctx) requireReportingAccess(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createReportingReadClient(ctx);
   const [
     msmeCount,
     programmes,
@@ -1643,8 +1677,8 @@ export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<E
 export async function getProgrammeAnalytics(ctx?: UserContext) {
   if (ctx) requireReportingAccess(ctx);
   const [programmes, interventions] = await Promise.all([
-    listImpactProgrammes({ limit: 1000 }),
-    listImpactInterventions({ limit: 1000 }),
+    listImpactProgrammes(ctx, { limit: 1000 }),
+    listImpactInterventions(ctx, { limit: 1000 }),
   ]);
   return {
     programmes,
@@ -1658,7 +1692,7 @@ export async function getProgrammeAnalytics(ctx?: UserContext) {
 
 export async function getMonitoringAnalytics(ctx?: UserContext) {
   if (ctx) requireReportingAccess(ctx);
-  const visits = await listFieldVisits(undefined, { limit: 1000 });
+  const visits = await listFieldVisits(ctx, { limit: 1000 });
   const completed = visits.filter((visit) => ["completed", "reviewed"].includes(visit.status ?? "")).length;
   return {
     visits,
@@ -1669,7 +1703,7 @@ export async function getMonitoringAnalytics(ctx?: UserContext) {
 
 export async function getAssessmentAnalytics(ctx?: UserContext) {
   if (ctx) requireReportingAccess(ctx);
-  const [assessments, metrics] = await Promise.all([listImpactAssessments({ limit: 1000 }), getExecutiveDashboardMetrics(ctx)]);
+  const [assessments, metrics] = await Promise.all([listImpactAssessments(ctx, { limit: 1000 }), getExecutiveDashboardMetrics(ctx)]);
   return {
     assessments,
     completed: assessments.filter((assessment) => ["completed", "reviewed", "approved"].includes(assessment.status ?? "")).length,
@@ -1731,8 +1765,7 @@ export async function createReportVersion(ctx: UserContext, reportId: string, in
 }
 
 export async function getImpactReport(ctx: UserContext, reportId: string) {
-  requireReportingAccess(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createReportingReadClient(ctx);
   const [{ data: report, error }, { data: versions }, { data: exports }] = await Promise.all([
     supabase.from("impact_reports").select(reportSelect()).eq("id", reportId).maybeSingle(),
     supabase.from("impact_report_versions").select("id,report_id,version_number,title,summary,report_json,evidence_references,created_by_user_id,created_at").eq("report_id", reportId).order("version_number", { ascending: false }),
@@ -1853,7 +1886,7 @@ async function upsertAnomaly(row: {
 
 export async function generateMsmeInsights(ctx: UserContext) {
   requireIntelligenceManage(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactReadClient();
   const [{ data: assessments }, { data: scores }, { data: evidence }] = await Promise.all([
     supabase.from("impact_assessments").select("id,title,status,msme_id,programme_id,intervention_id").limit(1000),
     supabase.from("impact_assessment_scores").select("assessment_id,section_id,weighted_score,readiness_category").is("section_id", null).limit(1000),
@@ -1912,9 +1945,9 @@ export async function generateMsmeInsights(ctx: UserContext) {
 export async function generateProgrammeInsights(ctx: UserContext) {
   requireIntelligenceManage(ctx);
   const [programmes, interventions, visits] = await Promise.all([
-    listImpactProgrammes({ limit: 1000 }),
-    listImpactInterventions({ limit: 1000 }),
-    listFieldVisits(undefined, { limit: 1000 }),
+    listImpactProgrammes(ctx, { limit: 1000 }),
+    listImpactInterventions(ctx, { limit: 1000 }),
+    listFieldVisits(ctx, { limit: 1000 }),
   ]);
   let generated = 0;
   for (const programme of programmes) {
@@ -1959,7 +1992,7 @@ async function createIntelligenceSummary(programmeId: string, input: { source_ke
 
 export async function generateMonitoringInsights(ctx: UserContext) {
   requireIntelligenceManage(ctx);
-  const [visits, evidence] = await Promise.all([listFieldVisits(undefined, { limit: 1000 }), listEvidence(undefined, { limit: 1000 })]);
+  const [visits, evidence] = await Promise.all([listFieldVisits(ctx, { limit: 1000 }), listEvidence(ctx, { limit: 1000 })]);
   let generated = 0;
   const now = Date.now();
   for (const visit of visits) {
@@ -1984,9 +2017,9 @@ export async function generateMonitoringInsights(ctx: UserContext) {
 export async function generateRiskFlags(ctx: UserContext) {
   requireIntelligenceManage(ctx);
   const [interventions, evidence, assessments] = await Promise.all([
-    listImpactInterventions({ limit: 1000 }),
-    listEvidence(undefined, { limit: 1000 }),
-    listImpactAssessments({ limit: 1000 }),
+    listImpactInterventions(ctx, { limit: 1000 }),
+    listEvidence(ctx, { limit: 1000 }),
+    listImpactAssessments(ctx, { limit: 1000 }),
   ]);
   let generated = 0;
   for (const intervention of interventions) {
@@ -2010,8 +2043,7 @@ export async function generateRiskFlags(ctx: UserContext) {
 }
 
 export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQueryOptions = {}) {
-  requireIntelligenceAccess(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createIntelligenceReadClient(ctx);
   let query = supabase.from("impact_ai_insights").select(insightSelect()).order("generated_at", { ascending: false }).limit(options.limit ?? 100);
   let scopedMsmeIds: string[] | null = null;
   if (ctx.role === "field_officer") {
@@ -2046,8 +2078,7 @@ export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQuer
 }
 
 export async function getInsightDetail(ctx: UserContext, insightId: string) {
-  requireIntelligenceAccess(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createIntelligenceReadClient(ctx);
   const [{ data: insight, error }, { data: recommendations }, { data: riskFlags }, { data: anomalies }] = await Promise.all([
     supabase.from("impact_ai_insights").select(insightSelect()).eq("id", insightId).maybeSingle(),
     supabase.from("impact_ai_recommendations").select("id,insight_id,source_key,recommendation_type,priority,status,title,recommendation,programme_id,intervention_id,assessment_id,report_id,msme_id,created_at").eq("insight_id", insightId).order("created_at", { ascending: false }),
@@ -2093,8 +2124,9 @@ export async function dismissInsight(ctx: UserContext, insightId: string) {
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_ai_insight_dismissed", entityType: "impact_ai_insight", entityId: insightId, metadata: { role: ctx.role } });
 }
 
-export async function listImpactReports(options: ImpactQueryOptions = {}): Promise<ImpactReport[]> {
-  const supabase = await createServerSupabaseClient();
+export async function listImpactReports(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactReport[]> {
+  const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  const supabase = await createReportingReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_reports")
     .select(reportSelect())

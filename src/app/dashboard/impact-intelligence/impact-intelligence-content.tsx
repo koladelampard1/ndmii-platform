@@ -13,12 +13,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  IMPACT_READ_ROLES,
   listImpactAssessments,
   listImpactFieldVisits,
   listImpactInterventions,
   listImpactProgrammes,
   listImpactReports,
 } from "@/lib/data/impact-intelligence";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 type ImpactSection = {
   href: string;
@@ -110,12 +112,13 @@ function formatDate(value: string | null) {
 }
 
 export async function ImpactIntelligenceContent({ activeSection = "overview" }: ImpactIntelligencePageProps) {
+  const ctx = await getCurrentUserContext();
   const [programmes, interventions, assessments, fieldVisits, reports] = await Promise.all([
-    listImpactProgrammes({ limit: 5 }),
-    listImpactInterventions({ limit: 5 }),
-    listImpactAssessments({ limit: 5 }),
-    listImpactFieldVisits({ limit: 5 }),
-    listImpactReports({ limit: 5 }),
+    listImpactProgrammes(ctx, { limit: 5 }),
+    listImpactInterventions(ctx, { limit: 5 }),
+    listImpactAssessments(ctx, { limit: 5 }),
+    listImpactFieldVisits(ctx, { limit: 5 }),
+    IMPACT_READ_ROLES.includes(ctx.role) && ctx.role !== "field_officer" ? listImpactReports(ctx, { limit: 5 }) : listImpactReports({ limit: 5 }),
   ]);
 
   const normalizedSection = activeSection === "field-visits" ? "monitoring" : activeSection;

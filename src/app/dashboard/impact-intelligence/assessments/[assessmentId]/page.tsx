@@ -95,7 +95,8 @@ function statusClass(status: string | null) {
 
 export default async function AssessmentDetailPage({ params }: { params: Promise<{ assessmentId: string }> }) {
   const { assessmentId } = await params;
-  const [ctx, detail] = await Promise.all([getCurrentUserContext(), getImpactAssessmentDetail(assessmentId)]);
+  const ctx = await getCurrentUserContext();
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   const { assessment, template, sections, questions, responses, scores, reviews } = detail;
   if (!assessment) notFound();
 

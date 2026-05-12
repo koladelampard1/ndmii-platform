@@ -26,10 +26,10 @@ function formatCurrency(value: number | null) {
 }
 
 export default async function ImpactInterventionsPage() {
-  const [ctx, interventions, programmes, msmes] = await Promise.all([
-    getCurrentUserContext(),
-    listImpactInterventions({ limit: 100 }),
-    listImpactProgrammes({ limit: 100 }),
+  const ctx = await getCurrentUserContext();
+  const [interventions, programmes, msmes] = await Promise.all([
+    listImpactInterventions(ctx, { limit: 100 }),
+    listImpactProgrammes(ctx, { limit: 100 }),
     listMsmePickerOptions({ limit: 150 }),
   ]);
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);

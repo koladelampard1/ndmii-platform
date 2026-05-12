@@ -45,9 +45,9 @@ export default async function MonitoringPage() {
   const ctx = await getCurrentUserContext();
   const [visits, programmes, interventions, assessments, msmes, fieldOfficers] = await Promise.all([
     listFieldVisits(ctx, { limit: 100 }),
-    listImpactProgrammes({ limit: 100 }),
-    listImpactInterventions({ limit: 100 }),
-    listImpactAssessments({ limit: 100 }),
+    listImpactProgrammes(ctx, { limit: 100 }),
+    listImpactInterventions(ctx, { limit: 100 }),
+    listImpactAssessments(ctx, { limit: 100 }),
     listMsmePickerOptions({ limit: 150 }),
     listUserPickerOptions("field_officer"),
   ]);

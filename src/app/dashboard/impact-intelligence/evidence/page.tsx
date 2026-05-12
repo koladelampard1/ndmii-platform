@@ -37,9 +37,9 @@ export default async function EvidencePage() {
   const ctx = await getCurrentUserContext();
   const [evidence, programmes, interventions, assessments, visits, msmes] = await Promise.all([
     listEvidence(ctx, { limit: 100 }),
-    listImpactProgrammes({ limit: 100 }),
-    listImpactInterventions({ limit: 100 }),
-    listImpactAssessments({ limit: 100 }),
+    listImpactProgrammes(ctx, { limit: 100 }),
+    listImpactInterventions(ctx, { limit: 100 }),
+    listImpactAssessments(ctx, { limit: 100 }),
     listFieldVisits(ctx, { limit: 100 }),
     listMsmePickerOptions({ limit: 150 }),
   ]);

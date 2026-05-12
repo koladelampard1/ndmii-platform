@@ -28,12 +28,12 @@ function statusClass(status: string | null) {
 }
 
 export default async function ImpactAssessmentsPage() {
-  const [ctx, assessments, templates, programmes, interventions, msmes] = await Promise.all([
-    getCurrentUserContext(),
-    listImpactAssessments({ limit: 100 }),
-    listAssessmentTemplates({ limit: 100 }),
-    listImpactProgrammes({ limit: 100 }),
-    listImpactInterventions({ limit: 100 }),
+  const ctx = await getCurrentUserContext();
+  const [assessments, templates, programmes, interventions, msmes] = await Promise.all([
+    listImpactAssessments(ctx, { limit: 100 }),
+    listAssessmentTemplates(ctx, { limit: 100 }),
+    listImpactProgrammes(ctx, { limit: 100 }),
+    listImpactInterventions(ctx, { limit: 100 }),
     listMsmePickerOptions({ limit: 150 }),
   ]);
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
