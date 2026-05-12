@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { getImpactProgrammeDetail } from "@/lib/data/impact-intelligence";
 
 function formatDate(value: string | null) {
@@ -9,8 +9,25 @@ function formatDate(value: string | null) {
 
 export default async function ImpactProgrammeDetailPage({ params }: { params: Promise<{ programmeId: string }> }) {
   const { programmeId } = await params;
-  const { programme, interventions, enrolments } = await getImpactProgrammeDetail(programmeId);
-  if (!programme) notFound();
+  const ctx = await getCurrentUserContext();
+  const { programme, interventions, enrolments } = await getImpactProgrammeDetail(ctx, programmeId);
+
+  if (!programme) {
+    return (
+      <section className="space-y-6">
+        <header className="rounded-xl border bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Programme lookup</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Programme unavailable</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            The programme record could not be found or is temporarily unavailable. Reference: {programmeId}
+          </p>
+          <Link href="/dashboard/impact-intelligence/programmes" className="mt-4 inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+            Back to programmes
+          </Link>
+        </header>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-6">

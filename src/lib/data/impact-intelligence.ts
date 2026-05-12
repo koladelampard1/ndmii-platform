@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { UserContext } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
@@ -467,6 +467,24 @@ function logImpactDataError(source: string, error: { message?: string } | null) 
   console.info(`[impact-intelligence] ${source}`, { error: error.message });
 }
 
+async function createPrivilegedImpactWriteClient() {
+  // Impact Intelligence server actions enforce app-level RBAC before calling this helper.
+  // The service-role client is server-only and is used here so approved writes can pass Supabase RLS.
+  return createServiceRoleSupabaseClient();
+}
+
+async function createPrivilegedImpactReadClient() {
+  // BOI internal pages enforce app-level RBAC before calling this helper.
+  // Keep the service-role client server-only so RLS bypass never reaches the browser.
+  return createServiceRoleSupabaseClient();
+}
+
+function requireImpactRead(ctx: UserContext) {
+  if (!IMPACT_READ_ROLES.includes(ctx.role)) {
+    throw new Error("You do not have permission to read impact intelligence records.");
+  }
+}
+
 function requireImpactWrite(ctx: UserContext) {
   if (!IMPACT_WRITE_ROLES.includes(ctx.role)) {
     throw new Error("You do not have permission to manage impact intelligence records.");
@@ -554,7 +572,7 @@ async function logActivity(params: {
   entityId: string;
   metadata?: Record<string, unknown>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("activity_logs").insert({
     actor_user_id: params.actorUserId,
     action: params.action,
@@ -619,8 +637,9 @@ export async function listImpactProgrammes(options: ImpactQueryOptions = {}): Pr
   return (data ?? []) as ImpactProgramme[];
 }
 
-export async function getImpactProgrammeDetail(id: string) {
-  const supabase = await createServerSupabaseClient();
+export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
+  requireImpactRead(ctx);
+  const supabase = await createPrivilegedImpactReadClient();
   const [{ data: programme, error }, { data: interventions }, { data: enrolments }] = await Promise.all([
     supabase
       .from("impact_programmes")
@@ -649,10 +668,11 @@ export async function getImpactProgrammeDetail(id: string) {
 
 export async function createImpactProgramme(ctx: UserContext, formData: FormData) {
   requireImpactWrite(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const payload = { ...parseProgrammeForm(formData), created_by_user_id: ctx.appUserId };
   const { data, error } = await supabase.from("impact_programmes").insert(payload).select("id").single();
   if (error) throw new Error(error.message);
+  if (!data?.id) throw new Error("Programme was created but no programme ID was returned.");
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_programme_created", entityType: "impact_programme", entityId: data.id, metadata: { role: ctx.role } });
   return data.id as string;
 }
@@ -693,7 +713,7 @@ export async function getImpactInterventionDetail(id: string) {
 
 export async function createImpactIntervention(ctx: UserContext, formData: FormData) {
   requireImpactWrite(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const payload = { ...parseInterventionForm(formData), created_by_user_id: ctx.appUserId };
   const { data, error } = await supabase.from("impact_interventions").insert(payload).select("id,programme_id,msme_id,status,metadata").single();
   if (error) throw new Error(error.message);
@@ -722,7 +742,7 @@ export async function createImpactIntervention(ctx: UserContext, formData: FormD
 
 export async function updateImpactInterventionStatus(ctx: UserContext, interventionId: string, formData: FormData) {
   requireImpactWrite(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { intervention } = await getImpactInterventionDetail(interventionId);
   if (!intervention) throw new Error("Intervention not found.");
 
@@ -764,7 +784,7 @@ export async function appendImpactInterventionEvent(ctx: UserContext, interventi
   toStage?: string | null;
 }) {
   requireImpactWrite(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_intervention_events").insert({
     intervention_id: interventionId,
     programme_id: params.programmeId ?? null,
@@ -883,7 +903,7 @@ export async function createAssessmentTemplate(ctx: UserContext, formData: FormD
   if (!name) throw new Error("Template name is required.");
 
   const rows = parseTemplateQuestionRows(textValue(formData, "question_blueprint"));
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const versionValue = numericValue(formData, "version");
   const payload = {
     name,
@@ -984,7 +1004,7 @@ export async function createAssessment(ctx: UserContext, formData: FormData) {
   const { template } = await getAssessmentTemplate(templateId);
   if (!template) throw new Error("Assessment template not found.");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const payload = {
     template_id: template.id,
     template_version: template.version,
@@ -1103,7 +1123,7 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
     throw new Error("Reviewed assessments cannot be edited.");
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   for (const question of detail.questions) {
     const rawValue = formData.get(`response_${question.id}`);
     if (question.is_required && (!rawValue || String(rawValue).trim().length === 0)) {
@@ -1129,7 +1149,7 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
 export async function calculateAssessmentScore(assessmentId: string) {
   const detail = await getImpactAssessmentDetail(assessmentId);
   if (!detail.assessment) throw new Error("Assessment not found.");
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const responseByQuestion = new Map(detail.responses.map((response) => [response.question_id, response]));
   const sectionScores = detail.sections.map((section) => {
     const questions = detail.questions.filter((question) => question.section_id === section.id);
@@ -1179,7 +1199,7 @@ export async function completeAssessment(ctx: UserContext, assessmentId: string)
   if (missing) throw new Error(`Required question missing: ${missing.question_text}`);
 
   const total = await calculateAssessmentScore(assessmentId);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase
     .from("impact_assessments")
     .update({ status: "completed", completed_at: new Date().toISOString(), conducted_by_user_id: ctx.appUserId, conducted_at: new Date().toISOString(), score: total.weighted_score, risk_level: total.readiness_category })
@@ -1193,7 +1213,7 @@ export async function reviewAssessment(ctx: UserContext, assessmentId: string, f
   const status = textValue(formData, "review_status") ?? "reviewed";
   const reviewStatus = ["reviewed", "approved", "returned"].includes(status) ? status : "reviewed";
   await calculateAssessmentScore(assessmentId);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_assessment_reviews").insert({
     assessment_id: assessmentId,
     reviewer_user_id: ctx.appUserId,
@@ -1256,7 +1276,7 @@ export async function createFieldVisit(ctx: UserContext, formData: FormData) {
   const title = textValue(formData, "title");
   if (!title) throw new Error("Field visit title is required.");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const scheduledAt = textValue(formData, "scheduled_at");
   const payload = {
     title,
@@ -1294,7 +1314,7 @@ export async function createFieldVisit(ctx: UserContext, formData: FormData) {
 
 export async function assignFieldVisit(ctx: UserContext, visitId: string, assignedToUserId: string) {
   requireMonitoringManage(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase
     .from("impact_field_visits")
     .update({ assigned_to_user_id: assignedToUserId, assigned_at: new Date().toISOString(), status: "assigned" })
@@ -1361,7 +1381,7 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
 export async function completeFieldVisit(ctx: UserContext, visitId: string, formData: FormData) {
   const detail = await getFieldVisit(ctx, visitId);
   if (!detail.visit) throw new Error("Field visit not found.");
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const now = new Date().toISOString();
 
   if (MONITORING_REVIEW_ROLES.includes(ctx.role) && textValue(formData, "review_action")) {
@@ -1439,7 +1459,7 @@ export async function createEvidenceRecord(ctx: UserContext, formData: FormData)
 
   const category = normaliseEvidenceCategory(textValue(formData, "evidence_category"));
   const evidenceType = category.includes("photo") ? "photo" : "document";
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const payload = {
     programme_id: textValue(formData, "programme_id"),
     intervention_id: textValue(formData, "intervention_id"),
@@ -1469,7 +1489,7 @@ export async function createEvidenceRecord(ctx: UserContext, formData: FormData)
 
 export async function linkEvidenceToEntity(ctx: UserContext, evidenceId: string, formData: FormData) {
   requireEvidenceCreate(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const payload = {
     evidence_id: evidenceId,
     programme_id: textValue(formData, "programme_id"),
@@ -1525,7 +1545,7 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
 export async function verifyEvidence(ctx: UserContext, evidenceId: string, formData: FormData) {
   requireMonitoringReview(ctx);
   const verificationStatus = normaliseEvidenceStatus(textValue(formData, "verification_status"));
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase
     .from("impact_evidence_files")
     .update({
@@ -1662,7 +1682,7 @@ export async function createImpactReport(ctx: UserContext, formData: FormData) {
   requireReportWrite(ctx);
   const title = textValue(formData, "title");
   if (!title) throw new Error("Report title is required.");
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const metrics = await getExecutiveDashboardMetrics(ctx);
   const reportType = normaliseReportType(textValue(formData, "report_type"));
   const payload = {
@@ -1690,7 +1710,7 @@ export async function createImpactReport(ctx: UserContext, formData: FormData) {
 
 export async function createReportVersion(ctx: UserContext, reportId: string, input?: { title?: string; summary?: string | null; reportJson?: Record<string, unknown>; evidenceReferences?: unknown[] }) {
   requireReportWrite(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const [{ data: report }, { data: versions }] = await Promise.all([
     supabase.from("impact_reports").select("id,title,summary,report_json,evidence_references").eq("id", reportId).maybeSingle(),
     supabase.from("impact_report_versions").select("version_number").eq("report_id", reportId).order("version_number", { ascending: false }).limit(1),
@@ -1730,7 +1750,7 @@ export async function exportReportRecord(ctx: UserContext, reportId: string, for
   requireReportingAccess(ctx);
   const exportFormat = textValue(formData, "export_format") ?? "pdf";
   const format = ["pdf", "csv", "xlsx", "json"].includes(exportFormat) ? exportFormat : "pdf";
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { data, error } = await supabase.from("impact_report_exports").insert({
     report_id: reportId,
     export_format: format,
@@ -1766,7 +1786,7 @@ async function upsertInsight(row: {
   msme_id?: string | null;
   metadata?: Record<string, unknown>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { data, error } = await supabase
     .from("impact_ai_insights")
     .upsert({ ...row, insight_type: row.insight_type ?? "deterministic", status: "open", generated_at: new Date().toISOString() }, { onConflict: "source_key" })
@@ -1790,7 +1810,7 @@ async function upsertRecommendation(row: {
   msme_id?: string | null;
   metadata?: Record<string, unknown>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_ai_recommendations").upsert({ ...row, status: "open" }, { onConflict: "source_key" });
   if (error) throw new Error(error.message);
 }
@@ -1808,7 +1828,7 @@ async function upsertRiskFlag(row: {
   msme_id?: string | null;
   metadata?: Record<string, unknown>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_risk_flags").upsert({ ...row, status: "open", detected_at: new Date().toISOString() }, { onConflict: "source_key" });
   if (error) throw new Error(error.message);
 }
@@ -1826,7 +1846,7 @@ async function upsertAnomaly(row: {
   msme_id?: string | null;
   metadata?: Record<string, unknown>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_anomaly_events").upsert({ ...row, status: "open", detected_at: new Date().toISOString() }, { onConflict: "source_key" });
   if (error) throw new Error(error.message);
 }
@@ -1923,7 +1943,7 @@ export async function generateProgrammeInsights(ctx: UserContext) {
 }
 
 async function createIntelligenceSummary(programmeId: string, input: { source_key: string; title: string; summary: string; metadata?: Record<string, unknown> }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_intelligence_summaries").upsert({
     source_key: input.source_key,
     summary_type: "programme_health",
@@ -2050,7 +2070,7 @@ export async function getInsightDetail(ctx: UserContext, insightId: string) {
 
 export async function resolveRiskFlag(ctx: UserContext, riskFlagId: string, formData: FormData) {
   requireIntelligenceManage(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_risk_flags").update({
     status: "resolved",
     resolved_by_user_id: ctx.appUserId,
@@ -2063,7 +2083,7 @@ export async function resolveRiskFlag(ctx: UserContext, riskFlagId: string, form
 
 export async function dismissInsight(ctx: UserContext, insightId: string) {
   requireIntelligenceManage(ctx);
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_ai_insights").update({
     status: "dismissed",
     dismissed_by_user_id: ctx.appUserId,
