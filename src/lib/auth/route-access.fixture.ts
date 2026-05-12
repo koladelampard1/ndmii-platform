@@ -32,6 +32,10 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes"],
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
+  field_officer: {
+    allowed: ["/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
   auditor: {
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/interventions"],
     denied: ["/dashboard/msme", "/dashboard/admin"],

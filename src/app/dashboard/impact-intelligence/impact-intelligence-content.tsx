@@ -1,5 +1,7 @@
 import Link from "next/link";
 import {
+  BarChart3,
+  BrainCircuit,
   ClipboardCheck,
   HandCoins,
   FileArchive,
@@ -7,6 +9,7 @@ import {
   Flag,
   LineChart,
   MapPin,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -26,6 +29,12 @@ type ImpactSection = {
 
 const SECTIONS: ImpactSection[] = [
   {
+    href: "/dashboard/impact-intelligence",
+    label: "Overview",
+    description: "Navigate the full BOI Impact Intelligence workspace and confirm operational readiness across modules.",
+    icon: LineChart,
+  },
+  {
     href: "/dashboard/impact-intelligence/programmes",
     label: "Programmes",
     description: "Register intervention programmes, sponsoring institutions, timelines, and operating status.",
@@ -44,8 +53,8 @@ const SECTIONS: ImpactSection[] = [
     icon: ClipboardCheck,
   },
   {
-    href: "/dashboard/impact-intelligence/field-visits",
-    label: "Field Visits",
+    href: "/dashboard/impact-intelligence/monitoring",
+    label: "Monitoring",
     description: "Coordinate field monitoring visits, findings, recommendations, and follow-up status.",
     icon: MapPin,
   },
@@ -56,15 +65,39 @@ const SECTIONS: ImpactSection[] = [
     icon: FileArchive,
   },
   {
+    href: "/dashboard/impact-intelligence/executive",
+    label: "Executive Dashboard",
+    description: "Review executive KPIs, operational alerts, readiness trends, and intervention visibility.",
+    icon: BarChart3,
+  },
+  {
+    href: "/dashboard/impact-intelligence/analytics",
+    label: "Analytics",
+    description: "Inspect programme, monitoring, assessment, readiness, state, and sector distributions.",
+    icon: LineChart,
+  },
+  {
     href: "/dashboard/impact-intelligence/reports",
     label: "Reports",
     description: "Prepare evidence-backed programme reports for institutional review and export workflows.",
     icon: FileText,
   },
+  {
+    href: "/dashboard/impact-intelligence/intelligence",
+    label: "Intelligence",
+    description: "Generate deterministic operational insights, recommendations, anomalies, and portfolio summaries.",
+    icon: BrainCircuit,
+  },
+  {
+    href: "/dashboard/impact-intelligence/risk-flags",
+    label: "Risk Flags",
+    description: "Review evidence-backed risk indicators for readiness, monitoring, intervention, and verification issues.",
+    icon: ShieldAlert,
+  },
 ];
 
 type ImpactIntelligencePageProps = {
-  activeSection?: "overview" | "programmes" | "interventions" | "assessments" | "field-visits" | "evidence" | "reports";
+  activeSection?: "overview" | "programmes" | "interventions" | "assessments" | "monitoring" | "field-visits" | "evidence" | "executive" | "analytics" | "reports" | "intelligence" | "risk-flags";
 };
 
 function formatDate(value: string | null) {
@@ -85,7 +118,8 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
     listImpactReports({ limit: 5 }),
   ]);
 
-  const active = SECTIONS.find((section) => section.href.endsWith(activeSection));
+  const normalizedSection = activeSection === "field-visits" ? "monitoring" : activeSection;
+  const active = normalizedSection === "overview" ? SECTIONS[0] : SECTIONS.find((section) => section.href.endsWith(normalizedSection));
 
   return (
     <section className="space-y-6">
@@ -126,10 +160,10 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
         </div>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {SECTIONS.map((section) => {
           const Icon = section.icon;
-          const selected = section.href.endsWith(activeSection);
+          const selected = normalizedSection === "overview" ? section.href === "/dashboard/impact-intelligence" : section.href.endsWith(normalizedSection);
           return (
             <Link
               key={section.href}
@@ -158,7 +192,7 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
           <div className="mt-4 space-y-3">
             {programmes.length === 0 ? (
               <p className="rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">
-                Programme records will appear here after the foundational tables are populated.
+                Demo guidance: start by creating a BOI programme, then add interventions, assessments, monitoring tasks, and evidence so executive dashboards have live operational data.
               </p>
             ) : (
               programmes.map((programme) => (
@@ -205,6 +239,12 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
               <p className="text-sm font-medium text-slate-950">Latest report</p>
               <p className="mt-1 text-sm text-slate-600">
                 {reports[0] ? `${reports[0].title} • ${reports[0].status ?? "draft"}` : "No report records yet."}
+              </p>
+            </div>
+            <div className="rounded-lg border border-dashed bg-emerald-50/60 p-3">
+              <p className="text-sm font-medium text-slate-950">Demo path</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Programmes to interventions to assessments to monitoring to evidence to dashboards to intelligence.
               </p>
             </div>
           </div>
