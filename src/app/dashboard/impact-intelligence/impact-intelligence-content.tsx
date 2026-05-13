@@ -206,9 +206,10 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
             <Link
               key={section.href}
               href={section.href}
+              aria-current={selected ? "page" : undefined}
               className={[
                 "group rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md",
-                selected ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200",
+                selected ? "border-emerald-300 bg-emerald-50/40 ring-1 ring-emerald-200" : "border-slate-200",
               ].join(" ")}
             >
               <div className="flex items-start justify-between gap-3">
@@ -219,7 +220,9 @@ export async function ImpactIntelligenceContent({ activeSection = "overview" }: 
               </div>
               <h2 className="mt-4 font-semibold text-slate-950">{section.label}</h2>
               <p className="mt-1 text-sm leading-5 text-slate-600">{section.description}</p>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700 group-hover:text-emerald-800">{section.cta}</p>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700 group-hover:text-emerald-800">
+                {selected ? "Current section" : section.cta}
+              </p>
             </Link>
           );
         })}
