@@ -14,6 +14,7 @@ import {
   listUserPickerOptions,
   MONITORING_MANAGE_ROLES,
 } from "@/lib/data/impact-intelligence";
+import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
 
 const DEFAULT_CHECKLIST = [
   "Confirm business location | verification | yes",
@@ -34,13 +35,6 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
 }
 
-function statusClass(status: string | null) {
-  if (status === "reviewed") return "bg-emerald-100 text-emerald-700";
-  if (status === "completed") return "bg-blue-100 text-blue-700";
-  if (status === "assigned" || status === "in_progress") return "bg-amber-100 text-amber-700";
-  return "bg-slate-100 text-slate-700";
-}
-
 export default async function MonitoringPage() {
   const ctx = await getCurrentUserContext();
   const [visits, programmes, interventions, assessments, msmes, fieldOfficers] = await Promise.all([
@@ -55,18 +49,13 @@ export default async function MonitoringPage() {
 
   return (
     <section className="space-y-6">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">BOI field monitoring</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">Monitoring</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Assign field visits, track monitoring lifecycle, capture notes, and connect evidence to BOI intervention records.</p>
-          </div>
-          <Link href="/dashboard/impact-intelligence/evidence" className="inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            <CalendarCheck className="h-4 w-4" /> Evidence repository
-          </Link>
-        </div>
-      </header>
+      <ImpactPageHeader
+        eyebrow="BOI field monitoring"
+        title="Monitoring"
+        description="Assign field visits, track monitoring lifecycle, capture notes, and connect field evidence to BOI intervention records."
+        badge={`${visits.length} visits`}
+        actions={[{ href: "/dashboard/impact-intelligence/evidence", label: "Evidence repository", icon: CalendarCheck }]}
+      />
 
       {canManage && (
         <form action={createVisitAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
@@ -134,36 +123,38 @@ export default async function MonitoringPage() {
         </form>
       )}
 
-      <article className="rounded-xl border bg-white p-5 shadow-sm">
+      <SectionCard title="Field Monitoring Queue" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence</QuickLink>}>
         {visits.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-slate-50 p-6 text-center">
-            <h2 className="font-semibold text-slate-950">No monitoring visits yet</h2>
-            <p className="mt-2 text-sm text-slate-600">{canManage ? "Create the first monitoring task and assign it to a field officer." : "Assigned monitoring tasks will appear here."}</p>
-          </div>
+          <EmptyState
+            title="No monitoring visits yet"
+            description={canManage ? "Create the first monitoring task and assign it to a field officer so findings and evidence can be linked back to interventions." : "Assigned monitoring tasks will appear here."}
+            icon={CalendarCheck}
+          />
         ) : (
-          <div className="overflow-hidden rounded-lg border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr><th className="px-4 py-3">Visit</th><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Scheduled</th><th className="px-4 py-3">Status</th></tr>
+          <TableShell>
+            <table className={tableClassName}>
+              <thead className={tableHeadClassName}>
+                <tr><th className="px-4 py-3">Visit</th><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Scheduled</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {visits.map((visit) => (
-                  <tr key={visit.id} className="align-top">
-                    <td className="px-4 py-3">
+                  <tr key={visit.id} className={tableRowClassName}>
+                    <td className={tableCellClassName}>
                       <Link href={`/dashboard/impact-intelligence/monitoring/${visit.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{visit.title ?? "Field visit"}</Link>
                       <p className="mt-1 text-xs text-slate-500">{visit.location_text ?? "Location pending"}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{visit.msmes?.business_name ?? "Unlinked"}</td>
-                    <td className="px-4 py-3 text-slate-600">{visit.impact_programmes?.name ?? "Unassigned"}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(visit.visit_date)}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(visit.status)}`}>{visit.status ?? "pending"}</span></td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{visit.msmes?.business_name ?? "Unlinked"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{visit.impact_programmes?.name ?? "Unassigned"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{formatDate(visit.visit_date)}</td>
+                    <td className={tableCellClassName}><StatusBadge value={visit.status ?? "pending"} /></td>
+                    <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/monitoring/${visit.id}`}>Open</QuickLink></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableShell>
         )}
-      </article>
+      </SectionCard>
     </section>
   );
 }

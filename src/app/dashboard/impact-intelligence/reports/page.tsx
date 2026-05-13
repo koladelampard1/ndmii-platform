@@ -11,6 +11,7 @@ import {
   listMsmePickerOptions,
   REPORT_TYPES,
 } from "@/lib/data/impact-intelligence";
+import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
 
 const REPORTING_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
 const REPORT_WRITE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer"];
@@ -24,13 +25,6 @@ async function createReportAction(formData: FormData) {
   const ctx = await getCurrentUserContext();
   const reportId = await createImpactReport(ctx, formData);
   redirect(`/dashboard/impact-intelligence/reports/${reportId}`);
-}
-
-function statusClass(status: string | null) {
-  if (status === "approved") return "bg-emerald-100 text-emerald-700";
-  if (status === "generated") return "bg-blue-100 text-blue-700";
-  if (status === "archived") return "bg-slate-200 text-slate-700";
-  return "bg-amber-100 text-amber-700";
 }
 
 function formatDate(value: string | null | undefined) {
@@ -51,18 +45,13 @@ export default async function ReportsPage() {
 
   return (
     <section className="space-y-6">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Reporting engine</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">Impact Reports</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Generate deterministic, evidence-linked report records from DBIN programme, intervention, assessment, monitoring, and evidence data.</p>
-          </div>
-          <Link href="/dashboard/impact-intelligence/executive" className="inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            <FileText className="h-4 w-4" /> Executive dashboard
-          </Link>
-        </div>
-      </header>
+      <ImpactPageHeader
+        eyebrow="Reporting engine"
+        title="Impact Reports"
+        description="Generate deterministic, evidence-linked report records from DBIN programme, intervention, assessment, monitoring, and evidence data."
+        badge={`${reports.length} records`}
+        actions={[{ href: "/dashboard/impact-intelligence/executive", label: "Executive dashboard", icon: FileText }]}
+      />
 
       {canWrite && (
         <form action={createReportAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
@@ -108,36 +97,38 @@ export default async function ReportsPage() {
         </form>
       )}
 
-      <article className="rounded-xl border bg-white p-5 shadow-sm">
+      <SectionCard title="Report Library" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence repository</QuickLink>}>
         {reports.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-slate-50 p-6 text-center">
-            <h2 className="font-semibold text-slate-950">No reports yet</h2>
-            <p className="mt-2 text-sm text-slate-600">Generate the first impact report record when programme data is ready for review.</p>
-          </div>
+          <EmptyState
+            title="No reports yet"
+            description="Generate the first impact report record when programme, intervention, assessment, monitoring, and evidence data is ready for review."
+            icon={FileText}
+          />
         ) : (
-          <div className="overflow-hidden rounded-lg border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr><th className="px-4 py-3">Report</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Generated</th></tr>
+          <TableShell>
+            <table className={tableClassName}>
+              <thead className={tableHeadClassName}>
+                <tr><th className="px-4 py-3">Report</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Generated</th><th className="px-4 py-3">Action</th></tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {reports.map((report) => (
-                  <tr key={report.id} className="align-top">
-                    <td className="px-4 py-3">
+                  <tr key={report.id} className={tableRowClassName}>
+                    <td className={tableCellClassName}>
                       <Link href={`/dashboard/impact-intelligence/reports/${report.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{report.title}</Link>
                       <p className="mt-1 text-xs text-slate-500">{report.summary ?? "No summary"}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{report.report_type?.replaceAll("_", " ") ?? "report"}</td>
-                    <td className="px-4 py-3 text-slate-600">{report.impact_programmes?.name ?? "All programmes"}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(report.status)}`}>{report.status ?? "draft"}</span></td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(report.generated_at ?? report.created_at)}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{report.report_type?.replaceAll("_", " ") ?? "report"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{report.impact_programmes?.name ?? "All programmes"}</td>
+                    <td className={tableCellClassName}><StatusBadge value={report.status ?? "draft"} /></td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{formatDate(report.generated_at ?? report.created_at)}</td>
+                    <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/reports/${report.id}`}>Open</QuickLink></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableShell>
         )}
-      </article>
+      </SectionCard>
     </section>
   );
 }

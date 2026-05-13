@@ -13,19 +13,13 @@ import {
   listImpactProgrammes,
   listMsmePickerOptions,
 } from "@/lib/data/impact-intelligence";
+import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge } from "../_components";
 
 async function createEvidenceAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
   const evidenceId = await createEvidenceRecord(ctx, formData);
   redirect(`/dashboard/impact-intelligence/evidence/${evidenceId}`);
-}
-
-function statusClass(status: string | null | undefined) {
-  if (status === "verified") return "bg-emerald-100 text-emerald-700";
-  if (status === "rejected") return "bg-red-100 text-red-700";
-  if (status === "needs_review") return "bg-amber-100 text-amber-700";
-  return "bg-slate-100 text-slate-700";
 }
 
 function formatDate(value: string | null | undefined) {
@@ -47,18 +41,13 @@ export default async function EvidencePage() {
 
   return (
     <section className="space-y-6">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Evidence intelligence</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">Evidence Repository</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Track storage-ready evidence placeholders linked to MSMEs, programmes, interventions, assessments, and field visits.</p>
-          </div>
-          <Link href="/dashboard/impact-intelligence/monitoring" className="inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            <FileArchive className="h-4 w-4" /> Monitoring
-          </Link>
-        </div>
-      </header>
+      <ImpactPageHeader
+        eyebrow="Evidence intelligence"
+        title="Evidence Repository"
+        description="Track storage-ready evidence placeholders linked to MSMEs, programmes, interventions, assessments, and field visits for traceable impact reporting."
+        badge={`${evidence.length} files`}
+        actions={[{ href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring", icon: FileArchive }]}
+      />
 
       {canCreate && (
         <form action={createEvidenceAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
@@ -126,21 +115,22 @@ export default async function EvidencePage() {
         </form>
       )}
 
-      <article className="rounded-xl border bg-white p-5 shadow-sm">
+      <SectionCard title="Evidence Register" action={<QuickLink href="/dashboard/impact-intelligence/reports">Reports</QuickLink>}>
         {evidence.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-slate-50 p-6 text-center">
-            <h2 className="font-semibold text-slate-950">No evidence yet</h2>
-            <p className="mt-2 text-sm text-slate-600">Evidence placeholders will appear after field officers or programme teams record files for monitoring and impact validation.</p>
-          </div>
+          <EmptyState
+            title="No evidence yet"
+            description="Evidence placeholders will appear after field officers or programme teams record files for monitoring, verification, and impact validation."
+            icon={FileArchive}
+          />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {evidence.map((item) => (
-              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/40">
+              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/40">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold uppercase text-slate-500">
                     {(item.file_type ?? item.evidence_type ?? "file").slice(0, 3)}
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(item.verification_status)}`}>{item.verification_status}</span>
+                  <StatusBadge value={item.verification_status} />
                 </div>
                 <h2 className="mt-3 font-semibold text-slate-950">{item.file_name}</h2>
                 <p className="mt-1 text-sm text-slate-600">{item.description ?? "No description recorded."}</p>
@@ -149,7 +139,7 @@ export default async function EvidencePage() {
             ))}
           </div>
         )}
-      </article>
+      </SectionCard>
     </section>
   );
 }

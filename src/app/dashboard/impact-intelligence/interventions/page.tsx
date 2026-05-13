@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -12,6 +13,7 @@ import {
   listImpactProgrammes,
   listMsmePickerOptions,
 } from "@/lib/data/impact-intelligence";
+import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
 
 async function createInterventionAction(formData: FormData) {
   "use server";
@@ -36,11 +38,12 @@ export default async function ImpactInterventionsPage() {
 
   return (
     <section className="space-y-6">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">MSME intervention tracking</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">Interventions</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Track MSME-level support, financing, advisory, and monitoring activities against BOI programmes.</p>
-      </header>
+      <ImpactPageHeader
+        eyebrow="MSME intervention tracking"
+        title="Interventions"
+        description="Track MSME-level support, financing, advisory, and monitoring activities against BOI programmes with clear lifecycle status and beneficiary context."
+        badge={`${interventions.length} records`}
+      />
 
       {canWrite && (
         <form action={createInterventionAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
@@ -99,31 +102,33 @@ export default async function ImpactInterventionsPage() {
         </form>
       )}
 
-      <article className="rounded-xl border bg-white p-5 shadow-sm">
+      <SectionCard title="Intervention Portfolio" action={<QuickLink href="/dashboard/impact-intelligence/analytics">Analytics</QuickLink>}>
         {interventions.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-slate-50 p-6 text-center">
-            <h2 className="font-semibold text-slate-950">No interventions yet</h2>
-            <p className="mt-2 text-sm text-slate-600">Programme officers can create the first MSME intervention once a beneficiary is available.</p>
-          </div>
+          <EmptyState
+            title="No interventions yet"
+            description="Programme officers can create the first MSME intervention once a beneficiary is available, then connect assessments, monitoring, and evidence."
+            icon={HandCoins}
+          />
         ) : (
-          <div className="overflow-hidden rounded-lg border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Intervention</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Amount</th></tr></thead>
-              <tbody className="divide-y">
+          <TableShell>
+            <table className={tableClassName}>
+              <thead className={tableHeadClassName}><tr><th className="px-4 py-3">Intervention</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Action</th></tr></thead>
+              <tbody>
                 {interventions.map((item) => (
-                  <tr key={item.id} className="align-top">
-                    <td className="px-4 py-3"><Link href={`/dashboard/impact-intelligence/interventions/${item.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{item.title}</Link><p className="mt-1 text-xs text-slate-500">{item.intervention_type} • {getInterventionStage(item)}</p></td>
-                    <td className="px-4 py-3 text-slate-600">{item.impact_programmes?.name ?? "Unassigned"}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.msmes?.business_name ?? "Unlinked"}</td>
-                    <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{item.status ?? "planned"}</span></td>
-                    <td className="px-4 py-3 text-slate-600">{formatCurrency(item.approved_amount)}</td>
+                  <tr key={item.id} className={tableRowClassName}>
+                    <td className={tableCellClassName}><Link href={`/dashboard/impact-intelligence/interventions/${item.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{item.title}</Link><p className="mt-1 text-xs text-slate-500">{item.intervention_type} • {getInterventionStage(item)}</p></td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{item.impact_programmes?.name ?? "Unassigned"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}><span className="font-medium text-slate-700">{item.msmes?.business_name ?? "Unlinked"}</span><p className="mt-1 text-xs text-slate-500">{item.msmes?.state ?? item.msmes?.sector ?? "Beneficiary metadata pending"}</p></td>
+                    <td className={tableCellClassName}><StatusBadge value={item.status ?? "planned"} /></td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{formatCurrency(item.approved_amount)}</td>
+                    <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/interventions/${item.id}`}>Open</QuickLink></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableShell>
         )}
-      </article>
+      </SectionCard>
     </section>
   );
 }
