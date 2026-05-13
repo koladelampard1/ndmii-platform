@@ -112,7 +112,7 @@ export default async function ImpactAssessmentsPage() {
                   <tr key={assessment.id} className="align-top">
                     <td className="px-4 py-3">
                       <Link href={`/dashboard/impact-intelligence/assessments/${assessment.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{assessment.title ?? assessment.impact_assessment_templates?.name ?? "Assessment"}</Link>
-                      <p className="mt-1 text-xs text-slate-500">{assessment.assessment_type ?? "readiness"} • template v{assessment.template_version ?? assessment.impact_assessment_templates?.version ?? 1}</p>
+                      <p className="mt-1 text-xs text-slate-500">{assessment.assessment_type ?? "baseline"} • template v{assessment.template_version ?? assessment.impact_assessment_templates?.version ?? 1}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{assessment.msmes?.business_name ?? "Unlinked"}</td>
                     <td className="px-4 py-3 text-slate-600">{assessment.impact_programmes?.name ?? "Unassigned"}</td>

@@ -5,6 +5,7 @@ import {
   ASSESSMENT_MANAGE_ROLES,
   ASSESSMENT_REVIEW_ROLES,
   completeAssessment,
+  getMissingRequiredAssessmentQuestions,
   getImpactAssessmentDetail,
   reviewAssessment,
   saveAssessmentResponse,
@@ -22,7 +23,14 @@ async function saveResponsesAction(assessmentId: string, formData: FormData) {
 async function completeAssessmentAction(assessmentId: string) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await completeAssessment(ctx, assessmentId);
+  try {
+    await completeAssessment(ctx, assessmentId);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Required question missing:")) {
+      redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}?completion_error=missing_required`);
+    }
+    throw error;
+  }
   redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
 }
 
@@ -93,8 +101,15 @@ function statusClass(status: string | null) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default async function AssessmentDetailPage({ params }: { params: Promise<{ assessmentId: string }> }) {
+export default async function AssessmentDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ assessmentId: string }>;
+  searchParams: Promise<{ completion_error?: string }>;
+}) {
   const { assessmentId } = await params;
+  const query = await searchParams;
   const ctx = await getCurrentUserContext();
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   const { assessment, template, sections, questions, responses, scores, reviews } = detail;
@@ -107,6 +122,9 @@ export default async function AssessmentDetailPage({ params }: { params: Promise
   const complete = completeAssessmentAction.bind(null, assessment.id);
   const review = reviewAssessmentAction.bind(null, assessment.id);
   const overall = scores.find((score) => score.section_id === null);
+  const missingRequiredQuestions = getMissingRequiredAssessmentQuestions(questions, responses);
+  const missingRequiredQuestionIds = new Set(missingRequiredQuestions.map((question) => question.id));
+  const showCompletionError = query.completion_error === "missing_required";
 
   return (
     <section className="space-y-6">
@@ -149,8 +167,17 @@ export default async function AssessmentDetailPage({ params }: { params: Promise
                     <div className="space-y-4 p-4">
                       {sectionQuestions.map((question) => (
                         <label key={question.id} className="block space-y-2 text-sm font-medium text-slate-700">
-                          <span>{question.question_text} {question.is_required && <span className="text-red-600">*</span>}</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span>{question.question_text}</span>
+                            {question.is_required && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">Required</span>}
+                            {missingRequiredQuestionIds.has(question.id) && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Missing</span>}
+                          </span>
                           <QuestionInput question={question} responses={responses} disabled={!canManage || locked} />
+                          {missingRequiredQuestionIds.has(question.id) && (
+                            <span className="block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                              This required question must be answered before the assessment can be completed.
+                            </span>
+                          )}
                           <span className="block text-xs font-normal text-slate-500">{question.category ?? "uncategorized"} • weight {question.weight}{question.help_text ? ` • ${question.help_text}` : ""}</span>
                         </label>
                       ))}
@@ -186,7 +213,19 @@ export default async function AssessmentDetailPage({ params }: { params: Promise
             <form action={complete} className="rounded-xl border bg-white p-5 shadow-sm">
               <h2 className="font-semibold text-slate-950">Completion</h2>
               <p className="mt-2 text-sm text-slate-600">Completing validates required responses and recalculates the score.</p>
-              <Button type="submit" className="mt-4 w-full">Complete assessment</Button>
+              {missingRequiredQuestions.length > 0 && (
+                <div className={`mt-4 rounded-lg border p-3 text-sm ${showCompletionError ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                  <p className="font-semibold">
+                    {showCompletionError ? "Assessment cannot be completed yet." : "Required responses missing."}
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {missingRequiredQuestions.map((question) => (
+                      <li key={question.id}>{question.question_text}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <Button type="submit" className="mt-4 w-full" disabled={missingRequiredQuestions.length > 0}>Complete assessment</Button>
             </form>
           )}
 

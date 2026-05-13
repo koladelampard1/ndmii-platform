@@ -22,6 +22,7 @@ export const PROGRAMME_STATUSES = ["draft", "active", "paused", "completed", "ar
 export const INTERVENTION_STATUSES = ["planned", "active", "on_hold", "completed", "cancelled"] as const;
 export const INTERVENTION_STAGES = ["intake", "eligibility", "approval", "disbursement", "monitoring", "closure"] as const;
 export const ASSESSMENT_TEMPLATE_STATUSES = ["draft", "active", "archived"] as const;
+export const ASSESSMENT_TYPES = ["baseline", "credit_readiness", "business_maturity", "impact", "compliance", "post_funding_monitoring", "field_verification"] as const;
 export const ASSESSMENT_STATUSES = ["draft", "scheduled", "in_progress", "submitted", "completed", "reviewed", "approved", "archived"] as const;
 export const ASSESSMENT_QUESTION_TYPES = ["text", "textarea", "number", "select", "multi-select", "boolean", "date", "file_upload"] as const;
 export const FIELD_VISIT_STATUSES = ["pending", "assigned", "in_progress", "completed", "reviewed"] as const;
@@ -36,6 +37,7 @@ export type ProgrammeStatus = (typeof PROGRAMME_STATUSES)[number];
 export type InterventionStatus = (typeof INTERVENTION_STATUSES)[number];
 export type InterventionStage = (typeof INTERVENTION_STAGES)[number];
 export type AssessmentTemplateStatus = (typeof ASSESSMENT_TEMPLATE_STATUSES)[number];
+export type AssessmentType = (typeof ASSESSMENT_TYPES)[number];
 export type AssessmentStatus = (typeof ASSESSMENT_STATUSES)[number];
 export type AssessmentQuestionType = (typeof ASSESSMENT_QUESTION_TYPES)[number];
 export type FieldVisitStatus = (typeof FIELD_VISIT_STATUSES)[number];
@@ -929,6 +931,20 @@ function parseTemplateQuestionRows(raw: string | null) {
   return rows;
 }
 
+function normaliseAssessmentType(value: string | null): AssessmentType {
+  if (!value) return "baseline";
+  if ((ASSESSMENT_TYPES as readonly string[]).includes(value)) return value as AssessmentType;
+
+  const legacyMap: Record<string, AssessmentType> = {
+    readiness: "credit_readiness",
+    eligibility: "credit_readiness",
+    monitoring: "post_funding_monitoring",
+    completion: "impact",
+  };
+
+  return legacyMap[value] ?? "baseline";
+}
+
 export async function createAssessmentTemplate(ctx: UserContext, formData: FormData) {
   requireAssessmentManage(ctx);
   const name = textValue(formData, "name");
@@ -940,7 +956,7 @@ export async function createAssessmentTemplate(ctx: UserContext, formData: FormD
   const payload = {
     name,
     description: textValue(formData, "description"),
-    assessment_type: textValue(formData, "assessment_type") ?? "readiness",
+    assessment_type: normaliseAssessmentType(textValue(formData, "assessment_type")),
     version: versionValue && versionValue > 0 ? Math.trunc(versionValue) : 1,
     status: normaliseTemplateStatus(textValue(formData, "status")),
     created_by_user_id: ctx.appUserId,
@@ -1044,7 +1060,7 @@ export async function createAssessment(ctx: UserContext, formData: FormData) {
     programme_id: textValue(formData, "programme_id"),
     intervention_id: textValue(formData, "intervention_id"),
     msme_id: msmeId,
-    assessment_type: template.assessment_type,
+    assessment_type: normaliseAssessmentType(template.assessment_type),
     title: textValue(formData, "title") ?? template.name,
     status: "draft",
     created_by_user_id: ctx.appUserId,
@@ -1149,6 +1165,19 @@ function responsePayload(question: ImpactAssessmentQuestion, rawValue: FormDataE
   return payload;
 }
 
+function assessmentResponseIsAnswered(response: ImpactAssessmentResponse) {
+  if (typeof response.response_text === "string" && response.response_text.trim().length > 0) return true;
+  if (response.response_number !== null) return true;
+  if (response.response_boolean !== null) return true;
+  const values = response.response_json?.values;
+  return Array.isArray(values) && values.length > 0;
+}
+
+export function getMissingRequiredAssessmentQuestions(questions: ImpactAssessmentQuestion[], responses: ImpactAssessmentResponse[]) {
+  const answered = new Set(responses.filter(assessmentResponseIsAnswered).map((response) => response.question_id));
+  return questions.filter((question) => question.is_required && !answered.has(question.id));
+}
+
 export async function saveAssessmentResponse(ctx: UserContext, assessmentId: string, formData: FormData) {
   requireAssessmentManage(ctx);
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
@@ -1228,8 +1257,7 @@ export async function completeAssessment(ctx: UserContext, assessmentId: string)
   requireAssessmentManage(ctx);
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
-  const answered = new Set(detail.responses.filter((response) => response.response_text || response.response_number !== null || response.response_boolean !== null).map((response) => response.question_id));
-  const missing = detail.questions.find((question) => question.is_required && !answered.has(question.id));
+  const missing = getMissingRequiredAssessmentQuestions(detail.questions, detail.responses)[0];
   if (missing) throw new Error(`Required question missing: ${missing.question_text}`);
 
   const total = await calculateAssessmentScore(assessmentId, ctx);

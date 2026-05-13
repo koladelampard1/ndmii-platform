@@ -5,6 +5,7 @@ import {
   ASSESSMENT_MANAGE_ROLES,
   ASSESSMENT_QUESTION_TYPES,
   ASSESSMENT_TEMPLATE_STATUSES,
+  ASSESSMENT_TYPES,
   createAssessmentTemplate,
 } from "@/lib/data/impact-intelligence";
 
@@ -42,12 +43,10 @@ export default async function NewAssessmentTemplatePage() {
         </label>
         <label className="space-y-1 text-sm font-medium text-slate-700">
           Assessment type
-          <select name="assessment_type" defaultValue="readiness" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-            <option value="readiness">readiness</option>
-            <option value="baseline">baseline</option>
-            <option value="eligibility">eligibility</option>
-            <option value="monitoring">monitoring</option>
-            <option value="impact">impact</option>
+          <select name="assessment_type" defaultValue="credit_readiness" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+            {ASSESSMENT_TYPES.map((assessmentType) => (
+              <option key={assessmentType} value={assessmentType}>{assessmentType}</option>
+            ))}
           </select>
         </label>
         <label className="space-y-1 text-sm font-medium text-slate-700">
