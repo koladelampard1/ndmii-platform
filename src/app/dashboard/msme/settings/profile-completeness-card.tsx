@@ -11,6 +11,7 @@ export type ProfileCompletenessSignals = {
   ownerNamePresent: boolean;
   contactInfoPresent: boolean;
   addressPresent: boolean;
+  ownerPhotoUploaded: boolean;
   descriptionPresent: boolean;
   logoUploaded: boolean;
   providerProfileExists: boolean;
@@ -30,6 +31,7 @@ function buildCompletenessItems(signals: ProfileCompletenessSignals): Completene
     { label: "Owner name", complete: signals.ownerNamePresent },
     { label: "Contact info", complete: signals.contactInfoPresent },
     { label: "Address", complete: signals.addressPresent },
+    { label: "Passport photo", complete: signals.ownerPhotoUploaded },
     { label: "Business description", complete: signals.descriptionPresent },
     { label: "Logo uploaded", complete: signals.logoUploaded },
     { label: "Provider profile", complete: signals.providerProfileExists },
@@ -52,6 +54,17 @@ export function ProfileCompletenessCard({ initialSignals }: { initialSignals: Pr
 
     window.addEventListener("ndmii:logo-uploaded", onLogoUploaded);
     return () => window.removeEventListener("ndmii:logo-uploaded", onLogoUploaded);
+  }, []);
+
+  useEffect(() => {
+    const onPassportPhotoUploaded = (event: Event) => {
+      const customEvent = event as CustomEvent<{ passportPhotoUrl?: string }>;
+      const passportPhotoUrl = String(customEvent.detail?.passportPhotoUrl ?? "").trim();
+      setSignals((prev) => ({ ...prev, ownerPhotoUploaded: Boolean(passportPhotoUrl) || prev.ownerPhotoUploaded }));
+    };
+
+    window.addEventListener("ndmii:passport-photo-uploaded", onPassportPhotoUploaded);
+    return () => window.removeEventListener("ndmii:passport-photo-uploaded", onPassportPhotoUploaded);
   }, []);
 
   const completeness = useMemo(() => {

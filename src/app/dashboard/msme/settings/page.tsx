@@ -5,6 +5,7 @@ import { CheckCircle2, ExternalLink, Info } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
+import { OwnerPhotoUploadCard } from "@/app/dashboard/msme/settings/owner-photo-upload-card";
 import { ProfileCompletenessCard, type ProfileCompletenessSignals } from "@/app/dashboard/msme/settings/profile-completeness-card";
 
 const SETTINGS_SECTIONS = [
@@ -79,6 +80,13 @@ const SAFE_SCHEMA_COLUMNS = {
   activity_logs: ["created_at", "action", "actor_user_id", "actor", "entity_type", "msme_id"] as const,
 } as const;
 
+const DEBUG_SETTINGS_LOGS = process.env.NODE_ENV !== "production" && process.env.DBIN_DEBUG_LOGS === "1";
+
+function debugSettingsLog(message: string, payload: Record<string, unknown>) {
+  if (!DEBUG_SETTINGS_LOGS) return;
+  console.info(`[msme-settings] ${message}`, payload);
+}
+
 function pickAllowedPayload<T extends Record<string, unknown>, K extends readonly (keyof T)[]>(payload: T, allowedKeys: K) {
   return Object.fromEntries(Object.entries(payload).filter(([key]) => (allowedKeys as readonly string[]).includes(key)));
 }
@@ -114,6 +122,7 @@ function deriveProfileCompletenessSignals(params: {
     contact_email: string | null;
     contact_phone: string | null;
     address: string | null;
+    passport_photo_url: string | null;
   };
   provider: { id: string | null; description: string | null; logo_url: string | null };
 }): ProfileCompletenessSignals {
@@ -125,12 +134,13 @@ function deriveProfileCompletenessSignals(params: {
     ownerNamePresent: hasText(params.msme.owner_name),
     contactInfoPresent: hasText(params.msme.contact_email) && hasText(params.msme.contact_phone),
     addressPresent: hasText(params.msme.address),
+    ownerPhotoUploaded: hasText(params.msme.passport_photo_url),
     descriptionPresent: hasText(params.provider.description),
     logoUploaded: hasText(params.provider.logo_url),
     providerProfileExists: hasText(params.provider.id),
   } satisfies ProfileCompletenessSignals;
 
-  console.info("[profile-completion] recomputed");
+  debugSettingsLog("profile-completion-recomputed", { signalCount: Object.keys(signals).length });
   return signals;
 }
 
@@ -145,7 +155,7 @@ async function loadSettingsActivityLog(params: {
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
   workspace: Awaited<ReturnType<typeof getProviderWorkspaceContext>>;
 }): Promise<ActivityLogRow[]> {
-  console.info("[msme-settings][safe-schema-mode]", { activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs });
+  debugSettingsLog("activity-log-read-start", { columnCount: SAFE_SCHEMA_COLUMNS.activity_logs.length });
 
   const { data, error } = await params.supabase
     .from("activity_logs")
@@ -155,11 +165,11 @@ async function loadSettingsActivityLog(params: {
     .limit(5);
 
   if (error) {
-    console.warn("[activity-log][read-skipped]", { message: error.message, code: error.code ?? null });
+    debugSettingsLog("activity-log-read-skipped", { code: error.code ?? null });
     return [];
   }
 
-  console.info("[activity-log][read-success]", { rowCount: data?.length ?? 0 });
+  debugSettingsLog("activity-log-read-success", { rowCount: data?.length ?? 0 });
 
   const rows = ((data ?? []) as unknown[]).filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
   const actorUserIds = rows
@@ -208,10 +218,10 @@ async function settingsAction(formData: FormData) {
   };
   let firstFailedWrite: string | null = null;
 
-  console.info("[msme-settings][safe-schema-mode]", {
-    providerProfiles: SAFE_SCHEMA_COLUMNS.provider_profiles,
-    msmes: SAFE_SCHEMA_COLUMNS.msmes,
-    activityLogs: SAFE_SCHEMA_COLUMNS.activity_logs,
+  debugSettingsLog("safe-schema-mode", {
+    providerProfileColumnCount: SAFE_SCHEMA_COLUMNS.provider_profiles.length,
+    msmeColumnCount: SAFE_SCHEMA_COLUMNS.msmes.length,
+    activityLogColumnCount: SAFE_SCHEMA_COLUMNS.activity_logs.length,
   });
 
   const settingsReadSelect = "id,msme_id,business_name,owner_name,sector,contact_email,contact_phone,address,cac_number,tin,business_type";
@@ -221,11 +231,10 @@ async function settingsAction(formData: FormData) {
     .eq("id", workspace.msme.id)
     .maybeSingle();
 
-  console.info("[msme-settings][read-source]", {
+  debugSettingsLog("read-source", {
     ...saveContext,
     table: "msmes",
-    filters: { id: workspace.msme.id },
-    select: settingsReadSelect.split(","),
+    selectedColumnCount: settingsReadSelect.split(",").length,
     error: existingMsmeError?.message ?? null,
     found: Boolean(existingMsme),
   });
@@ -236,8 +245,6 @@ async function settingsAction(formData: FormData) {
       table: "msmes",
       dbResponse: {
         message: existingMsmeError?.message ?? "owned_msme_not_found",
-        details: existingMsmeError?.details ?? null,
-        hint: existingMsmeError?.hint ?? null,
         code: existingMsmeError?.code ?? null,
       },
     });
@@ -259,13 +266,12 @@ async function settingsAction(formData: FormData) {
   };
   const providerPayload = pickAllowedPayload(providerRawPayload, SAFE_SCHEMA_COLUMNS.provider_profiles);
 
-  console.info("[msme-settings][write-before]", {
+  debugSettingsLog("provider-write-before", {
     ...saveContext,
     section: "profile-information,contact-address,about-business",
     table: "provider_profiles",
-    lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
-    allowedColumns: SAFE_SCHEMA_COLUMNS.provider_profiles,
-    payload: providerPayload,
+    allowedColumnCount: SAFE_SCHEMA_COLUMNS.provider_profiles.length,
+    payloadKeyCount: Object.keys(providerPayload).length,
   });
 
   let providerUpdateRows: { id: string }[] | null = null;
@@ -280,14 +286,14 @@ async function settingsAction(formData: FormData) {
     providerUpdateRows = providerUpdateResult.data as { id: string }[] | null;
     providerUpdateError = providerUpdateResult.error;
   } else {
-    console.warn("[msme-settings][provider-write-skipped]", {
+    debugSettingsLog("provider-write-skipped", {
       ...saveContext,
       reason: "no_mutable_provider_profile_columns",
-      providerRawPayloadKeys: Object.keys(providerRawPayload),
+      providerRawPayloadKeyCount: Object.keys(providerRawPayload).length,
     });
   }
 
-  console.info("[msme-settings][write-after]", {
+  debugSettingsLog("provider-write-after", {
     ...saveContext,
     section: "profile-information,contact-address,about-business",
     table: "provider_profiles",
@@ -308,12 +314,9 @@ async function settingsAction(formData: FormData) {
       ...saveContext,
       firstFailedWrite,
       table: "provider_profiles",
-      lookupKeys: { id: workspace.provider.id, msme_id: workspace.provider.msme_id },
-      payload: providerPayload,
+      payloadKeyCount: Object.keys(providerPayload).length,
       dbResponse: {
         message: providerUpdateError?.message ?? "no_rows_updated",
-        details: providerUpdateError?.details ?? null,
-        hint: providerUpdateError?.hint ?? null,
         code: providerUpdateError?.code ?? null,
       },
     });
@@ -340,12 +343,11 @@ async function settingsAction(formData: FormData) {
   };
   const safeMsmePayload = pickAllowedPayload(msmePayload, SAFE_SCHEMA_COLUMNS.msmes);
 
-  console.info("[msme-settings][write-before]", {
+  debugSettingsLog("msme-write-before", {
     ...saveContext,
     section: "business-information,contact-address",
     table: "msmes",
-    lookupKeys: { id: workspace.msme.id },
-    payload: safeMsmePayload,
+    payloadKeyCount: Object.keys(safeMsmePayload).length,
   });
 
   const { data: msmeUpdateRows, error: msmeUpdateError } = await supabase
@@ -354,7 +356,7 @@ async function settingsAction(formData: FormData) {
     .eq("id", workspace.msme.id)
     .select("id");
 
-  console.info("[msme-settings][write-after]", {
+  debugSettingsLog("msme-write-after", {
     ...saveContext,
     section: "business-information,contact-address",
     table: "msmes",
@@ -374,12 +376,9 @@ async function settingsAction(formData: FormData) {
       ...saveContext,
       firstFailedWrite,
       table: "msmes",
-      lookupKeys: { id: workspace.msme.id },
-      payload: safeMsmePayload,
+      payloadKeyCount: Object.keys(safeMsmePayload).length,
       dbResponse: {
         message: msmeUpdateError?.message ?? "no_rows_updated",
-        details: msmeUpdateError?.details ?? null,
-        hint: msmeUpdateError?.hint ?? null,
         code: msmeUpdateError?.code ?? null,
       },
     });
@@ -387,7 +386,7 @@ async function settingsAction(formData: FormData) {
   }
 
   const revalidationTargets = ["/dashboard/msme/settings", "/dashboard/msme/profile", `/providers/${workspace.provider.id}`];
-  console.info("[msme-settings][revalidation-targets]", { ...saveContext, revalidationTargets });
+  debugSettingsLog("revalidation-targets", { ...saveContext, revalidationTargetCount: revalidationTargets.length });
   revalidatePath("/dashboard/msme/settings");
   revalidatePath("/dashboard/msme/profile");
   revalidatePath(`/providers/${workspace.provider.id}`);
@@ -400,19 +399,19 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   const supabase = await createServiceRoleSupabaseClient();
 
   const settingsReadSelect =
-    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin";
+    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin,passport_photo_url";
   const { data: msmeSettings, error: msmeSettingsError } = await supabase
     .from("msmes")
     .select(settingsReadSelect)
     .eq("id", workspace.msme.id)
     .maybeSingle();
 
-  console.info("[msme-settings][read-page]", {
+  debugSettingsLog("read-page", {
     route: "/dashboard/msme/settings",
     providerProfileId: workspace.provider.id,
     msmeRowId: workspace.msme.id,
     table: "msmes",
-    select: settingsReadSelect.split(","),
+    selectedColumnCount: settingsReadSelect.split(",").length,
     error: msmeSettingsError?.message ?? null,
     found: Boolean(msmeSettings),
   });
@@ -424,8 +423,6 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
       msmeRowId: workspace.msme.id,
       dbResponse: {
         message: msmeSettingsError?.message ?? "settings_row_not_found",
-        details: msmeSettingsError?.details ?? null,
-        hint: msmeSettingsError?.hint ?? null,
         code: msmeSettingsError?.code ?? null,
       },
     });
@@ -497,10 +494,10 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
 
           <section id="business-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-slate-900">Business Logo / Profile Image</h3>
+              <h3 className="text-lg font-semibold text-slate-900">Business Logo</h3>
               <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
             </div>
-            <p className="mt-1 text-sm text-slate-600">This will be displayed on your profile and ID card.</p>
+            <p className="mt-1 text-sm text-slate-600">This will be displayed on your business profile. It is separate from the owner passport photo.</p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[200px,minmax(0,1fr)]">
               <LogoUploadCard initialLogoUrl={workspace.provider.logo_url} />
@@ -557,6 +554,10 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-slate-900">Business Owner / Contact Person</h3>
               <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
+            </div>
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium text-slate-600">Owner / Representative Passport Photo</p>
+              <OwnerPhotoUploadCard initialPhotoUrl={msmeSettings.passport_photo_url ?? workspace.msme.passport_photo_url} ownerName={msmeSettings.owner_name ?? workspace.msme.owner_name} />
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
