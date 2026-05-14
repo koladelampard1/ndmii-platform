@@ -18,7 +18,7 @@ export default async function IdCardPage() {
 
   const { data: profile } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,passport_photo_url,verification_status")
+    .select("id,msme_id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,passport_photo_url,verification_status,association_id")
     .eq("id", ctx.linkedMsmeId ?? "")
     .maybeSingle();
 
@@ -26,7 +26,7 @@ export default async function IdCardPage() {
     redirect("/access-denied");
   }
 
-  const [{ data: compliance }, { data: digitalId }] = await Promise.all([
+  const [{ data: compliance }, { data: digitalId }, { data: association }] = await Promise.all([
     supabase
       .from("compliance_profiles")
       .select("overall_status")
@@ -39,6 +39,13 @@ export default async function IdCardPage() {
       .order("issued_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    profile.association_id
+      ? supabase
+          .from("associations")
+          .select("name")
+          .eq("id", profile.association_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const verificationId = digitalId?.ndmii_id || profile.msme_id;
@@ -55,6 +62,7 @@ export default async function IdCardPage() {
 
   return (
     <DigitalIdWorkspace
+      associationName={association?.name ?? null}
       businessName={profile.business_name || "Not provided"}
       ownerName={profile.owner_name || "Not provided"}
       ownerEmail={profile.contact_email || ctx.email || "Not provided"}
