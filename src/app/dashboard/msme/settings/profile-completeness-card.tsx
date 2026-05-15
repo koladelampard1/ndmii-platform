@@ -15,6 +15,7 @@ export type ProfileCompletenessSignals = {
   descriptionPresent: boolean;
   logoUploaded: boolean;
   providerProfileExists: boolean;
+  bankingProfileConfigured: boolean;
 };
 
 type CompletenessItem = {
@@ -35,6 +36,7 @@ function buildCompletenessItems(signals: ProfileCompletenessSignals): Completene
     { label: "Business description", complete: signals.descriptionPresent },
     { label: "Logo uploaded", complete: signals.logoUploaded },
     { label: "Provider profile", complete: signals.providerProfileExists },
+    { label: "Banking profile", complete: signals.bankingProfileConfigured },
   ];
 }
 
