@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { filterPayloadByColumns, getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
+import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
 
 export type BankingVerificationStatus = "pending_review" | "verified" | "changes_requested" | "rejected";
 export type PreferredPaymentMethod = "bank_transfer" | "mobile_money" | "card" | "cheque";
@@ -83,6 +83,7 @@ const BANKING_SELECT_COLUMNS = [
   "created_at",
   "updated_at",
 ];
+const BANKING_WRITE_SELECT = BANKING_SELECT_COLUMNS.join(",");
 
 const TEXT_PATTERN = /^[A-Za-z0-9 .,'&()/-]+$/;
 const CODE_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -202,9 +203,7 @@ export async function saveMsmeBankingProfile(params: {
   if (!nextMasked || !nextLast4) return { ok: false, errors: { account_number: BANKING_FIELD_ERROR_MESSAGES.account_number } };
 
   const nowIso = new Date().toISOString();
-  const columns = await getTableColumns(params.supabase, "msme_banking_profiles");
   const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const requiredColumns = ["msme_id", "bank_name"];
   const rawPayload = {
     msme_id: params.msmeId,
     bank_name: bankName,
@@ -220,67 +219,21 @@ export async function saveMsmeBankingProfile(params: {
     updated_at: nowIso,
     created_at: params.existingProfile ? undefined : nowIso,
   };
-  const payload = filterPayloadByColumns(
-    Object.fromEntries(Object.entries(rawPayload).filter(([, value]) => value !== undefined)),
-    columns
-  );
+  const payload = Object.fromEntries(Object.entries(rawPayload).filter(([, value]) => value !== undefined));
 
-  if (!columns.has("msme_id") || !columns.has("bank_name")) {
-    return bankingSaveFailure({
-      operation: "schema_lookup",
-      code: null,
-      message: "msme_banking_profiles is missing required columns",
-      table: "msme_banking_profiles",
-      columns: requiredColumns,
-      resolvedMsmeId: params.msmeId,
-      serviceRoleConfigured,
-      branch: params.existingProfile?.id ? "update" : "insert",
-      existingProfileIdPresent: Boolean(params.existingProfile?.id),
-      classification: "schema_missing",
-      errorKey: "banking_schema_missing",
-    });
-  }
-
-  const select = BANKING_SELECT_COLUMNS.filter((column) => columns.has(column)).join(",");
   const writeOperation = params.existingProfile?.id ? "update" : "insert";
-  const existingRead = await params.supabase
-    .from("msme_banking_profiles")
-    .select("id,msme_id")
-    .eq("msme_id", params.msmeId)
-    .limit(1);
-
-  if (existingRead.error) {
-    const classification = classifyBankingFailure(existingRead.error);
-    return bankingSaveFailure({
-      operation: "select_existing",
-      code: existingRead.error.code ?? null,
-      message: existingRead.error.message,
-      details: safeDbText(existingRead.error.details),
-      hint: safeDbText(existingRead.error.hint),
-      table: "msme_banking_profiles",
-      columns: ["id", "msme_id"],
-      resolvedMsmeId: params.msmeId,
-      serviceRoleConfigured,
-      branch: writeOperation,
-      existingProfileIdPresent: Boolean(params.existingProfile?.id),
-      readSucceeded: false,
-      classification,
-      errorKey: bankingErrorKeyForClassification(classification),
-    });
-  }
-
   const writeResult = params.existingProfile?.id
     ? await params.supabase
         .from("msme_banking_profiles")
         .update(payload)
         .eq("id", params.existingProfile.id)
         .eq("msme_id", params.msmeId)
-        .select(select)
+        .select(BANKING_WRITE_SELECT)
         .maybeSingle()
     : await params.supabase
         .from("msme_banking_profiles")
         .insert(payload)
-        .select(select)
+        .select(BANKING_WRITE_SELECT)
         .maybeSingle();
 
   const { data, error } = writeResult;
@@ -299,7 +252,6 @@ export async function saveMsmeBankingProfile(params: {
       serviceRoleConfigured,
       branch: writeOperation,
       existingProfileIdPresent: Boolean(params.existingProfile?.id),
-      readSucceeded: true,
       classification,
       errorKey: bankingErrorKeyForClassification(classification),
     });
