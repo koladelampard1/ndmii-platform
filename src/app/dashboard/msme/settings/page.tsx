@@ -298,7 +298,7 @@ async function settingsAction(formData: FormData) {
     redirect("/dashboard/msme/settings?error=read_failed");
   }
 
-  const existingBankingProfile = await loadMsmeBankingProfile(supabase, workspace.msme.id);
+  const existingBankingProfile = await loadMsmeBankingProfile(supabase, existingMsme.id);
   const hasBankingInput = hasBankingSetupInput(formData);
 
   // Source of truth for editable fields:
@@ -438,7 +438,7 @@ async function settingsAction(formData: FormData) {
   if (existingBankingProfile || hasBankingInput) {
     const bankingResult = await saveMsmeBankingProfile({
       supabase,
-      msmeId: workspace.msme.id,
+      msmeId: existingMsme.id,
       formData,
       existingProfile: existingBankingProfile,
     });

@@ -25,7 +25,13 @@ export type MsmeBankingProfile = {
 
 export type BankingFormState =
   | { ok: true; profile: MsmeBankingProfile }
-  | { ok: false; errors: Record<string, string> };
+  | { ok: false; errors: Record<string, string>; diagnostic?: BankingSaveDiagnostic };
+
+type BankingSaveDiagnostic = {
+  operation: "schema_lookup" | "select_existing" | "insert" | "update";
+  code: string | null;
+  message: string;
+};
 
 export const BANKING_FIELD_ERROR_MESSAGES = {
   bank_name: "Bank name required",
@@ -64,6 +70,7 @@ const BANKING_SELECT_COLUMNS = [
 const TEXT_PATTERN = /^[A-Za-z0-9 .,'&()/-]+$/;
 const CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 const PAYMENT_METHODS = new Set(["bank_transfer", "mobile_money", "card", "cheque"]);
+const DEV_MODE = process.env.NODE_ENV !== "production";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -72,6 +79,20 @@ function textValue(formData: FormData, key: string) {
 function optionalText(formData: FormData, key: string) {
   const value = textValue(formData, key);
   return value.length > 0 ? value : null;
+}
+
+function logBankingDiagnostic(diagnostic: BankingSaveDiagnostic) {
+  if (!DEV_MODE) return;
+  console.error("[msme-banking][save-failed]", diagnostic);
+}
+
+function bankingSaveFailure(diagnostic: BankingSaveDiagnostic): BankingFormState {
+  logBankingDiagnostic(diagnostic);
+  return {
+    ok: false,
+    errors: { form: BANKING_FIELD_ERROR_MESSAGES.form },
+    diagnostic,
+  };
 }
 
 export function maskAccountNumber(accountNumber: string) {
@@ -98,10 +119,10 @@ export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, msme
     .from("msme_banking_profiles")
     .select(select.join(","))
     .eq("msme_id", msmeId)
-    .maybeSingle();
+    .limit(1);
 
   if (error) return null;
-  return (data ?? null) as MsmeBankingProfile | null;
+  return (data?.[0] ?? null) as unknown as MsmeBankingProfile | null;
 }
 
 export async function saveMsmeBankingProfile(params: {
@@ -156,8 +177,6 @@ export async function saveMsmeBankingProfile(params: {
     sort_code: sortCode,
     vat_number: vatNumber,
     preferred_payment_method: preferredPaymentMethod,
-    payout_enabled: params.existingProfile?.payout_enabled ?? false,
-    verification_status: params.existingProfile?.verification_status ?? "pending_review",
     updated_at: nowIso,
     created_at: params.existingProfile ? undefined : nowIso,
   };
@@ -167,17 +186,37 @@ export async function saveMsmeBankingProfile(params: {
   );
 
   if (!columns.has("msme_id") || !columns.has("bank_name")) {
-    return { ok: false, errors: { form: BANKING_FIELD_ERROR_MESSAGES.form } };
+    return bankingSaveFailure({
+      operation: "schema_lookup",
+      code: null,
+      message: "msme_banking_profiles is missing required columns",
+    });
   }
 
-  const { data, error } = await params.supabase
-    .from("msme_banking_profiles")
-    .upsert(payload, { onConflict: "msme_id" })
-    .select(BANKING_SELECT_COLUMNS.filter((column) => columns.has(column)).join(","))
-    .maybeSingle();
+  const select = BANKING_SELECT_COLUMNS.filter((column) => columns.has(column)).join(",");
+  const writeOperation = params.existingProfile?.id ? "update" : "insert";
+  const writeResult = params.existingProfile?.id
+    ? await params.supabase
+        .from("msme_banking_profiles")
+        .update(payload)
+        .eq("id", params.existingProfile.id)
+        .eq("msme_id", params.msmeId)
+        .select(select)
+        .maybeSingle()
+    : await params.supabase
+        .from("msme_banking_profiles")
+        .insert(payload)
+        .select(select)
+        .maybeSingle();
+
+  const { data, error } = writeResult;
 
   if (error || !data) {
-    return { ok: false, errors: { form: BANKING_FIELD_ERROR_MESSAGES.form } };
+    return bankingSaveFailure({
+      operation: writeOperation,
+      code: error?.code ?? null,
+      message: error?.message ?? "msme_banking_profiles write returned no row",
+    });
   }
 
   return { ok: true, profile: data as unknown as MsmeBankingProfile };
