@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { CheckCircle2, ExternalLink, Info } from "lucide-react";
+import { CheckCircle2, ExternalLink, Info, Landmark, ShieldCheck } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
 import { OwnerPhotoUploadCard } from "@/app/dashboard/msme/settings/owner-photo-upload-card";
 import { ProfileCompletenessCard, type ProfileCompletenessSignals } from "@/app/dashboard/msme/settings/profile-completeness-card";
+import { SettingsSubmitButton } from "@/app/dashboard/msme/settings/settings-submit-button";
+import {
+  BANKING_FIELD_ERROR_MESSAGES,
+  bankingProfileConfigured,
+  loadMsmeBankingProfile,
+  saveMsmeBankingProfile,
+  verificationStatusLabel,
+  type BankingFieldErrorKey,
+} from "@/lib/data/msme-banking";
 
 const SETTINGS_SECTIONS = [
   {
@@ -65,12 +74,16 @@ type SettingsErrorCode =
   | "read_failed"
   | "provider_save_failed"
   | "msme_save_failed"
+  | "banking_validation_failed"
+  | "banking_save_failed"
   | "unknown_save_error";
 
 const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   read_failed: "We could not load your current settings. Please refresh and try again.",
   provider_save_failed: "Your business profile changes could not be saved. Please try again.",
   msme_save_failed: "Your MSME settings could not be saved. Please try again.",
+  banking_validation_failed: "Your banking profile has invalid or incomplete fields. Please review the banking section.",
+  banking_save_failed: "Your banking profile could not be saved. Please try again.",
   unknown_save_error: "Something went wrong while saving. Please retry.",
 };
 
@@ -112,6 +125,38 @@ function hasText(value: string | null | undefined) {
   return Boolean(value && value.trim().length > 0);
 }
 
+const BANKING_START_FIELDS = ["bank_name", "account_name", "account_number", "account_type", "vat_number", "swift_code", "sort_code"] as const;
+const BANKING_ERROR_KEYS = new Set<BankingFieldErrorKey>(Object.keys(BANKING_FIELD_ERROR_MESSAGES) as BankingFieldErrorKey[]);
+
+function hasBankingSetupInput(formData: FormData) {
+  return BANKING_START_FIELDS.some((field) => String(formData.get(field) ?? "").trim().length > 0);
+}
+
+function serializeBankingErrorKeys(errors: Record<string, string>) {
+  return Object.keys(errors)
+    .filter((key): key is BankingFieldErrorKey => BANKING_ERROR_KEYS.has(key as BankingFieldErrorKey))
+    .join(",");
+}
+
+function parseBankingErrorKeys(value: string | undefined) {
+  if (!value) return new Set<BankingFieldErrorKey>();
+  return new Set(
+    value
+      .split(",")
+      .map((key) => key.trim())
+      .filter((key): key is BankingFieldErrorKey => BANKING_ERROR_KEYS.has(key as BankingFieldErrorKey)),
+  );
+}
+
+function bankingFieldErrorClass(hasError: boolean) {
+  return hasError ? "border-rose-300 bg-rose-50/40 ring-rose-200 focus:ring focus:ring-rose-200" : "border-slate-300 ring-emerald-200 focus:ring";
+}
+
+function BankingFieldError({ field, errors }: { field: BankingFieldErrorKey; errors: Set<BankingFieldErrorKey> }) {
+  if (!errors.has(field)) return null;
+  return <span className="block text-xs font-medium text-rose-700">{BANKING_FIELD_ERROR_MESSAGES[field]}</span>;
+}
+
 function deriveProfileCompletenessSignals(params: {
   msme: {
     business_name: string | null;
@@ -125,6 +170,7 @@ function deriveProfileCompletenessSignals(params: {
     passport_photo_url: string | null;
   };
   provider: { id: string | null; description: string | null; logo_url: string | null };
+  bankingConfigured?: boolean;
 }): ProfileCompletenessSignals {
   const signals = {
     businessNamePresent: hasText(params.msme.business_name),
@@ -138,6 +184,7 @@ function deriveProfileCompletenessSignals(params: {
     descriptionPresent: hasText(params.provider.description),
     logoUploaded: hasText(params.provider.logo_url),
     providerProfileExists: hasText(params.provider.id),
+    bankingProfileConfigured: Boolean(params.bankingConfigured),
   } satisfies ProfileCompletenessSignals;
 
   debugSettingsLog("profile-completion-recomputed", { signalCount: Object.keys(signals).length });
@@ -250,6 +297,9 @@ async function settingsAction(formData: FormData) {
     });
     redirect("/dashboard/msme/settings?error=read_failed");
   }
+
+  const existingBankingProfile = await loadMsmeBankingProfile(supabase, workspace.msme.id);
+  const hasBankingInput = hasBankingSetupInput(formData);
 
   // Source of truth for editable fields:
   // - Canonical business/contact data lives in `msmes` and is always written there.
@@ -385,6 +435,28 @@ async function settingsAction(formData: FormData) {
     redirect("/dashboard/msme/settings?error=msme_save_failed");
   }
 
+  if (existingBankingProfile || hasBankingInput) {
+    const bankingResult = await saveMsmeBankingProfile({
+      supabase,
+      msmeId: workspace.msme.id,
+      formData,
+      existingProfile: existingBankingProfile,
+    });
+
+    if (!bankingResult.ok) {
+      const safeErrorKeys = Object.keys(bankingResult.errors);
+      debugSettingsLog("banking-write-failed", {
+        ...saveContext,
+        table: "msme_banking_profiles",
+        errorKeys: safeErrorKeys,
+      });
+      const safeErrorParam = serializeBankingErrorKeys(bankingResult.errors);
+      const errorCode = safeErrorKeys.includes("form") ? "banking_save_failed" : "banking_validation_failed";
+      const query = safeErrorParam ? `error=${errorCode}&banking_errors=${encodeURIComponent(safeErrorParam)}` : `error=${errorCode}`;
+      redirect(`/dashboard/msme/settings?${query}#banking-information`);
+    }
+  }
+
   const revalidationTargets = ["/dashboard/msme/settings", "/dashboard/msme/profile", `/providers/${workspace.provider.id}`];
   debugSettingsLog("revalidation-targets", { ...saveContext, revalidationTargetCount: revalidationTargets.length });
   revalidatePath("/dashboard/msme/settings");
@@ -393,7 +465,7 @@ async function settingsAction(formData: FormData) {
   redirect("/dashboard/msme/settings?saved=1");
 }
 
-export default async function MsmeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function MsmeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; banking_errors?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
@@ -429,13 +501,16 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
     redirect("/dashboard/msme/settings?error=read_failed");
   }
 
+  const bankingProfile = await loadMsmeBankingProfile(supabase, workspace.msme.id);
   const completenessSignals = deriveProfileCompletenessSignals({
     msme: msmeSettings,
     provider: { id: workspace.provider.id, description: workspace.provider.description, logo_url: workspace.provider.logo_url },
+    bankingConfigured: bankingProfileConfigured(bankingProfile),
   });
   const activityRows = await loadSettingsActivityLog({ supabase, workspace });
   const errorCode: SettingsErrorCode = (params.error as SettingsErrorCode) || "unknown_save_error";
   const errorMessage = SETTINGS_ERROR_MESSAGES[errorCode] ?? SETTINGS_ERROR_MESSAGES.unknown_save_error;
+  const bankingFieldErrors = parseBankingErrorKeys(params.banking_errors);
 
   return (
     <section className="space-y-5 pb-6">
@@ -635,14 +710,156 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
 
           <section id="banking-information" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-slate-900">Banking Information</h3>
-              <SectionStatusBadge tone="deep-link">Deep-link</SectionStatusBadge>
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                  <Landmark className="h-5 w-5 text-emerald-700" />
+                  Banking Information
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">Manage the bank profile used for invoices, procurement, VAT records, and future payout readiness.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <SectionStatusBadge tone="editable">Editable</SectionStatusBadge>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                  bankingProfile?.verification_status === "verified"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {verificationStatusLabel(bankingProfile?.verification_status)}
+                </span>
+              </div>
             </div>
-            <p className="mt-1 text-sm text-slate-600">Managed elsewhere: Bank account details are maintained in the payments workspace.</p>
-            <div className="mt-3">
-              <Link href="/dashboard/msme/payments" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800">
-                Manage banking and VAT profile <ExternalLink className="h-4 w-4" />
-              </Link>
+
+            {!bankingProfile ? (
+              <div className="mt-4 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-4">
+                <p className="text-sm font-semibold text-emerald-950">No banking profile is configured yet.</p>
+                <p className="mt-1 text-sm text-emerald-900/80">Add account details here. Full account numbers are accepted for validation but only a masked value is shown back in the workspace.</p>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Bank</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.bank_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.account_number_masked}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payout</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.payout_enabled ? "Enabled" : "Not enabled"}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Bank Name</span>
+                <input
+                  name="bank_name"
+                  defaultValue={bankingProfile?.bank_name ?? ""}
+                  placeholder="Access Bank"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("bank_name"))}`}
+                />
+                <BankingFieldError field="bank_name" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Account Name</span>
+                <input
+                  name="account_name"
+                  defaultValue={bankingProfile?.account_name ?? ""}
+                  placeholder={msmeSettings.business_name ?? workspace.msme.business_name}
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("account_name"))}`}
+                />
+                <BankingFieldError field="account_name" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Account Number</span>
+                <input
+                  name="account_number"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={10}
+                  placeholder={bankingProfile ? bankingProfile.account_number_masked : "0123456789"}
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("account_number"))}`}
+                />
+                <BankingFieldError field="account_number" errors={bankingFieldErrors} />
+                <span className="block text-xs text-slate-500">{bankingProfile ? "Leave blank to keep the current masked account number." : "Use a 10-digit Nigerian bank account number."}</span>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Account Type (optional)</span>
+                <input
+                  name="account_type"
+                  defaultValue={bankingProfile?.account_type ?? ""}
+                  placeholder="Current"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("account_type"))}`}
+                />
+                <BankingFieldError field="account_type" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">VAT/TIN Number</span>
+                <input
+                  name="vat_number"
+                  defaultValue={bankingProfile?.vat_number ?? ""}
+                  placeholder="TIN1000001"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("vat_number"))}`}
+                />
+                <BankingFieldError field="vat_number" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Currency</span>
+                <select
+                  name="currency"
+                  defaultValue={bankingProfile?.currency ?? "NGN"}
+                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("currency"))}`}
+                >
+                  <option value="NGN">NGN - Nigerian Naira</option>
+                  <option value="USD">USD - US Dollar</option>
+                  <option value="GBP">GBP - British Pound</option>
+                </select>
+                <BankingFieldError field="currency" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Preferred Payment Method</span>
+                <select
+                  name="preferred_payment_method"
+                  defaultValue={bankingProfile?.preferred_payment_method ?? "bank_transfer"}
+                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("preferred_payment_method"))}`}
+                >
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="mobile_money">Mobile Money</option>
+                  <option value="card">Card</option>
+                  <option value="cheque">Cheque</option>
+                </select>
+                <BankingFieldError field="preferred_payment_method" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">SWIFT Code (optional)</span>
+                <input
+                  name="swift_code"
+                  defaultValue={bankingProfile?.swift_code ?? ""}
+                  placeholder="ABNGNGLA"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm uppercase text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("swift_code"))}`}
+                />
+                <BankingFieldError field="swift_code" errors={bankingFieldErrors} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-slate-600">Sort Code (optional)</span>
+                <input
+                  name="sort_code"
+                  defaultValue={bankingProfile?.sort_code ?? ""}
+                  placeholder="044-150"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm text-slate-900 outline-none transition ${bankingFieldErrorClass(bankingFieldErrors.has("sort_code"))}`}
+                />
+                <BankingFieldError field="sort_code" errors={bankingFieldErrors} />
+              </label>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payout Enabled</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{bankingProfile?.payout_enabled ? "Enabled by DBIN operations" : "Disabled pending internal review"}</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs leading-5 text-blue-900">
+              Full account numbers are not displayed publicly or returned in profile summaries. Verification and payout enablement are controlled by DBIN operations.
             </div>
           </section>
 
@@ -760,12 +977,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             >
               Cancel
             </Link>
-            <button
-              type="submit"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
-            >
-              Save Changes
-            </button>
+            <SettingsSubmitButton />
           </div>
         </div>
 
