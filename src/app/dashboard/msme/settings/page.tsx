@@ -76,6 +76,9 @@ type SettingsErrorCode =
   | "msme_save_failed"
   | "banking_validation_failed"
   | "banking_save_failed"
+  | "banking_service_role_missing"
+  | "banking_schema_missing"
+  | "banking_msme_link_invalid"
   | "unknown_save_error";
 
 const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
@@ -84,6 +87,9 @@ const SETTINGS_ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   msme_save_failed: "Your MSME settings could not be saved. Please try again.",
   banking_validation_failed: "Your banking profile has invalid or incomplete fields. Please review the banking section.",
   banking_save_failed: "Your banking profile could not be saved. Please try again.",
+  banking_service_role_missing: "Banking profile saves are unavailable because the secure database service role is not configured.",
+  banking_schema_missing: "Banking profile saves are unavailable because the banking database schema is not ready.",
+  banking_msme_link_invalid: "Banking profile saves are unavailable because your MSME record link could not be verified.",
   unknown_save_error: "Something went wrong while saving. Please retry.",
 };
 
@@ -253,11 +259,27 @@ async function settingsAction(formData: FormData) {
   "use server";
 
   const route = "/dashboard/msme/settings";
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("[msme-banking][save-failed]", {
+      operation: "create_service_role_client",
+      code: null,
+      message: "SUPABASE_SERVICE_ROLE_KEY is not configured",
+      table: "msme_banking_profiles",
+      columns: [],
+      resolvedMsmeId: null,
+      serviceRoleConfigured: false,
+      classification: "service_role_missing",
+      errorKey: "banking_service_role_missing",
+    });
+    redirect(`${route}?error=banking_service_role_missing#banking-information`);
+  }
+
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
   const nowIso = new Date().toISOString();
   const saveContext = {
     route,
+    appUserIdExists: Boolean(workspace.appUserId),
     providerProfileId: workspace.provider.id,
     providerMsmeReference: workspace.provider.msme_id,
     msmeRowId: workspace.msme.id,
@@ -445,13 +467,31 @@ async function settingsAction(formData: FormData) {
 
     if (!bankingResult.ok) {
       const safeErrorKeys = Object.keys(bankingResult.errors);
+      const bankingDiagnostic = bankingResult.diagnostic;
+      console.error("[msme-settings][banking-save-failed]", {
+        operation: bankingDiagnostic?.operation ?? "unknown",
+        code: bankingDiagnostic?.code ?? null,
+        message: bankingDiagnostic?.message ?? "banking profile save failed",
+        details: bankingDiagnostic?.details ?? null,
+        hint: bankingDiagnostic?.hint ?? null,
+        table: bankingDiagnostic?.table ?? "msme_banking_profiles",
+        columns: bankingDiagnostic?.columns ?? [],
+        resolvedMsmeId: bankingDiagnostic?.resolvedMsmeId ?? existingMsme.id,
+        serviceRoleConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        appUserIdExists: Boolean(workspace.appUserId),
+        existingMsmeIdUsed: existingMsme.id === workspace.msme.id,
+        existingProfileIdPresent: Boolean(existingBankingProfile?.id),
+        branch: bankingDiagnostic?.branch ?? (existingBankingProfile?.id ? "update" : "insert"),
+        readSucceeded: bankingDiagnostic?.readSucceeded ?? null,
+        classification: bankingDiagnostic?.classification ?? "unknown",
+      });
       debugSettingsLog("banking-write-failed", {
         ...saveContext,
         table: "msme_banking_profiles",
         errorKeys: safeErrorKeys,
       });
       const safeErrorParam = serializeBankingErrorKeys(bankingResult.errors);
-      const errorCode = safeErrorKeys.includes("form") ? "banking_save_failed" : "banking_validation_failed";
+      const errorCode = bankingDiagnostic?.errorKey ?? (safeErrorKeys.includes("form") ? "banking_save_failed" : "banking_validation_failed");
       const query = safeErrorParam ? `error=${errorCode}&banking_errors=${encodeURIComponent(safeErrorParam)}` : `error=${errorCode}`;
       redirect(`/dashboard/msme/settings?${query}#banking-information`);
     }

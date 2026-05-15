@@ -31,6 +31,23 @@ type BankingSaveDiagnostic = {
   operation: "schema_lookup" | "select_existing" | "insert" | "update";
   code: string | null;
   message: string;
+  details?: string | null;
+  hint?: string | null;
+  table: "msme_banking_profiles";
+  columns: string[];
+  resolvedMsmeId: string;
+  serviceRoleConfigured: boolean;
+  branch?: "insert" | "update" | null;
+  existingProfileIdPresent?: boolean;
+  readSucceeded?: boolean;
+  classification?:
+    | "schema_missing"
+    | "fk_invalid"
+    | "rls_or_permission"
+    | "duplicate_constraint"
+    | "write_returned_no_row"
+    | "unknown";
+  errorKey?: "banking_save_failed" | "banking_schema_missing" | "banking_msme_link_invalid";
 };
 
 export const BANKING_FIELD_ERROR_MESSAGES = {
@@ -70,7 +87,7 @@ const BANKING_SELECT_COLUMNS = [
 const TEXT_PATTERN = /^[A-Za-z0-9 .,'&()/-]+$/;
 const CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 const PAYMENT_METHODS = new Set(["bank_transfer", "mobile_money", "card", "cheque"]);
-const DEV_MODE = process.env.NODE_ENV !== "production";
+const SENSITIVE_DIAGNOSTIC_TERMS = ["account", "bank", "vat", "tin", "email", "phone", "address", "payload", "form"];
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -81,8 +98,29 @@ function optionalText(formData: FormData, key: string) {
   return value.length > 0 ? value : null;
 }
 
+function safeDbText(value: string | null | undefined) {
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (SENSITIVE_DIAGNOSTIC_TERMS.some((term) => lower.includes(term))) return null;
+  return value;
+}
+
+function classifyBankingFailure(error: { code?: string | null; message?: string | null } | null | undefined, dataMissing = false): BankingSaveDiagnostic["classification"] {
+  if (error?.code === "42P01" || error?.code === "42703") return "schema_missing";
+  if (error?.code === "23503") return "fk_invalid";
+  if (error?.code === "42501") return "rls_or_permission";
+  if (error?.code === "23505") return "duplicate_constraint";
+  if (dataMissing) return "write_returned_no_row";
+  return "unknown";
+}
+
+function bankingErrorKeyForClassification(classification: BankingSaveDiagnostic["classification"]): NonNullable<BankingSaveDiagnostic["errorKey"]> {
+  if (classification === "schema_missing") return "banking_schema_missing";
+  if (classification === "fk_invalid") return "banking_msme_link_invalid";
+  return "banking_save_failed";
+}
+
 function logBankingDiagnostic(diagnostic: BankingSaveDiagnostic) {
-  if (!DEV_MODE) return;
   console.error("[msme-banking][save-failed]", diagnostic);
 }
 
@@ -165,6 +203,8 @@ export async function saveMsmeBankingProfile(params: {
 
   const nowIso = new Date().toISOString();
   const columns = await getTableColumns(params.supabase, "msme_banking_profiles");
+  const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const requiredColumns = ["msme_id", "bank_name"];
   const rawPayload = {
     msme_id: params.msmeId,
     bank_name: bankName,
@@ -190,11 +230,45 @@ export async function saveMsmeBankingProfile(params: {
       operation: "schema_lookup",
       code: null,
       message: "msme_banking_profiles is missing required columns",
+      table: "msme_banking_profiles",
+      columns: requiredColumns,
+      resolvedMsmeId: params.msmeId,
+      serviceRoleConfigured,
+      branch: params.existingProfile?.id ? "update" : "insert",
+      existingProfileIdPresent: Boolean(params.existingProfile?.id),
+      classification: "schema_missing",
+      errorKey: "banking_schema_missing",
     });
   }
 
   const select = BANKING_SELECT_COLUMNS.filter((column) => columns.has(column)).join(",");
   const writeOperation = params.existingProfile?.id ? "update" : "insert";
+  const existingRead = await params.supabase
+    .from("msme_banking_profiles")
+    .select("id,msme_id")
+    .eq("msme_id", params.msmeId)
+    .limit(1);
+
+  if (existingRead.error) {
+    const classification = classifyBankingFailure(existingRead.error);
+    return bankingSaveFailure({
+      operation: "select_existing",
+      code: existingRead.error.code ?? null,
+      message: existingRead.error.message,
+      details: safeDbText(existingRead.error.details),
+      hint: safeDbText(existingRead.error.hint),
+      table: "msme_banking_profiles",
+      columns: ["id", "msme_id"],
+      resolvedMsmeId: params.msmeId,
+      serviceRoleConfigured,
+      branch: writeOperation,
+      existingProfileIdPresent: Boolean(params.existingProfile?.id),
+      readSucceeded: false,
+      classification,
+      errorKey: bankingErrorKeyForClassification(classification),
+    });
+  }
+
   const writeResult = params.existingProfile?.id
     ? await params.supabase
         .from("msme_banking_profiles")
@@ -212,10 +286,22 @@ export async function saveMsmeBankingProfile(params: {
   const { data, error } = writeResult;
 
   if (error || !data) {
+    const classification = classifyBankingFailure(error, !data);
     return bankingSaveFailure({
       operation: writeOperation,
       code: error?.code ?? null,
       message: error?.message ?? "msme_banking_profiles write returned no row",
+      details: safeDbText(error?.details),
+      hint: safeDbText(error?.hint),
+      table: "msme_banking_profiles",
+      columns: Object.keys(payload).sort(),
+      resolvedMsmeId: params.msmeId,
+      serviceRoleConfigured,
+      branch: writeOperation,
+      existingProfileIdPresent: Boolean(params.existingProfile?.id),
+      readSucceeded: true,
+      classification,
+      errorKey: bankingErrorKeyForClassification(classification),
     });
   }
 
