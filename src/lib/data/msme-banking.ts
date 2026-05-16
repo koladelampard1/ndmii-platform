@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export type BankingVerificationStatus = "pending_review" | "verified" | "changes_requested" | "rejected";
 export type PreferredPaymentMethod = "bank_transfer" | "mobile_money" | "card" | "cheque";
@@ -130,19 +131,27 @@ function logBankingDiagnostic(diagnostic: BankingSaveDiagnostic) {
 function logBankingReadDiagnostic(payload: {
   operation: "read";
   resolvedMsmeId: string;
+  uuidValidationPassed: boolean;
   found: boolean;
   serviceRoleConfigured: boolean;
+  queryClient: "service_role" | "provided";
+  queryBranch: "invalid_uuid" | "schema_lookup" | "profile_select";
   code?: string | null;
   message?: string | null;
+  returnedRowId?: string | null;
 }) {
   const level = payload.code ? "error" : "info";
   console[level]("[msme-banking][read]", {
     operation: payload.operation,
     resolvedMsmeId: payload.resolvedMsmeId,
+    uuidValidationPassed: payload.uuidValidationPassed,
     readFoundRow: payload.found,
     serviceRoleConfigured: payload.serviceRoleConfigured,
+    queryClient: payload.queryClient,
+    queryBranch: payload.queryBranch,
     code: payload.code ?? null,
     message: payload.message ?? null,
+    returnedRowId: payload.returnedRowId ?? null,
   });
 }
 
@@ -194,33 +203,62 @@ export function bankingProfileConfigured(profile: MsmeBankingProfile | null) {
 export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, canonicalMsmeId: string): Promise<MsmeBankingProfile | null> {
   const normalizedMsmeId = canonicalMsmeId.trim();
   const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  if (!UUID_PATTERN.test(normalizedMsmeId)) {
+  const uuidValidationPassed = UUID_PATTERN.test(normalizedMsmeId);
+  let readClient = supabase;
+  let queryClient: "service_role" | "provided" = "provided";
+
+  if (serviceRoleConfigured) {
+    try {
+      readClient = await createServiceRoleSupabaseClient();
+      queryClient = "service_role";
+    } catch (error) {
+      logBankingReadDiagnostic({
+        operation: "read",
+        resolvedMsmeId: normalizedMsmeId,
+        uuidValidationPassed,
+        found: false,
+        serviceRoleConfigured,
+        queryClient,
+        queryBranch: "schema_lookup",
+        code: "service_role_client_failed",
+        message: error instanceof Error ? error.message : "Service-role Supabase client could not be created",
+      });
+    }
+  }
+
+  if (!uuidValidationPassed) {
     logBankingReadDiagnostic({
       operation: "read",
       resolvedMsmeId: normalizedMsmeId,
+      uuidValidationPassed,
       found: false,
       serviceRoleConfigured,
+      queryClient,
+      queryBranch: "invalid_uuid",
       code: "invalid_uuid",
       message: "msme_banking_profiles read skipped because resolved MSME id is not a UUID",
     });
     return null;
   }
 
-  const columns = await getTableColumns(supabase, "msme_banking_profiles");
+  const columns = await getTableColumns(readClient, "msme_banking_profiles");
   const select = pickExistingColumns(columns, BANKING_SELECT_COLUMNS);
   if (!BANKING_SCHEMA_COLUMNS.every((column) => select.includes(column))) {
     logBankingReadDiagnostic({
       operation: "read",
       resolvedMsmeId: normalizedMsmeId,
+      uuidValidationPassed,
       found: false,
       serviceRoleConfigured,
+      queryClient,
+      queryBranch: "schema_lookup",
       code: "schema_missing",
       message: "msme_banking_profiles read skipped because required columns are unavailable",
     });
     return null;
   }
 
-  let query = supabase
+  let query = readClient
     .from("msme_banking_profiles")
     .select(select.join(","))
     .eq("msme_id", normalizedMsmeId)
@@ -234,8 +272,11 @@ export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, cano
     logBankingReadDiagnostic({
       operation: "read",
       resolvedMsmeId: normalizedMsmeId,
+      uuidValidationPassed,
       found: false,
       serviceRoleConfigured,
+      queryClient,
+      queryBranch: "profile_select",
       code: error.code ?? null,
       message: error.message,
     });
@@ -245,8 +286,12 @@ export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, cano
   logBankingReadDiagnostic({
     operation: "read",
     resolvedMsmeId: normalizedMsmeId,
+    uuidValidationPassed,
     found: Boolean(profile),
     serviceRoleConfigured,
+    queryClient,
+    queryBranch: "profile_select",
+    returnedRowId: profile?.id ?? null,
   });
   return profile;
 }
