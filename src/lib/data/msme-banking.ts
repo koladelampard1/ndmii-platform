@@ -28,7 +28,7 @@ export type BankingFormState =
   | { ok: false; errors: Record<string, string>; diagnostic?: BankingSaveDiagnostic };
 
 type BankingSaveDiagnostic = {
-  operation: "schema_lookup" | "select_existing" | "insert" | "update";
+  operation: "schema_lookup" | "select_existing" | "insert" | "update" | "upsert_fallback";
   code: string | null;
   message: string;
   details?: string | null;
@@ -37,7 +37,7 @@ type BankingSaveDiagnostic = {
   columns: string[];
   resolvedMsmeId: string;
   serviceRoleConfigured: boolean;
-  branch?: "insert" | "update" | null;
+  branch?: "insert" | "update" | "upsertFallback" | null;
   existingProfileIdPresent?: boolean;
   readSucceeded?: boolean;
   classification?:
@@ -90,6 +90,7 @@ const CODE_PATTERN = /^[A-Za-z0-9-]+$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_METHODS = new Set(["bank_transfer", "mobile_money", "card", "cheque"]);
 const SENSITIVE_DIAGNOSTIC_TERMS = ["account", "bank", "vat", "tin", "email", "phone", "address", "payload", "form"];
+const BANKING_SCHEMA_COLUMNS = ["msme_id", "bank_name"] as const;
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -126,6 +127,46 @@ function logBankingDiagnostic(diagnostic: BankingSaveDiagnostic) {
   console.error("[msme-banking][save-failed]", diagnostic);
 }
 
+function logBankingReadDiagnostic(payload: {
+  operation: "read";
+  resolvedMsmeId: string;
+  found: boolean;
+  serviceRoleConfigured: boolean;
+  code?: string | null;
+  message?: string | null;
+}) {
+  const level = payload.code ? "error" : "info";
+  console[level]("[msme-banking][read]", {
+    operation: payload.operation,
+    resolvedMsmeId: payload.resolvedMsmeId,
+    readFoundRow: payload.found,
+    serviceRoleConfigured: payload.serviceRoleConfigured,
+    code: payload.code ?? null,
+    message: payload.message ?? null,
+  });
+}
+
+function logBankingWriteDiagnostic(payload: {
+  operation: "select_existing" | "insert" | "update" | "upsert_fallback";
+  resolvedMsmeId: string;
+  branch: "insert" | "update" | "upsertFallback";
+  found?: boolean;
+  serviceRoleConfigured: boolean;
+  code?: string | null;
+  message?: string | null;
+}) {
+  const level = payload.code ? "error" : "info";
+  console[level]("[msme-banking][save]", {
+    operation: payload.operation,
+    resolvedMsmeId: payload.resolvedMsmeId,
+    readFoundRow: payload.found,
+    branch: payload.branch,
+    serviceRoleConfigured: payload.serviceRoleConfigured,
+    code: payload.code ?? null,
+    message: payload.message ?? null,
+  });
+}
+
 function bankingSaveFailure(diagnostic: BankingSaveDiagnostic): BankingFormState {
   logBankingDiagnostic(diagnostic);
   return {
@@ -152,11 +193,32 @@ export function bankingProfileConfigured(profile: MsmeBankingProfile | null) {
 
 export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, canonicalMsmeId: string): Promise<MsmeBankingProfile | null> {
   const normalizedMsmeId = canonicalMsmeId.trim();
-  if (!UUID_PATTERN.test(normalizedMsmeId)) return null;
+  const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!UUID_PATTERN.test(normalizedMsmeId)) {
+    logBankingReadDiagnostic({
+      operation: "read",
+      resolvedMsmeId: normalizedMsmeId,
+      found: false,
+      serviceRoleConfigured,
+      code: "invalid_uuid",
+      message: "msme_banking_profiles read skipped because resolved MSME id is not a UUID",
+    });
+    return null;
+  }
 
   const columns = await getTableColumns(supabase, "msme_banking_profiles");
   const select = pickExistingColumns(columns, BANKING_SELECT_COLUMNS);
-  if (!select.includes("msme_id") || !select.includes("bank_name")) return null;
+  if (!BANKING_SCHEMA_COLUMNS.every((column) => select.includes(column))) {
+    logBankingReadDiagnostic({
+      operation: "read",
+      resolvedMsmeId: normalizedMsmeId,
+      found: false,
+      serviceRoleConfigured,
+      code: "schema_missing",
+      message: "msme_banking_profiles read skipped because required columns are unavailable",
+    });
+    return null;
+  }
 
   let query = supabase
     .from("msme_banking_profiles")
@@ -168,8 +230,43 @@ export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, cano
   }
   const { data, error } = await query;
 
-  if (error) return null;
-  return (data?.[0] ?? null) as unknown as MsmeBankingProfile | null;
+  if (error) {
+    logBankingReadDiagnostic({
+      operation: "read",
+      resolvedMsmeId: normalizedMsmeId,
+      found: false,
+      serviceRoleConfigured,
+      code: error.code ?? null,
+      message: error.message,
+    });
+    return null;
+  }
+  const profile = (data?.[0] ?? null) as unknown as MsmeBankingProfile | null;
+  logBankingReadDiagnostic({
+    operation: "read",
+    resolvedMsmeId: normalizedMsmeId,
+    found: Boolean(profile),
+    serviceRoleConfigured,
+  });
+  return profile;
+}
+
+async function selectExistingBankingProfile(supabase: SupabaseClient<any>, msmeId: string) {
+  return supabase
+    .from("msme_banking_profiles")
+    .select(BANKING_WRITE_SELECT)
+    .eq("msme_id", msmeId)
+    .limit(1)
+    .maybeSingle();
+}
+
+async function updateBankingProfileByMsmeId(supabase: SupabaseClient<any>, msmeId: string, payload: Record<string, unknown>) {
+  return supabase
+    .from("msme_banking_profiles")
+    .update(payload)
+    .eq("msme_id", msmeId)
+    .select(BANKING_WRITE_SELECT)
+    .maybeSingle();
 }
 
 export async function saveMsmeBankingProfile(params: {
@@ -179,6 +276,55 @@ export async function saveMsmeBankingProfile(params: {
   existingProfile?: MsmeBankingProfile | null;
 }): Promise<BankingFormState> {
   const errors: Record<string, string> = {};
+  const resolvedMsmeId = params.msmeId.trim();
+  const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!UUID_PATTERN.test(resolvedMsmeId)) {
+    return bankingSaveFailure({
+      operation: "select_existing",
+      code: "invalid_uuid",
+      message: "msme_banking_profiles save skipped because resolved MSME id is not a UUID",
+      table: "msme_banking_profiles",
+      columns: [],
+      resolvedMsmeId,
+      serviceRoleConfigured,
+      branch: null,
+      classification: "unknown",
+      errorKey: "banking_save_failed",
+    });
+  }
+
+  const existingResult = await selectExistingBankingProfile(params.supabase, resolvedMsmeId);
+  const existingForSave = (existingResult.data ?? params.existingProfile ?? null) as MsmeBankingProfile | null;
+  logBankingWriteDiagnostic({
+    operation: "select_existing",
+    resolvedMsmeId,
+    branch: existingForSave ? "update" : "insert",
+    found: Boolean(existingForSave),
+    serviceRoleConfigured,
+    code: existingResult.error?.code ?? null,
+    message: existingResult.error?.message ?? null,
+  });
+
+  if (existingResult.error) {
+    const classification = classifyBankingFailure(existingResult.error);
+    return bankingSaveFailure({
+      operation: "select_existing",
+      code: existingResult.error.code ?? null,
+      message: existingResult.error.message,
+      details: safeDbText(existingResult.error.details),
+      hint: safeDbText(existingResult.error.hint),
+      table: "msme_banking_profiles",
+      columns: ["msme_id"],
+      resolvedMsmeId,
+      serviceRoleConfigured,
+      branch: null,
+      existingProfileIdPresent: Boolean(params.existingProfile?.id),
+      readSucceeded: false,
+      classification,
+      errorKey: bankingErrorKeyForClassification(classification),
+    });
+  }
+
   const bankName = textValue(params.formData, "bank_name");
   const accountName = textValue(params.formData, "account_name");
   const accountNumber = textValue(params.formData, "account_number").replace(/\s+/g, "");
@@ -191,7 +337,7 @@ export async function saveMsmeBankingProfile(params: {
 
   if (!bankName) errors.bank_name = BANKING_FIELD_ERROR_MESSAGES.bank_name;
   if (!accountName) errors.account_name = BANKING_FIELD_ERROR_MESSAGES.account_name;
-  if (!params.existingProfile && !accountNumber) errors.account_number = BANKING_FIELD_ERROR_MESSAGES.account_number;
+  if (!existingForSave && !accountNumber) errors.account_number = BANKING_FIELD_ERROR_MESSAGES.account_number;
   if (bankName && !TEXT_PATTERN.test(bankName)) errors.bank_name = BANKING_FIELD_ERROR_MESSAGES.bank_name;
   if (accountName && !TEXT_PATTERN.test(accountName)) errors.account_name = BANKING_FIELD_ERROR_MESSAGES.account_name;
   if (accountNumber && !/^[0-9]{10}$/.test(accountNumber)) errors.account_number = BANKING_FIELD_ERROR_MESSAGES.account_number;
@@ -206,14 +352,13 @@ export async function saveMsmeBankingProfile(params: {
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
-  const nextMasked = accountNumber ? maskAccountNumber(accountNumber) : params.existingProfile?.account_number_masked ?? "";
-  const nextLast4 = accountNumber ? accountNumber.slice(-4) : params.existingProfile?.account_number_last4 ?? "";
+  const nextMasked = accountNumber ? maskAccountNumber(accountNumber) : existingForSave?.account_number_masked ?? "";
+  const nextLast4 = accountNumber ? accountNumber.slice(-4) : existingForSave?.account_number_last4 ?? "";
   if (!nextMasked || !nextLast4) return { ok: false, errors: { account_number: BANKING_FIELD_ERROR_MESSAGES.account_number } };
 
   const nowIso = new Date().toISOString();
-  const serviceRoleConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
   const rawPayload = {
-    msme_id: params.msmeId,
+    msme_id: resolvedMsmeId,
     bank_name: bankName,
     account_name: accountName,
     account_number_masked: nextMasked,
@@ -225,43 +370,62 @@ export async function saveMsmeBankingProfile(params: {
     vat_number: vatNumber,
     preferred_payment_method: preferredPaymentMethod,
     updated_at: nowIso,
-    created_at: params.existingProfile ? undefined : nowIso,
+    created_at: existingForSave ? undefined : nowIso,
   };
   const payload = Object.fromEntries(Object.entries(rawPayload).filter(([, value]) => value !== undefined));
 
-  const writeOperation = params.existingProfile?.id ? "update" : "insert";
-  const writeResult = params.existingProfile?.id
-    ? await params.supabase
-        .from("msme_banking_profiles")
-        .update(payload)
-        .eq("id", params.existingProfile.id)
-        .eq("msme_id", params.msmeId)
-        .select(BANKING_WRITE_SELECT)
-        .maybeSingle()
+  const writeOperation = existingForSave ? "update" : "insert";
+  let writeBranch: "insert" | "update" | "upsertFallback" = writeOperation;
+  let writeResult = existingForSave
+    ? await updateBankingProfileByMsmeId(params.supabase, resolvedMsmeId, payload)
     : await params.supabase
         .from("msme_banking_profiles")
         .insert(payload)
         .select(BANKING_WRITE_SELECT)
         .maybeSingle();
 
+  if (!existingForSave && writeResult.error?.code === "23505") {
+    writeBranch = "upsertFallback";
+    logBankingWriteDiagnostic({
+      operation: "insert",
+      resolvedMsmeId,
+      branch: "insert",
+      serviceRoleConfigured,
+      code: writeResult.error.code ?? null,
+      message: writeResult.error.message,
+    });
+    const fallbackPayload = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== "created_at"));
+    writeResult = await updateBankingProfileByMsmeId(params.supabase, resolvedMsmeId, fallbackPayload);
+  }
+
   const { data, error } = writeResult;
+  logBankingWriteDiagnostic({
+    operation: writeBranch === "upsertFallback" ? "upsert_fallback" : writeOperation,
+    resolvedMsmeId,
+    branch: writeBranch,
+    serviceRoleConfigured,
+    code: error?.code ?? null,
+    message: error?.message ?? null,
+  });
 
   if (error || !data) {
     const classification = classifyBankingFailure(error, !data);
+    const finalClassification = writeBranch === "upsertFallback" && !data ? "write_returned_no_row" : classification;
     return bankingSaveFailure({
-      operation: writeOperation,
+      operation: writeBranch === "upsertFallback" ? "upsert_fallback" : writeOperation,
       code: error?.code ?? null,
       message: error?.message ?? "msme_banking_profiles write returned no row",
       details: safeDbText(error?.details),
       hint: safeDbText(error?.hint),
       table: "msme_banking_profiles",
       columns: Object.keys(payload).sort(),
-      resolvedMsmeId: params.msmeId,
+      resolvedMsmeId,
       serviceRoleConfigured,
-      branch: writeOperation,
-      existingProfileIdPresent: Boolean(params.existingProfile?.id),
-      classification,
-      errorKey: bankingErrorKeyForClassification(classification),
+      branch: writeBranch,
+      existingProfileIdPresent: Boolean(existingForSave?.id),
+      readSucceeded: true,
+      classification: finalClassification,
+      errorKey: bankingErrorKeyForClassification(finalClassification),
     });
   }
 
