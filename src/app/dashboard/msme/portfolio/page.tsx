@@ -2,21 +2,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { MsmePortfolioGalleryDashboard } from "./portfolio-gallery-dashboard";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { buildProviderGalleryInsertPayload, readProviderGalleryItems } from "@/lib/data/provider-gallery";
+import { readProviderGalleryItems } from "@/lib/data/provider-gallery";
 import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
-const MAX_PORTFOLIO_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_PORTFOLIO_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
-const ALLOWED_PORTFOLIO_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/pjpeg"]);
 const PORTFOLIO_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_PORTFOLIO_BUCKET || "provider-gallery";
-
-function extractFileExtension(fileName: string) {
-  return fileName.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function sanitizePortfolioFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
-}
 
 function toSupabaseErrorInfo(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -61,41 +50,6 @@ function getPortfolioStoragePathFromPublicUrl(publicUrl: string | null) {
   }
 
   return null;
-}
-
-function validatePortfolioImageFile(file: File) {
-  if (!file || file.size <= 0) {
-    return { ok: false as const, error: "file_required" as const, message: "Please choose an image file to upload." };
-  }
-
-  if (file.size > MAX_PORTFOLIO_IMAGE_BYTES) {
-    return {
-      ok: false as const,
-      error: "file_too_large" as const,
-      message: `Image size must be ${Math.round(MAX_PORTFOLIO_IMAGE_BYTES / (1024 * 1024))}MB or less.`,
-    };
-  }
-
-  const extension = extractFileExtension(file.name);
-  const mimeType = (file.type || "").toLowerCase();
-
-  if (!ALLOWED_PORTFOLIO_EXTENSIONS.has(extension)) {
-    return {
-      ok: false as const,
-      error: "unsupported_file_type" as const,
-      message: "Unsupported image format. Use JPG, JPEG, PNG, or WEBP.",
-    };
-  }
-
-  if (mimeType && !ALLOWED_PORTFOLIO_MIME_TYPES.has(mimeType)) {
-    return {
-      ok: false as const,
-      error: "unsupported_file_type" as const,
-      message: "Unsupported image format. Use JPG, JPEG, PNG, or WEBP.",
-    };
-  }
-
-  return { ok: true as const };
 }
 
 function toErrorPath(errorCode: string) {
@@ -197,144 +151,6 @@ async function galleryAction(formData: FormData) {
   redirect("/dashboard/msme/portfolio?saved=1");
 }
 
-async function createPortfolioItemAction(formData: FormData) {
-  "use server";
-  const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServiceRoleSupabaseClient();
-  const file = formData.get("asset_file");
-
-  if (!(file instanceof File)) {
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "upload_validate_file_required",
-      error: "file_required",
-    });
-    return { ok: false as const, error: "file_required" as const };
-  }
-
-  const validationResult = validatePortfolioImageFile(file);
-  if (!validationResult.ok) {
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "upload_validate",
-      error: validationResult.error,
-    });
-    return { ok: false as const, error: validationResult.error as string };
-  }
-
-  const safeName = sanitizePortfolioFileName(file.name);
-  const storagePath = `${workspace.msme.id}/${workspace.provider.id}/${Date.now()}-${safeName}`;
-  const mimeType = file.type || "application/octet-stream";
-
-  logPortfolioDiagnostic({
-    providerProfileId: workspace.provider.id,
-    operation: "upload_start",
-  });
-
-  const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(PORTFOLIO_BUCKET);
-
-  if (bucketLookupError) {
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "bucket_lookup",
-      error: bucketLookupError,
-    });
-  }
-
-  if (!existingBucket) {
-    const { data: createdBucket, error: createBucketError } = await supabase.storage.createBucket(PORTFOLIO_BUCKET, {
-      public: true,
-      fileSizeLimit: `${MAX_PORTFOLIO_IMAGE_BYTES}`,
-      allowedMimeTypes: Array.from(ALLOWED_PORTFOLIO_MIME_TYPES),
-    });
-
-    if (createBucketError) {
-      logPortfolioDiagnostic({
-        providerProfileId: workspace.provider.id,
-        operation: "bucket_create",
-        error: createBucketError,
-      });
-      return { ok: false as const, error: "upload_failed" as const };
-    }
-
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "bucket_create",
-      rowsReturnedCount: createdBucket ? 1 : 0,
-    });
-  }
-
-  const { data: uploadData, error: uploadError } = await supabase.storage.from(PORTFOLIO_BUCKET).upload(storagePath, file, {
-    contentType: mimeType,
-    upsert: false,
-  });
-
-  if (uploadError) {
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "storage_upload",
-      error: uploadError,
-    });
-    return { ok: false as const, error: "upload_failed" as const };
-  }
-
-  logPortfolioDiagnostic({
-    providerProfileId: workspace.provider.id,
-    operation: "storage_upload",
-    rowsReturnedCount: uploadData?.path ? 1 : 0,
-  });
-
-  const { data: publicUrlData } = supabase.storage.from(PORTFOLIO_BUCKET).getPublicUrl(storagePath);
-  const assetUrl = publicUrlData.publicUrl;
-
-  const payload = buildProviderGalleryInsertPayload({
-    providerProfileId: workspace.provider.id,
-    publicUrl: assetUrl,
-    caption: String(formData.get("caption") ?? "").trim() || null,
-  });
-
-  const { data, error: insertError } = await supabase.from("provider_gallery").insert(payload).select("id");
-
-  if (insertError) {
-    const { error: cleanupError } = await supabase.storage.from(PORTFOLIO_BUCKET).remove([storagePath]);
-    if (cleanupError) {
-      logPortfolioDiagnostic({
-        providerProfileId: workspace.provider.id,
-        operation: "insert_storage_cleanup",
-        error: cleanupError,
-      });
-    }
-    logPortfolioDiagnostic({
-      providerProfileId: workspace.provider.id,
-      operation: "insert",
-      error: insertError,
-      rowsReturnedCount: 0,
-    });
-    return { ok: false as const, error: "save_failed" as const };
-  }
-
-  logPortfolioDiagnostic({
-    providerProfileId: workspace.provider.id,
-    operation: "insert",
-    rowsReturnedCount: data?.length ?? 0,
-  });
-
-  const reloadSnapshot = await readProviderGalleryItems({
-    supabase,
-    providerProfileId: workspace.provider.id,
-  });
-
-  logPortfolioDiagnostic({
-    providerProfileId: workspace.provider.id,
-    operation: "reload_after_insert",
-    rowsReturnedCount: reloadSnapshot.items.length,
-  });
-
-  revalidatePath("/dashboard/msme/portfolio");
-  revalidatePath(`/providers/${workspace.provider.id}`);
-  return { ok: true as const };
-}
-
 export default async function MsmePortfolioPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
@@ -356,7 +172,6 @@ export default async function MsmePortfolioPage({ searchParams }: { searchParams
       saved={Boolean(params.saved)}
       error={params.error ?? null}
       galleryAction={galleryAction}
-      createPortfolioItemAction={createPortfolioItemAction}
       providerId={workspace.provider.id}
     />
   );

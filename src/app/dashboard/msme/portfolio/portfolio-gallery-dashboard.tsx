@@ -30,7 +30,6 @@ type MsmePortfolioGalleryDashboardProps = {
   saved: boolean;
   error: string | null;
   galleryAction: (formData: FormData) => Promise<void>;
-  createPortfolioItemAction: (formData: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
   providerId: string;
 };
 
@@ -81,7 +80,6 @@ export function MsmePortfolioGalleryDashboard({
   saved,
   error,
   galleryAction,
-  createPortfolioItemAction,
   providerId,
 }: MsmePortfolioGalleryDashboardProps) {
   const router = useRouter();
@@ -174,15 +172,22 @@ export function MsmePortfolioGalleryDashboard({
       payload.set("sort_order", String(formData.get("sort_order") ?? 0));
       payload.set("is_featured", String(formData.get("is_featured") ?? "false"));
 
-      const result = await createPortfolioItemAction(payload);
-      if (!result.ok) {
+      const response = await fetch("/api/msme/portfolio-gallery", {
+        method: "POST",
+        body: payload,
+      });
+      const result = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; code?: string } | null;
+
+      if (!response.ok || !result?.ok) {
+        const errorCode = result?.code ?? result?.error ?? "upload_failed";
+        const userMessage = result?.error && !result.code ? result.error : uploadErrorMessages[errorCode] ?? "Portfolio item could not be saved. Please try again.";
         logPortfolioClientDiagnostic({
           providerProfileId: providerId,
           operation: "client_submit_result",
-          errorCode: result.error,
-          errorMessage: result.error,
+          errorCode,
+          errorMessage: errorCode,
         });
-        setFileError(uploadErrorMessages[result.error] ?? "Portfolio item could not be saved. Please try again.");
+        setFileError(userMessage);
         return;
       }
 
