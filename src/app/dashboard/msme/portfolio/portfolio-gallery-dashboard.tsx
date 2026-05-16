@@ -32,7 +32,6 @@ type MsmePortfolioGalleryDashboardProps = {
   galleryAction: (formData: FormData) => Promise<void>;
   createPortfolioItemAction: (formData: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
   providerId: string;
-  msmeId: string;
 };
 
 const ACCEPTED_FILE_TYPES = ".jpg,.jpeg,.png,.webp";
@@ -59,6 +58,22 @@ function titleFromItem(item: GalleryItem) {
   return `Portfolio Item #${item.sort_order ?? 0}`;
 }
 
+function logPortfolioClientDiagnostic(params: {
+  providerProfileId: string;
+  operation: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  rowsReturnedCount?: number;
+}) {
+  console.info("[msme-portfolio-gallery]", {
+    providerProfileId: params.providerProfileId,
+    operation: params.operation,
+    supabaseErrorCode: params.errorCode ?? null,
+    supabaseErrorMessage: params.errorMessage ?? null,
+    rowsReturnedCount: params.rowsReturnedCount ?? 0,
+  });
+}
+
 const recommendedCategories = ["Completed Projects", "Certifications", "Equipment", "Team", "Events", "Other"];
 
 export function MsmePortfolioGalleryDashboard({
@@ -68,7 +83,6 @@ export function MsmePortfolioGalleryDashboard({
   galleryAction,
   createPortfolioItemAction,
   providerId,
-  msmeId,
 }: MsmePortfolioGalleryDashboardProps) {
   const router = useRouter();
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -109,13 +123,10 @@ export function MsmePortfolioGalleryDashboard({
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const selectedFiles = event.target.files ? Array.from(event.target.files) : [];
     const file = selectedFiles[0] ?? null;
-    console.log("[msme-portfolio-upload][selected_files]", {
-      selectedFileCount: selectedFiles.length,
-      selectedFileNames: selectedFiles.map((item) => item.name),
-      fileSizesBytes: selectedFiles.map((item) => item.size),
-      mimeTypes: selectedFiles.map((item) => item.type || null),
-      providerId,
-      msmeId,
+    logPortfolioClientDiagnostic({
+      providerProfileId: providerId,
+      operation: "client_file_select",
+      rowsReturnedCount: selectedFiles.length,
     });
 
     if (!file) {
@@ -152,12 +163,9 @@ export function MsmePortfolioGalleryDashboard({
 
     try {
       const formData = new FormData(event.currentTarget);
-      console.log("[msme-portfolio-upload][submit_request]", {
-        providerId,
-        msmeId,
-        fileName: selectedFile.name,
-        fileSizeBytes: selectedFile.size,
-        mimeType: selectedFile.type || null,
+      logPortfolioClientDiagnostic({
+        providerProfileId: providerId,
+        operation: "client_submit",
       });
 
       const payload = new FormData();
@@ -168,10 +176,11 @@ export function MsmePortfolioGalleryDashboard({
 
       const result = await createPortfolioItemAction(payload);
       if (!result.ok) {
-        console.error("[msme-portfolio-upload][server_action_failed]", {
-          providerId,
-          msmeId,
+        logPortfolioClientDiagnostic({
+          providerProfileId: providerId,
+          operation: "client_submit_result",
           errorCode: result.error,
+          errorMessage: result.error,
         });
         setFileError(uploadErrorMessages[result.error] ?? "Portfolio item could not be saved. Please try again.");
         return;
@@ -183,6 +192,11 @@ export function MsmePortfolioGalleryDashboard({
       router.refresh();
     } catch (submissionError) {
       const message = submissionError instanceof Error ? submissionError.message : "upload_failed";
+      logPortfolioClientDiagnostic({
+        providerProfileId: providerId,
+        operation: "client_submit_exception",
+        errorMessage: message,
+      });
       setFileError(uploadErrorMessages[message] ?? "Image upload failed. Please try again.");
     } finally {
       setIsSaving(false);

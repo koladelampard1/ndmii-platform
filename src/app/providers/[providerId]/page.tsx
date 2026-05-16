@@ -323,7 +323,8 @@ export default async function ProviderPublicPage({
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {providerView.gallery.slice(0, 4).map((asset) => (
-                  <Image key={asset.id} src={asset.asset_url} alt={asset.caption ?? providerView.business_name} width={300} height={200} className="h-24 w-full rounded-lg object-cover" />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={asset.id} src={asset.asset_url} alt={asset.caption ?? providerView.business_name} className="h-24 w-full rounded-lg object-cover" />
                 ))}
               </div>
             )}

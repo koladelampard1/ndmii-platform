@@ -84,7 +84,7 @@ export default async function MsmePage() {
     quoteCount,
   ] = await Promise.all([
     supabase.from("provider_services").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
-    supabase.from("provider_gallery").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
+    supabase.from("provider_gallery").select("id", { count: "exact", head: true }).eq("provider_profile_id", workspace.provider.id),
     supabase
       .from("complaints")
       .select("id", { count: "exact", head: true })

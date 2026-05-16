@@ -23,6 +23,21 @@ export function buildProviderGalleryInsertPayload(params: {
   };
 }
 
+function logProviderGalleryDiagnostic(params: {
+  providerProfileId: string;
+  operation: string;
+  error?: { code?: string | null; message?: string | null } | null;
+  rowsReturnedCount?: number;
+}) {
+  console.info("[provider-gallery]", {
+    providerProfileId: params.providerProfileId,
+    operation: params.operation,
+    supabaseErrorCode: params.error?.code ?? null,
+    supabaseErrorMessage: params.error?.message ?? null,
+    rowsReturnedCount: params.rowsReturnedCount ?? 0,
+  });
+}
+
 export async function readProviderGalleryItems(params: {
   supabase: SupabaseClient<any>;
   providerProfileId: string;
@@ -40,7 +55,15 @@ export async function readProviderGalleryItems(params: {
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    logProviderGalleryDiagnostic({
+      providerProfileId,
+      operation: "read",
+      error,
+      rowsReturnedCount: 0,
+    });
+    throw error;
+  }
 
   const normalized = (data ?? [])
     .map((item: Record<string, any>) => {
@@ -63,6 +86,12 @@ export async function readProviderGalleryItems(params: {
     sort_order: number;
     updated_at: string | null;
   }>;
+
+  logProviderGalleryDiagnostic({
+    providerProfileId,
+    operation: "read",
+    rowsReturnedCount: normalized.length,
+  });
 
   return { items: normalized };
 }

@@ -8,7 +8,13 @@ export default async function MsmePublicProfilePreviewPage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
   const [{ data: services }, gallerySnapshot] = await Promise.all([
-    supabase.from("provider_services").select("id,title,category,availability_status,min_price,max_price").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }).limit(4),
+    supabase
+      .from("provider_services")
+      .select("id,title,category,availability_status,min_price,max_price,currency")
+      .eq("provider_id", workspace.provider.id)
+      .in("availability_status", ["available", "limited"])
+      .order("created_at", { ascending: false })
+      .limit(4),
     readProviderGalleryItems({ supabase, providerProfileId: workspace.provider.id, limit: 4 }),
   ]);
   const gallery = gallerySnapshot.items;
@@ -46,7 +52,11 @@ export default async function MsmePublicProfilePreviewPage() {
               <div key={service.id} className="rounded-lg border bg-slate-50 p-2">
                 <p className="font-medium">{service.title}</p>
                 <p className="text-xs text-slate-500">{service.category} • {service.availability_status}</p>
-                <p className="text-xs text-slate-600">₦{Number(service.min_price ?? 0).toLocaleString()} - ₦{Number(service.max_price ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-slate-600">
+                  {(service.currency ?? "NGN") === "NGN" ? "₦" : `${service.currency} `}
+                  {Number(service.min_price ?? 0).toLocaleString()} - {(service.currency ?? "NGN") === "NGN" ? "₦" : `${service.currency} `}
+                  {Number(service.max_price ?? 0).toLocaleString()}
+                </p>
               </div>
             ))}
             {(!services || services.length === 0) && <p className="text-xs text-slate-500">No services listed yet.</p>}
@@ -57,8 +67,12 @@ export default async function MsmePublicProfilePreviewPage() {
           <h3 className="font-semibold">Gallery</h3>
           <div className="mt-2 grid gap-2 grid-cols-2">
             {(gallery ?? []).map((item) => (
-              <div key={item.id} className="rounded-lg border p-2">
-                <p className="truncate text-xs text-slate-600">{item.caption ?? "Portfolio asset"}</p>
+              <div key={item.id} className="overflow-hidden rounded-lg border bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.asset_url} alt={item.caption ?? "Portfolio asset"} className="h-24 w-full object-cover" />
+                <div className="p-2">
+                  <p className="truncate text-xs text-slate-600">{item.caption ?? "Portfolio asset"}</p>
+                </div>
                 {item.is_featured && <p className="text-[10px] font-semibold uppercase text-amber-700">Featured</p>}
               </div>
             ))}

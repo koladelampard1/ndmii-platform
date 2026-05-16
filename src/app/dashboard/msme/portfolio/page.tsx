@@ -18,18 +18,49 @@ function sanitizePortfolioFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
 }
 
-function toStorageErrorLog(error: unknown) {
+function toSupabaseErrorInfo(error: unknown) {
   if (!error || typeof error !== "object") {
-    return { message: String(error) };
+    return { code: null, message: String(error) };
   }
 
-  const maybeError = error as { message?: unknown; name?: unknown; statusCode?: unknown; details?: unknown };
+  const maybeError = error as { code?: unknown; message?: unknown };
   return {
+    code: typeof maybeError.code === "string" ? maybeError.code : null,
     message: typeof maybeError.message === "string" ? maybeError.message : String(maybeError.message ?? "unknown_error"),
-    name: typeof maybeError.name === "string" ? maybeError.name : "StorageError",
-    statusCode: maybeError.statusCode ?? null,
-    details: maybeError.details ?? null,
   };
+}
+
+function logPortfolioDiagnostic(params: {
+  providerProfileId: string;
+  operation: string;
+  error?: unknown;
+  rowsReturnedCount?: number;
+}) {
+  const errorInfo = params.error ? toSupabaseErrorInfo(params.error) : { code: null, message: null };
+  console.info("[msme-portfolio-gallery]", {
+    providerProfileId: params.providerProfileId,
+    operation: params.operation,
+    supabaseErrorCode: errorInfo.code,
+    supabaseErrorMessage: errorInfo.message,
+    rowsReturnedCount: params.rowsReturnedCount ?? 0,
+  });
+}
+
+function getPortfolioStoragePathFromPublicUrl(publicUrl: string | null) {
+  const trimmed = publicUrl?.trim();
+  if (!trimmed) return null;
+
+  const publicPathMarker = `/storage/v1/object/public/${PORTFOLIO_BUCKET}/`;
+  const markerIndex = trimmed.indexOf(publicPathMarker);
+  if (markerIndex >= 0) {
+    return decodeURIComponent(trimmed.slice(markerIndex + publicPathMarker.length).split("?")[0] ?? "");
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^\/+/, "");
+  }
+
+  return null;
 }
 
 function validatePortfolioImageFile(file: File) {
@@ -74,17 +105,89 @@ function toErrorPath(errorCode: string) {
 async function galleryAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const kind = String(formData.get("kind") ?? "create");
   const itemId = String(formData.get("item_id") ?? "");
 
   if (kind === "delete" && itemId) {
-    await supabase.from("provider_gallery").delete().eq("id", itemId).eq("provider_profile_id", workspace.provider.id);
+    const { data: existingItem, error: lookupError } = await supabase
+      .from("provider_gallery")
+      .select("id,image_url")
+      .eq("id", itemId)
+      .eq("provider_profile_id", workspace.provider.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      logPortfolioDiagnostic({
+        providerProfileId: workspace.provider.id,
+        operation: "delete_lookup",
+        error: lookupError,
+        rowsReturnedCount: 0,
+      });
+      redirect(toErrorPath("delete_failed"));
+    }
+
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from("provider_gallery")
+      .delete()
+      .eq("id", itemId)
+      .eq("provider_profile_id", workspace.provider.id)
+      .select("id");
+
+    if (deleteError || !deletedRows?.length) {
+      logPortfolioDiagnostic({
+        providerProfileId: workspace.provider.id,
+        operation: "delete",
+        error: deleteError ?? "no_rows_deleted",
+        rowsReturnedCount: deletedRows?.length ?? 0,
+      });
+      redirect(toErrorPath("delete_failed"));
+    }
+
+    const storagePath = getPortfolioStoragePathFromPublicUrl(typeof existingItem?.image_url === "string" ? existingItem.image_url : null);
+    if (storagePath) {
+      const { error: removeStorageError } = await supabase.storage.from(PORTFOLIO_BUCKET).remove([storagePath]);
+      if (removeStorageError) {
+        logPortfolioDiagnostic({
+          providerProfileId: workspace.provider.id,
+          operation: "delete_storage_cleanup",
+          error: removeStorageError,
+          rowsReturnedCount: deletedRows.length,
+        });
+      }
+    }
+
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "delete",
+      rowsReturnedCount: deletedRows.length,
+    });
   } else if (kind === "update" && itemId) {
     const payload = {
       caption: String(formData.get("caption") ?? "").trim() || null,
     };
-    await supabase.from("provider_gallery").update(payload).eq("id", itemId).eq("provider_profile_id", workspace.provider.id);
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("provider_gallery")
+      .update(payload)
+      .eq("id", itemId)
+      .eq("provider_profile_id", workspace.provider.id)
+      .select("id");
+
+    if (updateError || !updatedRows?.length) {
+      logPortfolioDiagnostic({
+        providerProfileId: workspace.provider.id,
+        operation: "update",
+        error: updateError ?? "no_rows_updated",
+        rowsReturnedCount: updatedRows?.length ?? 0,
+      });
+      redirect(toErrorPath("save_failed"));
+    }
+
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "update",
+      rowsReturnedCount: updatedRows.length,
+    });
   } else {
     redirect(toErrorPath("upload_failed"));
   }
@@ -101,23 +204,20 @@ async function createPortfolioItemAction(formData: FormData) {
   const file = formData.get("asset_file");
 
   if (!(file instanceof File)) {
-    console.error("[msme-portfolio-upload][file_validation_failed]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      reason: "file_missing",
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "upload_validate_file_required",
+      error: "file_required",
     });
     return { ok: false as const, error: "file_required" as const };
   }
 
   const validationResult = validatePortfolioImageFile(file);
   if (!validationResult.ok) {
-    console.error("[msme-portfolio-upload][file_validation_failed]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      fileName: file.name,
-      fileSizeBytes: file.size,
-      mimeType: file.type || null,
-      validationError: validationResult.error,
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "upload_validate",
+      error: validationResult.error,
     });
     return { ok: false as const, error: validationResult.error as string };
   }
@@ -126,24 +226,18 @@ async function createPortfolioItemAction(formData: FormData) {
   const storagePath = `${workspace.msme.id}/${workspace.provider.id}/${Date.now()}-${safeName}`;
   const mimeType = file.type || "application/octet-stream";
 
-  console.info("[msme-portfolio-upload][start]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    fileName: file.name,
-    fileSizeBytes: file.size,
-    mimeType,
-    bucket: PORTFOLIO_BUCKET,
-    storagePath,
+  logPortfolioDiagnostic({
+    providerProfileId: workspace.provider.id,
+    operation: "upload_start",
   });
 
   const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(PORTFOLIO_BUCKET);
 
   if (bucketLookupError) {
-    console.error("[msme-portfolio-upload][bucket_lookup_error]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      bucket: PORTFOLIO_BUCKET,
-      error: toStorageErrorLog(bucketLookupError),
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "bucket_lookup",
+      error: bucketLookupError,
     });
   }
 
@@ -155,19 +249,18 @@ async function createPortfolioItemAction(formData: FormData) {
     });
 
     if (createBucketError) {
-      console.error("[msme-portfolio-upload][bucket_create_failed]", {
-        providerId: workspace.provider.id,
-        msmeId: workspace.msme.id,
-        bucket: PORTFOLIO_BUCKET,
-        error: toStorageErrorLog(createBucketError),
+      logPortfolioDiagnostic({
+        providerProfileId: workspace.provider.id,
+        operation: "bucket_create",
+        error: createBucketError,
       });
       return { ok: false as const, error: "upload_failed" as const };
     }
 
-    console.info("[msme-portfolio-upload][bucket_created]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      bucket: createdBucket?.name ?? PORTFOLIO_BUCKET,
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "bucket_create",
+      rowsReturnedCount: createdBucket ? 1 : 0,
     });
   }
 
@@ -177,25 +270,18 @@ async function createPortfolioItemAction(formData: FormData) {
   });
 
   if (uploadError) {
-    console.error("[msme-portfolio-upload][storage_upload_failed]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      fileName: file.name,
-      fileSizeBytes: file.size,
-      mimeType,
-      bucket: PORTFOLIO_BUCKET,
-      storagePath,
-      error: toStorageErrorLog(uploadError),
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "storage_upload",
+      error: uploadError,
     });
     return { ok: false as const, error: "upload_failed" as const };
   }
 
-  console.info("[msme-portfolio-upload][storage_upload_result]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    bucket: PORTFOLIO_BUCKET,
-    storagePath,
-    uploadPath: uploadData?.path ?? storagePath,
+  logPortfolioDiagnostic({
+    providerProfileId: workspace.provider.id,
+    operation: "storage_upload",
+    rowsReturnedCount: uploadData?.path ? 1 : 0,
   });
 
   const { data: publicUrlData } = supabase.storage.from(PORTFOLIO_BUCKET).getPublicUrl(storagePath);
@@ -207,36 +293,30 @@ async function createPortfolioItemAction(formData: FormData) {
     caption: String(formData.get("caption") ?? "").trim() || null,
   });
 
-  console.info("[msme-portfolio-upload][db_insert_payload_aligned]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    payload,
-  });
-
   const { data, error: insertError } = await supabase.from("provider_gallery").insert(payload).select("id");
 
   if (insertError) {
-    console.error("[msme-portfolio-upload][db_insert_failed]", {
-      providerId: workspace.provider.id,
-      msmeId: workspace.msme.id,
-      message: insertError.message,
-      details: insertError.details,
-      hint: insertError.hint,
-      assetUrl,
-      bucket: PORTFOLIO_BUCKET,
-      storagePath,
+    const { error: cleanupError } = await supabase.storage.from(PORTFOLIO_BUCKET).remove([storagePath]);
+    if (cleanupError) {
+      logPortfolioDiagnostic({
+        providerProfileId: workspace.provider.id,
+        operation: "insert_storage_cleanup",
+        error: cleanupError,
+      });
+    }
+    logPortfolioDiagnostic({
+      providerProfileId: workspace.provider.id,
+      operation: "insert",
+      error: insertError,
+      rowsReturnedCount: 0,
     });
     return { ok: false as const, error: "save_failed" as const };
   }
 
-  console.info("[msme-portfolio-upload][db_insert_result]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    savedRecordCount: data?.length ?? 0,
-    savedRecordIds: data?.map((item: Record<string, any>) => item.id) ?? [],
-    bucket: PORTFOLIO_BUCKET,
-    storagePath,
-    assetUrl,
+  logPortfolioDiagnostic({
+    providerProfileId: workspace.provider.id,
+    operation: "insert",
+    rowsReturnedCount: data?.length ?? 0,
   });
 
   const reloadSnapshot = await readProviderGalleryItems({
@@ -244,12 +324,10 @@ async function createPortfolioItemAction(formData: FormData) {
     providerProfileId: workspace.provider.id,
   });
 
-  console.info("[msme-portfolio-upload][reload_query_result]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    sourceTable: "provider_gallery",
-    itemCount: reloadSnapshot.items.length,
-    itemIds: reloadSnapshot.items.map((item) => item.id),
+  logPortfolioDiagnostic({
+    providerProfileId: workspace.provider.id,
+    operation: "reload_after_insert",
+    rowsReturnedCount: reloadSnapshot.items.length,
   });
 
   revalidatePath("/dashboard/msme/portfolio");
@@ -266,12 +344,10 @@ export default async function MsmePortfolioPage({ searchParams }: { searchParams
     providerProfileId: workspace.provider.id,
   });
 
-  console.log("[msme-portfolio-upload][page_reload_items]", {
-    providerId: workspace.provider.id,
-    msmeId: workspace.msme.id,
-    sourceTable: "provider_gallery",
-    portfolioItemCount: gallery?.length ?? 0,
-    portfolioItemIds: (gallery ?? []).map((item) => item.id),
+  logPortfolioDiagnostic({
+    providerProfileId: workspace.provider.id,
+    operation: "page_read",
+    rowsReturnedCount: gallery?.length ?? 0,
   });
 
   return (
@@ -282,7 +358,6 @@ export default async function MsmePortfolioPage({ searchParams }: { searchParams
       galleryAction={galleryAction}
       createPortfolioItemAction={createPortfolioItemAction}
       providerId={workspace.provider.id}
-      msmeId={workspace.msme.id}
     />
   );
 }
