@@ -39,6 +39,24 @@ const TABLE_COLUMN_PROBE_CANDIDATES: Record<string, string[]> = {
     "is_active",
     "updated_at",
   ],
+  msme_banking_profiles: [
+    "id",
+    "msme_id",
+    "bank_name",
+    "account_name",
+    "account_number_masked",
+    "account_number_last4",
+    "account_type",
+    "currency",
+    "swift_code",
+    "sort_code",
+    "vat_number",
+    "preferred_payment_method",
+    "payout_enabled",
+    "verification_status",
+    "created_at",
+    "updated_at",
+  ],
 };
 
 function devLog(message: string, payload: Record<string, unknown>) {
