@@ -1,6 +1,28 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { ServiceRecord } from "@/app/dashboard/msme/services/services-dashboard";
 
+const PROVIDER_SERVICES_COLUMN_CANDIDATES = [
+  "provider_id",
+  "title",
+  "short_description",
+  "category",
+  "specialization",
+  "pricing_mode",
+  "min_price",
+  "max_price",
+  "currency",
+  "vat_applicable",
+  "turnaround_days",
+  "availability_status",
+  "provider_profile_id",
+  "service_name",
+  "description",
+  "price_min",
+  "price_max",
+  "pricing_model",
+  "is_active",
+] as const;
+
 const FALLBACK_SERVICE_CATEGORIES = [
   "Professional Services",
   "Business Registration",
@@ -21,9 +43,9 @@ export type MsmeServicesData = {
 
 export type MsmeServicesQueryScope = {
   providerId: string;
-  msmeDatabaseId?: string;
-  msmePublicId?: string;
 };
+
+let providerServicesColumnCache: Set<string> | null = null;
 
 function dedupeCategoryNames(values: Array<string | null | undefined>) {
   return Array.from(
@@ -31,27 +53,41 @@ function dedupeCategoryNames(values: Array<string | null | undefined>) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePublicId }: MsmeServicesQueryScope): Promise<MsmeServicesData> {
+async function probeProviderServiceColumns(supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>) {
+  const detected = new Set<string>();
+
+  for (const column of PROVIDER_SERVICES_COLUMN_CANDIDATES) {
+    const { error } = await supabase.from("provider_services").select(column).limit(1);
+    if (!error) detected.add(column);
+  }
+
+  return detected;
+}
+
+export async function getProviderServicesColumns() {
+  if (providerServicesColumnCache) return providerServicesColumnCache;
+
   const supabase = await createServiceRoleSupabaseClient();
-  const msmeReferenceValues = dedupeCategoryNames([msmeDatabaseId, msmePublicId]);
+  const { data, error } = await supabase.from("provider_services").select("*").limit(1);
 
-  const [{ data: providerByIdRows, error: providerByIdError }, { data: providerByMsmeRows, error: providerByMsmeError }] = await Promise.all([
-    supabase.from("provider_profiles").select("id,msme_id").eq("id", providerId).limit(20),
-    msmeReferenceValues.length
-      ? supabase.from("provider_profiles").select("id,msme_id").in("msme_id", msmeReferenceValues).limit(50)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  if (!error && data?.[0]) {
+    providerServicesColumnCache = new Set(Object.keys(data[0]));
+    return providerServicesColumnCache;
+  }
 
-  const providerProfileIds = Array.from(
-    new Set([
-      providerId,
-      ...(providerByIdRows ?? []).map((row) => row.id),
-      ...(providerByMsmeRows ?? []).map((row) => row.id),
-    ]),
-  );
+  providerServicesColumnCache = await probeProviderServiceColumns(supabase);
+  return providerServicesColumnCache;
+}
+
+export function filterProviderServicesPayload<T extends Record<string, unknown>>(payload: T, columns: Set<string>) {
+  return Object.fromEntries(Object.entries(payload).filter(([column]) => columns.has(column)));
+}
+
+export async function getMsmeServicesData({ providerId }: MsmeServicesQueryScope): Promise<MsmeServicesData> {
+  const supabase = await createServiceRoleSupabaseClient();
 
   const [{ data: servicesData, error: servicesError }, { data: categoryRows, error: categoriesError }] = await Promise.all([
-    supabase.from("provider_services").select("*").in("provider_profile_id", providerProfileIds).order("created_at", { ascending: false }),
+    supabase.from("provider_services").select("*").eq("provider_id", providerId).order("created_at", { ascending: false }),
     supabase.from("service_categories").select("name").eq("is_active", true).order("name"),
   ]);
 
@@ -70,12 +106,9 @@ export async function getMsmeServicesData({ providerId, msmeDatabaseId, msmePubl
     console.info("[msme-services] resolved-data-sources", {
       servicesSource: "provider_services",
       servicesReadFilter: {
-        column: "provider_profile_id",
-        values: providerProfileIds,
+        column: "provider_id",
+        value: providerId,
       },
-      providerProfilesReadTable: "provider_profiles",
-      providerProfilesByIdError: providerByIdError?.message ?? null,
-      providerProfilesByMsmeRefError: providerByMsmeError?.message ?? null,
       categoriesSource,
       servicesCount: services.length,
       categoriesCount: categories.length,
