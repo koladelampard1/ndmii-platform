@@ -5,22 +5,38 @@ import { getMsmeServicesData } from "@/lib/data/msme-services";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { MsmeServicesDashboard, type ServiceRecord } from "./services-dashboard";
 
+function serviceErrorRedirect(message: string): never {
+  redirect(`/dashboard/msme/services?error=${encodeURIComponent(message)}`);
+}
+
 async function serviceAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
-  const providerProfileId = workspace.provider.id;
+  const providerId = workspace.provider.id;
 
   const kind = String(formData.get("kind") ?? "create");
   const serviceId = String(formData.get("service_id") ?? "");
-  const payload = {
-    is_active: String(formData.get("is_active") ?? "true") !== "false",
-  };
+  const availabilityStatus = String(formData.get("availability_status") ?? "").trim();
+  const validStatuses = new Set(["available", "limited", "unavailable"]);
 
-  if (kind === "delete" && serviceId) {
-    await supabase.from("provider_services").delete().eq("id", serviceId).eq("provider_profile_id", providerProfileId);
-  } else if (kind === "update" && serviceId) {
-    await supabase.from("provider_services").update(payload).eq("id", serviceId).eq("provider_profile_id", providerProfileId);
+  if (!serviceId) serviceErrorRedirect("Service not found.");
+
+  if (kind === "archive") {
+    const { error } = await supabase
+      .from("provider_services")
+      .update({ availability_status: "unavailable" })
+      .eq("id", serviceId)
+      .eq("provider_id", providerId);
+    if (error) serviceErrorRedirect("We could not archive this service. Please try again.");
+  } else if (kind === "update") {
+    if (!validStatuses.has(availabilityStatus)) serviceErrorRedirect("Choose a valid availability status.");
+    const { error } = await supabase
+      .from("provider_services")
+      .update({ availability_status: availabilityStatus })
+      .eq("id", serviceId)
+      .eq("provider_id", providerId);
+    if (error) serviceErrorRedirect("We could not update this service. Please try again.");
   } else {
     return;
   }
@@ -28,26 +44,25 @@ async function serviceAction(formData: FormData) {
   if (process.env.NODE_ENV !== "production") {
     console.info("[msme-services] write-table", {
       writeTable: "provider_services",
-      writeProviderProfileId: providerProfileId,
+      writeProviderId: providerId,
       writeKind: kind,
       wroteServiceId: serviceId || null,
-      finalUpdatePayload: payload,
+      finalUpdatePayload: kind === "archive" ? { availability_status: "unavailable" } : { availability_status: availabilityStatus },
     });
   }
 
   revalidatePath("/dashboard/msme/services");
   revalidatePath(`/providers/${workspace.provider.id}`);
+  if (workspace.provider.public_slug) revalidatePath(`/providers/${workspace.provider.public_slug}`);
   redirect("/dashboard/msme/services?saved=1");
 }
 
-export default async function MsmeServicesPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+export default async function MsmeServicesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const createServiceRoute = "/dashboard/msme/services/new";
   const servicesData = await getMsmeServicesData({
     providerId: workspace.provider.id,
-    msmeDatabaseId: workspace.msme.id,
-    msmePublicId: workspace.msme.msme_id,
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -62,6 +77,7 @@ export default async function MsmeServicesPage({ searchParams }: { searchParams:
   return (
     <MsmeServicesDashboard
       saved={Boolean(params.saved)}
+      error={params.error}
       services={servicesData.services as ServiceRecord[]}
       categories={servicesData.categories}
       serviceAction={serviceAction}
