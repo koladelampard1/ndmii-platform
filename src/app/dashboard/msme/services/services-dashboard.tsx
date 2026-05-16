@@ -19,13 +19,18 @@ import {
 
 export type ServiceRecord = {
   id: string;
-  provider_profile_id: string;
-  service_name: string | null;
-  description: string | null;
-  price_min: number | null;
-  price_max: number | null;
-  pricing_model: string | null;
-  is_active: boolean | null;
+  provider_id: string;
+  title: string | null;
+  short_description: string | null;
+  category: string | null;
+  specialization: string | null;
+  pricing_mode: string | null;
+  min_price: number | null;
+  max_price: number | null;
+  currency?: string | null;
+  vat_applicable?: boolean | null;
+  turnaround_days?: number | null;
+  availability_status: "available" | "limited" | "unavailable" | string | null;
   created_at: string | null;
   views_count?: number | null;
   quote_requests_count?: number | null;
@@ -36,14 +41,16 @@ type MsmeServicesDashboardProps = {
   services: ServiceRecord[];
   categories: string[];
   saved: boolean;
+  error?: string;
   serviceAction: (formData: FormData) => Promise<void>;
   createServiceRoute: string;
 };
 
 const formatter = new Intl.NumberFormat("en-NG");
 
-function formatCurrency(value: number | null | undefined) {
-  return `₦${formatter.format(Number(value ?? 0))}`;
+function formatCurrency(value: number | null | undefined, currency = "NGN") {
+  const prefix = currency === "NGN" ? "₦" : `${currency} `;
+  return `${prefix}${formatter.format(Number(value ?? 0))}`;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -54,10 +61,27 @@ function formatDate(value: string | null | undefined) {
 }
 
 function statusLabel(value: string | null | undefined) {
-  return value === "inactive" ? "Inactive" : "Active";
+  if (value === "limited") return "Limited";
+  if (value === "unavailable") return "Unavailable";
+  return "Available";
 }
 
-export function MsmeServicesDashboard({ services, categories, saved, serviceAction, createServiceRoute }: MsmeServicesDashboardProps) {
+function statusTone(value: string | null | undefined) {
+  if (value === "unavailable") return "bg-slate-100 text-slate-600";
+  if (value === "limited") return "bg-amber-50 text-amber-700";
+  return "bg-emerald-50 text-emerald-700";
+}
+
+function servicePriceLabel(service: ServiceRecord) {
+  if (service.pricing_mode === "negotiable") return "Negotiable";
+  if (service.min_price === null && service.max_price === null) return "Request quote";
+  if (service.min_price !== null && service.max_price !== null && Number(service.min_price) !== Number(service.max_price)) {
+    return `${formatCurrency(service.min_price, service.currency ?? "NGN")} - ${formatCurrency(service.max_price, service.currency ?? "NGN")}`;
+  }
+  return `From ${formatCurrency(service.min_price ?? service.max_price, service.currency ?? "NGN")}`;
+}
+
+export function MsmeServicesDashboard({ services, categories, saved, error, serviceAction, createServiceRoute }: MsmeServicesDashboardProps) {
   const [activeTab, setActiveTab] = useState<"all" | "categories">("all");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -86,7 +110,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
       if (category?.trim()) seen.add(category.trim());
     }
     for (const service of services) {
-      if (service.pricing_model?.trim()) seen.add(service.pricing_model.trim());
+      if (service.category?.trim()) seen.add(service.category.trim());
     }
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [categories, services]);
@@ -96,24 +120,24 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
     const filtered = services.filter((service) => {
       const matchesQuery =
         lowered.length === 0 ||
-        [service.service_name, service.description, service.pricing_model]
+        [service.title, service.short_description, service.category, service.specialization, service.pricing_mode]
           .filter(Boolean)
           .some((field) => String(field).toLowerCase().includes(lowered));
 
       const matchesCategory =
         categoryFilter === "all" ||
-        (service.pricing_model ?? "").trim().toLowerCase() === categoryFilter.trim().toLowerCase();
+        (service.category ?? "").trim().toLowerCase() === categoryFilter.trim().toLowerCase();
 
       const matchesStatus =
-        statusFilter === "all" || (statusFilter === "available" ? service.is_active !== false : service.is_active === false);
+        statusFilter === "all" || (service.availability_status ?? "available") === statusFilter;
 
       return matchesQuery && matchesCategory && matchesStatus;
     });
 
     const sorted = [...filtered];
     sorted.sort((a, b) => {
-      if (sortBy === "price_desc") return Number(b.price_min ?? 0) - Number(a.price_min ?? 0);
-      if (sortBy === "price_asc") return Number(a.price_min ?? 0) - Number(b.price_min ?? 0);
+      if (sortBy === "price_desc") return Number(b.min_price ?? 0) - Number(a.min_price ?? 0);
+      if (sortBy === "price_asc") return Number(a.min_price ?? 0) - Number(b.min_price ?? 0);
 
       const left = new Date(a.created_at ?? 0).getTime();
       const right = new Date(b.created_at ?? 0).getTime();
@@ -125,7 +149,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
   }, [services, query, categoryFilter, statusFilter, sortBy]);
 
   const highestPriced = useMemo(
-    () => [...services].sort((a, b) => Number(b.price_min ?? 0) - Number(a.price_min ?? 0))[0],
+    () => [...services].sort((a, b) => Number(b.min_price ?? 0) - Number(a.min_price ?? 0))[0],
     [services],
   );
   const mostViewed = useMemo(
@@ -136,11 +160,11 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
     () => [...services].sort((a, b) => Number(b.quote_requests_count ?? 0) - Number(a.quote_requests_count ?? 0))[0],
     [services],
   );
-  const hasPerformanceData = Boolean(mostViewed?.service_name || mostRequested?.service_name || highestPriced?.service_name);
+  const hasPerformanceData = Boolean(mostViewed?.title || mostRequested?.title || highestPriced?.title);
   const servicesByCategory = useMemo(() => {
     const grouped = new Map<string, ServiceRecord[]>();
     for (const service of services) {
-      const key = service.pricing_model?.trim() || "Uncategorized";
+      const key = service.category?.trim() || "Uncategorized";
       const bucket = grouped.get(key) ?? [];
       bucket.push(service);
       grouped.set(key, bucket);
@@ -149,7 +173,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
       .map(([category, items]) => ({
         category,
         count: items.length,
-        items: items.sort((a, b) => (a.service_name ?? "").localeCompare(b.service_name ?? "")),
+        items: items.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "")),
       }))
       .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
   }, [services]);
@@ -165,6 +189,12 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
         <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800">
           Service catalog updated.
         </p>
+      )}
+      {error && (
+        <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-800">
+          <p className="font-semibold">We could not complete that service update.</p>
+          <p className="mt-1 font-medium">{error}</p>
+        </div>
       )}
 
       <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -183,7 +213,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { icon: Store, label: "Total Services", value: services.length, helper: "Active services" },
+          { icon: Store, label: "Total Services", value: services.length, helper: "Catalog services" },
           { icon: Eye, label: "Total Views", value: totalViews, helper: "This month" },
           { icon: MessageSquare, label: "Quote Requests", value: totalQuotes, helper: "This month" },
           { icon: Star, label: "Avg. Rating", value: avgRating.toFixed(1), helper: "Service ratings" },
@@ -295,7 +325,7 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                       <div className="mt-2 flex flex-wrap gap-2">
                         {group.items.slice(0, 4).map((service) => (
                           <span key={service.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700">
-                            {service.service_name || "Untitled service"}
+                            {service.title || "Untitled service"}
                           </span>
                         ))}
                         {group.count > 4 ? (
@@ -340,8 +370,8 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                         <div className="flex-1">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="space-y-1">
-                              <p className="text-lg font-semibold text-slate-900">{service.service_name || "Untitled service"}</p>
-                              {service.description && <p className="text-sm text-slate-600">{service.description}</p>}
+                              <p className="text-lg font-semibold text-slate-900">{service.title || "Untitled service"}</p>
+                              {service.short_description && <p className="text-sm text-slate-600">{service.short_description}</p>}
                             </div>
                             <button type="button" className="rounded-lg border border-slate-200 p-1.5 text-slate-500">
                               <MoreVertical className="h-4 w-4" />
@@ -349,28 +379,43 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                           </div>
 
                           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
-                            {service.pricing_model && (
+                            {service.category && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
                                 <Tags className="h-3.5 w-3.5" />
-                                {service.pricing_model}
+                                {service.category}
                               </span>
                             )}
+                            {service.pricing_mode && (
+                              <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700">
+                                {service.pricing_mode.replace("_", " ")}
+                              </span>
+                            )}
+                            {service.specialization && (
+                              <span className="inline-flex rounded-full bg-slate-50 px-2.5 py-1 text-slate-600">
+                                {service.specialization}
+                              </span>
+                            )}
+                            {service.vat_applicable ? (
+                              <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">VAT</span>
+                            ) : null}
                           </div>
 
                           <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
                             <div>
                               <p className="text-xs uppercase tracking-wide text-slate-400">Price</p>
-                              <p className="font-semibold text-slate-900">From {formatCurrency(service.price_min)}</p>
+                              <p className="font-semibold text-slate-900">{servicePriceLabel(service)}</p>
                             </div>
                             <div>
                               <p className="text-xs uppercase tracking-wide text-slate-400">Status</p>
-                              <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                {statusLabel(service.is_active === false ? "inactive" : "active")}
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(service.availability_status)}`}>
+                                {statusLabel(service.availability_status)}
                               </span>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-wide text-slate-400">Added</p>
-                              <p className="font-medium text-slate-700">{createdDate ? `Added ${createdDate}` : "No date"}</p>
+                              <p className="text-xs uppercase tracking-wide text-slate-400">Turnaround</p>
+                              <p className="font-medium text-slate-700">
+                                {service.turnaround_days === null || service.turnaround_days === undefined ? (createdDate ? `Added ${createdDate}` : "No date") : `${service.turnaround_days} day${Number(service.turnaround_days) === 1 ? "" : "s"}`}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -381,18 +426,21 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
                         <form action={serviceAction} className="mt-3 grid gap-2 md:grid-cols-2">
                           <input type="hidden" name="kind" value="update" />
                           <input type="hidden" name="service_id" value={service.id} />
-                          <select name="is_active" defaultValue={String(service.is_active !== false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                            <option value="true">Active</option>
-                            <option value="false">Inactive</option>
+                          <select name="availability_status" defaultValue={service.availability_status ?? "available"} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                            <option value="available">Available</option>
+                            <option value="limited">Limited</option>
+                            <option value="unavailable">Unavailable</option>
                           </select>
                           <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-1">
                             <button className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Save</button>
                           </div>
                         </form>
                         <form action={serviceAction} className="mt-2">
-                          <input type="hidden" name="kind" value="delete" />
+                          <input type="hidden" name="kind" value="archive" />
                           <input type="hidden" name="service_id" value={service.id} />
-                          <button className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete</button>
+                          <button className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                            Archive as unavailable
+                          </button>
                         </form>
                       </details>
                     </article>
@@ -415,16 +463,16 @@ export function MsmeServicesDashboard({ services, categories, saved, serviceActi
               <div className="mt-4 divide-y divide-slate-100 text-sm">
                 <div className="space-y-1 py-3 first:pt-0">
                   <p className="text-slate-500">Most Viewed Service</p>
-                  <p className="font-semibold text-slate-900">{mostViewed?.service_name ?? "No data yet"}</p>
+                  <p className="font-semibold text-slate-900">{mostViewed?.title ?? "No data yet"}</p>
                 </div>
                 <div className="space-y-1 py-3">
                   <p className="text-slate-500">Most Requested Service</p>
-                  <p className="font-semibold text-slate-900">{mostRequested?.service_name ?? "No data yet"}</p>
+                  <p className="font-semibold text-slate-900">{mostRequested?.title ?? "No data yet"}</p>
                 </div>
                 <div className="space-y-1 py-3 last:pb-0">
                   <p className="text-slate-500">Highest Priced Service</p>
                   <p className="font-semibold text-slate-900">
-                    {highestPriced?.service_name ? `${highestPriced.service_name} (${formatCurrency(highestPriced.price_min)})` : "No data yet"}
+                    {highestPriced?.title ? `${highestPriced.title} (${formatCurrency(highestPriced.min_price, highestPriced.currency ?? "NGN")})` : "No data yet"}
                   </p>
                 </div>
               </div>
