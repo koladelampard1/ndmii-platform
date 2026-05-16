@@ -24,6 +24,7 @@ import { PassportPhoto } from "@/components/msme/passport-photo";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
+import { bankingProfileConfigured, buildInvoiceBankingReadiness, loadMsmeBankingProfile, verificationStatusLabel } from "@/lib/data/msme-banking";
 
 const PROFILE_SECTIONS = [
   { id: "business-information", label: "Business Information" },
@@ -246,12 +247,14 @@ async function loadProfileDetails(msmeId: string) {
     compliance = (data ?? null) as ComplianceSummary | null;
   }
 
-  return { details, digitalId, compliance };
+  const bankingProfile = await loadMsmeBankingProfile(supabase, msmeId);
+
+  return { details, digitalId, compliance, bankingProfile };
 }
 
 export default async function MsmeProfileOverviewPage() {
   const workspace = await getProviderWorkspaceContext();
-  const { details, digitalId, compliance } = await loadProfileDetails(workspace.msme.id);
+  const { details, digitalId, compliance, bankingProfile } = await loadProfileDetails(workspace.msme.id);
 
   const location = [workspace.msme.lga, workspace.msme.state, "Nigeria"].filter(Boolean).join(", ");
   const profileStatus = normalizeProfileStatus({
@@ -270,6 +273,8 @@ export default async function MsmeProfileOverviewPage() {
   const contactPhone = workspace.provider.contact_phone || details.contact_phone;
   const hasVerificationSubmission = !["draft", "not_submitted", "pending"].includes((workspace.msme.verification_status ?? "").toLowerCase());
   const hasDocumentSignal = Boolean(compliance || digitalId || hasVerificationSubmission);
+  const bankingReady = bankingProfileConfigured(bankingProfile);
+  const invoiceBankingReadiness = buildInvoiceBankingReadiness(bankingProfile);
 
   const completionChecks = [
     {
@@ -306,6 +311,11 @@ export default async function MsmeProfileOverviewPage() {
       label: "Description/public profile completed",
       complete: hasText(description),
       href: "/dashboard/msme/settings#about-business",
+    },
+    {
+      label: "Banking profile configured",
+      complete: bankingReady,
+      href: "/dashboard/msme/settings#banking-information",
     },
     {
       label: "Required documents available or linked",
@@ -507,20 +517,39 @@ export default async function MsmeProfileOverviewPage() {
           <article id="banking-information" className="scroll-mt-6 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-xl font-semibold text-slate-900">Banking Information</h3>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Safe summary only</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                bankingProfile?.verification_status === "verified"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}>
+                {verificationStatusLabel(bankingProfile?.verification_status)}
+              </span>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-              <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Landmark className="h-4 w-4 text-slate-500" />
-                Banking verification
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {compliance?.bvn_status
-                  ? `Banking verification status: ${humanize(compliance.bvn_status)}. Full account numbers and BVN are never shown here.`
-                  : "Banking verification is not connected yet. Full account numbers and BVN are never shown here."}
-              </p>
-              <ActionPrompt href="/dashboard/msme/payments">Open Tax / VAT workspace</ActionPrompt>
-            </div>
+            {bankingProfile ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <DataCard label="Bank Name" value={invoiceBankingReadiness.bank_name} />
+                <DataCard label="Account Name" value={invoiceBankingReadiness.account_name} />
+                <DataCard label="Account Number" value={invoiceBankingReadiness.account_number_masked} />
+                <DataCard label="Currency" value={invoiceBankingReadiness.currency} />
+                <DataCard label="Preferred Payment Method" value={humanize(bankingProfile.preferred_payment_method)} />
+                <DataCard label="Verification Status" value={verificationStatusLabel(bankingProfile.verification_status)} />
+                <DataCard label="Payout Readiness" value={invoiceBankingReadiness.payout_ready ? "Ready" : "Pending internal review"} />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Landmark className="h-4 w-4 text-slate-500" />
+                  No banking profile configured
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Add secure banking details to prepare invoices, quotations, procurement records, VAT profile data, and future payout reviews.
+                </p>
+                <ActionPrompt href="/dashboard/msme/settings#banking-information">Add banking profile</ActionPrompt>
+              </div>
+            )}
+            <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs leading-5 text-blue-900">
+              Safe summary only. Full account numbers and BVN are not exposed on profile or public verification pages.
+            </p>
           </article>
         </div>
 

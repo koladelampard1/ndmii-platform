@@ -131,6 +131,15 @@ function hasText(value: string | null | undefined) {
   return Boolean(value && value.trim().length > 0);
 }
 
+function humanizeSettingValue(value: string | null | undefined) {
+  return String(value ?? "")
+    .replace(/[_-]/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 const BANKING_START_FIELDS = ["bank_name", "account_name", "account_number", "account_type", "vat_number", "swift_code", "sort_code"] as const;
 const BANKING_ERROR_KEYS = new Set<BankingFieldErrorKey>(Object.keys(BANKING_FIELD_ERROR_MESSAGES) as BankingFieldErrorKey[]);
 
@@ -776,18 +785,30 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
                 <p className="mt-1 text-sm text-emerald-900/80">Add account details here. Full account numbers are accepted for validation but only a masked value is shown back in the workspace.</p>
               </div>
             ) : (
-              <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-3">
+              <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Bank</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bank Name</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.bank_name}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Account Name</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.account_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Masked Account</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.account_number_masked}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payout</p>
-                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.payout_enabled ? "Enabled" : "Not enabled"}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Currency</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{bankingProfile.currency}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preferred Payment</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{humanizeSettingValue(bankingProfile.preferred_payment_method)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verification Status</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{verificationStatusLabel(bankingProfile.verification_status)}</p>
                 </div>
               </div>
             )}

@@ -1,11 +1,12 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { CalendarDays, Check, Clipboard, Download, Edit3, Info, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
+import { CalendarDays, Check, Clipboard, Download, Edit3, Info, Landmark, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent } from "@/lib/data/commercial-ops";
+import { buildInvoiceBankingReadiness, loadMsmeBankingProfile, verificationStatusLabel } from "@/lib/data/msme-banking";
 export const runtime = "nodejs";
 
 type InvoiceEmailNotice =
@@ -65,6 +66,15 @@ function formatEmailAmount(currency: string | null | undefined, totalAmount: num
 
 function resolveBusinessInvoiceName(msmeName?: string | null, providerName?: string | null) {
   return String(msmeName || providerName || "Your Business").trim();
+}
+
+function humanizeInvoiceValue(value: string | null | undefined) {
+  return String(value ?? "")
+    .replace(/[_-]/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function buildWhiteLabelFromEmail(businessName: string) {
@@ -415,8 +425,8 @@ export default async function MsmeInvoiceDetailPage({
 
   if (itemError) throw new Error(itemError.message);
 
-  const publicInvoiceUrl = `/invoice/${invoice.id}`;
   const invoicePdfUrl = `/api/msme/invoices/${invoice.id}/pdf`;
+  const bankingReadiness = buildInvoiceBankingReadiness(await loadMsmeBankingProfile(supabase, workspace.msme.id));
   const phoneDigits = String(invoice.customer_phone ?? "").replace(/\D/g, "");
   const businessName = resolveBusinessInvoiceName(workspace.msme.business_name, workspace.provider.display_name);
   const whatsappBody = encodeURIComponent(
@@ -797,6 +807,46 @@ export default async function MsmeInvoiceDetailPage({
               <input type="hidden" name="invoice_id" value={invoice.id} />
               <button className="w-full rounded-lg border border-red-300 bg-white px-3 py-3 text-sm font-bold text-red-600 hover:bg-red-50">Cancel invoice</button>
             </form>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="flex items-center gap-2 text-xl font-bold text-slate-950">
+              <Landmark className="h-5 w-5 text-emerald-700" />
+              Payment profile
+            </h3>
+            <div className="mt-4 space-y-3 text-sm">
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Bank</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.bank_name ?? "Not configured"}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Account name</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.account_name ?? "Not configured"}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Account</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.account_number_masked ?? "Not configured"}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Currency</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.currency}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Payment method</span>
+                <span className="text-right font-bold text-slate-900">{humanizeInvoiceValue(bankingReadiness.preferred_payment_method)}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Readiness</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.configured ? "Configured" : "Not configured"}</span>
+              </p>
+              <p className="flex justify-between gap-4">
+                <span className="font-medium text-slate-500">Status</span>
+                <span className="text-right font-bold text-slate-900">{bankingReadiness.payout_ready ? "Payout ready" : verificationStatusLabel(bankingReadiness.verification_status)}</span>
+              </p>
+            </div>
+            <p className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
+              Invoice workflows consume only safe banking summary fields. Full account numbers are not exposed here.
+            </p>
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white shadow-sm">

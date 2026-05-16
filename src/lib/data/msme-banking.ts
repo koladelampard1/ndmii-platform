@@ -87,6 +87,7 @@ const BANKING_WRITE_SELECT = BANKING_SELECT_COLUMNS.join(",");
 
 const TEXT_PATTERN = /^[A-Za-z0-9 .,'&()/-]+$/;
 const CODE_PATTERN = /^[A-Za-z0-9-]+$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_METHODS = new Set(["bank_transfer", "mobile_money", "card", "cheque"]);
 const SENSITIVE_DIAGNOSTIC_TERMS = ["account", "bank", "vat", "tin", "email", "phone", "address", "payload", "form"];
 
@@ -149,16 +150,23 @@ export function bankingProfileConfigured(profile: MsmeBankingProfile | null) {
   return Boolean(profile?.bank_name && profile.account_name && profile.account_number_last4 && profile.currency);
 }
 
-export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, msmeId: string): Promise<MsmeBankingProfile | null> {
+export async function loadMsmeBankingProfile(supabase: SupabaseClient<any>, canonicalMsmeId: string): Promise<MsmeBankingProfile | null> {
+  const normalizedMsmeId = canonicalMsmeId.trim();
+  if (!UUID_PATTERN.test(normalizedMsmeId)) return null;
+
   const columns = await getTableColumns(supabase, "msme_banking_profiles");
   const select = pickExistingColumns(columns, BANKING_SELECT_COLUMNS);
   if (!select.includes("msme_id") || !select.includes("bank_name")) return null;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("msme_banking_profiles")
     .select(select.join(","))
-    .eq("msme_id", msmeId)
+    .eq("msme_id", normalizedMsmeId)
     .limit(1);
+  if (select.includes("updated_at")) {
+    query = query.order("updated_at", { ascending: false });
+  }
+  const { data, error } = await query;
 
   if (error) return null;
   return (data?.[0] ?? null) as unknown as MsmeBankingProfile | null;
@@ -266,6 +274,8 @@ export function buildInvoiceBankingReadiness(profile: MsmeBankingProfile | null)
     bank_name: profile?.bank_name ?? null,
     account_number_masked: profile?.account_number_masked ?? null,
     currency: profile?.currency ?? "NGN",
+    preferred_payment_method: profile?.preferred_payment_method ?? "bank_transfer",
+    configured: bankingProfileConfigured(profile),
     payout_ready: Boolean(profile?.payout_enabled && profile.verification_status === "verified"),
     verification_status: profile?.verification_status ?? "pending_review",
   };
