@@ -130,7 +130,7 @@ export function filterPayloadByColumns(payload: Record<string, unknown>, columns
 
 export function normalizeInvoiceStatus(value: string | null | undefined) {
   const status = String(value ?? "draft");
-  if (["draft", "issued", "pending_payment", "paid", "overdue", "cancelled"].includes(status)) return status;
+  if (["draft", "issued", "pending_payment", "paid", "partially_paid", "overdue", "cancelled", "refunded"].includes(status)) return status;
   if (status === "sent") return "issued";
   return "draft";
 }
@@ -141,7 +141,16 @@ export function invoiceStatusLabel(value: string | null | undefined) {
 
 export async function logInvoiceEvent(
   supabase: SupabaseClient<any>,
-  params: { invoiceId: string; eventType: string; actorRole?: string | null; actorId?: string | null; metadata?: Record<string, unknown> }
+  params: {
+    invoiceId: string;
+    eventType: string;
+    actorRole?: string | null;
+    actorId?: string | null;
+    source?: string | null;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    metadata?: Record<string, unknown>;
+  }
 ) {
   const columns = await getTableColumns(supabase, "invoice_events");
   if (!columns.has("invoice_id") || !columns.has("event_type")) return;
@@ -152,6 +161,9 @@ export async function logInvoiceEvent(
       event_type: params.eventType,
       actor_role: params.actorRole ?? null,
       actor_id: params.actorId ?? null,
+      source: params.source ?? null,
+      from_status: params.fromStatus ?? null,
+      to_status: params.toStatus ?? null,
       metadata: params.metadata ?? {},
       created_at: new Date().toISOString(),
     },

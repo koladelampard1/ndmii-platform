@@ -4,7 +4,18 @@ import { redirect } from "next/navigation";
 import { CalendarDays, Check, Clipboard, Download, Edit3, Info, Landmark, Mail, Plus, Save, Trash2, User, X } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { calculateLineTotal, formatDate, formatNaira, invoiceStatusClasses, recalculateInvoiceTotals } from "@/lib/data/invoicing";
+import {
+  assertInvoiceTransition,
+  calculateLineTotal,
+  formatDate,
+  formatNaira,
+  generatePublicInvoiceToken,
+  invoiceFinancialFieldsLocked,
+  invoiceImmutable,
+  invoiceStatusClasses,
+  publicInvoiceTokenExpiry,
+  recalculateInvoiceTotals,
+} from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent } from "@/lib/data/commercial-ops";
 import { buildInvoiceBankingReadiness, loadMsmeBankingProfile, verificationStatusLabel } from "@/lib/data/msme-banking";
 export const runtime = "nodejs";
@@ -18,6 +29,11 @@ type InvoiceEmailNotice =
   | "pdf_generation_failed"
   | "email_send_failed";
 
+function publicInvoicePath(invoice: { public_token?: string | null; public_token_revoked_at?: string | null }) {
+  if (!invoice.public_token || invoice.public_token_revoked_at) return null;
+  return `/invoice/${invoice.public_token}`;
+}
+
 async function loadInvoiceTotalsSnapshot(invoiceId: string) {
   const supabase = await createServiceRoleSupabaseClient();
   const { data, error } = await supabase.from("invoices").select("id,subtotal,vat_amount,total_amount,status").eq("id", invoiceId).maybeSingle();
@@ -25,11 +41,12 @@ async function loadInvoiceTotalsSnapshot(invoiceId: string) {
 }
 
 function buildInvoiceStatusPayload(action: string, nowIso: string, invoiceColumns: Set<string>, paidAtIso?: string) {
-  const status = action === "issue_invoice" ? "issued" : action === "mark_paid" ? "paid" : "cancelled";
+  const status = action === "issue_invoice" ? "issued" : action === "mark_paid" ? "paid" : action === "mark_partially_paid" ? "partially_paid" : action === "refund_invoice" ? "refunded" : "cancelled";
   const payload: Record<string, unknown> = { status };
 
   if (action === "issue_invoice" && invoiceColumns.has("issued_at")) payload.issued_at = nowIso;
   if (action === "mark_paid" && invoiceColumns.has("paid_at")) payload.paid_at = paidAtIso ?? nowIso;
+  if (action === "refund_invoice" && invoiceColumns.has("refunded_at")) payload.refunded_at = nowIso;
   if (action === "cancel_invoice" && invoiceColumns.has("cancelled_at")) payload.cancelled_at = nowIso;
   if (invoiceColumns.has("updated_at")) payload.updated_at = nowIso;
 
@@ -91,7 +108,7 @@ async function sendInvoiceEmailAction(formData: FormData) {
 
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,customer_email,due_date,total_amount,currency")
+    .select("id,invoice_number,customer_name,customer_email,due_date,total_amount,currency,public_token,public_token_revoked_at")
     .eq("id", invoiceId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
@@ -118,6 +135,8 @@ async function sendInvoiceEmailAction(formData: FormData) {
   const requestHeaders = await headers();
   const pdfPath = `/api/msme/invoices/${invoice.id}/pdf`;
   const pdfDownloadLink = buildAbsoluteUrl(pdfPath, requestHeaders);
+  const publicPath = publicInvoicePath(invoice);
+  const publicLink = publicPath ? buildAbsoluteUrl(publicPath, requestHeaders) : null;
   const pdfResponse = await fetch(pdfDownloadLink, {
     headers: {
       cookie: requestHeaders.get("cookie") ?? "",
@@ -126,7 +145,7 @@ async function sendInvoiceEmailAction(formData: FormData) {
   });
 
   if (!pdfResponse.ok || !pdfResponse.headers.get("content-type")?.includes("application/pdf")) {
-    console.error("[invoice-email:pdf-fetch-failed]", { invoiceId, status: pdfResponse.status, contentType: pdfResponse.headers.get("content-type") });
+    console.error("[invoice-email:pdf-fetch-failed]", { operation: "invoice_email_pdf_fetch", invoiceId, status: pdfResponse.status });
     redirectWithInvoiceEmailNotice(invoiceId, "pdf_generation_failed");
   }
 
@@ -141,6 +160,7 @@ async function sendInvoiceEmailAction(formData: FormData) {
     "",
     `Amount: ${formatEmailAmount(invoice.currency, invoice.total_amount)}`,
     `Due date: ${formatDate(invoice.due_date)}`,
+    publicLink ? `View invoice: ${publicLink}` : "Public invoice link is currently disabled. Please contact the business for access.",
     "",
     "Thank you,",
     businessName,
@@ -165,7 +185,7 @@ async function sendInvoiceEmailAction(formData: FormData) {
 
   const resendResult = (await resendResponse.json().catch(() => null)) as { id?: string; message?: string } | null;
   if (!resendResponse.ok) {
-    console.error("[invoice-email:send-failed]", { invoiceId, status: resendResponse.status, response: resendResult });
+    console.error("[invoice-email:send-failed]", { operation: "invoice_email_send", invoiceId, status: resendResponse.status, message: resendResult?.message ?? null });
     redirectWithInvoiceEmailNotice(invoiceId, "email_send_failed");
   }
 
@@ -174,7 +194,8 @@ async function sendInvoiceEmailAction(formData: FormData) {
     eventType: "invoice_sent_email",
     actorRole: workspace.role,
     actorId: workspace.msme.id,
-    metadata: { customer_email: customerEmail, resend_id: resendResult?.id ?? null, pdf_download_link: pdfDownloadLink },
+    source: "provider_dashboard",
+    metadata: { resend_id: resendResult?.id ?? null, public_link_enabled: Boolean(publicLink) },
   });
 
   revalidatePath(`/dashboard/msme/invoices/${invoiceId}`);
@@ -199,9 +220,10 @@ async function invoiceMutationAction(formData: FormData) {
     .maybeSingle();
 
   if (loadError || !invoice) throw new Error("Invoice not found for this provider.");
-  console.info("[invoice-mutation:invoice-loaded]", { invoiceId, status: invoice.status, totalAmount: invoice.total_amount });
+  console.info("[invoice-mutation:invoice-loaded]", { operation: "invoice_mutation", invoiceId, providerId: workspace.provider.id, status: invoice.status });
 
   if (action === "add_item") {
+    if (invoiceFinancialFieldsLocked(invoice.status)) throw new Error("Financial fields are locked after invoice issuance.");
     if (!invoiceId) throw new Error("Missing invoiceId before adding invoice item");
     const quantity = Number(formData.get("quantity") ?? 1);
     const unitPrice = Number(formData.get("unit_price") ?? 0);
@@ -215,18 +237,16 @@ async function invoiceMutationAction(formData: FormData) {
       line_total: lineTotal,
       vat_applicable: String(formData.get("vat_applicable") ?? "on") === "on",
     };
-    console.info("[invoice-mutation:add-item:invoice-id]", invoiceId);
-    console.info("[invoice-mutation:add-item:payload]", payload);
-    const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
-    console.info("[invoice-mutation:add-item:totals-before]", beforeTotals);
+    console.info("[invoice-mutation:add-item]", { operation: "add_item", invoiceId, providerId: workspace.provider.id });
     const { data: insertedRows, error } = await supabase.from("invoice_items").insert(payload).select("id,invoice_id,item_name,quantity,unit_price,line_total,vat_applicable");
     if (error) throw new Error(error.message);
-    console.info("[invoice-mutation:add-item:insert-result]", insertedRows);
-    const recalculatedTotals = await recalculateInvoiceTotals(invoiceId);
-    console.info("[invoice-mutation:add-item:totals-recalculated]", { invoiceId, recalculatedTotals });
+    console.info("[invoice-mutation:add-item:insert-result]", { operation: "add_item", invoiceId, status: insertedRows?.length ? "inserted" : "empty" });
+    await recalculateInvoiceTotals(invoiceId);
+    console.info("[invoice-mutation:add-item:totals-recalculated]", { operation: "invoice_totals_recalculate", invoiceId, status: "updated" });
   }
 
   if (action === "update_item") {
+    if (invoiceFinancialFieldsLocked(invoice.status)) throw new Error("Financial fields are locked after invoice issuance.");
     const itemId = String(formData.get("item_id") ?? "");
     const quantity = Number(formData.get("quantity") ?? 1);
     const unitPrice = Number(formData.get("unit_price") ?? 0);
@@ -243,18 +263,7 @@ async function invoiceMutationAction(formData: FormData) {
       },
       itemColumns
     );
-    console.info("[invoice-mutation:update-item:payload]", {
-      invoiceId,
-      itemId,
-      payload,
-      selectedItemColumns: Array.from(itemColumns).sort(),
-      quantity,
-      unitPrice,
-      vatApplicable: String(formData.get("vat_applicable") ?? "") === "on",
-      computedLineTotal: lineTotal,
-    });
-    const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
-    console.info("[invoice-mutation:update-item:totals-before]", beforeTotals);
+    console.info("[invoice-mutation:update-item]", { invoiceId, itemId, operation: "update_item" });
     const { data: updatedRows, error } = await supabase
       .from("invoice_items")
       .update(payload)
@@ -262,44 +271,39 @@ async function invoiceMutationAction(formData: FormData) {
       .eq("invoice_id", invoiceId)
       .select("id,invoice_id,item_name,quantity,unit_price,line_total,vat_applicable");
     if (error) throw new Error(error.message);
-    console.info("[invoice-mutation:update-item:update-result]", updatedRows);
+    console.info("[invoice-mutation:update-item:update-result]", { operation: "update_item", invoiceId, status: updatedRows?.length ? "updated" : "empty" });
   }
 
   if (action === "remove_item") {
+    if (invoiceFinancialFieldsLocked(invoice.status)) throw new Error("Financial fields are locked after invoice issuance.");
     const itemId = String(formData.get("item_id") ?? "");
-    const { data: beforeTotals } = await loadInvoiceTotalsSnapshot(invoiceId);
-    console.info("[invoice-mutation:remove-item:totals-before]", beforeTotals);
+    console.info("[invoice-mutation:remove-item]", { operation: "remove_item", invoiceId, providerId: workspace.provider.id });
     const { error } = await supabase.from("invoice_items").delete().eq("id", itemId).eq("invoice_id", invoiceId);
     if (error) throw new Error(error.message);
   }
 
-  if (action === "issue_invoice" || action === "cancel_invoice") {
+  if (action === "issue_invoice" || action === "cancel_invoice" || action === "refund_invoice") {
+    const toStatus = action === "issue_invoice" ? "issued" : action === "refund_invoice" ? "refunded" : "cancelled";
+    assertInvoiceTransition(invoice.status, toStatus);
     const invoiceColumns = await getTableColumns(supabase, "invoices");
     const payload = buildInvoiceStatusPayload(action, nowIso, invoiceColumns);
     const selectColumns = invoiceStatusSelect(invoiceColumns);
     console.info("[invoice-status][action]", action);
     console.info("[invoice-status][invoice-id]", invoiceId);
-    console.info("[invoice-status][update-payload]", payload);
-    console.info("[invoice-mutation:status-update:before]", { invoiceId, currentStatus: invoice.status });
-    console.info("[invoice-mutation:status-update:payload]", { invoiceId, action, payload });
+    console.info("[invoice-mutation:status-update:before]", { operation: action, invoiceId, providerId: workspace.provider.id, status: invoice.status });
     const { data: updatedRows, error } = await supabase
       .from("invoices")
       .update(payload)
       .eq("id", invoiceId)
       .eq("provider_profile_id", workspace.provider.id)
       .select(selectColumns);
-    console.info("[invoice-status][update-result]", { data: updatedRows, error: error?.message ?? null });
+    console.info("[invoice-status][update-result]", { operation: action, invoiceId, providerId: workspace.provider.id, status: (updatedRows as any)?.[0]?.status ?? null, message: error?.message ?? null });
     if (error) throw new Error(error.message);
-    console.info("[invoice-mutation:status-update:result]", updatedRows);
-    const { data: resultingInvoice, error: resultingError } = await supabase
-      .from("invoices")
-      .select(`${selectColumns},subtotal,vat_amount,total_amount`)
-      .eq("id", invoiceId)
-      .maybeSingle();
-    console.info("[invoice-mutation:status-update:after]", { resultingInvoice, resultingError: resultingError?.message ?? null });
+    console.info("[invoice-mutation:status-update:result]", { operation: action, invoiceId, status: (updatedRows as any)?.[0]?.status ?? null });
   }
 
   if (action === "mark_paid") {
+    assertInvoiceTransition(invoice.status, "paid");
     const paidReference = String(formData.get("payment_reference") ?? "").trim() || `MANUAL-${Date.now()}`;
     const paidDate = String(formData.get("payment_date") ?? "").trim();
     const paidNote = String(formData.get("payment_note") ?? "").trim() || null;
@@ -322,7 +326,7 @@ async function invoiceMutationAction(formData: FormData) {
         paymentColumns
       );
       const { error: paymentError } = await supabase.from("invoice_payments").insert(paymentPayload);
-      if (paymentError) console.info("[invoice-mark-paid:payment-fallback]", paymentError.message);
+      if (paymentError) console.info("[invoice-mark-paid:payment-fallback]", { operation: "mark_paid", invoiceId, providerId: workspace.provider.id, message: paymentError.message });
     }
 
     const invoiceColumns = await getTableColumns(supabase, "invoices");
@@ -330,14 +334,13 @@ async function invoiceMutationAction(formData: FormData) {
     const selectColumns = invoiceStatusSelect(invoiceColumns);
     console.info("[invoice-status][action]", action);
     console.info("[invoice-status][invoice-id]", invoiceId);
-    console.info("[invoice-status][update-payload]", invoiceUpdate);
     const { data: updatedRows, error: updateError } = await supabase
       .from("invoices")
       .update(invoiceUpdate)
       .eq("id", invoiceId)
       .eq("provider_profile_id", workspace.provider.id)
       .select(selectColumns);
-    console.info("[invoice-status][update-result]", { data: updatedRows, error: updateError?.message ?? null });
+    console.info("[invoice-status][update-result]", { operation: action, invoiceId, providerId: workspace.provider.id, status: (updatedRows as any)?.[0]?.status ?? null, message: updateError?.message ?? null });
     if (updateError) throw new Error(updateError.message);
 
     await logInvoiceEvent(supabase, {
@@ -345,6 +348,9 @@ async function invoiceMutationAction(formData: FormData) {
       eventType: "invoice_marked_paid",
       actorRole: workspace.role,
       actorId: workspace.msme.id,
+      source: "provider_manual_reconciliation",
+      fromStatus: String(invoice.status ?? "draft"),
+      toStatus: "paid",
       metadata: { payment_reference: paidReference, payment_date: paidAtIso, note: paidNote },
     });
 
@@ -357,16 +363,57 @@ async function invoiceMutationAction(formData: FormData) {
     });
   }
 
-  const recalculatedTotals = await recalculateInvoiceTotals(invoiceId);
-  console.info("[invoice-mutation:totals-recalculated]", { invoiceId, recalculatedTotals });
-  const { data: afterTotals, error: afterTotalsError } = await loadInvoiceTotalsSnapshot(invoiceId);
-  console.info("[invoice-mutation:totals-after]", { afterTotals, afterTotalsError: afterTotalsError?.message ?? null });
+  if (action === "regenerate_public_token" || action === "revoke_public_token") {
+    if (invoiceImmutable(invoice.status) && action === "regenerate_public_token") {
+      throw new Error("Public links cannot be regenerated for immutable invoices.");
+    }
+    const invoiceColumns = await getTableColumns(supabase, "invoices");
+    const payload = filterPayloadByColumns(
+      action === "regenerate_public_token"
+        ? {
+            public_token: generatePublicInvoiceToken(),
+            public_token_expires_at: publicInvoiceTokenExpiry(),
+            public_token_revoked_at: null,
+            updated_at: nowIso,
+          }
+        : {
+            public_token_revoked_at: nowIso,
+            updated_at: nowIso,
+          },
+      invoiceColumns
+    );
+    const { error: tokenError } = await supabase
+      .from("invoices")
+      .update(payload)
+      .eq("id", invoiceId)
+      .eq("provider_profile_id", workspace.provider.id);
+    if (tokenError) throw new Error(tokenError.message);
+  }
+
+  if (["add_item", "update_item", "remove_item"].includes(action)) {
+    await recalculateInvoiceTotals(invoiceId);
+    console.info("[invoice-mutation:totals-recalculated]", { operation: "invoice_totals_recalculate", invoiceId, status: "updated" });
+    const { error: afterTotalsError } = await loadInvoiceTotalsSnapshot(invoiceId);
+    console.info("[invoice-mutation:totals-after]", { operation: "invoice_totals_recalculate", invoiceId, message: afterTotalsError?.message ?? null });
+  }
 
   await logInvoiceEvent(supabase, {
     invoiceId,
     eventType: action,
     actorRole: workspace.role,
     actorId: workspace.msme.id,
+    source: "provider_dashboard",
+    fromStatus: String(invoice.status ?? "draft"),
+    toStatus:
+      action === "issue_invoice"
+        ? "issued"
+        : action === "cancel_invoice"
+          ? "cancelled"
+          : action === "mark_paid"
+            ? "paid"
+            : action === "refund_invoice"
+              ? "refunded"
+              : null,
     metadata: {},
   });
 
@@ -374,14 +421,7 @@ async function invoiceMutationAction(formData: FormData) {
   revalidatePath("/dashboard/msme/invoices");
   revalidatePath("/dashboard/msme/revenue");
   revalidatePath(`/invoice/${invoiceId}`);
-  console.info("[invoice-mutation:revalidated]", {
-    paths: [
-      `/dashboard/msme/invoices/${invoiceId}`,
-      "/dashboard/msme/invoices",
-      "/dashboard/msme/revenue",
-      `/invoice/${invoiceId}`,
-    ],
-  });
+  console.info("[invoice-mutation:revalidated]", { operation: "invoice_mutation", invoiceId, providerId: workspace.provider.id });
   const notice =
     action === "issue_invoice"
       ? "invoice_issued"
@@ -389,9 +429,13 @@ async function invoiceMutationAction(formData: FormData) {
         ? "invoice_cancelled"
         : action === "mark_paid"
           ? "invoice_paid"
-          : action === "remove_item"
-            ? "item_removed"
-            : "item_saved";
+          : action === "regenerate_public_token"
+            ? "public_token_regenerated"
+            : action === "revoke_public_token"
+              ? "public_token_revoked"
+              : action === "remove_item"
+                ? "item_removed"
+                : "item_saved";
   redirect(`/dashboard/msme/invoices/${invoiceId}?notice=${notice}`);
 }
 
@@ -409,7 +453,7 @@ export default async function MsmeInvoiceDetailPage({
 
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount,currency")
+    .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount,currency,public_token,public_token_expires_at,public_token_revoked_at")
     .eq("id", invoiceId)
     .eq("provider_profile_id", workspace.provider.id)
     .maybeSingle();
@@ -426,6 +470,7 @@ export default async function MsmeInvoiceDetailPage({
   if (itemError) throw new Error(itemError.message);
 
   const invoicePdfUrl = `/api/msme/invoices/${invoice.id}/pdf`;
+  const invoicePublicPath = publicInvoicePath(invoice);
   const bankingReadiness = buildInvoiceBankingReadiness(await loadMsmeBankingProfile(supabase, workspace.msme.id));
   const phoneDigits = String(invoice.customer_phone ?? "").replace(/\D/g, "");
   const businessName = resolveBusinessInvoiceName(workspace.msme.business_name, workspace.provider.display_name);
@@ -435,6 +480,7 @@ export default async function MsmeInvoiceDetailPage({
       "",
       `Amount: ${formatNaira(invoice.total_amount)}`,
       `Due date: ${formatDate(invoice.due_date)}`,
+      invoicePublicPath ? `View invoice: ${invoicePublicPath}` : "Public access is currently disabled.",
     ].join("\n")
   );
   const whatsappHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${whatsappBody}` : null;
@@ -474,9 +520,13 @@ export default async function MsmeInvoiceDetailPage({
                 ? "Invoice cancelled successfully."
                 : query.notice === "invoice_paid"
                   ? "Invoice marked as paid successfully."
-                  : query.notice === "item_removed"
-                    ? "Invoice item removed and totals refreshed."
-                    : "Invoice item saved and totals refreshed."}
+                  : query.notice === "public_token_regenerated"
+                    ? "Public invoice access link regenerated."
+                    : query.notice === "public_token_revoked"
+                      ? "Public invoice access link revoked."
+                      : query.notice === "item_removed"
+                        ? "Invoice item removed and totals refreshed."
+                        : "Invoice item saved and totals refreshed."}
         </p>
       ) : null}
 
@@ -712,7 +762,7 @@ export default async function MsmeInvoiceDetailPage({
               {[
                 { icon: Clipboard, title: "Invoice created", body: "Invoice has been created as a draft.", time: invoiceDateLabel },
                 { icon: Edit3, title: "Draft saved", body: "Invoice details updated.", time: query.notice ? "Just now" : invoiceDateLabel },
-                { icon: Clipboard, title: "Awaiting issuance", body: "When you are ready, issue this invoice to your customer.", time: invoiceStatus === "draft" ? "—" : invoiceStatusLabel },
+                { icon: Clipboard, title: "Lifecycle status", body: invoiceStatus === "draft" ? "Draft invoices can still be edited." : "Financial fields are locked after issuance.", time: invoiceStatus === "draft" ? "—" : invoiceStatusLabel },
               ].map((event, index, events) => {
                 const Icon = event.icon;
                 return (
@@ -792,7 +842,7 @@ export default async function MsmeInvoiceDetailPage({
             <form action={invoiceMutationAction}>
               <input type="hidden" name="action" value="issue_invoice" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
-              <button type="submit" className="w-full rounded-lg bg-emerald-700 px-3 py-3 text-sm font-bold text-white shadow-sm hover:bg-emerald-800">Issue invoice</button>
+              <button type="submit" disabled={invoiceStatus !== "draft"} className="w-full rounded-lg bg-emerald-700 px-3 py-3 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">Issue invoice</button>
             </form>
             <form action={invoiceMutationAction} className="space-y-2">
               <input type="hidden" name="action" value="mark_paid" />
@@ -800,12 +850,33 @@ export default async function MsmeInvoiceDetailPage({
               <input name="payment_reference" placeholder="Payment reference" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
               <input name="payment_date" type="date" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
               <input name="payment_note" placeholder="Optional payment note" className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
-              <button className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50">Mark invoice paid</button>
+              <button disabled={["draft", "paid", "refunded", "cancelled"].includes(invoiceStatus)} className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Confirm payment manually</button>
             </form>
             <form action={invoiceMutationAction}>
               <input type="hidden" name="action" value="cancel_invoice" />
               <input type="hidden" name="invoice_id" value={invoice.id} />
-              <button className="w-full rounded-lg border border-red-300 bg-white px-3 py-3 text-sm font-bold text-red-600 hover:bg-red-50">Cancel invoice</button>
+              <button disabled={["paid", "refunded", "cancelled"].includes(invoiceStatus)} className="w-full rounded-lg border border-red-300 bg-white px-3 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Cancel invoice</button>
+            </form>
+          </section>
+
+          <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div>
+              <h3 className="text-xl font-bold text-slate-950">Public access</h3>
+              <p className="mt-1 text-sm font-medium text-slate-500">Customer links use signed tokens and can be revoked.</p>
+            </div>
+            <p className="break-all rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+              {invoicePublicPath ?? "Public access revoked"}
+            </p>
+            <p className="text-xs font-medium text-slate-500">Expires: {formatDate(invoice.public_token_expires_at)}</p>
+            <form action={invoiceMutationAction}>
+              <input type="hidden" name="action" value="regenerate_public_token" />
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <button disabled={["paid", "refunded", "cancelled"].includes(invoiceStatus)} className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-bold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Regenerate public link</button>
+            </form>
+            <form action={invoiceMutationAction}>
+              <input type="hidden" name="action" value="revoke_public_token" />
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <button disabled={Boolean(invoice.public_token_revoked_at)} className="w-full rounded-lg border border-red-200 bg-white px-3 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Revoke public link</button>
             </form>
           </section>
 
@@ -853,7 +924,7 @@ export default async function MsmeInvoiceDetailPage({
             <div className="space-y-2 p-5">
               <div>
                 <h3 className="text-xl font-bold text-slate-950">Send invoice</h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">Share invoice with your customer.</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">Share signed invoice access with your customer.</p>
               </div>
               <form action={sendInvoiceEmailAction}>
                 <input type="hidden" name="invoice_id" value={invoice.id} />

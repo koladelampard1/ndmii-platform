@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { formatDate } from "@/lib/data/invoicing";
+import { buildInvoiceBankingReadiness, loadMsmeBankingProfile } from "@/lib/data/msme-banking";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 type PdfLine = { text: string | number | null | undefined; x?: number; y?: number; size?: number; bold?: boolean };
@@ -161,7 +162,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
 
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("id,invoice_number,customer_name,customer_email,customer_phone,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount")
+      .select("id,msme_id,invoice_number,customer_name,customer_email,customer_phone,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount")
       .eq("id", invoiceId)
       .eq("provider_profile_id", workspace.provider.id)
       .maybeSingle();
@@ -194,6 +195,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     const invoiceDate = formatDate(invoice.issued_at ?? invoice.due_date);
     const dueDate = formatDate(invoice.due_date);
     const vatRate = Number(invoice.vat_rate ?? 0);
+    const bankingReadiness = buildInvoiceBankingReadiness(await loadMsmeBankingProfile(supabase, String(invoice.msme_id ?? workspace.msme.id)));
     const rows = items ?? [];
     const pages: string[] = [];
     let commands: string[] = [];
@@ -325,10 +327,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
     commands.push(rectCommand(LEFT, totalsY - 108, 254, 86, "fill"));
     commands.push(colorCommand(SLATE));
     commands.push(textCommand({ text: "Please use the invoice number as payment reference.", x: LEFT + 12, y: totalsY - 38, size: 8, bold: true }));
-    commands.push(textCommand({ text: "Bank name: Not provided", x: LEFT + 12, y: totalsY - 56, size: 8 }));
-    commands.push(textCommand({ text: `Account name: ${businessName}`, x: LEFT + 12, y: totalsY - 70, size: 8 }));
-    commands.push(textCommand({ text: "Account number: Not provided", x: LEFT + 12, y: totalsY - 84, size: 8 }));
-    commands.push(textCommand({ text: "Sort code / SWIFT: Not provided", x: LEFT + 12, y: totalsY - 98, size: 8 }));
+    commands.push(textCommand({ text: `Bank name: ${bankingReadiness.bank_name ?? "Not configured"}`, x: LEFT + 12, y: totalsY - 56, size: 8 }));
+    commands.push(textCommand({ text: `Account name: ${bankingReadiness.account_name ?? businessName}`, x: LEFT + 12, y: totalsY - 70, size: 8 }));
+    commands.push(textCommand({ text: `Account number: ${bankingReadiness.account_number_masked ?? "Not configured"}`, x: LEFT + 12, y: totalsY - 84, size: 8 }));
+    commands.push(textCommand({ text: `Payment method: ${String(bankingReadiness.preferred_payment_method).replace(/_/g, " ")}`, x: LEFT + 12, y: totalsY - 98, size: 8 }));
     commands.push(colorCommand(NAVY));
     commands.push(textCommand({ text: `Payment reference: ${invoiceNumber}`, x: LEFT + 12, y: totalsY - 118, size: 8, bold: true }));
 
@@ -357,7 +359,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ inv
       },
     });
   } catch (error) {
-    console.error("[invoice-pdf][route_error]", error);
+    console.error("[invoice-pdf][route_error]", { operation: "invoice_pdf", message: error instanceof Error ? error.message : "Unknown server error" });
     const reason = error instanceof Error ? error.message : "Unknown server error";
     return htmlError(reason, 500);
   }

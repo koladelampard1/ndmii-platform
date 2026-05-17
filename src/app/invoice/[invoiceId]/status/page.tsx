@@ -1,27 +1,26 @@
 import Link from "next/link";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatDateTime, formatNaira, invoicePaymentStatusClasses, invoiceStatusClasses } from "@/lib/data/invoicing";
 import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
+import { loadInvoiceByPublicToken, logPublicInvoiceAccess } from "@/lib/data/public-invoices";
 
 export default async function PublicInvoiceStatusPage({ params }: { params: Promise<{ invoiceId: string }> }) {
-  const { invoiceId } = await params;
-  const supabase = await createServerSupabaseClient();
+  const { invoiceId: publicToken } = await params;
+  const supabase = await createServiceRoleSupabaseClient();
 
-  const invoiceColumns = await getTableColumns(supabase, "invoices");
-  const invoiceSelect = pickExistingColumns(invoiceColumns, ["id", "invoice_number", "status", "total_amount", "updated_at", "msme_id", "provider_profile_id"]).join(",");
-  const { data: invoice, error } = await supabase.from("invoices").select(invoiceSelect || "id").eq("id", invoiceId).maybeSingle();
+  const invoice = await loadInvoiceByPublicToken(supabase, publicToken);
 
-  if (error) return <section className="rounded-xl border bg-white p-8 text-center">Invoice status is temporarily unavailable.</section>;
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
   const invoiceRow = invoice as any;
+  await logPublicInvoiceAccess(supabase, invoiceRow.id, "public_invoice_status_viewed");
 
-  const paymentColumns = await getTableColumns(supabase, "invoice_payments");
-  const paymentSelect = pickExistingColumns(paymentColumns, ["payment_reference", "payment_method", "payment_status", "amount", "paid_at", "created_at", "invoice_id"]).join(",");
+  const paymentColumns = await getTableColumns(supabase, "invoice_payment_attempts");
+  const paymentSelect = pickExistingColumns(paymentColumns, ["payment_reference", "payment_method", "status", "amount", "created_at", "invoice_id"]).join(",");
   const eventColumns = await getTableColumns(supabase, "invoice_events");
   const eventSelect = pickExistingColumns(eventColumns, ["event_type", "actor_role", "metadata", "created_at", "invoice_id"]).join(",");
 
   const paymentsResult = paymentSelect
-    ? await supabase.from("invoice_payments").select(paymentSelect).eq("invoice_id", invoiceRow.id).order("created_at", { ascending: false }).limit(10)
+    ? await supabase.from("invoice_payment_attempts").select(paymentSelect).eq("invoice_id", invoiceRow.id).order("created_at", { ascending: false }).limit(10)
     : { data: [] as any[] };
   const eventsResult = eventSelect
     ? await supabase.from("invoice_events").select(eventSelect).eq("invoice_id", invoiceRow.id).order("created_at", { ascending: false }).limit(12)
@@ -56,12 +55,11 @@ export default async function PublicInvoiceStatusPage({ params }: { params: Prom
             <div key={payment.payment_reference ?? payment.created_at} className="rounded border p-3">
               <p className="flex items-center justify-between gap-2 font-medium">
                 <span>{payment.payment_reference ?? "N/A"}</span>
-                <span className={`rounded-full px-2 py-1 text-xs uppercase ${invoicePaymentStatusClasses(String(payment.payment_status ?? "pending"))}`}>{payment.payment_status ?? "pending"}</span>
+                <span className={`rounded-full px-2 py-1 text-xs uppercase ${invoicePaymentStatusClasses("pending")}`}>{payment.status ?? "payment_attempt_created"}</span>
               </p>
               <p className="mt-1 text-slate-600">
                 {payment.payment_method ?? "manual"} · {formatNaira(payment.amount)} · Attempted {formatDateTime(payment.created_at)}
               </p>
-              {payment.paid_at && <p className="text-slate-600">Paid at: {formatDateTime(payment.paid_at)}</p>}
             </div>
           ))}
         </div>
@@ -83,12 +81,12 @@ export default async function PublicInvoiceStatusPage({ params }: { params: Prom
       </article>
 
       <div className="flex gap-2">
-        <Link href={`/invoice/${invoiceRow.id}`} className="rounded border px-3 py-2 text-sm">
+            <Link href={`/invoice/${publicToken}`} className="rounded border px-3 py-2 text-sm">
           Back to invoice
         </Link>
-        {invoiceRow.status !== "paid" && (
-          <Link href={`/invoice/${invoiceRow.id}/pay`} className="rounded bg-indigo-900 px-3 py-2 text-sm text-white">
-            Retry payment
+        {!["paid", "refunded", "cancelled"].includes(String(invoiceRow.status ?? "draft")) && (
+          <Link href={`/invoice/${publicToken}/pay`} className="rounded bg-indigo-900 px-3 py-2 text-sm text-white">
+            Record payment attempt
           </Link>
         )}
       </div>

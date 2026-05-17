@@ -17,6 +17,7 @@ type InvoiceExportRow = {
   vat_amount: number | string | null;
   total_amount: number | string | null;
   currency: string | null;
+  public_token: string | null;
 };
 
 const CSV_COLUMNS = [
@@ -56,7 +57,7 @@ function buildCsv(rows: InvoiceExportRow[], requestUrl: string) {
   const csvRows = [
     CSV_COLUMNS.map(escapeCsvValue).join(","),
     ...rows.map((invoice) => {
-      const publicInvoiceLink = new URL(`/invoice/${invoice.id}`, requestUrl).toString();
+      const publicInvoiceLink = invoice.public_token ? new URL(`/invoice/${invoice.public_token}`, requestUrl).toString() : "";
       return [
         invoice.invoice_number ?? invoice.id,
         invoice.customer_name,
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from("invoices")
-    .select("id,invoice_number,customer_name,customer_email,customer_phone,issued_at,created_at,due_date,status,subtotal,vat_amount,total_amount,currency")
+    .select("id,invoice_number,customer_name,customer_email,customer_phone,issued_at,created_at,due_date,status,subtotal,vat_amount,total_amount,currency,public_token")
     .eq("provider_profile_id", workspace.provider.id)
     .order("created_at", { ascending: false });
 

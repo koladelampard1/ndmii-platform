@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { loadInvoiceByPublicToken, logPublicInvoiceAccess } from "@/lib/data/public-invoices";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatDate, formatNaira, invoiceStatusClasses } from "@/lib/data/invoicing";
 
 function resolveNestedOne<T>(value: T | T[] | null | undefined): T | null {
@@ -7,43 +8,20 @@ function resolveNestedOne<T>(value: T | T[] | null | undefined): T | null {
 }
 
 export default async function PublicInvoicePage({ params }: { params: Promise<{ invoiceId: string }> }) {
-  const { invoiceId } = await params;
-  const supabase = await createServerSupabaseClient();
+  const { invoiceId: publicToken } = await params;
+  const supabase = await createServiceRoleSupabaseClient();
+  const invoice = await loadInvoiceByPublicToken(supabase, publicToken);
 
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .select(
-      "id,invoice_number,customer_name,customer_email,customer_phone,currency,subtotal,vat_rate,vat_amount,total_amount,status,due_date,issued_at,msmes(business_name,contact_email,contact_phone,address,state,lga),provider_profiles(display_name,contact_email,contact_phone)"
-    )
-    .eq("id", invoiceId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
-  console.info("[public-invoice:header-totals]", {
-    invoiceId,
-    subtotal: Number(invoice.subtotal ?? 0),
-    vatRate: Number(invoice.vat_rate ?? 0),
-    vatAmount: Number(invoice.vat_amount ?? 0),
-    totalAmount: Number(invoice.total_amount ?? 0),
-    source: "invoices_table",
-  });
+  await logPublicInvoiceAccess(supabase, invoice.id, "public_invoice_viewed");
 
   const { data: items, error: itemError } = await supabase
     .from("invoice_items")
     .select("id,item_name,description,quantity,unit_price,line_total,vat_applicable")
-    .eq("invoice_id", invoiceId)
+    .eq("invoice_id", invoice.id)
     .order("created_at", { ascending: true });
 
   if (itemError) throw new Error(itemError.message);
-  const itemDerivedSubtotal = Number((items ?? []).reduce((sum, item) => sum + Number(item.line_total ?? 0), 0).toFixed(2));
-  console.info("[public-invoice:item-totals]", {
-    invoiceId,
-    itemCount: (items ?? []).length,
-    itemDerivedSubtotal,
-    source: "invoice_items_table",
-    displayTotalsSource: "invoices_table_columns",
-  });
 
   const provider = resolveNestedOne(invoice.provider_profiles as { display_name?: string; contact_email?: string; contact_phone?: string } | { display_name?: string; contact_email?: string; contact_phone?: string }[] | null);
   const msme = resolveNestedOne(invoice.msmes as { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string } | { business_name?: string; contact_email?: string; contact_phone?: string; address?: string; state?: string; lga?: string }[] | null);
@@ -130,11 +108,11 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
 
           <div className="flex flex-wrap gap-2">
             {invoice.status !== "paid" && (
-              <Link href={`/invoice/${invoice.id}/pay`} className="rounded-lg bg-indigo-900 px-4 py-2 text-sm text-white">
-                Pay this invoice
+              <Link href={`/invoice/${publicToken}/pay`} className="rounded-lg bg-indigo-900 px-4 py-2 text-sm text-white">
+                Record payment evidence
               </Link>
             )}
-            <Link href={`/invoice/${invoice.id}/status`} className="rounded-lg border px-4 py-2 text-sm">
+            <Link href={`/invoice/${publicToken}/status`} className="rounded-lg border px-4 py-2 text-sm">
               Check payment status
             </Link>
           </div>

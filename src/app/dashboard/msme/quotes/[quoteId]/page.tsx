@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { isUuidLike } from "@/lib/data/provider-quote-ownership";
-import { calculateLineTotal, generateInvoiceNumber, recalculateInvoiceTotals } from "@/lib/data/invoicing";
+import { calculateLineTotal, generateInvoiceNumber, generatePublicInvoiceToken, publicInvoiceTokenExpiry, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import {
   filterPayloadByColumns,
   getTableColumns,
@@ -569,6 +569,19 @@ async function quoteWorkflowAction(formData: FormData) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
     }
 
+    const { data: existingInvoiceLink, error: existingInvoiceLinkError } = await supabase
+      .from("quote_invoice_links")
+      .select("invoice_id")
+      .eq("quote_id", quote.id)
+      .limit(1)
+      .maybeSingle();
+    if (existingInvoiceLinkError) {
+      throw new Error(`Invoice conversion lookup failed: ${existingInvoiceLinkError.message}`);
+    }
+    if (existingInvoiceLink?.invoice_id) {
+      redirect(`/dashboard/msme/invoices/${existingInvoiceLink.invoice_id}`);
+    }
+
     const { resolvedMsmeUuid, resolvedPublicMsmeId, providerDbMsmeId } = await resolveInvoiceMsmeRef(supabase, {
       workspaceMsmeId: workspace.msme.id ?? null,
       workspaceMsmePublicId: workspace.msme.msme_id ?? null,
@@ -620,6 +633,9 @@ async function quoteWorkflowAction(formData: FormData) {
       provider_profile_id: workspace.provider.id,
       msme_id: resolvedMsmeUuid,
       invoice_number: generateInvoiceNumber(),
+      public_token: generatePublicInvoiceToken(),
+      public_token_expires_at: publicInvoiceTokenExpiry(),
+      public_token_revoked_at: null,
       customer_name: quote.requester_name,
       customer_email: quote.requester_email,
       customer_phone: quote.requester_phone,

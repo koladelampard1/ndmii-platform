@@ -29,7 +29,7 @@ type EnrichedInvoice = {
 
 const SORT_OPTIONS = ["newest", "oldest", "amount_high", "amount_low"] as const;
 const DATE_OPTIONS = ["all", "7d", "30d", "90d"] as const;
-const TAB_OPTIONS = ["all", "draft", "outstanding", "overdue", "paid", "cancelled"] as const;
+const TAB_OPTIONS = ["all", "draft", "outstanding", "overdue", "paid", "partially_paid", "cancelled", "refunded"] as const;
 
 function parseSafeOption<T extends readonly string[]>(value: string | undefined, options: T, fallback: T[number]) {
   return (value && options.includes(value) ? value : fallback) as T[number];
@@ -69,6 +69,8 @@ function isBeforeToday(value: string | null | undefined) {
 function invoiceStatusBucket(invoice: Pick<EnrichedInvoice, "status" | "due_date">) {
   const status = normalizeInvoiceStatus(invoice.status);
   if (status === "paid") return "paid";
+  if (status === "partially_paid") return "partially_paid";
+  if (status === "refunded") return "refunded";
   if (status === "cancelled") return "cancelled";
   if (status === "overdue" || ((status === "issued" || status === "pending_payment") && isBeforeToday(invoice.due_date))) return "overdue";
   if (status === "issued" || status === "pending_payment") return "outstanding";
@@ -78,7 +80,9 @@ function invoiceStatusBucket(invoice: Pick<EnrichedInvoice, "status" | "due_date
 function statusToLabel(bucket: string) {
   if (bucket === "outstanding") return "Outstanding";
   if (bucket === "paid") return "Paid";
+  if (bucket === "partially_paid") return "Partially Paid";
   if (bucket === "overdue") return "Overdue";
+  if (bucket === "refunded") return "Refunded";
   if (bucket === "cancelled") return "Cancelled";
   return "Draft";
 }
@@ -86,7 +90,9 @@ function statusToLabel(bucket: string) {
 function statusBadgeClasses(bucket: string) {
   if (bucket === "outstanding") return "bg-amber-100 text-amber-700";
   if (bucket === "paid") return "bg-emerald-100 text-emerald-700";
+  if (bucket === "partially_paid") return "bg-teal-100 text-teal-700";
   if (bucket === "overdue") return "bg-rose-100 text-rose-700";
+  if (bucket === "refunded") return "bg-violet-100 text-violet-700";
   if (bucket === "cancelled") return "bg-slate-200 text-slate-700";
   return "bg-slate-100 text-slate-700";
 }
@@ -190,7 +196,9 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
     outstanding: invoiceList.filter((item) => invoiceStatusBucket(item) === "outstanding").length,
     overdue: invoiceList.filter((item) => invoiceStatusBucket(item) === "overdue").length,
     paid: invoiceList.filter((item) => invoiceStatusBucket(item) === "paid").length,
+    partially_paid: invoiceList.filter((item) => invoiceStatusBucket(item) === "partially_paid").length,
     cancelled: invoiceList.filter((item) => invoiceStatusBucket(item) === "cancelled").length,
+    refunded: invoiceList.filter((item) => invoiceStatusBucket(item) === "refunded").length,
   };
 
   const totalOutstandingAmount = invoiceList
@@ -242,7 +250,9 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
     { key: "outstanding", label: "Outstanding", count: statusCounts.outstanding },
     { key: "overdue", label: "Overdue", count: statusCounts.overdue },
     { key: "paid", label: "Paid", count: statusCounts.paid },
+    { key: "partially_paid", label: "Partially Paid", count: statusCounts.partially_paid },
     { key: "cancelled", label: "Cancelled", count: statusCounts.cancelled },
+    { key: "refunded", label: "Refunded", count: statusCounts.refunded },
   ];
 
   return (
@@ -306,8 +316,10 @@ export default async function MsmeInvoicesPage({ searchParams }: { searchParams:
                 <option value="issued">Issued</option>
                 <option value="pending_payment">Pending Payment</option>
                 <option value="paid">Paid</option>
+                <option value="partially_paid">Partially Paid</option>
                 <option value="overdue">Overdue</option>
                 <option value="cancelled">Cancelled</option>
+                <option value="refunded">Refunded</option>
               </select>
 
               <select name="customer" defaultValue={selectedCustomer} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">

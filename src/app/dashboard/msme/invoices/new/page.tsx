@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { calculateLineTotal, generateInvoiceNumber, recalculateInvoiceTotals } from "@/lib/data/invoicing";
+import { calculateLineTotal, generateInvoiceNumber, generatePublicInvoiceToken, publicInvoiceTokenExpiry, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent, normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
 
 async function createInvoiceAction(formData: FormData) {
@@ -34,12 +34,25 @@ async function createInvoiceAction(formData: FormData) {
     if (!sourceQuote || String(sourceQuote.status ?? "").toLowerCase() !== "accepted") {
       redirect("/dashboard/msme/invoices/new?error=quote_not_accepted");
     }
+
+    const { data: existingLink, error: existingLinkError } = await supabase
+      .from("quote_invoice_links")
+      .select("invoice_id")
+      .eq("quote_id", quoteId)
+      .limit(1)
+      .maybeSingle();
+    if (existingLinkError) throw new Error(existingLinkError.message);
+    if (existingLink?.invoice_id) redirect(`/dashboard/msme/invoices/${existingLink.invoice_id}`);
   }
 
-  const invoicePayload = {
+  const invoiceColumns = await getTableColumns(supabase, "invoices");
+  const rawInvoicePayload = {
     provider_profile_id: workspace.provider.id,
     msme_id: workspace.msme.id,
     invoice_number: generateInvoiceNumber(),
+    public_token: generatePublicInvoiceToken(),
+    public_token_expires_at: publicInvoiceTokenExpiry(),
+    public_token_revoked_at: null,
     customer_name: String(formData.get("customer_name") ?? "").trim(),
     customer_email: String(formData.get("customer_email") ?? "").trim() || null,
     customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
@@ -51,6 +64,7 @@ async function createInvoiceAction(formData: FormData) {
     vat_amount: vatAmount,
     total_amount: totalAmount,
   };
+  const invoicePayload = filterPayloadByColumns(rawInvoicePayload, invoiceColumns.size ? invoiceColumns : new Set(Object.keys(rawInvoicePayload)));
 
   const { data: invoice, error: invoiceError } = await supabase
   .from("invoices")
@@ -86,6 +100,8 @@ async function createInvoiceAction(formData: FormData) {
     eventType: "invoice_created",
     actorRole: workspace.role,
     actorId: workspace.msme.id,
+    source: quoteId ? "quote_conversion" : "manual",
+    toStatus: "draft",
     metadata: { quote_id: quoteId, source: quoteId ? "quote_conversion" : "manual" },
   });
 

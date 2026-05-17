@@ -2,89 +2,80 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { formatNaira, invoicePaymentStatusClasses, type InvoicePaymentStatus } from "@/lib/data/invoicing";
+import { assertInvoiceTransition, formatNaira, invoicePaymentStatusClasses } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logInvoiceEvent } from "@/lib/data/commercial-ops";
+import { loadInvoiceByPublicToken } from "@/lib/data/public-invoices";
 
-function resolveInvoiceStatusFromPayment(paymentStatus: InvoicePaymentStatus) {
-  if (paymentStatus === "success") return "paid";
-  if (paymentStatus === "initiated" || paymentStatus === "pending") return "pending_payment";
-  return "issued";
-}
-
-async function simulatePaymentAction(formData: FormData) {
+async function createPaymentAttemptAction(formData: FormData) {
   "use server";
   const supabase = await createServiceRoleSupabaseClient();
-  const invoiceId = String(formData.get("invoice_id") ?? "");
-  const result = String(formData.get("result") ?? "success") as InvoicePaymentStatus;
-  const method = String(formData.get("method") ?? "card");
+  const publicToken = String(formData.get("public_token") ?? "");
+  const method = String(formData.get("method") ?? "bank_transfer");
 
-  console.info("[invoice-payment-sim:start]", { invoiceId, result, method });
+  const invoice = await loadInvoiceByPublicToken(supabase, publicToken);
+  if (!invoice) redirect(`/invoice/${publicToken}/status`);
 
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("invoices")
-    .select("id,invoice_number,total_amount,status")
-    .eq("id", invoiceId)
-    .maybeSingle();
-
-  if (invoiceError || !invoice) {
-    console.error("[invoice-payment-sim:error:invoice-load]", invoiceError);
-    redirect(`/invoice/${invoiceId}/status`);
+  if (["draft", "paid", "refunded", "cancelled"].includes(String(invoice.status ?? "draft"))) {
+    redirect(`/invoice/${publicToken}/status`);
   }
 
-  const paymentReference = `SIM-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  const paymentStatus: InvoicePaymentStatus = result;
-  const paidAt = paymentStatus === "success" ? new Date().toISOString() : null;
+  const paymentReference = `ATTEMPT-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const nowIso = new Date().toISOString();
 
-  const paymentColumns = await getTableColumns(supabase, "invoice_payments");
-  if (paymentColumns.has("invoice_id")) {
-    const { error: paymentError } = await supabase.from("invoice_payments").insert(filterPayloadByColumns({
-      invoice_id: invoiceId,
+  const attemptColumns = await getTableColumns(supabase, "invoice_payment_attempts");
+  let paymentAttemptId: string | null = null;
+  if (attemptColumns.has("invoice_id")) {
+    const { data: attempt, error: attemptError } = await supabase.from("invoice_payment_attempts").insert(filterPayloadByColumns({
+      invoice_id: invoice.id,
+      provider_profile_id: invoice.provider_profile_id,
+      public_token: publicToken,
       payment_reference: paymentReference,
       payment_method: method,
-      payment_status: paymentStatus,
+      status: "payment_attempt_created",
       amount: invoice.total_amount,
-      paid_at: paidAt,
-    }, paymentColumns));
+      source: "public_payment_recording",
+      metadata: {},
+      created_at: nowIso,
+      updated_at: nowIso,
+    }, attemptColumns)).select("id").maybeSingle();
 
-    if (paymentError) console.error("[invoice-payment-sim:error:payment-insert]", paymentError);
+    if (attemptError) {
+      console.error("[invoice-payment-attempt:error]", { operation: "payment_attempt_created", invoiceId: invoice.id, providerId: invoice.provider_profile_id, code: attemptError.code ?? null, message: attemptError.message });
+    }
+    paymentAttemptId = attempt?.id ?? null;
   }
 
-  const nextInvoiceStatus = resolveInvoiceStatusFromPayment(paymentStatus);
+  assertInvoiceTransition(invoice.status, "pending_payment");
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const { error: updateError } = await supabase
     .from("invoices")
     .update(filterPayloadByColumns({
-      status: nextInvoiceStatus,
-      paid_at: paidAt,
-      updated_at: new Date().toISOString(),
+      status: "pending_payment",
+      updated_at: nowIso,
     }, invoiceColumns))
-    .eq("id", invoiceId);
+    .eq("id", invoice.id);
 
-  if (updateError) console.error("[invoice-payment-sim:error:invoice-update]", updateError);
+  if (updateError) console.error("[invoice-payment-attempt:update-error]", { operation: "pending_payment", invoiceId: invoice.id, providerId: invoice.provider_profile_id, code: updateError.code ?? null, message: updateError.message });
 
   await logInvoiceEvent(supabase, {
-    invoiceId,
-    eventType: paymentStatus === "success" ? "payment_success" : paymentStatus === "failed" ? "payment_failed" : `payment_${paymentStatus}`,
+    invoiceId: invoice.id,
+    eventType: "payment_attempt_created",
     actorRole: "public",
     actorId: null,
+    source: "public_payment_recording",
+    fromStatus: String(invoice.status ?? "issued"),
+    toStatus: "pending_payment",
     metadata: {
       payment_reference: paymentReference,
-      payment_status: paymentStatus,
       method,
-      invoice_number: invoice.invoice_number,
+      payment_attempt_id: paymentAttemptId,
     },
   });
 
-  console.info("[invoice-payment-sim:complete]", {
-    invoiceId,
-    invoiceNumber: invoice.invoice_number,
-    paymentReference,
-    paymentStatus,
-    invoiceStatus: nextInvoiceStatus,
-  });
+  console.info("[invoice-payment-attempt:complete]", { operation: "payment_attempt_created", invoiceId: invoice.id, providerId: invoice.provider_profile_id, paymentAttemptId, status: "pending_payment" });
 
-  revalidatePath(`/invoice/${invoiceId}`);
-  revalidatePath(`/invoice/${invoiceId}/status`);
+  revalidatePath(`/invoice/${publicToken}`);
+  revalidatePath(`/invoice/${publicToken}/status`);
   revalidatePath("/dashboard/msme/invoices");
   revalidatePath("/dashboard/msme/revenue");
   revalidatePath("/dashboard/nrs/invoices");
@@ -93,20 +84,13 @@ async function simulatePaymentAction(formData: FormData) {
   revalidatePath("/dashboard/nrs/revenue");
   revalidatePath("/dashboard");
 
-  redirect(`/invoice/${invoiceId}/status`);
+  redirect(`/invoice/${publicToken}/status`);
 }
 
 export default async function PublicInvoicePayPage({ params }: { params: Promise<{ invoiceId: string }> }) {
-  const { invoiceId } = await params;
+  const { invoiceId: publicToken } = await params;
   const supabase = await createServiceRoleSupabaseClient();
-
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .select("id,invoice_number,customer_name,total_amount,status,msmes(business_name),provider_profiles(display_name)")
-    .eq("id", invoiceId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
+  const invoice = await loadInvoiceByPublicToken(supabase, publicToken);
   if (!invoice) return <section className="rounded-xl border bg-white p-8 text-center">Invoice not found.</section>;
   const msme = Array.isArray(invoice.msmes) ? invoice.msmes[0] : invoice.msmes;
   const provider = Array.isArray(invoice.provider_profiles) ? invoice.provider_profiles[0] : invoice.provider_profiles;
@@ -115,36 +99,29 @@ export default async function PublicInvoicePayPage({ params }: { params: Promise
   return (
     <section className="mx-auto max-w-3xl space-y-4 py-6">
       <header className="rounded-xl border bg-white p-5">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Secure invoice checkout</p>
-        <h1 className="text-2xl font-semibold">Payment simulation</h1>
+        <p className="text-xs uppercase tracking-wide text-slate-500">Secure invoice payment recording</p>
+        <h1 className="text-2xl font-semibold">Payment evidence pending</h1>
         <p className="text-sm text-slate-600">
           Invoice {invoice.invoice_number} · {invoice.customer_name} · {businessName}
         </p>
       </header>
 
       <div className="grid gap-4 md:grid-cols-[1.2fr_1fr]">
-        <form action={simulatePaymentAction} className="space-y-4 rounded-xl border bg-white p-5">
-          <input type="hidden" name="invoice_id" value={invoice.id} />
+        <form action={createPaymentAttemptAction} className="space-y-4 rounded-xl border bg-white p-5">
+          <input type="hidden" name="public_token" value={publicToken} />
           <label className="block text-sm">
             Payment method
             <select name="method" className="mt-1 w-full rounded border px-2 py-2 text-sm">
-              <option value="card">Card</option>
               <option value="bank_transfer">Bank transfer</option>
-              <option value="ussd">USSD</option>
-              <option value="wallet">Wallet</option>
+              <option value="manual_transfer">Manual transfer</option>
+              <option value="cash_deposit">Cash deposit</option>
+              <option value="cheque">Cheque</option>
             </select>
           </label>
-          <label className="block text-sm">
-            Simulated outcome
-            <select name="result" className="mt-1 w-full rounded border px-2 py-2 text-sm" defaultValue="success">
-              <option value="initiated">Initiated</option>
-              <option value="pending">Pending</option>
-              <option value="success">Success</option>
-              <option value="failed">Failed</option>
-              <option value="refunded">Refunded</option>
-            </select>
-          </label>
-          <button className="w-full rounded-lg bg-indigo-900 px-4 py-2 text-sm text-white">Run payment simulation</button>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            This records a pending payment attempt only. The MSME must confirm receipt manually before the invoice can be marked paid.
+          </p>
+          <button disabled={["draft", "paid", "refunded", "cancelled"].includes(String(invoice.status ?? "draft"))} className="w-full rounded-lg bg-indigo-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-300">Record payment attempt</button>
         </form>
 
         <aside className="rounded-xl border bg-white p-5">
@@ -154,7 +131,7 @@ export default async function PublicInvoicePayPage({ params }: { params: Promise
             <p className="flex justify-between"><span className="text-slate-500">Current status</span><span className={`rounded-full px-2 py-0.5 text-xs uppercase ${invoicePaymentStatusClasses(invoice.status === "paid" ? "success" : "pending")}`}>{invoice.status.replace("_", " ")}</span></p>
             <p className="flex justify-between border-t pt-2 text-base font-semibold"><span>Total due</span><span>{formatNaira(invoice.total_amount)}</span></p>
           </div>
-          <Link href={`/invoice/${invoice.id}`} className="mt-4 inline-block text-sm text-indigo-700 hover:underline">Back to invoice</Link>
+          <Link href={`/invoice/${publicToken}`} className="mt-4 inline-block text-sm text-indigo-700 hover:underline">Back to invoice</Link>
         </aside>
       </div>
     </section>
