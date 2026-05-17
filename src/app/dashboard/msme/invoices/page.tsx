@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, FileText, Search, TriangleAlert } from "lucide-react";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
 import { normalizeInvoiceStatus } from "@/lib/data/commercial-ops";
 
@@ -128,17 +128,28 @@ function createHref(params: PageParams, tab: string) {
 export default async function MsmeInvoicesPage({ searchParams }: { searchParams: Promise<PageParams> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   let query = supabase
     .from("invoices")
     .select("id,invoice_number,customer_name,customer_email,due_date,created_at,status,subtotal,vat_amount,total_amount")
-    .eq("provider_profile_id", workspace.provider.id)
+    .eq("msme_id", workspace.msme.id)
     .order("created_at", { ascending: false });
 
   if (params.status) query = query.eq("status", params.status);
 
   const { data: invoices, error } = await query;
+  console.info("[msme-invoices:read]", {
+    operation: "msme_invoices_dashboard_read",
+    providerId: workspace.provider.id,
+    providerProfileId: workspace.provider.id,
+    msmeId: workspace.msme.id,
+    queryTable: "invoices",
+    ownershipField: "msme_id",
+    readCount: invoices?.length ?? 0,
+    code: error?.code ?? null,
+    message: error?.message ?? null,
+  });
   if (error) throw new Error(error.message);
 
   const selectedDate = parseSafeOption(params.date, DATE_OPTIONS, "all");

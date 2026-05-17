@@ -472,9 +472,20 @@ export default async function MsmeInvoiceDetailPage({
     .from("invoices")
     .select("id,invoice_number,customer_name,customer_email,customer_phone,status,due_date,issued_at,subtotal,vat_rate,vat_amount,total_amount,currency,public_token,public_token_expires_at,public_token_revoked_at")
     .eq("id", invoiceId)
-    .eq("provider_profile_id", workspace.provider.id)
+    .eq("msme_id", workspace.msme.id)
     .maybeSingle();
 
+  console.info("[msme-invoice-detail:read]", {
+    operation: "msme_invoice_detail_read",
+    providerId: workspace.provider.id,
+    providerProfileId: workspace.provider.id,
+    msmeId: workspace.msme.id,
+    queryTable: "invoices",
+    ownershipField: "msme_id",
+    readCount: invoice ? 1 : 0,
+    code: error?.code ?? null,
+    message: error?.message ?? null,
+  });
   if (error) throw new Error(error.message);
   if (!invoice) redirect("/dashboard/msme/invoices");
 
