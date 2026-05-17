@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { filterPayloadByColumns, getTableColumns } from "@/lib/data/commercial-ops";
 import { resolvePublicProviderProfile } from "@/lib/data/provider-profile-resolver";
 import { buildProviderProfileHref } from "@/lib/provider-links";
 
@@ -33,6 +34,7 @@ async function submitProviderQuoteRequest(formData: FormData) {
   const requestDetails = String(formData.get("request_details") ?? "").trim();
   const budgetMinRaw = String(formData.get("budget_min") ?? "").trim();
   const budgetMaxRaw = String(formData.get("budget_max") ?? "").trim();
+  const providerServiceId = String(formData.get("provider_service_id") ?? "").trim() || null;
 
   if (!requesterName || !requesterEmail || !requesterPhone || !requestSummary || !requestDetails) {
     redirect(`/providers/${providerPathSegment}/request-quote?error=missing_fields`);
@@ -74,9 +76,41 @@ async function submitProviderQuoteRequest(formData: FormData) {
   devQuoteLog("quote_submission_provider_uuid_for_insert", { providerPathSegment, providerProfileId });
 
   const supabase = await createServiceRoleSupabaseClient();
+  const quoteColumns = await getTableColumns(supabase, "provider_quotes");
+  let serviceSnapshot: {
+    id: string;
+    title: string | null;
+    category: string | null;
+    pricing_mode: string | null;
+  } | null = null;
+
+  if (providerServiceId) {
+    const { data: service, error: serviceError } = await supabase
+      .from("provider_services")
+      .select("id,title,category,pricing_mode")
+      .eq("id", providerServiceId)
+      .eq("provider_id", providerProfileId)
+      .maybeSingle();
+
+    if (serviceError || !service) {
+      devQuoteLog("quote_submission_service_link_invalid", {
+        providerPathSegment,
+        providerProfileId,
+        serviceId: providerServiceId,
+        error: serviceError ? { code: serviceError.code ?? null, message: serviceError.message } : null,
+      });
+      redirect(`/providers/${providerPathSegment}/request-quote?error=service_not_found`);
+    }
+
+    serviceSnapshot = service;
+  }
 
   const payload = {
     provider_profile_id: providerProfileId,
+    provider_service_id: serviceSnapshot?.id ?? null,
+    service_title_snapshot: serviceSnapshot?.title ?? null,
+    service_category_snapshot: serviceSnapshot?.category ?? null,
+    service_pricing_mode_snapshot: serviceSnapshot?.pricing_mode ?? null,
     requester_name: requesterName,
     requester_email: requesterEmail,
     requester_phone: requesterPhone,
@@ -87,9 +121,15 @@ async function submitProviderQuoteRequest(formData: FormData) {
     status: "new",
   };
 
-  devQuoteLog("quote_submission_attempt", { providerPathSegment, providerProfileId, requesterEmail, hasBudget: budgetMin !== null || budgetMax !== null });
+  devQuoteLog("quote_submission_attempt", {
+    providerPathSegment,
+    providerProfileId,
+    serviceId: serviceSnapshot?.id ?? null,
+    hasBudget: budgetMin !== null || budgetMax !== null,
+  });
 
-  const { error } = await supabase.from("provider_quotes").insert(payload);
+  const insertPayload = quoteColumns.size > 0 ? filterPayloadByColumns(payload, quoteColumns) : payload;
+  const { error } = await supabase.from("provider_quotes").insert(insertPayload);
 
   if (error) {
     devQuoteLog("quote_submission_failed", {
@@ -103,7 +143,7 @@ async function submitProviderQuoteRequest(formData: FormData) {
     throw new Error(`Quote submission failed: ${error.message}`);
   }
 
-  devQuoteLog("quote_submission_success", { providerPathSegment, providerProfileId, requesterEmail });
+  devQuoteLog("quote_submission_success", { providerPathSegment, providerProfileId, serviceId: serviceSnapshot?.id ?? null });
 
   revalidatePath(`/providers/${providerPathSegment}`);
   revalidatePath(`/providers/${providerPathSegment}/request-quote`);
@@ -115,7 +155,7 @@ export default async function PublicProviderRequestQuotePage({
   searchParams,
 }: {
   params: Promise<{ providerId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; service?: string }>;
 }) {
   const { providerId: providerSlug } = await params;
   const query = await searchParams;
@@ -178,6 +218,24 @@ export default async function PublicProviderRequestQuotePage({
     lga: null as string | null,
   };
 
+  let selectedService: {
+    id: string;
+    title: string | null;
+    category: string | null;
+    pricing_mode: string | null;
+  } | null = null;
+
+  if (query.service) {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { data: service } = await supabase
+      .from("provider_services")
+      .select("id,title,category,pricing_mode")
+      .eq("id", query.service)
+      .eq("provider_id", providerForQuote.id)
+      .maybeSingle();
+    selectedService = service ?? null;
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
@@ -211,7 +269,9 @@ export default async function PublicProviderRequestQuotePage({
                   ? "Budget values must be valid numbers."
                   : query.error === "provider_not_found"
                     ? "This provider is visible publicly but has no provider profile row yet."
-                  : "Budget minimum cannot be greater than budget maximum."}
+                    : query.error === "service_not_found"
+                      ? "The selected service is no longer available. Please choose another service from the provider profile."
+                      : "Budget minimum cannot be greater than budget maximum."}
             </div>
           )}
 
@@ -224,6 +284,16 @@ export default async function PublicProviderRequestQuotePage({
               <input type="hidden" name="provider_path_segment" value={providerSlug} />
               <input type="hidden" name="provider_profile_id" value={resolvedByPublicSlug.provider.id} />
               <input type="hidden" name="provider_msme_id" value={resolvedByPublicSlug.provider.msme_id} />
+              {selectedService?.id && <input type="hidden" name="provider_service_id" value={selectedService.id} />}
+
+              {selectedService && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                  <p className="font-semibold">{selectedService.title ?? "Selected service"}</p>
+                  <p className="mt-1 text-emerald-800">
+                    {[selectedService.category, selectedService.pricing_mode?.replace("_", " ")].filter(Boolean).join(" • ")}
+                  </p>
+                </div>
+              )}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">

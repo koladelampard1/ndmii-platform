@@ -6,6 +6,10 @@ type ProviderLinkInput = {
   public_slug: string;
 };
 
+type ProviderQuoteLinkOptions = {
+  serviceId?: string | null;
+};
+
 function logProviderLinkGeneration(href: string, provider: ProviderLinkInput) {
   if (!DEV_MODE) return;
   console.info("[provider-link]", {
@@ -22,8 +26,10 @@ export function buildProviderProfileHref(provider: ProviderLinkInput): string {
   return href;
 }
 
-export function buildProviderQuoteHref(provider: ProviderLinkInput): string {
-  const href = `/providers/${provider.public_slug}/request-quote`;
+export function buildProviderQuoteHref(provider: ProviderLinkInput, options?: ProviderQuoteLinkOptions): string {
+  const params = new URLSearchParams();
+  if (options?.serviceId) params.set("service", options.serviceId);
+  const href = `/providers/${provider.public_slug}/request-quote${params.toString() ? `?${params.toString()}` : ""}`;
   logProviderLinkGeneration(href, provider);
   return href;
 }

@@ -268,7 +268,21 @@ export default async function ProviderPublicPage({
             <h2 className="inline-flex items-center gap-2 text-base font-semibold"><Building2 className="h-4 w-4 text-emerald-600" />Services</h2>
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               {providerView.services.slice(0, 5).map((service) => (
-                <li key={service.id} className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-emerald-600" />{service.title}</li>
+                <li key={service.id} className="flex items-start justify-between gap-2">
+                  <span className="flex items-start gap-2">
+                    <span className="mt-1 h-2 w-2 rounded-full bg-emerald-600" />
+                    <span>{service.title}</span>
+                  </span>
+                  <Link
+                    href={buildProviderQuoteHref(
+                      { id: providerView.id, msme_id: providerView.msme_id, public_slug: providerView.public_slug },
+                      { serviceId: service.id },
+                    )}
+                    className="shrink-0 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                  >
+                    Quote
+                  </Link>
+                </li>
               ))}
               {providerView.services.length === 0 && <li className="text-slate-500">No services listed yet.</li>}
             </ul>
@@ -282,17 +296,26 @@ export default async function ProviderPublicPage({
 
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="inline-flex items-center gap-2 text-base font-semibold"><Star className="h-4 w-4 text-emerald-600" />Rating Summary</h2>
-            <p className="mt-2 text-4xl font-bold text-slate-900">{providerView.avg_rating.toFixed(1)}</p>
-            <p className="text-sm text-slate-500">From {providerView.review_count} reviews</p>
-            <div className="mt-3 space-y-1.5">
-              {breakdownRows.map((row) => (
-                <div key={row.label} className="grid grid-cols-[28px_1fr_20px] items-center gap-2 text-xs text-slate-600">
-                  <span>{row.label.replace(" ★", "")}</span>
-                  <div className="h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${ratingPercent(row.value, providerView.review_count)}%` }} /></div>
-                  <span>{row.value}</span>
+            {providerView.review_count > 0 ? (
+              <>
+                <p className="mt-2 text-4xl font-bold text-slate-900">{providerView.avg_rating.toFixed(1)}</p>
+                <p className="text-sm text-slate-500">From {providerView.review_count} reviews</p>
+                <div className="mt-3 space-y-1.5">
+                  {breakdownRows.map((row) => (
+                    <div key={row.label} className="grid grid-cols-[28px_1fr_20px] items-center gap-2 text-xs text-slate-600">
+                      <span>{row.label.replace(" ★", "")}</span>
+                      <div className="h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${ratingPercent(row.value, providerView.review_count)}%` }} /></div>
+                      <span>{row.value}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-2xl font-bold text-slate-900">No reviews yet</p>
+                <p className="text-sm text-slate-500">Published customer reviews will appear here.</p>
+              </>
+            )}
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -339,9 +362,40 @@ export default async function ProviderPublicPage({
           </article>
         </section>
 
-        {providerView.reviews.length === 0 && (
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">No reviews published yet.</section>
-        )}
+        <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">Published Reviews</h2>
+            <span className="text-sm text-slate-500">{providerView.reviews.length} review{providerView.reviews.length === 1 ? "" : "s"}</span>
+          </div>
+          {providerView.reviews.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No reviews yet. Published customer feedback will appear after moderation.</p>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {providerView.reviews.map((review) => (
+                <article key={review.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-slate-900">{review.reviewer_name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{formatDate(review.created_at)}</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                      <Star className="h-3.5 w-3.5 fill-current" />
+                      {review.rating.toFixed(1)}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900">{review.review_title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">{review.review_body}</p>
+                  {review.provider_reply?.trim() && (
+                    <div className="mt-3 rounded-lg border border-emerald-100 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Provider reply</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">{review.provider_reply}</p>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
           <aside className="space-y-3">

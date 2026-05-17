@@ -13,14 +13,21 @@ type QuoteRow = {
   requester_email: string | null;
   requester_phone: string | null;
   request_summary: string | null;
+  service_title_snapshot: string | null;
+  service_category_snapshot: string | null;
+  service_pricing_mode_snapshot: string | null;
+  quoted_amount: number | null;
+  quote_sent_at: string | null;
+  customer_decision_at: string | null;
   budget_min: number | null;
   budget_max: number | null;
   status: string | null;
   created_at: string | null;
+  updated_at: string | null;
 };
 
-const STATUS_OPTIONS = ["new", "in_review", "accepted", "converted", "closed", "declined"] as const;
-const STATUS_TABS = ["all", "new", "in_progress", "awaiting_customer", "converted", "closed"] as const;
+const STATUS_OPTIONS = ["new", "in_review", "quoted", "accepted", "declined", "converted", "closed"] as const;
+const STATUS_TABS = ["all", "new", "in_progress", "quoted", "accepted", "converted", "closed"] as const;
 const BUDGET_OPTIONS = ["all", "under_100k", "100k_500k", "500k_1m", "over_1m"] as const;
 const DATE_OPTIONS = ["all", "today", "7d", "30d", "90d"] as const;
 const SORT_OPTIONS = ["newest", "oldest", "budget_high", "budget_low"] as const;
@@ -40,10 +47,11 @@ function statusLabel(status: string) {
   const normalizedStatus = status.toLowerCase();
   if (normalizedStatus === "new") return "New";
   if (normalizedStatus === "in_review") return "In Progress";
-  if (normalizedStatus === "accepted") return "Awaiting Customer";
+  if (normalizedStatus === "quoted") return "Offer Sent";
+  if (normalizedStatus === "accepted") return "Accepted";
   if (normalizedStatus === "converted") return "Converted";
   if (normalizedStatus === "closed") return "Closed";
-  if (normalizedStatus === "declined") return "Closed";
+  if (normalizedStatus === "declined") return "Declined";
   return "Unknown";
 }
 
@@ -51,6 +59,7 @@ function statusClasses(status: string) {
   const normalizedStatus = status.toLowerCase();
   if (normalizedStatus === "new") return "bg-blue-100 text-blue-700 border-blue-200";
   if (normalizedStatus === "in_review") return "bg-amber-100 text-amber-700 border-amber-200";
+  if (normalizedStatus === "quoted") return "bg-purple-100 text-purple-700 border-purple-200";
   if (normalizedStatus === "accepted") return "bg-indigo-100 text-indigo-700 border-indigo-200";
   if (normalizedStatus === "converted") return "bg-emerald-100 text-emerald-700 border-emerald-200";
   if (normalizedStatus === "declined" || normalizedStatus === "closed") return "bg-slate-100 text-slate-700 border-slate-200";
@@ -61,7 +70,8 @@ function mapStatusToTab(status: string) {
   const normalizedStatus = status.toLowerCase();
   if (normalizedStatus === "new") return "new";
   if (normalizedStatus === "in_review") return "in_progress";
-  if (normalizedStatus === "accepted") return "awaiting_customer";
+  if (normalizedStatus === "quoted") return "quoted";
+  if (normalizedStatus === "accepted") return "accepted";
   if (normalizedStatus === "converted") return "converted";
   if (normalizedStatus === "closed" || normalizedStatus === "declined") return "closed";
   return "all";
@@ -139,10 +149,17 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
       "requester_email",
       "requester_phone",
       "request_summary",
+      "service_title_snapshot",
+      "service_category_snapshot",
+      "service_pricing_mode_snapshot",
+      "quoted_amount",
+      "quote_sent_at",
+      "customer_decision_at",
       "budget_min",
       "budget_max",
       "status",
       "created_at",
+      "updated_at",
       PROVIDER_QUOTE_OWNERSHIP_FIELD,
     ])
   );
@@ -165,7 +182,7 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
 
   const enrichedQuotes = quotes.map((quote) => {
     const normalizedStatus = String(quote.status ?? "").toLowerCase();
-    const serviceCategory = inferServiceCategory(String(quote.request_summary ?? ""));
+    const serviceCategory = quote.service_category_snapshot?.trim() || inferServiceCategory(String(quote.request_summary ?? ""));
     const effectiveBudget = Number(quote.budget_max ?? quote.budget_min ?? 0);
     const fitScore = getFitScore(quote);
     return {
@@ -223,7 +240,8 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
   const pipelineCounts = {
     new: enrichedQuotes.filter((quote) => quote.statusTab === "new").length,
     in_progress: enrichedQuotes.filter((quote) => quote.statusTab === "in_progress").length,
-    awaiting_customer: enrichedQuotes.filter((quote) => quote.statusTab === "awaiting_customer").length,
+    quoted: enrichedQuotes.filter((quote) => quote.statusTab === "quoted").length,
+    accepted: enrichedQuotes.filter((quote) => quote.statusTab === "accepted").length,
     converted: enrichedQuotes.filter((quote) => quote.statusTab === "converted").length,
     closed: enrichedQuotes.filter((quote) => quote.statusTab === "closed").length,
   };
@@ -231,23 +249,7 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
   const totalRequests = enrichedQuotes.length;
   const convertedCount = pipelineCounts.converted;
   const responseHealthConversionRate = totalRequests === 0 ? 0 : Math.round((convertedCount / totalRequests) * 100);
-  const pendingFollowUps = pipelineCounts.new + pipelineCounts.in_progress + pipelineCounts.awaiting_customer;
-  const averageResponseTime = pendingFollowUps === 0 ? "1.4h" : "4.8h";
-
-  console.info("[quote-list-debug]", {
-    workspaceProviderId: workspace.provider.id,
-    workspaceMsmeId: workspace.msme.id,
-    quoteCountQueryResult: quoteCount,
-    quoteTableFilter: {
-      ownershipField: PROVIDER_QUOTE_OWNERSHIP_FIELD,
-      ownershipValue: workspace.provider.id,
-      status: params.status && STATUS_OPTIONS.includes(params.status as (typeof STATUS_OPTIONS)[number]) ? params.status : "all",
-      tab: selectedTab,
-      search: searchTerm,
-    },
-    quoteTableRowCount: quotes.length,
-    statusesReturned: Array.from(new Set(quotes.map((quote) => String(quote.status ?? "").toLowerCase()))),
-  });
+  const pendingFollowUps = pipelineCounts.new + pipelineCounts.in_progress + pipelineCounts.quoted + pipelineCounts.accepted;
 
   const kpis = [
     {
@@ -286,22 +288,6 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-slate-900">Quote Requests</h1>
           <p className="text-sm text-slate-600">Track incoming requests, respond quickly, and convert qualified enquiries into invoices.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Export Requests
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
-            aria-disabled="true"
-            title="Manual quote creation flow is coming soon"
-          >
-            Create Manual Quote
-          </button>
         </div>
       </header>
 
@@ -400,11 +386,13 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
                 ? pipelineCounts.new
                 : tab === "in_progress"
                   ? pipelineCounts.in_progress
-                  : tab === "awaiting_customer"
-                    ? pipelineCounts.awaiting_customer
-                    : tab === "converted"
-                      ? pipelineCounts.converted
-                      : pipelineCounts.closed;
+                  : tab === "quoted"
+                    ? pipelineCounts.quoted
+                    : tab === "accepted"
+                      ? pipelineCounts.accepted
+                      : tab === "converted"
+                        ? pipelineCounts.converted
+                        : pipelineCounts.closed;
 
           const nextParams = new URLSearchParams();
           if (params.q) nextParams.set("q", params.q);
@@ -433,8 +421,10 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
                     ? "New"
                     : tab === "in_progress"
                       ? "In Progress"
-                      : tab === "awaiting_customer"
-                        ? "Awaiting Customer"
+                      : tab === "quoted"
+                        ? "Offer Sent"
+                        : tab === "accepted"
+                          ? "Accepted"
                         : tab === "converted"
                           ? "Converted"
                           : "Closed"}
@@ -498,7 +488,12 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
                           <p className="mt-1 text-xs text-slate-500">Requested on {formatDate(quote.created_at)}</p>
                         </td>
                         <td className="px-4 py-4">
-                          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{quote.serviceCategory}</span>
+                          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                            {quote.service_title_snapshot?.trim() || quote.serviceCategory}
+                          </span>
+                          {quote.service_title_snapshot && quote.serviceCategory !== quote.service_title_snapshot ? (
+                            <p className="mt-1 text-xs text-slate-500">{quote.serviceCategory}</p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-4 text-slate-700">
                           {formatNaira(Number(quote.budget_min ?? 0))} - {formatNaira(Number(quote.budget_max ?? quote.budget_min ?? 0))}
@@ -536,7 +531,8 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
               {[
                 { label: "New", value: pipelineCounts.new },
                 { label: "In Progress", value: pipelineCounts.in_progress },
-                { label: "Awaiting Customer", value: pipelineCounts.awaiting_customer },
+                { label: "Offer Sent", value: pipelineCounts.quoted },
+                { label: "Accepted", value: pipelineCounts.accepted },
                 { label: "Converted", value: pipelineCounts.converted },
                 { label: "Closed", value: pipelineCounts.closed },
               ].map((item) => {
@@ -560,10 +556,6 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
             <h3 className="text-sm font-semibold text-slate-900">Response Health</h3>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <dt className="text-slate-500">Average response time</dt>
-                <dd className="font-semibold text-slate-800">{averageResponseTime}</dd>
-              </div>
-              <div className="flex items-center justify-between">
                 <dt className="text-slate-500">Conversion rate</dt>
                 <dd className="font-semibold text-slate-800">{responseHealthConversionRate}%</dd>
               </div>
@@ -583,14 +575,6 @@ export default async function MsmeQuotesPage({ searchParams }: { searchParams: P
               <li>Attach portfolio examples</li>
               <li>Follow up before requests go cold</li>
             </ul>
-          </article>
-
-          <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-            <h3 className="text-base font-semibold text-indigo-900">Build Trust. Grow Your Business.</h3>
-            <p className="mt-2 text-sm text-indigo-800">Showcase completed projects and social proof to improve win rates across quote requests.</p>
-            <button type="button" className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-              View Reviews
-            </button>
           </article>
         </aside>
       </div>

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { isUuidLike } from "@/lib/data/provider-quote-ownership";
-import { calculateLineTotal, generateInvoiceNumber } from "@/lib/data/invoicing";
+import { calculateLineTotal, generateInvoiceNumber, recalculateInvoiceTotals } from "@/lib/data/invoicing";
 import {
   filterPayloadByColumns,
   getTableColumns,
@@ -16,10 +16,45 @@ import {
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
+const QUOTE_STATUSES = ["new", "in_review", "quoted", "accepted", "declined", "converted", "closed"] as const;
+type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 function devQuoteLog(message: string, payload: Record<string, unknown>) {
   if (!DEV_MODE) return;
   console.info(`[quote-workflow] ${message}`, payload);
+}
+
+function normalizeQuoteStatus(value: unknown): QuoteStatus {
+  const status = String(value ?? "new").toLowerCase();
+  return QUOTE_STATUSES.includes(status as QuoteStatus) ? (status as QuoteStatus) : "new";
+}
+
+function formatNaira(value: number | string | null | undefined) {
+  return `₦${Number(value ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-NG", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function statusLabel(status: string) {
+  const normalized = normalizeQuoteStatus(status);
+  if (normalized === "new") return "New";
+  if (normalized === "in_review") return "In Review";
+  if (normalized === "quoted") return "Offer Sent";
+  if (normalized === "accepted") return "Accepted";
+  if (normalized === "declined") return "Declined";
+  if (normalized === "converted") return "Converted";
+  return "Closed";
 }
 
 function buildAdaptiveInsertPayload(
@@ -74,22 +109,6 @@ async function loadQuoteForCurrentProvider(
   const selectFields = Array.from(new Set([...requiredSelectFields, "provider_profile_id"]));
   const selectClause = selectFields.join(",");
 
-  devQuoteLog("[quote-ownership] quote_load:context", {
-    quoteId,
-    workspace: {
-      provider: {
-        id: workspace.provider.id,
-        msme_id: workspace.provider.msme_id ?? null,
-        public_slug: (workspace.provider as { public_slug?: string | null }).public_slug ?? null,
-      },
-      msme: {
-        id: workspace.msme.id ?? null,
-        msme_id: workspace.msme.msme_id ?? null,
-      },
-    },
-    available_provider_quotes_columns: Array.from(quoteColumns).sort(),
-  });
-
   const { data: quote, error: quoteLoadError }: { data: any; error: any } = await supabase
     .from("provider_quotes")
     .select(selectClause)
@@ -111,25 +130,12 @@ async function loadQuoteForCurrentProvider(
     quoteKeys: { provider_profile_id: quote.provider_profile_id ?? null },
     workspaceKeys: { provider_id: workspace.provider.id ?? null },
   };
-  devQuoteLog("[quote-ownership] summary", {
+  devQuoteLog("quote_ownership_checked", {
     quoteId,
+    providerId: workspace.provider.id,
     matched: quoteOwnership.isOwned,
-    matchReason: quoteOwnership.matchReason,
-    quoteKeys: quoteOwnership.quoteKeys,
-    workspaceKeys: quoteOwnership.workspaceKeys,
-    quoteRow: quote,
-    quoteColumns: Array.from(quoteColumns).sort(),
+    reason: quoteOwnership.matchReason,
   });
-  if (DEV_MODE) {
-    console.info("[quote-detail-ownership]", {
-      quoteId,
-      visibleInList: quoteOwnership.isOwned,
-      quoteRow: quote,
-      workspaceKeys: quoteOwnership.workspaceKeys,
-      matchReason: quoteOwnership.matchReason,
-      isOwned: quoteOwnership.isOwned,
-    });
-  }
 
   if (!quoteOwnership.isOwned) {
     throw new Error("Quote not found for this provider.");
@@ -224,10 +230,12 @@ async function updateQuoteStatus(
   supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   quoteId: string,
   providerId: string,
-  providerMsmeId: string | null,
+  actorUserId: string | null,
+  actorRole: string,
   previousStatus: string,
-  nextStatus: "in_review" | "accepted" | "declined" | "converted",
-  lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at"
+  nextStatus: QuoteStatus,
+  lifecycleColumn?: "reviewed_at" | "accepted_at" | "declined_at" | "converted_at" | "quote_sent_at" | "customer_decision_at",
+  note?: string
 ) {
   const nowIso = new Date().toISOString();
   const columns = await getTableColumns(supabase, "provider_quotes");
@@ -250,17 +258,15 @@ async function updateQuoteStatus(
   devQuoteLog("update:attempt", {
     quoteId,
     providerId,
-    providerMsmeId,
-    previousStatus,
+    operation: "quote_status_update",
+    previousStatus: normalizeQuoteStatus(previousStatus),
     nextStatus,
     lifecycleColumn: lifecycleColumn ?? null,
-    updatePayload: payload,
-    update_scope: "id_only_after_prevalidated_ownership",
   });
 
   const updateQuery = supabase.from("provider_quotes").update(payload).eq("id", quoteId);
 
-  const { data: updatedQuote, error } = updateSelect.length
+  const { error } = updateSelect.length
     ? await updateQuery.select(updateSelect.join(",")).maybeSingle()
     : await updateQuery.select("id,status").maybeSingle();
 
@@ -268,11 +274,10 @@ async function updateQuoteStatus(
     devQuoteLog("update:error", {
       quoteId,
       providerId,
-      previousStatus,
+      operation: "quote_status_update",
+      previousStatus: normalizeQuoteStatus(previousStatus),
       nextStatus,
       code: error.code ?? null,
-      details: error.details ?? null,
-      hint: error.hint ?? null,
       message: error.message,
     });
     throw new Error(`Quote status update failed: ${error.message}`);
@@ -285,23 +290,14 @@ async function updateQuoteStatus(
     devQuoteLog("update:readback_error", {
       quoteId,
       providerId,
-      previousStatus,
+      operation: "quote_status_readback",
+      previousStatus: normalizeQuoteStatus(previousStatus),
       nextStatus,
       message: readBackError.message,
       code: readBackError.code ?? null,
     });
     throw new Error(`Quote status read-back failed: ${readBackError.message}`);
   }
-
-  devQuoteLog("update:result", {
-    quoteId,
-    providerId,
-    previousStatus,
-    nextStatus,
-    updatePayload: payload,
-    returnedRow: updatedQuote ?? null,
-    readBackRow: readBackRow ?? null,
-  });
 
   if (!readBackRow) {
     throw new Error("Quote status update failed: quote row not found after update.");
@@ -312,20 +308,63 @@ async function updateQuoteStatus(
     devQuoteLog("update:status_mismatch", {
       quoteId,
       providerId,
-      previousStatus,
+      operation: "quote_status_update",
+      previousStatus: normalizeQuoteStatus(previousStatus),
       nextStatus,
       readBackStatus,
-      diagnostics: [
-        "possible_wrong_filter_or_quote_id",
-        "possible_provider_profile_mismatch",
-        "possible_rls_or_permissions_mismatch",
-        "possible_stale_or_non_updating_query",
-      ],
     });
     throw new Error(`Quote status update mismatch: expected ${nextStatus} but got ${readBackStatus || "empty"}.`);
   }
 
+  await logQuoteStatusHistory(supabase, {
+    quoteId,
+    fromStatus: normalizeQuoteStatus(previousStatus),
+    toStatus: nextStatus,
+    actorUserId,
+    actorRole,
+    note,
+  });
+
   return readBackRow;
+}
+
+async function logQuoteStatusHistory(
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
+  params: {
+    quoteId: string;
+    fromStatus: string | null;
+    toStatus: string;
+    actorUserId?: string | null;
+    actorRole?: string | null;
+    note?: string | null;
+  }
+) {
+  const columns = await getTableColumns(supabase, "quote_status_history");
+  if (!columns.has("quote_id") || !columns.has("to_status")) return;
+
+  const payload = filterPayloadByColumns(
+    {
+      quote_id: params.quoteId,
+      from_status: params.fromStatus,
+      to_status: params.toStatus,
+      changed_by: params.actorUserId ?? null,
+      changed_by_role: params.actorRole ?? null,
+      note: params.note ?? null,
+      created_at: new Date().toISOString(),
+    },
+    columns
+  );
+
+  const { error } = await supabase.from("quote_status_history").insert(payload);
+  if (error) {
+    devQuoteLog("status_history:error", {
+      quoteId: params.quoteId,
+      operation: "quote_status_history_insert",
+      status: params.toStatus,
+      code: error.code ?? null,
+      message: error.message,
+    });
+  }
 }
 
 async function quoteWorkflowAction(formData: FormData) {
@@ -340,6 +379,10 @@ async function quoteWorkflowAction(formData: FormData) {
   const quoteSelectFields = [
     "id",
     "status",
+    "provider_service_id",
+    "service_title_snapshot",
+    "service_category_snapshot",
+    "service_pricing_mode_snapshot",
     "request_summary",
     "request_details",
     "requester_name",
@@ -347,11 +390,33 @@ async function quoteWorkflowAction(formData: FormData) {
     "requester_phone",
     "budget_min",
     "budget_max",
+    "quoted_amount",
+    "quoted_currency",
+    "estimated_timeline",
+    "quote_terms",
+    "validity_days",
+    "provider_response_message",
+    "quote_sent_at",
+    "customer_decision_at",
   ];
   const { quote } = await loadQuoteForCurrentProvider(supabase, workspace, quoteId, quoteSelectFields);
+  const previousStatus = normalizeQuoteStatus(quote.status);
 
   if (action === "mark_reviewed") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "in_review", "reviewed_at");
+    if (!["new", "in_review"].includes(previousStatus)) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=invalid_transition`);
+    }
+    await updateQuoteStatus(
+      supabase,
+      quote.id,
+      workspace.provider.id,
+      workspace.appUserId,
+      workspace.role,
+      previousStatus,
+      "in_review",
+      "reviewed_at",
+      "Provider started review."
+    );
     await logActivityEvent(supabase, {
       action: "quote_reviewed",
       entityType: "provider_quote",
@@ -364,15 +429,95 @@ async function quoteWorkflowAction(formData: FormData) {
     redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
   }
 
-  if (action === "accept") {
-    const updatedRow = await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "accepted", "accepted_at");
-    devQuoteLog("accept:verified_status", {
+  if (action === "send_quote") {
+    if (!["new", "in_review", "quoted"].includes(previousStatus)) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=invalid_transition`);
+    }
+
+    const quotedAmount = Number(formData.get("quoted_amount") ?? 0);
+    const estimatedTimeline = String(formData.get("estimated_timeline") ?? "").trim();
+    const quoteTerms = String(formData.get("quote_terms") ?? "").trim();
+    const validityDays = Number(formData.get("validity_days") ?? 14);
+    const providerResponseMessage = String(formData.get("provider_response_message") ?? "").trim();
+
+    if (!Number.isFinite(quotedAmount) || quotedAmount <= 0 || !estimatedTimeline || !quoteTerms || !providerResponseMessage) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=missing_offer_fields`);
+    }
+    if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 365) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=invalid_validity`);
+    }
+
+    const quoteColumns = await getTableColumns(supabase, "provider_quotes");
+    const nowIso = new Date().toISOString();
+    const rawPayload = {
+      status: "quoted",
+      quoted_amount: quotedAmount,
+      quoted_currency: "NGN",
+      estimated_timeline: estimatedTimeline,
+      quote_terms: quoteTerms,
+      validity_days: validityDays,
+      provider_response_message: providerResponseMessage,
+      quote_sent_at: nowIso,
+      updated_at: nowIso,
+    };
+    const payload = quoteColumns.size > 0 ? filterPayloadByColumns(rawPayload, quoteColumns) : rawPayload;
+
+    const { data: updatedQuote, error } = await supabase
+      .from("provider_quotes")
+      .update(payload)
+      .eq("id", quote.id)
+      .select("id,status")
+      .maybeSingle();
+
+    if (error || normalizeQuoteStatus(updatedQuote?.status) !== "quoted") {
+      devQuoteLog("send_quote:error", {
+        quoteId: quote.id,
+        providerId: workspace.provider.id,
+        operation: "send_quote",
+        status: updatedQuote?.status ?? null,
+        code: error?.code ?? null,
+        message: error?.message ?? "status_not_quoted",
+      });
+      throw new Error(`Quote offer failed: ${error?.message ?? "status_not_quoted"}`);
+    }
+
+    await logQuoteStatusHistory(supabase, {
       quoteId: quote.id,
-      oldStatus: String(quote.status ?? ""),
-      renderedStatus: String((updatedRow as { status?: string | null }).status ?? ""),
+      fromStatus: previousStatus,
+      toStatus: "quoted",
+      actorUserId: workspace.appUserId,
+      actorRole: workspace.role,
+      note: previousStatus === "quoted" ? "Commercial offer revised." : "Commercial offer sent.",
     });
     await logActivityEvent(supabase, {
-      action: "quote_accepted",
+      action: "quote_sent",
+      entityType: "provider_quote",
+      entityId: quote.id,
+      actorUserId: workspace.appUserId,
+      metadata: { provider_profile_id: workspace.provider.id },
+    });
+    revalidatePath(`/dashboard/msme/quotes/${quote.id}`);
+    revalidatePath("/dashboard/msme/quotes");
+    redirect(`/dashboard/msme/quotes/${quote.id}?saved=1`);
+  }
+
+  if (action === "customer_accept") {
+    if (previousStatus !== "quoted") {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_quoted`);
+    }
+    await updateQuoteStatus(
+      supabase,
+      quote.id,
+      workspace.provider.id,
+      workspace.appUserId,
+      workspace.role,
+      previousStatus,
+      "accepted",
+      "customer_decision_at",
+      "Customer acceptance recorded."
+    );
+    await logActivityEvent(supabase, {
+      action: "quote_customer_accepted",
       entityType: "provider_quote",
       entityId: quote.id,
       actorUserId: workspace.appUserId,
@@ -384,7 +529,20 @@ async function quoteWorkflowAction(formData: FormData) {
   }
 
   if (action === "decline") {
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "declined", "declined_at");
+    if (["converted", "closed"].includes(previousStatus)) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=invalid_transition`);
+    }
+    await updateQuoteStatus(
+      supabase,
+      quote.id,
+      workspace.provider.id,
+      workspace.appUserId,
+      workspace.role,
+      previousStatus,
+      "declined",
+      "declined_at",
+      "Quote declined."
+    );
     await logActivityEvent(supabase, {
       action: "quote_declined",
       entityType: "provider_quote",
@@ -399,13 +557,13 @@ async function quoteWorkflowAction(formData: FormData) {
 
   if (action === "convert_invoice") {
     const currentUserCtx = await getCurrentUserContext();
-    const normalizedQuoteStatus = String(quote.status ?? "").toLowerCase();
+    const normalizedQuoteStatus = normalizeQuoteStatus(quote.status);
     const canConvert = normalizedQuoteStatus === "accepted";
     devQuoteLog("convert:gate", {
       quoteId: quote.id,
-      renderedStatus: String(quote.status ?? ""),
-      normalizedStatus: normalizedQuoteStatus,
-      canConvert,
+      providerId: workspace.provider.id,
+      operation: "convert_invoice",
+      status: normalizedQuoteStatus,
     });
     if (!canConvert) {
       redirect(`/dashboard/msme/quotes/${quote.id}?error=quote_not_accepted`);
@@ -430,12 +588,6 @@ async function quoteWorkflowAction(formData: FormData) {
       quoteRow: {
         id: quote.id,
         status: quote.status,
-        requester_name: quote.requester_name,
-        requester_email: quote.requester_email,
-        requester_phone: quote.requester_phone,
-        request_summary: quote.request_summary,
-        budget_min: quote.budget_min,
-        budget_max: quote.budget_max,
       },
       invoiceMsmeResolution: {
         resolvedMsmeUuid,
@@ -453,10 +605,17 @@ async function quoteWorkflowAction(formData: FormData) {
     }
 
     const availableInvoicesColumnsSet = await getFreshTableColumns(supabase, "invoices");
-    const availableInvoicesColumns = Array.from(availableInvoicesColumnsSet).sort();
     const quoteSummary = String(quote.request_summary ?? "").trim();
     const quoteDetails = String(quote.request_details ?? "").trim();
     const invoiceNotes = [quoteSummary, quoteDetails].filter(Boolean).join(" — ");
+    const quotedAmount = Number(quote.quoted_amount ?? quote.budget_max ?? quote.budget_min ?? 0);
+    const vatRate = 7.5;
+    const subtotal = Number(quotedAmount.toFixed(2));
+    if (!Number.isFinite(subtotal) || subtotal <= 0) {
+      redirect(`/dashboard/msme/quotes/${quote.id}?error=invalid_invoice_total`);
+    }
+    const vatAmount = Number(((subtotal * vatRate) / 100).toFixed(2));
+    const totalAmount = Number((subtotal + vatAmount).toFixed(2));
     const rawInvoicePayload = {
       provider_profile_id: workspace.provider.id,
       msme_id: resolvedMsmeUuid,
@@ -467,7 +626,10 @@ async function quoteWorkflowAction(formData: FormData) {
       title: quoteSummary || `Quote ${quote.id}`,
       notes: invoiceNotes || null,
       currency: "NGN",
-      vat_rate: 7.5,
+      vat_rate: vatRate,
+      subtotal,
+      vat_amount: vatAmount,
+      total_amount: totalAmount,
       status: normalizeInvoiceStatus("draft"),
       updated_at: new Date().toISOString(),
       quote_id: quote.id,
@@ -488,9 +650,6 @@ async function quoteWorkflowAction(formData: FormData) {
     devQuoteLog("invoiceInsertPayload", {
       quoteId: quote.id,
       providerProfileId: workspace.provider.id,
-      invoiceInsertPayload: finalInvoiceInsertPayload,
-      availableInvoicesColumns,
-      rawInvoicePayload,
       invoiceColumnsCount: availableInvoicesColumnsSet.size,
     });
     devQuoteLog("resolvedMsmeUuid", { quoteId: quote.id, resolvedMsmeUuid });
@@ -508,8 +667,6 @@ async function quoteWorkflowAction(formData: FormData) {
         ? {
             message: invoiceInsertError.message,
             code: invoiceInsertError.code ?? null,
-            details: invoiceInsertError.details ?? null,
-            hint: invoiceInsertError.hint ?? null,
           }
         : null,
       invoiceInsertData,
@@ -517,7 +674,7 @@ async function quoteWorkflowAction(formData: FormData) {
     if (invoiceInsertError || !invoiceInsertData) throw new Error(`Invoice creation from quote failed: ${invoiceInsertError?.message ?? "unknown"}`);
 
     const itemColumns = await getTableColumns(supabase, "invoice_items");
-    const seededAmount = Number(quote.budget_max ?? quote.budget_min ?? 0);
+    const seededAmount = subtotal;
     const rawItemPayload = {
       invoice_id: invoiceInsertData.id,
       item_name: quoteSummary || `Quote ${quote.id}`,
@@ -533,6 +690,8 @@ async function quoteWorkflowAction(formData: FormData) {
       if (itemError) throw new Error(`Invoice item creation from quote failed: ${itemError.message}`);
     }
 
+    await recalculateInvoiceTotals(invoiceInsertData.id);
+
     const linkColumns = await getTableColumns(supabase, "quote_invoice_links");
     const canLinkQuoteInvoice = linkColumns.has("quote_id") && linkColumns.has("invoice_id");
     if (canLinkQuoteInvoice) {
@@ -543,7 +702,6 @@ async function quoteWorkflowAction(formData: FormData) {
           invoiceId: invoiceInsertData.id,
           message: linkError.message,
           code: linkError.code ?? null,
-          details: linkError.details ?? null,
         });
         throw new Error(`Invoice link creation from quote failed: ${linkError.message}`);
       }
@@ -557,7 +715,17 @@ async function quoteWorkflowAction(formData: FormData) {
       });
     }
 
-    await updateQuoteStatus(supabase, quote.id, workspace.provider.id, workspace.provider.msme_id ?? null, String(quote.status ?? ""), "converted");
+    await updateQuoteStatus(
+      supabase,
+      quote.id,
+      workspace.provider.id,
+      workspace.appUserId,
+      workspace.role,
+      previousStatus,
+      "converted",
+      "converted_at",
+      "Accepted quote converted to invoice."
+    );
 
     await logInvoiceEvent(supabase, {
       invoiceId: invoiceInsertData.id,
@@ -597,6 +765,10 @@ export default async function MsmeQuoteDetailPage({
 
   const quoteSelectFields = [
     "id",
+    "provider_service_id",
+    "service_title_snapshot",
+    "service_category_snapshot",
+    "service_pricing_mode_snapshot",
     "requester_name",
     "requester_email",
     "requester_phone",
@@ -604,6 +776,14 @@ export default async function MsmeQuoteDetailPage({
     "request_details",
     "budget_min",
     "budget_max",
+    "quoted_amount",
+    "quoted_currency",
+    "estimated_timeline",
+    "quote_terms",
+    "validity_days",
+    "provider_response_message",
+    "quote_sent_at",
+    "customer_decision_at",
     "status",
     "created_at",
   ];
@@ -611,7 +791,7 @@ export default async function MsmeQuoteDetailPage({
 
   const invoiceColumns = await getTableColumns(supabase, "invoices");
   const canQueryInvoiceQuoteId = invoiceColumns.has("quote_id");
-  const [{ quote }, { data: links, error: linkError }, { data: linkedByQuoteId, error: quoteIdLinkError }] = await Promise.all([
+  const [{ quote }, { data: links, error: linkError }, { data: linkedByQuoteId, error: quoteIdLinkError }, { data: historyRows }] = await Promise.all([
     quotePromise,
     supabase.from("quote_invoice_links").select("invoice_id,created_at").eq("quote_id", quoteId).order("created_at", { ascending: false }),
     canQueryInvoiceQuoteId
@@ -622,6 +802,12 @@ export default async function MsmeQuoteDetailPage({
           .eq("provider_profile_id", workspace.provider.id)
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("quote_status_history")
+      .select("from_status,to_status,changed_by_role,note,created_at")
+      .eq("quote_id", quoteId)
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (linkError) {
@@ -644,23 +830,20 @@ export default async function MsmeQuoteDetailPage({
     new Map([...linkRows, ...quoteIdRows].map((row) => [row.invoice_id, row])).values()
   ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  const normalizedStatus = String(quote.status ?? "").toLowerCase();
-  const linkedInvoiceCount = linkedInvoices.length;
+  const normalizedStatus = normalizeQuoteStatus(quote.status);
   const isConverted = normalizedStatus === "converted";
   const isAccepted = normalizedStatus === "accepted";
+  const isQuoted = normalizedStatus === "quoted";
   const isDeclined = normalizedStatus === "declined";
-  const isPendingReview = ["new", "submitted", "pending_reviewed", "in_review"].includes(normalizedStatus);
-  const uiBranch = isConverted ? "converted" : isAccepted ? "accepted" : isDeclined ? "declined" : isPendingReview ? "pending" : "other";
+  const isPendingReview = ["new", "in_review"].includes(normalizedStatus);
   const showNotAcceptedWarning = query.error === "quote_not_accepted" && !isAccepted && !isConverted;
-
-  console.info("[quote-detail:ui-state]", {
-    quoteId: quote.id,
-    status: quote.status,
-    renderedStatus: normalizedStatus,
-    linkedInvoiceCount,
-    uiBranch,
-    canConvertToInvoice: isAccepted,
-  });
+  const statusHistory = (historyRows ?? []) as Array<{
+    from_status: string | null;
+    to_status: string;
+    changed_by_role: string | null;
+    note: string | null;
+    created_at: string;
+  }>;
 
   return (
     <section className="space-y-4">
@@ -671,6 +854,21 @@ export default async function MsmeQuoteDetailPage({
       </header>
 
       {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Quote action saved.</p>}
+      {query.error === "missing_offer_fields" && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">Complete amount, timeline, terms, and response message before sending an offer.</p>
+      )}
+      {query.error === "invalid_validity" && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">Quote validity must be between 1 and 365 days.</p>
+      )}
+      {query.error === "invalid_transition" && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">That quote action is not available for the current status.</p>
+      )}
+      {query.error === "quote_not_quoted" && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">Only sent quote offers can be accepted by the customer.</p>
+      )}
+      {query.error === "invalid_invoice_total" && (
+        <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">This quote needs a positive quoted amount before invoice conversion.</p>
+      )}
       {showNotAcceptedWarning && (
         <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">Only accepted quotes can be converted into invoices.</p>
       )}
@@ -680,13 +878,98 @@ export default async function MsmeQuoteDetailPage({
 
       <article className="rounded-xl border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <p className="text-sm"><span className="font-semibold">Status:</span> {quote.status}</p>
-          <p className="text-sm"><span className="font-semibold">Submitted:</span> {new Date(quote.created_at).toLocaleString("en-NG")}</p>
+          <p className="text-sm"><span className="font-semibold">Status:</span> {statusLabel(normalizedStatus)}</p>
+          <p className="text-sm"><span className="font-semibold">Submitted:</span> {formatDateTime(quote.created_at)}</p>
+          <p className="text-sm"><span className="font-semibold">Service:</span> {quote.service_title_snapshot ?? quote.service_category_snapshot ?? "General request"}</p>
           <p className="text-sm"><span className="font-semibold">Budget minimum:</span> ₦{Number(quote.budget_min ?? 0).toLocaleString()}</p>
           <p className="text-sm"><span className="font-semibold">Budget maximum:</span> ₦{Number(quote.budget_max ?? 0).toLocaleString()}</p>
         </div>
         <div className="mt-3 rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{quote.request_details ?? "No detailed request provided."}</div>
       </article>
+
+      {(isPendingReview || isQuoted) && (
+        <article className="rounded-xl border bg-white p-4">
+          <h3 className="font-semibold">{isQuoted ? "Revise commercial offer" : "Send commercial offer"}</h3>
+          <form action={quoteWorkflowAction} className="mt-4 grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="quote_id" value={quote.id} />
+            <input type="hidden" name="action" value="send_quote" />
+            <label className="text-sm">
+              Quoted amount (₦)
+              <input
+                required
+                name="quoted_amount"
+                type="number"
+                min={0.01}
+                step={0.01}
+                defaultValue={quote.quoted_amount ?? quote.budget_max ?? quote.budget_min ?? ""}
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-sm">
+              Validity days
+              <input
+                required
+                name="validity_days"
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                defaultValue={quote.validity_days ?? 14}
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              Estimated timeline
+              <input
+                required
+                name="estimated_timeline"
+                defaultValue={quote.estimated_timeline ?? ""}
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                placeholder="e.g. 7 business days after confirmation"
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              Provider response
+              <textarea
+                required
+                name="provider_response_message"
+                defaultValue={quote.provider_response_message ?? ""}
+                className="mt-1 min-h-24 w-full rounded border px-3 py-2 text-sm"
+                placeholder="Summarize the proposed solution, deliverables, and next step."
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              Quote terms
+              <textarea
+                required
+                name="quote_terms"
+                defaultValue={quote.quote_terms ?? ""}
+                className="mt-1 min-h-24 w-full rounded border px-3 py-2 text-sm"
+                placeholder="Commercial terms, assumptions, exclusions, and VAT handling."
+              />
+            </label>
+            <div className="md:col-span-2">
+              <button className="rounded bg-indigo-900 px-4 py-2 text-sm font-semibold text-white">
+                {isQuoted ? "Revise offer" : "Send offer"}
+              </button>
+            </div>
+          </form>
+        </article>
+      )}
+
+      {(isQuoted || isAccepted || isConverted) && (
+        <article className="rounded-xl border bg-white p-4">
+          <h3 className="font-semibold">Commercial offer</h3>
+          <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+            <div><dt className="font-semibold text-slate-900">Quoted amount</dt><dd>{formatNaira(quote.quoted_amount)}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Validity</dt><dd>{quote.validity_days ?? "—"} day{Number(quote.validity_days ?? 0) === 1 ? "" : "s"}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Timeline</dt><dd>{quote.estimated_timeline ?? "—"}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Sent</dt><dd>{formatDateTime(quote.quote_sent_at)}</dd></div>
+          </dl>
+          <div className="mt-3 rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{quote.provider_response_message ?? "No response message recorded."}</div>
+          <div className="mt-3 rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{quote.quote_terms ?? "No terms recorded."}</div>
+        </article>
+      )}
 
       <div className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-4">
         {isPendingReview && (
@@ -698,8 +981,18 @@ export default async function MsmeQuoteDetailPage({
             </form>
             <form action={quoteWorkflowAction}>
               <input type="hidden" name="quote_id" value={quote.id} />
-              <input type="hidden" name="action" value="accept" />
-              <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Accept quote</button>
+              <input type="hidden" name="action" value="decline" />
+              <button className="w-full rounded border border-rose-300 px-3 py-2 text-sm text-rose-700">Decline quote</button>
+            </form>
+          </>
+        )}
+
+        {isQuoted && (
+          <>
+            <form action={quoteWorkflowAction}>
+              <input type="hidden" name="quote_id" value={quote.id} />
+              <input type="hidden" name="action" value="customer_accept" />
+              <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm text-white">Record customer acceptance</button>
             </form>
             <form action={quoteWorkflowAction}>
               <input type="hidden" name="quote_id" value={quote.id} />
@@ -744,6 +1037,25 @@ export default async function MsmeQuoteDetailPage({
               </Link>{" "}
               linked on {new Date(link.created_at).toLocaleString("en-NG")}
             </p>
+          ))}
+        </div>
+      </article>
+
+      <article className="rounded-xl border bg-white p-4">
+        <h3 className="font-semibold">Status history</h3>
+        <div className="mt-3 space-y-2">
+          {statusHistory.length === 0 && <p className="text-sm text-slate-500">No status history recorded yet.</p>}
+          {statusHistory.map((entry) => (
+            <div key={`${entry.to_status}-${entry.created_at}`} className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+              <p className="font-medium text-slate-800">
+                {entry.from_status ? `${statusLabel(entry.from_status)} → ` : ""}
+                {statusLabel(entry.to_status)}
+              </p>
+              <p className="text-xs text-slate-500">
+                {formatDateTime(entry.created_at)} · {entry.changed_by_role ?? "system"}
+                {entry.note ? ` · ${entry.note}` : ""}
+              </p>
+            </div>
           ))}
         </div>
       </article>

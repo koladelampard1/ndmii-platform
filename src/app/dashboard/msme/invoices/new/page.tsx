@@ -19,6 +19,23 @@ async function createInvoiceAction(formData: FormData) {
   const vatAmount = vatApplies ? Number((lineTotal * (vatRate / 100)).toFixed(2)) : 0;
   const totalAmount = Number((lineTotal + vatAmount).toFixed(2));
 
+  if (quoteId) {
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      redirect("/dashboard/msme/invoices/new?error=invalid_invoice_total");
+    }
+    const { data: sourceQuote, error: sourceQuoteError } = await supabase
+      .from("provider_quotes")
+      .select("id,status")
+      .eq("id", quoteId)
+      .eq("provider_profile_id", workspace.provider.id)
+      .maybeSingle();
+
+    if (sourceQuoteError) throw new Error(sourceQuoteError.message);
+    if (!sourceQuote || String(sourceQuote.status ?? "").toLowerCase() !== "accepted") {
+      redirect("/dashboard/msme/invoices/new?error=quote_not_accepted");
+    }
+  }
+
   const invoicePayload = {
     provider_profile_id: workspace.provider.id,
     msme_id: workspace.msme.id,
@@ -35,9 +52,6 @@ async function createInvoiceAction(formData: FormData) {
     total_amount: totalAmount,
   };
 
-  console.info("[invoice-create][payload]", invoicePayload);
-  console.info("[invoice-create][payload-keys]", Object.keys(invoicePayload));
-
   const { data: invoice, error: invoiceError } = await supabase
   .from("invoices")
   .insert(invoicePayload)
@@ -46,7 +60,7 @@ async function createInvoiceAction(formData: FormData) {
 
   if (invoiceError) throw new Error(invoiceError.message);
   const invoiceId = invoice?.id;
-  console.info("[invoice-create][created-invoice-id]", invoiceId);
+  console.info("[invoice-create]", { operation: "invoice_create", invoiceId, providerId: workspace.provider.id });
   if (!invoiceId) {
     throw new Error("Invoice insert succeeded but invoiceId missing before inserting invoice_items");
   }
@@ -60,8 +74,6 @@ async function createInvoiceAction(formData: FormData) {
     line_total: lineTotal,
     vat_applicable: vatApplies,
   };
-
-  console.info("[invoice-create][item-payload]", itemPayload);
 
   const { error: itemError } = await supabase.from("invoice_items").insert(itemPayload);
 
@@ -84,7 +96,24 @@ async function createInvoiceAction(formData: FormData) {
     }
     const quoteColumns = await getTableColumns(supabase, "provider_quotes");
     await supabase.from("provider_quotes").update(filterPayloadByColumns({ status: "converted", updated_at: new Date().toISOString() }, quoteColumns)).eq("id", quoteId).eq("provider_profile_id", workspace.provider.id);
-    console.info("[invoice-conversion]", { quoteId, invoiceId, providerId: workspace.provider.id });
+    const historyColumns = await getTableColumns(supabase, "quote_status_history");
+    if (historyColumns.has("quote_id") && historyColumns.has("to_status")) {
+      await supabase.from("quote_status_history").insert(
+        filterPayloadByColumns(
+          {
+            quote_id: quoteId,
+            from_status: "accepted",
+            to_status: "converted",
+            changed_by: workspace.appUserId,
+            changed_by_role: workspace.role,
+            note: "Accepted quote converted from invoice workspace.",
+            created_at: new Date().toISOString(),
+          },
+          historyColumns
+        )
+      );
+    }
+    console.info("[invoice-conversion]", { operation: "quote_convert_invoice", quoteId, invoiceId, providerId: workspace.provider.id, status: "converted" });
   }
 
   await logActivityEvent(supabase, {
@@ -95,13 +124,12 @@ async function createInvoiceAction(formData: FormData) {
     metadata: { amount: lineTotal, from_quote: Boolean(quoteId) },
   });
 
-  console.info("[invoice-create]", { invoiceId, providerId: workspace.provider.id, amount: lineTotal });
-
   revalidatePath("/dashboard/msme/invoices");
   redirect(`/dashboard/msme/invoices/${invoiceId}`);
 }
 
-export default async function NewMsmeInvoicePage() {
+export default async function NewMsmeInvoicePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
@@ -109,12 +137,12 @@ export default async function NewMsmeInvoicePage() {
     .from("provider_quotes")
     .select("id,requester_name,request_summary,status")
     .eq("provider_profile_id", workspace.provider.id)
-    .in("status", ["new", "in_review", "accepted", "quoted"])
+    .eq("status", "accepted")
     .order("created_at", { ascending: false })
     .limit(20);
 
   if (error) {
-  console.error("[invoice-new][quotes:error]", error);
+  console.error("[invoice-new][quotes:error]", { operation: "invoice_quote_lookup", code: error.code ?? null, message: error.message });
 }
 
 
@@ -124,6 +152,12 @@ export default async function NewMsmeInvoicePage() {
         <h2 className="text-xl font-semibold">Create invoice</h2>
         <p className="text-sm text-slate-600">Manual billing or quote-to-invoice conversion with VAT-ready totals.</p>
       </header>
+      {params.error === "quote_not_accepted" && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Only accepted quotes can be converted into invoices.</p>
+      )}
+      {params.error === "invalid_invoice_total" && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Quote conversion requires a positive invoice total.</p>
+      )}
       <form action={createInvoiceAction} className="grid gap-4 rounded-xl border bg-white p-4 md:grid-cols-2">
         <label className="text-sm">Source quote
           <select name="quote_id" className="mt-1 w-full rounded border px-2 py-2 text-sm">
