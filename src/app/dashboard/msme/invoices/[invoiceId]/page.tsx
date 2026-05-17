@@ -18,6 +18,7 @@ import {
 } from "@/lib/data/invoicing";
 import { filterPayloadByColumns, getTableColumns, logActivityEvent, logInvoiceEvent } from "@/lib/data/commercial-ops";
 import { buildInvoiceBankingReadiness, loadMsmeBankingProfile, verificationStatusLabel } from "@/lib/data/msme-banking";
+import { syncPaidInvoiceToBookkeeping, syncRefundInvoiceToBookkeeping } from "@/lib/data/bookkeeping";
 export const runtime = "nodejs";
 
 type InvoiceEmailNotice =
@@ -300,6 +301,13 @@ async function invoiceMutationAction(formData: FormData) {
     console.info("[invoice-status][update-result]", { operation: action, invoiceId, providerId: workspace.provider.id, status: (updatedRows as any)?.[0]?.status ?? null, message: error?.message ?? null });
     if (error) throw new Error(error.message);
     console.info("[invoice-mutation:status-update:result]", { operation: action, invoiceId, status: (updatedRows as any)?.[0]?.status ?? null });
+    if (action === "refund_invoice") {
+      await syncRefundInvoiceToBookkeeping({
+        invoiceId,
+        actorRole: workspace.role,
+        actorId: workspace.appUserId,
+      });
+    }
   }
 
   if (action === "mark_paid") {
@@ -310,6 +318,7 @@ async function invoiceMutationAction(formData: FormData) {
     const paidAtIso = paidDate ? new Date(paidDate).toISOString() : nowIso;
 
     const paymentColumns = await getTableColumns(supabase, "invoice_payments");
+    let syncedPaymentId: string | null = null;
     if (paymentColumns.has("invoice_id")) {
       const paymentPayload = filterPayloadByColumns(
         {
@@ -325,8 +334,9 @@ async function invoiceMutationAction(formData: FormData) {
         },
         paymentColumns
       );
-      const { error: paymentError } = await supabase.from("invoice_payments").insert(paymentPayload);
+      const { data: paymentRow, error: paymentError } = await supabase.from("invoice_payments").insert(paymentPayload).select("id").maybeSingle();
       if (paymentError) console.info("[invoice-mark-paid:payment-fallback]", { operation: "mark_paid", invoiceId, providerId: workspace.provider.id, message: paymentError.message });
+      syncedPaymentId = paymentRow?.id ?? null;
     }
 
     const invoiceColumns = await getTableColumns(supabase, "invoices");
@@ -360,6 +370,13 @@ async function invoiceMutationAction(formData: FormData) {
       entityId: invoiceId,
       actorUserId: workspace.appUserId,
       metadata: { payment_reference: paidReference },
+    });
+
+    await syncPaidInvoiceToBookkeeping({
+      invoiceId,
+      paymentId: syncedPaymentId,
+      actorRole: workspace.role,
+      actorId: workspace.appUserId,
     });
   }
 
