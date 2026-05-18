@@ -70,6 +70,7 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
         phoneNumber={profile.contact_phone || "Not provided"}
         businessAddress={profile.address || "Not provided"}
         msmeId={profile.msme_id}
+        msmeRowId={profile.id}
         verificationStatus={digitalId?.status || profile.verification_status || "pending_review"}
         businessLogoUrl={businessLogoUrl}
         passportPhotoUrl={passportPhotoUrl}

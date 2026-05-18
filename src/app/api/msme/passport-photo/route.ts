@@ -4,6 +4,7 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import { sanitizePassportFileName, validatePassportPhotoFile } from "@/lib/msme/passport-upload";
+import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 
 const PASSPORT_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_MSME_PASSPORT_BUCKET || "msme-passports";
 
@@ -106,12 +107,14 @@ export async function POST(request: Request) {
     const safeName = sanitizePassportFileName(file.name);
     const uploadPath = `${appUserId}/${Date.now()}-${safeName}`;
 
-    console.info("[msme-passport-upload][start]", {
-      fileName: file.name,
-      size: file.size,
-      mimeType: file.type || null,
-      bucket: PASSPORT_BUCKET,
-      uploadPath,
+    logPassportPhotoDiagnostic("upload-start", {
+      msmeId: null,
+      persistedColumn: "passport_photo_path",
+      hasPassportValue: true,
+      valueType: classifyPassportPhotoValue(uploadPath),
+      signedUrlGenerated: false,
+      renderFallback: true,
+      supabaseError: null,
     });
 
     const { error: uploadError } = await supabase.storage.from(PASSPORT_BUCKET).upload(uploadPath, file, {
@@ -121,11 +124,12 @@ export async function POST(request: Request) {
 
     if (uploadError) {
       console.error("[msme-passport-upload][error]", {
-        fileName: file.name,
-        size: file.size,
-        mimeType: file.type || null,
-        bucket: PASSPORT_BUCKET,
-        uploadPath,
+        msmeId: null,
+        persistedColumn: "passport_photo_path",
+        hasPassportValue: true,
+        valueType: classifyPassportPhotoValue(uploadPath),
+        signedUrlGenerated: false,
+        renderFallback: true,
         error: toStorageErrorLog(uploadError),
       });
       return NextResponse.json({ error: uploadError.message }, { status: 500, headers: corsHeaders });
@@ -134,8 +138,12 @@ export async function POST(request: Request) {
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage.from(PASSPORT_BUCKET).createSignedUrl(uploadPath, 60 * 10);
     if (signedUrlError || !signedUrlData?.signedUrl) {
       console.error("[msme-passport-upload][signed-url-failed]", {
-        bucket: PASSPORT_BUCKET,
-        uploadPath,
+        msmeId: null,
+        persistedColumn: "passport_photo_path",
+        hasPassportValue: true,
+        valueType: classifyPassportPhotoValue(uploadPath),
+        signedUrlGenerated: false,
+        renderFallback: true,
         error: toStorageErrorLog(signedUrlError ?? "missing_signed_url"),
       });
       return NextResponse.json({ error: "Passport photo uploaded, but signed access could not be created." }, { status: 500, headers: corsHeaders });
@@ -157,11 +165,16 @@ export async function POST(request: Request) {
         .from("msmes")
         .update({ passport_photo_path: uploadPath, passport_photo_url: null })
         .eq("id", ownedMsme.id)
-        .select("id,passport_photo_path");
+        .select("id,passport_photo_path,passport_photo_url");
 
       if (updateError || !updatedRows?.length) {
         console.error("[msme-passport-upload][persist-failed]", {
-          msmeRowId: ownedMsme.id,
+          msmeId: ownedMsme.id,
+          persistedColumn: "passport_photo_path",
+          hasPassportValue: true,
+          valueType: classifyPassportPhotoValue(uploadPath),
+          signedUrlGenerated: Boolean(passportPhotoUrl),
+          renderFallback: false,
           error: toStorageErrorLog(updateError ?? "no_rows_updated"),
         });
         return NextResponse.json(
@@ -172,19 +185,29 @@ export async function POST(request: Request) {
 
       persisted = true;
       msmeId = ownedMsme.id;
+      const updatedRow = updatedRows[0];
+      logPassportPhotoDiagnostic("persisted", {
+        msmeId,
+        persistedColumn: updatedRow.passport_photo_path ? "passport_photo_path" : updatedRow.passport_photo_url ? "passport_photo_url" : "none",
+        hasPassportValue: Boolean(updatedRow.passport_photo_path || updatedRow.passport_photo_url),
+        valueType: classifyPassportPhotoValue(updatedRow.passport_photo_path ?? updatedRow.passport_photo_url),
+        signedUrlGenerated: Boolean(passportPhotoUrl),
+        renderFallback: false,
+        supabaseError: null,
+      });
       revalidatePath("/dashboard/msme/settings");
       revalidatePath("/dashboard/msme/profile");
       revalidatePath("/dashboard/msme/id-card");
     }
 
-    console.info("[msme-passport-upload][success]", {
-      fileName: file.name,
-      size: file.size,
-      mimeType: file.type || null,
-      bucket: PASSPORT_BUCKET,
-      uploadPath,
-      persisted,
+    logPassportPhotoDiagnostic("upload-success", {
       msmeId,
+      persistedColumn: persisted ? "passport_photo_path" : "none",
+      hasPassportValue: true,
+      valueType: classifyPassportPhotoValue(uploadPath),
+      signedUrlGenerated: Boolean(passportPhotoUrl),
+      renderFallback: false,
+      supabaseError: null,
     });
 
     return NextResponse.json(

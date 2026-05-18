@@ -8,6 +8,7 @@ import { MAX_PASSPORT_FILE_BYTES, validatePassportPhotoFile } from "@/lib/msme/p
 type Props = {
   initialPhotoUrl: string | null;
   ownerName: string | null;
+  msmeId?: string | null;
 };
 
 function ownerInitials(value: string | null) {
@@ -19,7 +20,7 @@ function ownerInitials(value: string | null) {
   return initials || "DB";
 }
 
-export function OwnerPhotoUploadCard({ initialPhotoUrl, ownerName }: Props) {
+export function OwnerPhotoUploadCard({ initialPhotoUrl, ownerName, msmeId }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [photoUrl, setPhotoUrl] = useState(initialPhotoUrl ?? "");
   const [previewUrl, setPreviewUrl] = useState(initialPhotoUrl ?? "");
@@ -101,6 +102,12 @@ export function OwnerPhotoUploadCard({ initialPhotoUrl, ownerName }: Props) {
             className="h-32 w-28 rounded-xl object-cover"
             placeholderClassName="flex h-32 w-28 items-center justify-center rounded-xl bg-emerald-50 text-2xl font-bold text-emerald-800"
             placeholderText={ownerInitials(ownerName)}
+            diagnostics={{
+              msmeId,
+              persistedColumn: initialPhotoUrl ? "passport_photo_path" : "none",
+              valueType: initialPhotoUrl ? "public_url" : "null",
+              signedUrlGenerated: Boolean(initialPhotoUrl),
+            }}
           />
         </div>
 

@@ -8,6 +8,7 @@ import { LogoUploadCard } from "@/app/dashboard/msme/settings/logo-upload-card";
 import { OwnerPhotoUploadCard } from "@/app/dashboard/msme/settings/owner-photo-upload-card";
 import { ProfileCompletenessCard, type ProfileCompletenessSignals } from "@/app/dashboard/msme/settings/profile-completeness-card";
 import { SettingsSubmitButton } from "@/app/dashboard/msme/settings/settings-submit-button";
+import { getBusinessIdentityCredentialPassportPhotoUrl } from "@/lib/data/business-identity-credential";
 import {
   BANKING_FIELD_ERROR_MESSAGES,
   bankingProfileConfigured,
@@ -183,6 +184,7 @@ function deriveProfileCompletenessSignals(params: {
     contact_phone: string | null;
     address: string | null;
     passport_photo_url: string | null;
+    passport_photo_path?: string | null;
   };
   provider: { id: string | null; description: string | null; logo_url: string | null };
   bankingConfigured?: boolean;
@@ -195,7 +197,7 @@ function deriveProfileCompletenessSignals(params: {
     ownerNamePresent: hasText(params.msme.owner_name),
     contactInfoPresent: hasText(params.msme.contact_email) && hasText(params.msme.contact_phone),
     addressPresent: hasText(params.msme.address),
-    ownerPhotoUploaded: hasText(params.msme.passport_photo_url),
+    ownerPhotoUploaded: hasText(params.msme.passport_photo_path) || hasText(params.msme.passport_photo_url),
     descriptionPresent: hasText(params.provider.description),
     logoUploaded: hasText(params.provider.logo_url),
     providerProfileExists: hasText(params.provider.id),
@@ -520,7 +522,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   const supabase = await createServiceRoleSupabaseClient();
 
   const settingsReadSelect =
-    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin,passport_photo_url";
+    "id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,tin,passport_photo_url,passport_photo_path";
   const { data: msmeSettings, error: msmeSettingsError } = await supabase
     .from("msmes")
     .select(settingsReadSelect)
@@ -555,6 +557,11 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
     msme: msmeSettings,
     provider: { id: workspace.provider.id, description: workspace.provider.description, logo_url: workspace.provider.logo_url },
     bankingConfigured: bankingProfileConfigured(bankingProfile),
+  });
+  const ownerPhotoUrl = await getBusinessIdentityCredentialPassportPhotoUrl(supabase, {
+    id: msmeSettings.id,
+    passport_photo_path: msmeSettings.passport_photo_path ?? null,
+    passport_photo_url: msmeSettings.passport_photo_url ?? workspace.msme.passport_photo_url,
   });
   const activityRows = await loadSettingsActivityLog({ supabase, workspace });
   const errorCode: SettingsErrorCode = (params.error as SettingsErrorCode) || "unknown_save_error";
@@ -681,7 +688,7 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
             </div>
             <div className="mt-4">
               <p className="mb-2 text-xs font-medium text-slate-600">Owner / Representative Passport Photo</p>
-              <OwnerPhotoUploadCard initialPhotoUrl={msmeSettings.passport_photo_url ?? workspace.msme.passport_photo_url} ownerName={msmeSettings.owner_name ?? workspace.msme.owner_name} />
+              <OwnerPhotoUploadCard initialPhotoUrl={ownerPhotoUrl} ownerName={msmeSettings.owner_name ?? workspace.msme.owner_name} msmeId={msmeSettings.id} />
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">

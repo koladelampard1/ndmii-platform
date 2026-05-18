@@ -15,6 +15,7 @@ type DigitalIdWorkspaceProps = {
   phoneNumber: string;
   businessAddress: string;
   msmeId: string;
+  msmeRowId?: string | null;
   verificationStatus: string;
   businessLogoUrl?: string | null;
   passportPhotoUrl?: string | null;
@@ -728,6 +729,12 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
                 className="h-44 w-36 rounded-xl object-cover sm:h-48 sm:w-40"
                 placeholderClassName="flex h-44 w-36 items-center justify-center rounded-xl bg-emerald-50 text-3xl font-bold text-emerald-800 sm:h-48 sm:w-40"
                 placeholderText={ownerInitials(model.ownerName)}
+                diagnostics={{
+                  msmeId: props.msmeRowId ?? props.msmeId,
+                  persistedColumn: model.ownerPhotoUrl ? "passport_photo_path" : "none",
+                  valueType: model.ownerPhotoUrl ? "public_url" : "null",
+                  signedUrlGenerated: Boolean(model.ownerPhotoUrl),
+                }}
               />
             </div>
           </div>

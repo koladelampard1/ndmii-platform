@@ -16,6 +16,7 @@ export type ProviderWorkspaceContext = {
     verification_status: string;
     contact_email: string | null;
     passport_photo_url: string | null;
+    passport_photo_path?: string | null;
   };
   provider: {
     id: string;
@@ -74,12 +75,42 @@ type ProviderAccessAuditLog = {
 function logProviderAccessAudit(payload: ProviderAccessAuditLog) {
   if (process.env.NODE_ENV === "production") return;
   if (payload.decision === "allow") return;
-  console.info("[provider-rbac]", payload);
+  const safePayload: Omit<ProviderAccessAuditLog, "email"> = {
+    route: payload.route,
+    source: payload.source,
+    component: payload.component,
+    role: payload.role,
+    resolvedUserId: payload.resolvedUserId,
+    resolvedMsmeId: payload.resolvedMsmeId,
+    resolvedMsmePublicId: payload.resolvedMsmePublicId,
+    linkedMsmeId: payload.linkedMsmeId,
+    linkedProviderId: payload.linkedProviderId,
+    providerLookupKeyUsed: payload.providerLookupKeyUsed,
+    providerRowFound: payload.providerRowFound,
+    providerRow: payload.providerRow,
+    resolvedProviderMsmeId: payload.resolvedProviderMsmeId,
+    decision: payload.decision,
+    reason: payload.reason,
+    queryClientUsed: payload.queryClientUsed,
+    providerQuery: payload.providerQuery,
+    providerQueryResultLength: payload.providerQueryResultLength,
+    providerQueryError: payload.providerQueryError,
+  };
+  console.info("[provider-rbac]", {
+    ...safePayload,
+    hasEmail: Boolean(payload.email),
+  });
 }
 
 function logProviderWorkspaceFailure(message: string, payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === "production") return;
-  console.info(`[provider-workspace] ${message}`, payload);
+  const safePayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => {
+      if (key.toLowerCase().includes("email")) return [key, Boolean(value)];
+      return [key, value];
+    }),
+  );
+  console.info(`[provider-workspace] ${message}`, safePayload);
 }
 
 function denyProviderWorkspaceAccess(payload: ProviderAccessAuditLog): never {
@@ -112,6 +143,7 @@ type OwnedMsmeRow = {
   verification_status: string;
   contact_email: string | null;
   passport_photo_url: string | null;
+  passport_photo_path?: string | null;
   created_by: string | null;
 };
 
@@ -150,7 +182,7 @@ function normalizeProviderProfile(row: ProviderProfileRow, msme: OwnedMsmeRow): 
     display_name: displayName,
     short_description: row.short_description ?? tagline ?? description,
     long_description: row.long_description ?? description,
-    logo_url: row.logo_url ?? msme.passport_photo_url ?? null,
+    logo_url: row.logo_url ?? null,
     slug: publicSlug || row.id,
     trust_score: Number(row.trust_score ?? 0),
     public_slug: publicSlug,
@@ -173,7 +205,7 @@ function buildMinimalProviderProfile(msme: OwnedMsmeRow): ProviderWorkspaceConte
       display_name: msme.business_name || msme.owner_name || "NDMII MSME Provider",
       public_slug: generatedSlug,
       contact_email: msme.contact_email,
-      logo_url: msme.passport_photo_url,
+      logo_url: null,
       is_active: true,
       is_verified: ["approved", "verified"].includes((msme.verification_status ?? "").toLowerCase()),
     },
@@ -241,7 +273,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   }
 
   let msme: OwnedMsmeRow | null = null;
-  const msmeSelect = "id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,passport_photo_url,created_by";
+  const msmeSelect = "id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,passport_photo_url,passport_photo_path,created_by";
 
   if (resolvedAppUserId) {
     const { data: byOwner, error: byOwnerError } = await supabase
@@ -431,19 +463,19 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
       slug: generatedSlug,
       short_description: commonPayload.tagline,
       long_description: commonPayload.description,
-      logo_url: ownedMsme.passport_photo_url,
+      logo_url: null,
       trust_score: 80,
       is_featured: false,
     };
     const livePayload = {
       ...commonPayload,
       msme_id: ownedMsme.msme_id,
-      logo_url: ownedMsme.passport_photo_url,
+      logo_url: null,
     };
     const liveUuidPayload = {
       ...commonPayload,
       msme_id: ownedMsme.id,
-      logo_url: ownedMsme.passport_photo_url,
+      logo_url: null,
     };
 
     const provisioningAttempts = [modernPayload, livePayload, liveUuidPayload];

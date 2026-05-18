@@ -1,4 +1,5 @@
 import type { createServerSupabaseClient } from "@/lib/supabase/server";
+import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 
 export const BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT =
   "id,msme_id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,passport_photo_url,passport_photo_path,verification_status,association_id";
@@ -44,15 +45,41 @@ export async function getBusinessIdentityCredentialLogoUrl(
 
 export async function getBusinessIdentityCredentialPassportPhotoUrl(
   supabase: SupabaseClient,
-  profile: Pick<BusinessIdentityCredentialMsme, "passport_photo_path" | "passport_photo_url">,
+  profile: Pick<BusinessIdentityCredentialMsme, "id" | "passport_photo_path" | "passport_photo_url">,
 ) {
   const path = profile.passport_photo_path?.trim();
   if (!path) {
-    return null;
+    const directUrl = profile.passport_photo_url?.trim() || null;
+    const valueType = classifyPassportPhotoValue(directUrl);
+    logPassportPhotoDiagnostic("resolve", {
+      msmeId: profile.id,
+      persistedColumn: directUrl ? "passport_photo_url" : "none",
+      hasPassportValue: Boolean(directUrl),
+      valueType,
+      signedUrlGenerated: false,
+      renderFallback: !directUrl,
+      supabaseError: null,
+    });
+    return directUrl;
   }
 
   const bucket = process.env.NEXT_PUBLIC_SUPABASE_MSME_PASSPORT_BUCKET || "msme-passports";
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 10);
+  const signedUrlGenerated = Boolean(data?.signedUrl);
+  logPassportPhotoDiagnostic("resolve", {
+    msmeId: profile.id,
+    persistedColumn: "passport_photo_path",
+    hasPassportValue: true,
+    valueType: classifyPassportPhotoValue(path),
+    signedUrlGenerated,
+    renderFallback: !signedUrlGenerated,
+    supabaseError: error
+      ? {
+          code: error.name ?? null,
+          message: error.message ?? null,
+        }
+      : null,
+  });
   if (error || !data?.signedUrl) {
     return null;
   }

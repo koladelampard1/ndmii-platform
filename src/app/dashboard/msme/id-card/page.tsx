@@ -82,6 +82,7 @@ export default async function IdCardPage() {
       phoneNumber={profile.contact_phone || "Not provided"}
       businessAddress={profile.address || "Not provided"}
       msmeId={profile.msme_id}
+      msmeRowId={profile.id}
       verificationStatus={digitalId?.status || compliance?.overall_status || profile.verification_status || "pending_review"}
       businessLogoUrl={businessLogoUrl}
       passportPhotoUrl={passportPhotoUrl}

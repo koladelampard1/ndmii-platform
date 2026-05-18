@@ -21,6 +21,7 @@ import {
   Users,
 } from "lucide-react";
 import { PassportPhoto } from "@/components/msme/passport-photo";
+import { getBusinessIdentityCredentialPassportPhotoUrl } from "@/lib/data/business-identity-credential";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getTableColumns, pickExistingColumns } from "@/lib/data/commercial-ops";
@@ -255,6 +256,7 @@ async function loadProfileDetails(msmeId: string) {
 export default async function MsmeProfileOverviewPage() {
   const workspace = await getProviderWorkspaceContext();
   const { details, digitalId, compliance, bankingProfile } = await loadProfileDetails(workspace.msme.id);
+  const supabase = await createServiceRoleSupabaseClient();
 
   const location = [workspace.msme.lga, workspace.msme.state, "Nigeria"].filter(Boolean).join(", ");
   const profileStatus = normalizeProfileStatus({
@@ -264,7 +266,11 @@ export default async function MsmeProfileOverviewPage() {
   });
   const isVerified = profileStatus.key === "verified";
   const logoUrl = workspace.provider.logo_url;
-  const passportPhotoUrl = workspace.msme.passport_photo_url;
+  const passportPhotoUrl = await getBusinessIdentityCredentialPassportPhotoUrl(supabase, {
+    id: workspace.msme.id,
+    passport_photo_path: workspace.msme.passport_photo_path ?? null,
+    passport_photo_url: workspace.msme.passport_photo_url,
+  });
   const businessName = valueOrFallback(workspace.provider.display_name || workspace.msme.business_name, "Business profile");
   const businessType = humanize(details.business_type) || humanize(workspace.msme.sector);
   const description = workspace.provider.description || workspace.provider.long_description || workspace.provider.short_description;
@@ -565,6 +571,12 @@ export default async function MsmeProfileOverviewPage() {
                     className="h-24 w-20 rounded-xl object-cover"
                     placeholderClassName="flex h-24 w-20 items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-800"
                     placeholderText={ownerInitials(workspace.msme.owner_name)}
+                    diagnostics={{
+                      msmeId: workspace.msme.id,
+                      persistedColumn: passportPhotoUrl ? "passport_photo_path" : "none",
+                      valueType: passportPhotoUrl ? "public_url" : "null",
+                      signedUrlGenerated: Boolean(passportPhotoUrl),
+                    }}
                   />
                 </div>
                 <div className="text-xs text-slate-500">
