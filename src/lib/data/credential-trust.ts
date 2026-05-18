@@ -3,6 +3,7 @@ import type { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { UserContext } from "@/lib/auth/authorization";
 
 type SupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+type RequestHeaderSource = Pick<Headers, "get">;
 
 export const CREDENTIAL_TOKEN_TTL_DAYS = 365;
 export const CREDENTIAL_SIGNATURE_VERSION = 1;
@@ -42,8 +43,39 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
-function publicBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://bin.gov.ng").replace(/\/$/, "");
+function firstHeaderValue(value: string | null | undefined) {
+  return value?.split(",")[0]?.trim() || null;
+}
+
+function normalizeOrigin(value: string | null | undefined) {
+  const trimmed = value?.trim().replace(/\/$/, "");
+  if (!trimmed) return null;
+
+  try {
+    return new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function publicBaseUrl(params?: { requestHeaders?: RequestHeaderSource | null; requestHost?: string | null; requestProtocol?: string | null }) {
+  const configuredOrigin =
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
+    normalizeOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
+    normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  if (configuredOrigin) return configuredOrigin;
+
+  const requestHost = firstHeaderValue(
+    params?.requestHost ?? params?.requestHeaders?.get("x-forwarded-host") ?? params?.requestHeaders?.get("host"),
+  );
+  const requestProtocol = firstHeaderValue(params?.requestProtocol ?? params?.requestHeaders?.get("x-forwarded-proto")) ?? "https";
+  const requestOrigin = normalizeOrigin(requestHost ? `${requestProtocol}://${requestHost}` : null);
+  return requestOrigin ?? "https://ndmii-platform.vercel.app";
+}
+
+export function publicAppUrl(path: string, params?: { requestHeaders?: RequestHeaderSource | null; requestHost?: string | null; requestProtocol?: string | null }) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${publicBaseUrl(params)}${normalizedPath}`;
 }
 
 export function generateCredentialToken() {
@@ -58,8 +90,11 @@ export function credentialVerifyPath(token: string) {
   return `/verify/c/${encodeURIComponent(token)}`;
 }
 
-export function credentialVerifyUrl(token: string) {
-  return `${publicBaseUrl()}${credentialVerifyPath(token)}`;
+export function credentialVerifyUrl(
+  token: string,
+  params?: { requestHeaders?: RequestHeaderSource | null; requestHost?: string | null; requestProtocol?: string | null },
+) {
+  return publicAppUrl(credentialVerifyPath(token), params);
 }
 
 export function nextCredentialExpiry(now = new Date()) {
@@ -102,7 +137,7 @@ export async function ensurePendingCredential(
     msme_id: params.msmeId,
     ndmii_id: params.ndmiiId,
     issued_at: nowIso,
-    qr_code_ref: credentialVerifyPath(token),
+    qr_code_ref: credentialVerifyUrl(token),
     status: "pending",
     public_token: token,
     public_token_hash: publicTokenHash,
@@ -158,7 +193,7 @@ export async function approveCredential(
     issued_at: nowIso,
     approved_at: nowIso,
     approved_by: params.actor?.appUserId ?? null,
-    qr_code_ref: credentialVerifyPath(token),
+    qr_code_ref: credentialVerifyUrl(token),
     status: "active",
     public_token: token,
     public_token_hash: publicTokenHash,
@@ -270,7 +305,7 @@ export async function reissueCredentialToken(
       public_token_hash: publicTokenHash,
       public_signature: signCredentialTokenHash({ tokenHash: publicTokenHash, ndmiiId: existing.ndmii_id }),
       token_expires_at: nextCredentialExpiry(new Date(nowIso)),
-      qr_code_ref: credentialVerifyPath(token),
+      qr_code_ref: credentialVerifyUrl(token),
       signature_version: CREDENTIAL_SIGNATURE_VERSION,
       updated_at: nowIso,
     })

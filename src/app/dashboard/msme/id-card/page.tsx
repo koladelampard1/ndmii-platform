@@ -1,9 +1,10 @@
 import QRCode from "qrcode";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { DigitalIdWorkspace } from "@/components/msme/digital-id-workspace";
-import { credentialVerifyPath } from "@/lib/data/credential-trust";
+import { credentialVerifyUrl, publicAppUrl } from "@/lib/data/credential-trust";
 import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 import {
   BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT,
@@ -74,7 +75,9 @@ export default async function IdCardPage() {
     supabaseError: null,
   });
 
-  const verifyUrl = digitalId?.public_token ? credentialVerifyPath(digitalId.public_token) : "/verify";
+  const requestHeaders = await headers();
+  const hasCredentialToken = Boolean(digitalId?.public_token);
+  const verifyUrl = digitalId?.public_token ? credentialVerifyUrl(digitalId.public_token, { requestHeaders }) : publicAppUrl("/verify", { requestHeaders });
   const qr = await QRCode.toDataURL(verifyUrl, {
     width: 512,
     margin: 1,
@@ -83,6 +86,12 @@ export default async function IdCardPage() {
       dark: "#0f172a",
       light: "#ffffff",
     },
+  });
+  console.info("[business-identity-qr][generated]", {
+    route,
+    verifyUrlIsAbsolute: /^https?:\/\//.test(verifyUrl),
+    hasCredentialToken,
+    qrGenerated: Boolean(qr),
   });
 
   return (
