@@ -197,11 +197,11 @@ async function loadProfileDetails(msmeId: string) {
   }
 
   let digitalId: DigitalIdSummary | null = null;
-  const digitalIdColumns = await getTableColumns(supabase, "digital_ids");
+  const digitalIdColumns = await getTableColumns(supabase, "digital_identity_credentials");
   const digitalIdSelect = pickExistingColumns(digitalIdColumns, ["ndmii_id", "status", "issued_at", "created_at"]);
   if (digitalIdSelect.includes("ndmii_id")) {
     let digitalIdQuery = supabase
-      .from("digital_ids")
+      .from("digital_identity_credentials")
       .select(digitalIdSelect.join(","))
       .eq("msme_id", msmeId)
       .limit(1);

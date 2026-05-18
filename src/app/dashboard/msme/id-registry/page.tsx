@@ -14,7 +14,7 @@ export default async function DigitalIdRegistryPage({
 
   const supabase = await createServerSupabaseClient();
   let query = supabase
-    .from("digital_ids")
+    .from("digital_identity_credentials")
     .select("id,ndmii_id,issued_at,status,qr_code_ref,msmes(id,business_name,passport_photo_url,state,sector,verification_status,msme_id)")
     .order("issued_at", { ascending: false })
     .limit(250);
@@ -83,9 +83,13 @@ export default async function DigitalIdRegistryPage({
                 <td className="px-3 py-2 capitalize">{row.status}</td>
                 <td className="px-3 py-2">{row.issued_at ? new Date(row.issued_at).toLocaleDateString() : "Not issued"}</td>
                 <td className="px-3 py-2">
-                  <Link className="text-emerald-700 hover:underline" href={`/verify/${encodeURIComponent(row.ndmii_id ?? row.msmes?.msme_id ?? "")}`}>
-                    Open detail
-                  </Link>
+                  {row.qr_code_ref ? (
+                    <Link className="text-emerald-700 hover:underline" href={row.qr_code_ref}>
+                      Open secure verification
+                    </Link>
+                  ) : (
+                    <span className="text-xs text-slate-500">Token pending</span>
+                  )}
                 </td>
               </tr>
             ))}

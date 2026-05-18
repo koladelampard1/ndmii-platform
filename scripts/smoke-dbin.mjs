@@ -29,20 +29,23 @@ const financeRoute = read("src/app/api/msme/finance-readiness/assessments/route.
 const logoRoute = read("src/app/api/msme/provider-logo/route.ts");
 const authSessionRoute = read("src/app/api/auth/session/route.ts");
 
-check("public verification resolves msmes.msme_id", () => {
+check("public raw ID verification is blocked", () => {
   assert(
-    publicVerification.includes('.from("msmes")') &&
-      publicVerification.includes('.eq("msme_id", normalizedId)'),
-    "Expected getPublicVerificationDetail to query msmes by normalized msme_id.",
+    publicVerification.includes("detail.raw_lookup_blocked") &&
+      publicVerification.includes("return null"),
+    "Expected raw MSME/DBIN public verification to be blocked.",
   );
 });
 
-check("public verification resolves digital_ids.ndmii_id", () => {
+check("public verification validates signed credential token", () => {
   assert(
-    publicVerification.includes('.from("digital_ids")') &&
-      publicVerification.includes('.eq("ndmii_id", normalizedId)') &&
+    publicVerification.includes('.from("digital_identity_credentials")') &&
+      publicVerification.includes('.eq("public_token_hash", lookupHash)') &&
+      publicVerification.includes("verifyCredentialSignature") &&
+      publicVerification.includes('digitalRow.status !== "active"') &&
+      publicVerification.includes("isExpired(digitalRow.token_expires_at)") &&
       publicVerification.includes("toPublicRecordFromDigitalRow"),
-    "Expected getPublicVerificationDetail to query digital_ids by normalized ndmii_id and map the linked MSME.",
+    "Expected token verification to query by public_token_hash and enforce active, unexpired credential state.",
   );
 });
 

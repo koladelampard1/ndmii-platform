@@ -4,6 +4,13 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { DigitalIdWorkspace } from "@/components/msme/digital-id-workspace";
+import { credentialVerifyPath } from "@/lib/data/credential-trust";
+import {
+  BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT,
+  getBusinessIdentityCredentialLogoUrl,
+  getBusinessIdentityCredentialPassportPhotoUrl,
+  type BusinessIdentityCredentialMsme,
+} from "@/lib/data/business-identity-credential";
 
 export default async function IdCardDetailPage({ params }: { params: Promise<{ msmeId: string }> }) {
   const { msmeId } = await params;
@@ -16,18 +23,18 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
   const supabase = await createServerSupabaseClient();
   const { data: profile } = await supabase
     .from("msmes")
-    .select("id,msme_id,business_name,owner_name,sector,business_type,contact_email,contact_phone,address,cac_number,passport_photo_url,verification_status,association_id")
+    .select(BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT)
     .eq("msme_id", msmeId)
-    .maybeSingle();
+    .maybeSingle<BusinessIdentityCredentialMsme>();
 
   if (!profile) {
     return <p className="rounded border bg-white p-6 text-slate-500">No approved MSME found for {msmeId}.</p>;
   }
 
-  const [{ data: digitalId }, { data: association }] = await Promise.all([
+  const [{ data: digitalId }, { data: association }, businessLogoUrl, passportPhotoUrl] = await Promise.all([
     supabase
-      .from("digital_ids")
-      .select("ndmii_id")
+      .from("digital_identity_credentials")
+      .select("ndmii_id,status,public_token,qr_code_ref,token_expires_at")
       .eq("msme_id", profile.id)
       .order("issued_at", { ascending: false })
       .limit(1)
@@ -39,10 +46,11 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
           .eq("id", profile.association_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    getBusinessIdentityCredentialLogoUrl(supabase, profile),
+    getBusinessIdentityCredentialPassportPhotoUrl(supabase, profile),
   ]);
 
-  const verificationId = digitalId?.ndmii_id || profile.msme_id;
-  const verifyUrl = `/verify/${encodeURIComponent(verificationId)}`;
+  const verifyUrl = digitalId?.public_token ? credentialVerifyPath(digitalId.public_token) : "/verify";
   const qr = await QRCode.toDataURL(verifyUrl);
 
   return (
@@ -62,8 +70,9 @@ export default async function IdCardDetailPage({ params }: { params: Promise<{ m
         phoneNumber={profile.contact_phone || "Not provided"}
         businessAddress={profile.address || "Not provided"}
         msmeId={profile.msme_id}
-        verificationStatus={profile.verification_status || "pending_review"}
-        passportPhotoUrl={profile.passport_photo_url}
+        verificationStatus={digitalId?.status || profile.verification_status || "pending_review"}
+        businessLogoUrl={businessLogoUrl}
+        passportPhotoUrl={passportPhotoUrl}
         verifyUrl={verifyUrl}
         qrDataUrl={qr}
       />

@@ -39,7 +39,8 @@ export type ProviderService = {
   pricing_mode: string;
   min_price: number | null;
   max_price: number | null;
-  turnaround_time: string | null;
+  currency: string;
+  turnaround_days: number | null;
   vat_applicable: boolean;
   availability_status: string;
 };
@@ -207,10 +208,6 @@ function specializationFromSector(sector: string) {
   }
 }
 
-function scoreFromString(value: string) {
-  return Array.from(value).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-}
-
 function logHomepageSectionDebug(payload: {
   section: "base";
   query: string;
@@ -229,14 +226,6 @@ function logHomepageSectionDebug(payload: {
 }) {
   if (!DEV_MODE) return;
   console.info("[homepage-marketplace]", payload);
-}
-
-function seededMetrics(msmeId: string) {
-  const seed = scoreFromString(msmeId);
-  const avg_rating = 4 + (seed % 10) / 10;
-  const review_count = 8 + (seed % 33);
-  const trust_score = 78 + (seed % 22);
-  return { avg_rating: Number(avg_rating.toFixed(1)), review_count, trust_score };
 }
 
 function normalizeVerificationFilter(verification?: string) {
@@ -260,7 +249,6 @@ function applySort(data: ProviderCard[], sort: SearchFilters["sort"] = "relevanc
 }
 
 function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publicSlug: string): ProviderCard {
-  const { avg_rating, review_count, trust_score } = seededMetrics(row.msme_id);
   return {
     id: row.id,
     public_slug: publicSlug,
@@ -275,9 +263,9 @@ function projectMsmeToProvider(row: ProjectionRow, ndmiiId: string | null, publi
     lga: row.lga ?? null,
     short_description: `Verified NDMII provider in ${row.state} offering trusted ${row.sector.toLowerCase()} services.`,
     verification_status: row.verification_status,
-    trust_score,
-    avg_rating,
-    review_count,
+    trust_score: 0,
+    avg_rating: 0,
+    review_count: 0,
     is_featured: false,
   };
 }
@@ -404,12 +392,11 @@ async function queryProjectedProviders(filters: SearchFilters = {}, limit = 24) 
   if (msmeRows.length === 0) return [];
 
   const msmeRowIds = msmeRows.map((row) => row.id);
-  const publicMsmeIds = msmeRows.map((row) => row.msme_id);
 
   const { data: digitalIds } = await supabase
-    .from("digital_ids")
+    .from("digital_identity_credentials")
     .select("msme_id,ndmii_id")
-    .in("msme_id", [...msmeRowIds, ...publicMsmeIds]);
+    .in("msme_id", msmeRowIds);
 
   const ndmiiByMsmeRef = new Map((digitalIds ?? []).map((item: any) => [item.msme_id, item.ndmii_id as string | null]));
   const { data: providerProfiles } = await supabase
@@ -642,7 +629,6 @@ function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): Prov
   const safeMsmeId = typeof row?.msme_id === "string" && row.msme_id ? row.msme_id : `UNKNOWN-${row?.id ?? "ROW"}`;
   const safeDisplayName = typeof row?.display_name === "string" && row.display_name.trim() ? row.display_name.trim() : null;
   const safePublicSlug = typeof row?.public_slug === "string" && row.public_slug ? row.public_slug : `provider-${row?.id ?? "unknown"}`;
-  const metrics = seededMetrics(safeMsmeId);
   return {
     id: row.id,
     msme_id: safeMsmeId,
@@ -657,9 +643,9 @@ function mapHomepageProviderProfile(row: UsableHomepageProviderProfileRow): Prov
     lga: null,
     short_description: "Verified NDMII provider listed in the national marketplace directory.",
     verification_status: "verified",
-    trust_score: metrics.trust_score,
-    avg_rating: metrics.avg_rating,
-    review_count: metrics.review_count,
+    trust_score: 0,
+    avg_rating: 0,
+    review_count: 0,
     is_featured: false,
   };
 }
@@ -1036,7 +1022,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
           .maybeSingle(),
         supabase
           .from("review_metrics")
-          .select("five_star_count,four_star_count,three_star_count,two_star_count,one_star_count")
+          .select("avg_rating,review_count,five_star_count,four_star_count,three_star_count,two_star_count,one_star_count")
           .eq("provider_id", providerId)
           .maybeSingle(),
         supabase
@@ -1065,8 +1051,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       const trustScore = calculateTrustScore({
         verification_status: row.verification_status,
         review_status: msmeRow?.review_status,
-        avg_rating: safeNumber(row.avg_rating),
-        review_count: safeNumber(row.review_count),
+        avg_rating: safeNumber(metricsRow?.avg_rating ?? row.avg_rating),
+        review_count: safeNumber(metricsRow?.review_count ?? row.review_count),
         open_complaints: openCount,
         association_name: associationName,
       });
@@ -1074,7 +1060,13 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       const trustFactors: ProviderProfile["trust_factors"] = [
         { label: "Verification status", value: row.verification_status === "approved" ? "Approved" : "Verified", impact: "positive" },
         { label: "Validation workflow", value: msmeRow?.review_status ?? "Under review", impact: msmeRow?.review_status === "approved" ? "positive" : "neutral" },
-        { label: "Public reviews", value: `${safeNumber(row.avg_rating).toFixed(1)} from ${safeNumber(row.review_count)} reviews`, impact: "positive" },
+        {
+          label: "Public reviews",
+          value: safeNumber(metricsRow?.review_count ?? row.review_count) > 0
+            ? `${safeNumber(metricsRow?.avg_rating ?? row.avg_rating).toFixed(1)} from ${safeNumber(metricsRow?.review_count ?? row.review_count)} reviews`
+            : "No reviews yet",
+          impact: safeNumber(metricsRow?.review_count ?? row.review_count) > 0 ? "positive" : "neutral",
+        },
         { label: "Active complaints", value: openCount === 0 ? "No active complaint" : `${openCount} open complaint(s)`, impact: openCount === 0 ? "positive" : "neutral" },
         { label: "Association linkage", value: associationName ?? "Not linked", impact: associationName ? "positive" : "neutral" },
       ];
@@ -1082,6 +1074,8 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       return {
         ...base,
         trust_score: trustScore,
+        avg_rating: safeNumber(metricsRow?.avg_rating ?? row.avg_rating),
+        review_count: safeNumber(metricsRow?.review_count ?? row.review_count),
         owner_name: msmeRow?.owner_name ?? "Verified MSME Owner",
         contact_email: msmeRow?.contact_email ?? null,
         contact_phone: msmeRow?.contact_phone ?? null,
@@ -1100,7 +1094,6 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     console.error("[provider-public-page][profile_primary_query_failed]", {
       providerId,
       trace: error instanceof Error ? error.message : "unknown_profile_primary_query_failure",
-      error,
     });
   }
 
@@ -1117,7 +1110,7 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
     if (error || !msmes?.length) return null;
 
     const row = msmes[0] as ProjectionRow;
-    const { data: digitalId } = await supabase.from("digital_ids").select("ndmii_id").eq("msme_id", row.id).maybeSingle();
+    const { data: digitalId } = await supabase.from("digital_identity_credentials").select("ndmii_id").eq("msme_id", row.id).maybeSingle();
     const { data: providerProfile } = await supabase
       .from("provider_profiles")
       .select("public_slug")
@@ -1137,23 +1130,22 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
         gallery: [],
         services: [],
         reviews: [],
-      rating_breakdown: { five: 1, four: 1, three: 0, two: 0, one: 0 },
+      rating_breakdown: { five: 0, four: 0, three: 0, two: 0, one: 0 },
       trust_badge: badgeFromTrustScore(card.trust_score),
       trust_factors: [
         { label: "Verification status", value: "Verified", impact: "positive" },
         { label: "Validation workflow", value: "Approved", impact: "positive" },
-        { label: "Public reviews", value: `${card.avg_rating.toFixed(1)} from ${card.review_count} reviews`, impact: "positive" },
+        { label: "Public reviews", value: "No reviews yet", impact: "neutral" },
         { label: "Active complaints", value: "No active complaint", impact: "positive" },
         { label: "Association linkage", value: "Linked", impact: "positive" },
       ],
       active_complaint_count: 0,
-      association_name: "Demo association",
+      association_name: null,
     };
   } catch (error) {
     console.error("[provider-public-page][profile_projected_fallback_failed]", {
       providerId,
       trace: error instanceof Error ? error.message : "unknown_profile_projected_fallback_failure",
-      error,
     });
     return null;
   }
@@ -1165,9 +1157,10 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
     const { data, error } = await supabase
       .from("provider_services")
       .select(
-        "id,category,specialization,title,short_description,pricing_mode,min_price,max_price,turnaround_time,vat_applicable,availability_status",
+        "id,category,specialization,title,short_description,pricing_mode,min_price,max_price,currency,turnaround_days,vat_applicable,availability_status",
       )
       .eq("provider_id", providerId)
+      .in("availability_status", ["available", "limited"])
       .order("created_at", { ascending: false })
       .limit(12);
     if (error) throw error;
@@ -1180,7 +1173,8 @@ export async function getProviderPublicServices(providerId: string): Promise<Pro
       pricing_mode: row.pricing_mode ?? "custom",
       min_price: row.min_price ?? null,
       max_price: row.max_price ?? null,
-      turnaround_time: row.turnaround_time ?? null,
+      currency: row.currency ?? "NGN",
+      turnaround_days: row.turnaround_days ?? null,
       vat_applicable: Boolean(row.vat_applicable),
       availability_status: row.availability_status ?? "available",
     }));
@@ -1196,6 +1190,7 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
       .from("reviews")
       .select("id,reviewer_name,rating,review_title,review_body,provider_reply,provider_reply_at,created_at")
       .eq("provider_id", providerId)
+      .eq("publication_status", "published")
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) throw error;
@@ -1209,7 +1204,19 @@ export async function getProviderPublicReviews(providerId: string): Promise<Prov
       provider_reply_at: row.provider_reply_at ?? null,
       created_at: row.created_at ?? new Date().toISOString(),
     }));
-  } catch {
+  } catch (error: any) {
+    if (DEV_MODE) {
+      console.error("[provider-public-page][reviews_query_failed]", {
+        providerId,
+        providerProfileId: providerId,
+        reviewCount: 0,
+        operation: "load_public_published_reviews",
+        error: {
+          code: error?.code ?? null,
+          message: error instanceof Error ? error.message : error?.message ?? "reviews_query_failed",
+        },
+      });
+    }
     return [];
   }
 }

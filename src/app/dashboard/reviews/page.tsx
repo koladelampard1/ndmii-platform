@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
+import { approveCredential, recordCredentialEvent } from "@/lib/data/credential-trust";
 import { assertMsmeAction, requireRole } from "@/lib/data/authorization-scope";
 import { ensureProviderProfileForPublicMsme } from "@/lib/data/provider-profiles";
 
@@ -72,7 +73,7 @@ async function reviewAction(formData: FormData) {
     const existingMsmePublicId = (msme?.msme_id ?? "").trim();
     const stableMsmePublicId = existingMsmePublicId || generateMsmeId(msme?.state ?? "LAG");
     const { data: existingDigitalId } = await supabase
-      .from("digital_ids")
+      .from("digital_identity_credentials")
       .select("ndmii_id")
       .eq("msme_id", id)
       .maybeSingle();
@@ -84,13 +85,11 @@ async function reviewAction(formData: FormData) {
     if (!existingMsmePublicId) {
       update.msme_id = stableMsmePublicId;
     }
-    await supabase.from("digital_ids").upsert({
-      msme_id: id,
-      ndmii_id: ndmiiId,
-      issued_at: nowIso,
-      qr_code_ref: `https://bin.gov.ng/verify/${ndmiiId}`,
-      status: "active",
-      validation_snapshot: {
+    await approveCredential(supabase, {
+      msmeId: id,
+      ndmiiId,
+      actor: ctx,
+      validationSnapshot: {
         overall_status: validation.overallStatus,
         nin_status: ninStatus,
         bvn_status: bvnStatus,
@@ -98,8 +97,7 @@ async function reviewAction(formData: FormData) {
         tin_status: tinStatus,
         validated_at: nowIso,
       },
-      updated_at: nowIso,
-    }, { onConflict: "msme_id" });
+    });
     await supabase.from("compliance_profiles").upsert({ msme_id: id, overall_status: "verified", admin_override_status: "verified", risk_level: "low", score: 92 }, { onConflict: "msme_id" });
     await supabase.from("tax_profiles").upsert({ msme_id: id, tax_category: "SME_STANDARD", vat_applicable: true, estimated_monthly_obligation: 125000, outstanding_amount: 0, compliance_status: "compliant", last_reviewed_at: nowIso }, { onConflict: "msme_id" });
     await ensureProviderProfileForPublicMsme({ msmeRowId: id, msmePublicId: stableMsmePublicId });
@@ -108,12 +106,25 @@ async function reviewAction(formData: FormData) {
     update.verification_status = "rejected";
     update.review_status = "rejected";
     update.compliance_tag = "non-compliant";
-    await supabase.from("digital_ids").update({ status: "revoked", updated_at: nowIso }).eq("msme_id", id);
+    const { data: credential } = await supabase
+      .from("digital_identity_credentials")
+      .update({ status: "revoked", revoked_at: nowIso, revoked_by: ctx.appUserId, revocation_reason: note || "Reviewer rejection", updated_at: nowIso })
+      .eq("msme_id", id)
+      .select("id")
+      .maybeSingle();
+    if (credential?.id) {
+      await recordCredentialEvent(supabase, {
+        credentialId: credential.id,
+        action: "revoked",
+        actor: ctx,
+        metadata: { operation: "review_rejection", msmeId: id, status: "revoked" },
+      });
+    }
   }
   if (action === "changes") {
     update.verification_status = "changes_requested";
     update.review_status = "changes_requested";
-    await supabase.from("digital_ids").update({ status: "under_review", updated_at: nowIso }).eq("msme_id", id);
+    await supabase.from("digital_identity_credentials").update({ status: "pending", updated_at: nowIso }).eq("msme_id", id);
   }
 
   await supabase.from("msmes").update(update).eq("id", id);

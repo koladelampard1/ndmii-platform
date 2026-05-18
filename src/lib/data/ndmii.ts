@@ -128,7 +128,7 @@ export async function runKycSimulation(payload: Record<VerificationProvider, str
 export async function searchMsme(query: string) {
   const trimmed = query.trim();
   const { data: digitalRows } = await supabase
-    .from("digital_ids")
+    .from("digital_identity_credentials")
     .select("id,ndmii_id,status,issued_at,qr_code_ref,msmes(id,msme_id,business_name,owner_name,state,sector,verification_status,association_id,nin,bvn,cac_number,tin,created_at)")
     .order("issued_at", { ascending: false });
 
