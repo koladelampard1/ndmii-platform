@@ -11,13 +11,14 @@ type QRCodeVerificationPanelProps = {
   verificationUrl: string;
   issueDate: string;
   businessId: string;
+  summaryUrl?: string;
 };
 
-export function QRCodeVerificationPanel({ qrDataUrl, verificationUrl, issueDate, businessId }: QRCodeVerificationPanelProps) {
+export function QRCodeVerificationPanel({ qrDataUrl, verificationUrl, issueDate, businessId, summaryUrl }: QRCodeVerificationPanelProps) {
   const [showCopiedToast, setShowCopiedToast] = useState(false);
 
   const handleDownload = () => {
-    window.open(`/api/verification-summary/${encodeURIComponent(businessId)}`, "_blank", "noopener,noreferrer");
+    window.open(summaryUrl ?? `/api/verification-summary/${encodeURIComponent(businessId)}`, "_blank", "noopener,noreferrer");
   };
 
   const handleShare = async () => {
