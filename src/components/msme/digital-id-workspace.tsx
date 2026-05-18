@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Building2, CheckCircle2, Download, Globe2, LockKeyhole, Share2, ShieldCheck } from "lucide-react";
 import { PassportPhoto } from "@/components/msme/passport-photo";
+import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 
 type DigitalIdWorkspaceProps = {
   associationName?: string | null;
@@ -545,6 +546,22 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       qrDataUrl: props.qrDataUrl,
     };
   }, [props]);
+
+  useEffect(() => {
+    logPassportPhotoDiagnostic("workspace", {
+      route: "DigitalIdWorkspace",
+      msmeId: props.msmeRowId ?? props.msmeId,
+      persistedColumn: model.ownerPhotoUrl ? "passport_photo_path" : "none",
+      hasPassportPath: Boolean(model.ownerPhotoUrl),
+      hasPassportValue: Boolean(model.ownerPhotoUrl),
+      valueType: classifyPassportPhotoValue(model.ownerPhotoUrl),
+      signedUrlGenerated: Boolean(model.ownerPhotoUrl),
+      passportPhotoUrlPassed: Boolean(props.passportPhotoUrl?.trim()),
+      renderFallback: !model.ownerPhotoUrl,
+      imageComponentReceivedUrl: Boolean(model.ownerPhotoUrl),
+      supabaseError: null,
+    });
+  }, [model.ownerPhotoUrl, props.msmeId, props.msmeRowId, props.passportPhotoUrl]);
 
   const shareCard = useCallback(async () => {
     setBusy("share");

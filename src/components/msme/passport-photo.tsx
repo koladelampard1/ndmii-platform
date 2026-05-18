@@ -25,14 +25,33 @@ export function PassportPhoto({ src, alt, className, placeholderClassName, place
   const failed = normalizedSrc ? failedSrc === normalizedSrc : false;
 
   useEffect(() => {
+    if (!diagnostics || !normalizedSrc || failed) return;
+    logPassportPhotoDiagnostic("render-received", {
+      msmeId: diagnostics.msmeId ?? null,
+      persistedColumn: diagnostics.persistedColumn ?? "none",
+      hasPassportPath: diagnostics.persistedColumn === "passport_photo_path",
+      hasPassportValue: true,
+      valueType: diagnostics.valueType ?? classifyPassportPhotoValue(normalizedSrc),
+      signedUrlGenerated: diagnostics.signedUrlGenerated ?? true,
+      passportPhotoUrlPassed: true,
+      renderFallback: false,
+      imageComponentReceivedUrl: true,
+      supabaseError: null,
+    });
+  }, [diagnostics, failed, normalizedSrc]);
+
+  useEffect(() => {
     if (!diagnostics || (normalizedSrc && !failed)) return;
     logPassportPhotoDiagnostic("render", {
       msmeId: diagnostics.msmeId ?? null,
       persistedColumn: diagnostics.persistedColumn ?? "none",
+      hasPassportPath: diagnostics.persistedColumn === "passport_photo_path",
       hasPassportValue: Boolean(normalizedSrc),
       valueType: diagnostics.valueType ?? classifyPassportPhotoValue(normalizedSrc),
       signedUrlGenerated: diagnostics.signedUrlGenerated ?? Boolean(normalizedSrc),
+      passportPhotoUrlPassed: Boolean(normalizedSrc),
       renderFallback: true,
+      imageComponentReceivedUrl: Boolean(normalizedSrc),
       supabaseError: null,
     });
   }, [diagnostics, failed, normalizedSrc]);
@@ -51,10 +70,13 @@ export function PassportPhoto({ src, alt, className, placeholderClassName, place
           logPassportPhotoDiagnostic("render-error", {
             msmeId: diagnostics.msmeId ?? null,
             persistedColumn: diagnostics.persistedColumn ?? "none",
+            hasPassportPath: diagnostics.persistedColumn === "passport_photo_path",
             hasPassportValue: true,
             valueType: diagnostics.valueType ?? classifyPassportPhotoValue(normalizedSrc),
             signedUrlGenerated: diagnostics.signedUrlGenerated ?? Boolean(normalizedSrc),
+            passportPhotoUrlPassed: true,
             renderFallback: true,
+            imageComponentReceivedUrl: true,
             supabaseError: null,
           });
         }

@@ -1,9 +1,10 @@
 import QRCode from "qrcode";
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { DigitalIdWorkspace } from "@/components/msme/digital-id-workspace";
 import { credentialVerifyPath } from "@/lib/data/credential-trust";
+import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 import {
   BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT,
   getBusinessIdentityCredentialLogoUrl,
@@ -16,13 +17,14 @@ export const metadata = {
 };
 
 export default async function IdCardPage() {
-  const supabase = await createServerSupabaseClient();
+  const route = "/dashboard/msme/id-card";
   const ctx = await getCurrentUserContext();
 
   if (ctx.role !== "msme") {
     redirect("/dashboard/msme/id-registry");
   }
 
+  const supabase = await createServiceRoleSupabaseClient();
   const { data: profile } = await supabase
     .from("msmes")
     .select(BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT)
@@ -56,8 +58,21 @@ export default async function IdCardPage() {
           .maybeSingle()
       : Promise.resolve({ data: null }),
     getBusinessIdentityCredentialLogoUrl(supabase, profile),
-    getBusinessIdentityCredentialPassportPhotoUrl(supabase, profile),
+    getBusinessIdentityCredentialPassportPhotoUrl(supabase, profile, route),
   ]);
+
+  logPassportPhotoDiagnostic("route", {
+    route,
+    msmeId: profile.id,
+    persistedColumn: profile.passport_photo_path ? "passport_photo_path" : profile.passport_photo_url ? "passport_photo_url" : "none",
+    hasPassportPath: Boolean(profile.passport_photo_path?.trim()),
+    hasPassportValue: Boolean(profile.passport_photo_path?.trim() || profile.passport_photo_url?.trim()),
+    valueType: classifyPassportPhotoValue(profile.passport_photo_path ?? profile.passport_photo_url),
+    signedUrlGenerated: Boolean(passportPhotoUrl),
+    passportPhotoUrlPassed: Boolean(passportPhotoUrl),
+    renderFallback: !passportPhotoUrl,
+    supabaseError: null,
+  });
 
   const verifyUrl = digitalId?.public_token ? credentialVerifyPath(digitalId.public_token) : "/verify";
   const qr = await QRCode.toDataURL(verifyUrl, {

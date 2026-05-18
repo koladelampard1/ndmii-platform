@@ -46,17 +46,21 @@ export async function getBusinessIdentityCredentialLogoUrl(
 export async function getBusinessIdentityCredentialPassportPhotoUrl(
   supabase: SupabaseClient,
   profile: Pick<BusinessIdentityCredentialMsme, "id" | "passport_photo_path" | "passport_photo_url">,
+  route?: string,
 ) {
   const path = profile.passport_photo_path?.trim();
   if (!path) {
     const directUrl = profile.passport_photo_url?.trim() || null;
     const valueType = classifyPassportPhotoValue(directUrl);
     logPassportPhotoDiagnostic("resolve", {
+      route,
       msmeId: profile.id,
       persistedColumn: directUrl ? "passport_photo_url" : "none",
+      hasPassportPath: false,
       hasPassportValue: Boolean(directUrl),
       valueType,
       signedUrlGenerated: false,
+      passportPhotoUrlPassed: Boolean(directUrl),
       renderFallback: !directUrl,
       supabaseError: null,
     });
@@ -67,11 +71,14 @@ export async function getBusinessIdentityCredentialPassportPhotoUrl(
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 10);
   const signedUrlGenerated = Boolean(data?.signedUrl);
   logPassportPhotoDiagnostic("resolve", {
+    route,
     msmeId: profile.id,
     persistedColumn: "passport_photo_path",
+    hasPassportPath: true,
     hasPassportValue: true,
     valueType: classifyPassportPhotoValue(path),
     signedUrlGenerated,
+    passportPhotoUrlPassed: signedUrlGenerated,
     renderFallback: !signedUrlGenerated,
     supabaseError: error
       ? {
