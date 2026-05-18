@@ -13,11 +13,13 @@ type PassportPhotoProps = {
 };
 
 export function PassportPhoto({ src, alt, className, placeholderClassName, placeholderText = "N", placeholder }: PassportPhotoProps) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const normalizedSrc = src?.trim() || null;
+  const failed = normalizedSrc ? failedSrc === normalizedSrc : false;
 
-  if (!src || failed) {
+  if (!normalizedSrc || failed) {
     return <div className={placeholderClassName}>{placeholder ?? placeholderText}</div>;
   }
 
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={normalizedSrc} alt={alt} className={className} onError={() => setFailedSrc(normalizedSrc)} />;
 }

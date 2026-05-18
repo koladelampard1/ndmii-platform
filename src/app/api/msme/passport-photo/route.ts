@@ -131,8 +131,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: uploadError.message }, { status: 500, headers: corsHeaders });
     }
 
-    const { data: publicUrlData } = supabase.storage.from(PASSPORT_BUCKET).getPublicUrl(uploadPath);
-    const passportPhotoUrl = publicUrlData.publicUrl;
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage.from(PASSPORT_BUCKET).createSignedUrl(uploadPath, 60 * 10);
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error("[msme-passport-upload][signed-url-failed]", {
+        bucket: PASSPORT_BUCKET,
+        uploadPath,
+        error: toStorageErrorLog(signedUrlError ?? "missing_signed_url"),
+      });
+      return NextResponse.json({ error: "Passport photo uploaded, but signed access could not be created." }, { status: 500, headers: corsHeaders });
+    }
+    const passportPhotoUrl = signedUrlData.signedUrl;
     let persisted = false;
     let msmeId: string | null = null;
 
@@ -147,9 +155,9 @@ export async function POST(request: Request) {
 
       const { data: updatedRows, error: updateError } = await supabase
         .from("msmes")
-        .update({ passport_photo_url: passportPhotoUrl })
+        .update({ passport_photo_path: uploadPath, passport_photo_url: null })
         .eq("id", ownedMsme.id)
-        .select("id,passport_photo_url");
+        .select("id,passport_photo_path");
 
       if (updateError || !updatedRows?.length) {
         console.error("[msme-passport-upload][persist-failed]", {
@@ -175,7 +183,6 @@ export async function POST(request: Request) {
       mimeType: file.type || null,
       bucket: PASSPORT_BUCKET,
       uploadPath,
-      publicUrl: passportPhotoUrl,
       persisted,
       msmeId,
     });
@@ -186,6 +193,7 @@ export async function POST(request: Request) {
         passportPhotoUrl,
         bucket: PASSPORT_BUCKET,
         uploadPath,
+        signedUrlExpiresIn: 600,
         persisted,
         msmeId,
       },
