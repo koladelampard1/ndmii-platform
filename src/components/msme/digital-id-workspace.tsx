@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { BadgeCheck, CheckCircle2, Download, Globe2, LockKeyhole, Share2, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Building2, CheckCircle2, Download, Globe2, LockKeyhole, Share2, ShieldCheck } from "lucide-react";
 import { PassportPhoto } from "@/components/msme/passport-photo";
 
 type DigitalIdWorkspaceProps = {
@@ -16,6 +16,7 @@ type DigitalIdWorkspaceProps = {
   businessAddress: string;
   msmeId: string;
   verificationStatus: string;
+  businessLogoUrl?: string | null;
   passportPhotoUrl?: string | null;
   verifyUrl: string;
   qrDataUrl: string;
@@ -42,7 +43,8 @@ type CredentialModel = {
   displayStatus: string;
   statusTone: "verified" | "pending_review" | "suspended";
   expiryDate: string;
-  passportPhotoUrl?: string | null;
+  businessLogoUrl?: string | null;
+  ownerPhotoUrl?: string | null;
   verifyUrl: string;
   qrDataUrl: string;
 };
@@ -71,6 +73,11 @@ function sanitizeFileSegment(value: string) {
 
 function normalizeBusinessId(value: string) {
   return value?.startsWith("NDMII-") ? value.replace(/^NDMII-/, "BIN-") : value;
+}
+
+function normalizeOptionalUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized || null;
 }
 
 function resolveStatusTone(value: string): CredentialModel["statusTone"] {
@@ -272,7 +279,16 @@ function drawCenteredSingleLineText(ctx: CanvasRenderingContext2D, text: string,
   ctx.fillText(finalText, centerX, y);
 }
 
-function drawDbinSeal(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+function drawImageContained(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function drawBusinessLogoPlaceholder(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
   const center = size / 2;
   ctx.save();
   ctx.translate(x, y);
@@ -295,9 +311,44 @@ function drawDbinSeal(ctx: CanvasRenderingContext2D, x: number, y: number, size:
   ctx.textAlign = "center";
   ctx.fillText("DBIN", center, center + 6);
   ctx.font = `700 ${Math.round(size * 0.075)}px Inter, Arial`;
-  ctx.fillText("VERIFIED", center, center + size * 0.24);
+  ctx.fillText("BUSINESS", center, center + size * 0.24);
   ctx.restore();
   ctx.textAlign = "left";
+}
+
+async function drawBusinessLogo(
+  ctx: CanvasRenderingContext2D,
+  logoUrl: string | null | undefined,
+  x: number,
+  y: number,
+  size: number,
+) {
+  if (!logoUrl) {
+    drawBusinessLogoPlaceholder(ctx, x, y, size);
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.roundRect(x, y, size, size, 18);
+  ctx.fill();
+  ctx.clip();
+
+  try {
+    const logo = await loadImage(logoUrl);
+    drawImageContained(ctx, logo, x + 8, y + 8, size - 16, size - 16);
+    ctx.restore();
+
+    ctx.strokeStyle = "#047857";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(x, y, size, size, 18);
+    ctx.stroke();
+  } catch {
+    ctx.restore();
+    drawBusinessLogoPlaceholder(ctx, x, y, size);
+  }
 }
 
 function drawStatusPill(ctx: CanvasRenderingContext2D, model: CredentialModel, x: number, y: number) {
@@ -403,7 +454,7 @@ async function drawVerticalCredential(ctx: CanvasRenderingContext2D, model: Cred
   ctx.roundRect(18, 18, width - 36, height - 36, 22);
   ctx.fill();
 
-  drawDbinSeal(ctx, 78, 62, 82);
+  await drawBusinessLogo(ctx, model.businessLogoUrl, 78, 62, 82);
   ctx.fillStyle = "#064e3b";
   ctx.font = "800 30px Inter, Arial";
   drawSingleLineText(ctx, model.associationName, 190, 94, width - 250);
@@ -420,7 +471,7 @@ async function drawVerticalCredential(ctx: CanvasRenderingContext2D, model: Cred
   ctx.beginPath();
   ctx.roundRect(photoX - 3, photoY - 3, photoW + 6, photoH + 6, 18);
   ctx.stroke();
-  await drawPhoto(ctx, model.passportPhotoUrl, photoX, photoY, photoW, photoH, 15);
+  await drawPhoto(ctx, model.ownerPhotoUrl, photoX, photoY, photoW, photoH, 15);
 
   ctx.textAlign = "center";
   ctx.fillStyle = "#0f172a";
@@ -487,7 +538,8 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       displayStatus,
       statusTone,
       expiryDate: "April 2027",
-      passportPhotoUrl: props.passportPhotoUrl,
+      businessLogoUrl: normalizeOptionalUrl(props.businessLogoUrl),
+      ownerPhotoUrl: normalizeOptionalUrl(props.passportPhotoUrl),
       verifyUrl: props.verifyUrl,
       qrDataUrl: props.qrDataUrl,
     };
@@ -648,8 +700,19 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
       <article className="relative overflow-hidden rounded-2xl border border-emerald-900/20 bg-[linear-gradient(135deg,#052e1f,#065f46)] p-3 shadow-2xl sm:p-6">
         <div className="mx-auto w-full max-w-[25rem] rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-emerald-900/10 sm:p-7" id="msme-id-card-full-view">
           <div className="flex items-start gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-4 border-emerald-700 bg-white text-sm font-black text-emerald-800 shadow-sm">
-              DBIN
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-700 bg-white text-sm font-black text-emerald-800 shadow-sm">
+              <PassportPhoto
+                src={model.businessLogoUrl}
+                alt={`${model.businessName} business logo`}
+                className="h-full w-full object-contain p-1"
+                placeholderClassName="flex h-full w-full items-center justify-center bg-slate-50 text-emerald-800"
+                placeholder={
+                  <span className="flex flex-col items-center gap-0.5">
+                    <Building2 className="h-6 w-6" aria-hidden="true" />
+                    <span className="text-[0.62rem] font-black leading-none">DBIN</span>
+                  </span>
+                }
+              />
             </div>
             <div className="min-w-0 pt-1">
               <h2 className="text-balance text-xl font-extrabold leading-tight text-emerald-950">{model.associationName}</h2>
@@ -660,7 +723,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
           <div className="mt-7 flex justify-center">
             <div className="rounded-2xl border-2 border-emerald-700 bg-white p-1 shadow-sm">
               <PassportPhoto
-                src={model.passportPhotoUrl}
+                src={model.ownerPhotoUrl}
                 alt="Business owner or representative photo"
                 className="h-44 w-36 rounded-xl object-cover sm:h-48 sm:w-40"
                 placeholderClassName="flex h-44 w-36 items-center justify-center rounded-xl bg-emerald-50 text-3xl font-bold text-emerald-800 sm:h-48 sm:w-40"
@@ -741,7 +804,7 @@ export function DigitalIdWorkspace(props: DigitalIdWorkspaceProps) {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><LockKeyhole className="h-4 w-4 text-emerald-700" /> Secure Digital Credential</p>
-          <p className="mt-2 text-sm text-slate-600">Encrypted metadata and QR verification ensure authenticity.</p>
+          <p className="mt-2 text-sm text-slate-600">Signed QR verification and live credential status checks protect authenticity.</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900"><Globe2 className="h-4 w-4 text-emerald-700" /> Shareable Identity Card</p>
