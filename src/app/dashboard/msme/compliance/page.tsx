@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck } from "lucide-react";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { ensureBaselineComplianceItemsForMsme } from "@/lib/data/msme-compliance-baseline";
+import { ComplianceEvidencePanel, type ComplianceEvidenceListItem } from "./compliance-evidence-panel";
 
 type ComplianceProfile = {
   overall_status: string | null;
@@ -113,14 +116,52 @@ function isMigrated(metadata: Record<string, unknown> | null | undefined, source
   return source === "legacy_migration" || metadata?.demo_or_migration_derived === true || metadata?.source === "legacy_migration_recalculation";
 }
 
+function reviewStatusLabel(status: string) {
+  if (status === "approved") return "Reviewed and approved";
+  if (status === "rejected") return "Reviewed with issues";
+  if (status === "under_review") return "Under review";
+  return "Not yet reviewed";
+}
+
 function itemSortValue(item: ComplianceItem) {
   const requirement = relationOne(item.compliance_requirement_definitions);
   if (item.is_required) return `0-${requirement?.code ?? item.id}`;
   return `1-${requirement?.code ?? item.id}`;
 }
 
+async function prepareComplianceChecklist() {
+  "use server";
+
+  const ctx = await getCurrentUserContext();
+  if (ctx.role !== "msme" || !ctx.linkedMsmeId) {
+    redirect("/access-denied");
+  }
+
+  const serviceSupabase = await createServiceRoleSupabaseClient();
+  const result = await ensureBaselineComplianceItemsForMsme({
+    serviceSupabase,
+    msmeId: ctx.linkedMsmeId,
+    appUserId: ctx.appUserId,
+    email: ctx.email,
+  });
+
+  console.info("[msme-compliance-baseline]", {
+    operation: "manual_retry",
+    msmeId: ctx.linkedMsmeId,
+    requirementDefinitionCount: result.requirementDefinitionCount,
+    existingItemCount: result.existingItemCount,
+    insertedItemCount: result.insertedItemCount,
+    skippedItemCount: result.skippedItemCount,
+    profileExists: Boolean(ctx.linkedMsmeId),
+    code: result.ok ? null : "manual_retry_failed",
+    message: result.ok ? null : "Manual compliance checklist preparation did not complete.",
+  });
+
+  revalidatePath("/dashboard/msme/compliance");
+  redirect("/dashboard/msme/compliance");
+}
+
 export default async function MsmeCompliancePage() {
-  const supabase = await createServerSupabaseClient();
   const ctx = await getCurrentUserContext();
 
   if (ctx.role !== "msme") {
@@ -138,31 +179,105 @@ export default async function MsmeCompliancePage() {
     );
   }
 
-  const [{ data: profile }, { data: itemRows }, { data: eventRows }] = await Promise.all([
-    supabase
+  const serviceSupabase = await createServiceRoleSupabaseClient();
+  let baselineGenerationFailed = false;
+
+  let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }] = await Promise.all([
+    serviceSupabase
       .from("msme_compliance_profiles")
       .select(
         "overall_status,compliance_score,risk_level,total_required_count,approved_count,pending_count,under_review_count,changes_requested_count,rejected_count,expired_count,expiring_soon_count,suspended_count,revoked_count,last_reviewed_at,next_deadline_at,last_recalculated_at,metadata",
       )
       .eq("msme_id", ctx.linkedMsmeId)
       .maybeSingle(),
-    supabase
+    serviceSupabase
       .from("msme_compliance_items")
       .select(
         "id,status,reference_number,issued_at,expires_at,approved_at,rejected_at,is_required,source,metadata,compliance_requirement_definitions(code,title,description,category,frequency,is_mandatory,compliance_regulators(code,name))",
       )
       .eq("msme_id", ctx.linkedMsmeId),
-    supabase
+    serviceSupabase
       .from("compliance_events")
       .select("id,event_type,summary,to_status,created_at,actor_type,metadata")
       .eq("msme_id", ctx.linkedMsmeId)
       .order("created_at", { ascending: false })
       .limit(6),
+    serviceSupabase
+      .from("compliance_documents")
+      .select("id,compliance_item_id,document_type,original_filename,mime_type,file_size_bytes,uploaded_at,verified_at,expires_at")
+      .eq("msme_id", ctx.linkedMsmeId)
+      .eq("is_deleted", false)
+      .order("uploaded_at", { ascending: false }),
   ]);
+
+  if ((itemRows ?? []).length === 0) {
+    try {
+      const result = await ensureBaselineComplianceItemsForMsme({
+        serviceSupabase,
+        msmeId: ctx.linkedMsmeId,
+        appUserId: ctx.appUserId,
+        email: ctx.email,
+      });
+      baselineGenerationFailed = !result.ok;
+
+      const [repairedProfile, repairedItems, repairedEvents, repairedDocuments] = await Promise.all([
+        serviceSupabase
+          .from("msme_compliance_profiles")
+          .select(
+            "overall_status,compliance_score,risk_level,total_required_count,approved_count,pending_count,under_review_count,changes_requested_count,rejected_count,expired_count,expiring_soon_count,suspended_count,revoked_count,last_reviewed_at,next_deadline_at,last_recalculated_at,metadata",
+          )
+          .eq("msme_id", ctx.linkedMsmeId)
+          .maybeSingle(),
+        serviceSupabase
+          .from("msme_compliance_items")
+          .select(
+            "id,status,reference_number,issued_at,expires_at,approved_at,rejected_at,is_required,source,metadata,compliance_requirement_definitions(code,title,description,category,frequency,is_mandatory,compliance_regulators(code,name))",
+          )
+          .eq("msme_id", ctx.linkedMsmeId),
+        serviceSupabase
+          .from("compliance_events")
+          .select("id,event_type,summary,to_status,created_at,actor_type,metadata")
+          .eq("msme_id", ctx.linkedMsmeId)
+          .order("created_at", { ascending: false })
+          .limit(6),
+        serviceSupabase
+          .from("compliance_documents")
+          .select("id,compliance_item_id,document_type,original_filename,mime_type,file_size_bytes,uploaded_at,verified_at,expires_at")
+          .eq("msme_id", ctx.linkedMsmeId)
+          .eq("is_deleted", false)
+          .order("uploaded_at", { ascending: false }),
+      ]);
+
+      profile = repairedProfile.data;
+      itemRows = repairedItems.data;
+      eventRows = repairedEvents.data;
+      documentRows = repairedDocuments.data;
+      baselineGenerationFailed = baselineGenerationFailed || (repairedItems.data ?? []).length === 0;
+    } catch (error) {
+      const typedError = error as { code?: string; message?: string };
+      console.info("[msme-compliance-baseline]", {
+        operation: "page_repair_failed",
+        msmeId: ctx.linkedMsmeId,
+        requirementDefinitionCount: 0,
+        existingItemCount: 0,
+        insertedItemCount: 0,
+        skippedItemCount: 0,
+        profileExists: Boolean(ctx.linkedMsmeId),
+        code: typedError.code ?? "unknown",
+        message: typedError.message ?? "Unable to repair compliance baseline.",
+      });
+      baselineGenerationFailed = true;
+    }
+  }
 
   const complianceProfile = profile as ComplianceProfile | null;
   const items = ((itemRows ?? []) as ComplianceItem[]).sort((a, b) => itemSortValue(a).localeCompare(itemSortValue(b)));
   const events = (eventRows ?? []) as ComplianceEvent[];
+  const documents = (documentRows ?? []) as ComplianceEvidenceListItem[];
+  const documentsByItem = documents.reduce<Record<string, ComplianceEvidenceListItem[]>>((acc, document) => {
+    acc[document.compliance_item_id] = [...(acc[document.compliance_item_id] ?? []), document];
+    return acc;
+  }, {});
   const migratedProfile = isMigrated(complianceProfile?.metadata ?? null);
   const totalRequired = complianceProfile?.total_required_count ?? items.filter((item) => item.is_required).length;
   const approvedRequired = complianceProfile?.approved_count ?? items.filter((item) => item.is_required && item.status === "approved").length;
@@ -170,10 +285,10 @@ export default async function MsmeCompliancePage() {
   const overallStatus = complianceProfile?.overall_status ?? (items.length ? "not_started" : "not_started");
 
   const summaryCards = [
-    { label: "Compliance score", value: `${score}%`, detail: migratedProfile ? "Recalculated from migrated Phase 1 items" : "Calculated from active compliance items" },
+    { label: "Compliance score", value: `${score}%`, detail: "Calculated from active compliance requirements" },
     { label: "Approved required", value: `${approvedRequired} / ${totalRequired}`, detail: "Required requirements approved" },
     { label: "Needs attention", value: String((complianceProfile?.changes_requested_count ?? 0) + (complianceProfile?.rejected_count ?? 0) + (complianceProfile?.expired_count ?? 0)), detail: "Changes, rejected, or expired items" },
-    { label: "Next deadline", value: complianceProfile?.next_deadline_at ? formatDate(complianceProfile.next_deadline_at) : "Not set", detail: "Expiry engine is deferred from Phase 1" },
+    { label: "Next deadline", value: complianceProfile?.next_deadline_at ? formatDate(complianceProfile.next_deadline_at) : "Not set", detail: "Next known document or permit expiry" },
   ];
 
   return (
@@ -181,7 +296,7 @@ export default async function MsmeCompliancePage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Compliance</h1>
-          <p className="mt-1 text-sm text-slate-600">Phase 1 compliance foundation: regulator requirements, statuses, and migration audit trail.</p>
+          <p className="mt-1 text-sm text-slate-600">Compliance requirements, private evidence uploads, and audit trail.</p>
         </div>
         <Link href="/dashboard/msme/id-card" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800">
           View Business Identity Credential
@@ -195,12 +310,12 @@ export default async function MsmeCompliancePage() {
             <p className="text-base font-semibold text-slate-900">Overall status: {formatStatus(overallStatus)}</p>
             <p className="mt-1 text-sm text-slate-700">
               {items.length
-                ? "These records come from the new compliance foundation tables. Migration-derived items are clearly marked until reviewed through future phases."
-                : "No Phase 1 compliance items exist for this MSME yet. They will appear after migration/backfill or future requirement generation."}
+                ? "Upload CAC, tax, permit, and certification evidence against each requirement. Baseline items are not approvals and still need review."
+                : "Your compliance checklist is being prepared. Once your required compliance items are available, you will be able to upload CAC, tax, permit, and certification evidence here."}
             </p>
             {migratedProfile ? (
               <p className="mt-2 inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-700">
-                Migrated/unreviewed: legacy scores were not treated as certified truth.
+                Existing records still need review before they count as approved.
               </p>
             ) : null}
           </div>
@@ -222,20 +337,30 @@ export default async function MsmeCompliancePage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">Regulatory Requirements</h2>
-              <p className="mt-1 text-sm text-slate-600">Phase 1 is read-only: evidence uploads, review actions, reminders, and expiry automation are intentionally deferred.</p>
+              <p className="mt-1 text-sm text-slate-600">Upload private evidence for each requirement so reviewers can assess your compliance status.</p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{items.length} items</span>
           </div>
 
           {items.length === 0 ? (
-            <p className="mt-6 rounded-xl border border-dashed bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No compliance requirements have been generated for this MSME.</p>
+            <div className="mt-6 rounded-xl border border-dashed bg-slate-50 px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-slate-700">Your compliance checklist is being prepared.</p>
+              <p className="mt-1 text-sm text-slate-500">Once your required compliance items are available, you will be able to upload CAC, tax, permit, and certification evidence here.</p>
+              {baselineGenerationFailed ? (
+                <form action={prepareComplianceChecklist} className="mt-4">
+                  <button type="submit" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800">
+                    Prepare Compliance Checklist
+                  </button>
+                </form>
+              ) : null}
+            </div>
           ) : (
             <ul className="mt-4 divide-y">
               {items.map((item) => {
                 const requirement = relationOne(item.compliance_requirement_definitions);
                 const regulator = requirement?.compliance_regulators;
-                const migrated = isMigrated(item.metadata ?? null, item.source);
                 const status = item.status ?? "not_started";
+                const itemDocuments = documentsByItem[item.id] ?? [];
 
                 return (
                   <li key={item.id} className="py-4">
@@ -245,16 +370,19 @@ export default async function MsmeCompliancePage() {
                         <div className="min-w-0">
                           <p className="font-medium text-slate-900">{requirement?.title ?? requirement?.code ?? "Compliance requirement"}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {regulator?.code ?? "REG"} • {requirement?.category?.replaceAll("_", " ") ?? "compliance"} • {item.is_required ? "Required" : "Optional"}
+                            {regulator?.name ?? regulator?.code ?? "Regulator"} • {item.is_required ? "Required" : "Optional"} • {reviewStatusLabel(status)}
                           </p>
                           {requirement?.description ? <p className="mt-1 text-sm text-slate-600">{requirement.description}</p> : null}
                           <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                            <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Evidence required</span>
+                            <span className="rounded bg-slate-100 px-2 py-1">{itemDocuments.length} document{itemDocuments.length === 1 ? "" : "s"}</span>
+                            <span className="rounded bg-slate-100 px-2 py-1">Private evidence</span>
                             {item.reference_number ? <span className="rounded bg-slate-100 px-2 py-1">Ref: {item.reference_number}</span> : null}
                             {item.approved_at ? <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">Approved {formatDate(item.approved_at)}</span> : null}
                             {item.rejected_at ? <span className="rounded bg-rose-50 px-2 py-1 text-rose-700">Rejected {formatDate(item.rejected_at)}</span> : null}
                             {item.expires_at ? <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Expires {formatDate(item.expires_at)}</span> : null}
-                            {migrated ? <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Migrated/unreviewed</span> : null}
                           </div>
+                          <ComplianceEvidencePanel complianceItemId={item.id} documents={itemDocuments} />
                         </div>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses[status] ?? "bg-slate-100 text-slate-700"}`}>{formatStatus(status)}</span>
@@ -270,7 +398,7 @@ export default async function MsmeCompliancePage() {
           <article className="rounded-2xl border bg-white p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><History className="h-5 w-5 text-slate-500" /> Recent compliance events</h2>
             {events.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No Phase 1 compliance events yet.</p>
+              <p className="mt-4 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No compliance activity has been recorded yet.</p>
             ) : (
               <ul className="mt-4 space-y-3">
                 {events.map((event) => (
@@ -287,8 +415,8 @@ export default async function MsmeCompliancePage() {
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 h-5 w-5 text-blue-600" />
               <div>
-                <h3 className="font-semibold text-slate-900">Phase 1 scope</h3>
-                <p className="mt-1 text-sm text-slate-600">This screen now reads the production foundation tables. Uploads, previews, reminders, notifications, expiry automation, and regulator actions are deferred to later phases.</p>
+                <h3 className="font-semibold text-slate-900">Private evidence scope</h3>
+                <p className="mt-1 text-sm text-slate-600">Uploaded files stay in a private bucket. Signed preview and download links are short-lived and created only after authorization checks.</p>
               </div>
             </div>
           </article>
