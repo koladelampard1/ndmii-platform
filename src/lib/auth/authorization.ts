@@ -76,12 +76,12 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
   assessment_officer: ["/dashboard/impact-intelligence"],
   field_officer: ["/dashboard/impact-intelligence"],
   auditor: ["/dashboard/impact-intelligence"],
-  nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
+  nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews"],
   msme: ["/dashboard/msme"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
   reviewer: ["/dashboard/reviews", "/dashboard/compliance"],
-  fccpc_officer: ["/dashboard/fccpc"],
-  firs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments"],
+  fccpc_officer: ["/dashboard/fccpc", "/dashboard/reviews"],
+  firs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews"],
 };
 
 export function isPublicPath(path: string): boolean {
@@ -323,11 +323,13 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   ],
   reviewer: [
     { href: "/dashboard/reviews", label: "Reviewer Workflow" },
+    { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/dashboard/compliance", label: "KYC Review" },
     { href: "/verify", label: "Public Verification" },
   ],
   fccpc_officer: [
     { href: "/dashboard/fccpc", label: "FCCPC Workspace" },
+    { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/verify", label: "Public Verification" },
   ],
   nrs_officer: [
@@ -335,6 +337,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
     { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
     { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
+    { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],
@@ -343,6 +346,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
     { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
     { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
+    { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
   ],

@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Lock, ShieldChe
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { ensureBaselineComplianceItemsForMsme } from "@/lib/data/msme-compliance-baseline";
+import { submitComplianceItemForReview } from "@/lib/data/compliance-reviews";
 import { ComplianceEvidencePanel, type ComplianceEvidenceListItem } from "./compliance-evidence-panel";
 
 type ComplianceProfile = {
@@ -61,10 +62,19 @@ type ComplianceEvent = {
   metadata?: Record<string, unknown> | null;
 };
 
+type ReviewComment = {
+  id: string;
+  compliance_item_id: string;
+  comment_body: string | null;
+  author_role: string | null;
+  created_at: string | null;
+};
+
 const statusLabel: Record<string, string> = {
   not_started: "Not started",
   draft: "Draft",
   submitted: "Submitted",
+  resubmitted: "Resubmitted",
   under_review: "Under review",
   changes_requested: "Changes requested",
   approved: "Approved",
@@ -81,6 +91,7 @@ const statusClasses: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
   waived: "bg-emerald-50 text-emerald-700",
   submitted: "bg-blue-100 text-blue-700",
+  resubmitted: "bg-blue-100 text-blue-700",
   under_review: "bg-blue-100 text-blue-700",
   changes_requested: "bg-amber-100 text-amber-700",
   not_started: "bg-slate-100 text-slate-700",
@@ -120,6 +131,7 @@ function reviewStatusLabel(status: string) {
   if (status === "approved") return "Reviewed and approved";
   if (status === "rejected") return "Reviewed with issues";
   if (status === "under_review") return "Under review";
+  if (status === "submitted" || status === "resubmitted") return "Awaiting reviewer action";
   return "Not yet reviewed";
 }
 
@@ -161,7 +173,29 @@ async function prepareComplianceChecklist() {
   redirect("/dashboard/msme/compliance");
 }
 
-export default async function MsmeCompliancePage() {
+async function submitComplianceReviewAction(formData: FormData) {
+  "use server";
+
+  const complianceItemId = String(formData.get("compliance_item_id") ?? "").trim();
+  const ctx = await getCurrentUserContext();
+  if (ctx.role !== "msme" || !ctx.linkedMsmeId) {
+    redirect("/access-denied");
+  }
+
+  try {
+    await submitComplianceItemForReview(ctx, complianceItemId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Compliance item could not be submitted.";
+    redirect(`/dashboard/msme/compliance?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/dashboard/msme/compliance");
+  revalidatePath("/dashboard/reviews/compliance");
+  redirect("/dashboard/msme/compliance?saved=submitted");
+}
+
+export default async function MsmeCompliancePage({ searchParams }: { searchParams?: Promise<{ saved?: string; error?: string }> }) {
+  const params = searchParams ? await searchParams : {};
   const ctx = await getCurrentUserContext();
 
   if (ctx.role !== "msme") {
@@ -182,7 +216,7 @@ export default async function MsmeCompliancePage() {
   const serviceSupabase = await createServiceRoleSupabaseClient();
   let baselineGenerationFailed = false;
 
-  let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }] = await Promise.all([
+  let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }, { data: commentRows }] = await Promise.all([
     serviceSupabase
       .from("msme_compliance_profiles")
       .select(
@@ -208,6 +242,12 @@ export default async function MsmeCompliancePage() {
       .eq("msme_id", ctx.linkedMsmeId)
       .eq("is_deleted", false)
       .order("uploaded_at", { ascending: false }),
+    serviceSupabase
+      .from("compliance_review_comments")
+      .select("id,compliance_item_id,comment_body,author_role,created_at")
+      .eq("msme_id", ctx.linkedMsmeId)
+      .eq("visibility", "msme_visible")
+      .order("created_at", { ascending: false }),
   ]);
 
   if ((itemRows ?? []).length === 0) {
@@ -220,7 +260,7 @@ export default async function MsmeCompliancePage() {
       });
       baselineGenerationFailed = !result.ok;
 
-      const [repairedProfile, repairedItems, repairedEvents, repairedDocuments] = await Promise.all([
+      const [repairedProfile, repairedItems, repairedEvents, repairedDocuments, repairedComments] = await Promise.all([
         serviceSupabase
           .from("msme_compliance_profiles")
           .select(
@@ -246,12 +286,19 @@ export default async function MsmeCompliancePage() {
           .eq("msme_id", ctx.linkedMsmeId)
           .eq("is_deleted", false)
           .order("uploaded_at", { ascending: false }),
+        serviceSupabase
+          .from("compliance_review_comments")
+          .select("id,compliance_item_id,comment_body,author_role,created_at")
+          .eq("msme_id", ctx.linkedMsmeId)
+          .eq("visibility", "msme_visible")
+          .order("created_at", { ascending: false }),
       ]);
 
       profile = repairedProfile.data;
       itemRows = repairedItems.data;
       eventRows = repairedEvents.data;
       documentRows = repairedDocuments.data;
+      commentRows = repairedComments.data;
       baselineGenerationFailed = baselineGenerationFailed || (repairedItems.data ?? []).length === 0;
     } catch (error) {
       const typedError = error as { code?: string; message?: string };
@@ -274,8 +321,13 @@ export default async function MsmeCompliancePage() {
   const items = ((itemRows ?? []) as ComplianceItem[]).sort((a, b) => itemSortValue(a).localeCompare(itemSortValue(b)));
   const events = (eventRows ?? []) as ComplianceEvent[];
   const documents = (documentRows ?? []) as ComplianceEvidenceListItem[];
+  const comments = (commentRows ?? []) as ReviewComment[];
   const documentsByItem = documents.reduce<Record<string, ComplianceEvidenceListItem[]>>((acc, document) => {
     acc[document.compliance_item_id] = [...(acc[document.compliance_item_id] ?? []), document];
+    return acc;
+  }, {});
+  const commentsByItem = comments.reduce<Record<string, ReviewComment[]>>((acc, comment) => {
+    acc[comment.compliance_item_id] = [...(acc[comment.compliance_item_id] ?? []), comment];
     return acc;
   }, {});
   const migratedProfile = isMigrated(complianceProfile?.metadata ?? null);
@@ -302,6 +354,9 @@ export default async function MsmeCompliancePage() {
           View Business Identity Credential
         </Link>
       </header>
+
+      {params?.saved ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Compliance review submission recorded.</p> : null}
+      {params?.error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{params.error}</p> : null}
 
       <section className={`rounded-2xl border p-5 ${overallStatus === "approved" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
         <div className="flex items-start gap-3">
@@ -361,6 +416,9 @@ export default async function MsmeCompliancePage() {
                 const regulator = requirement?.compliance_regulators;
                 const status = item.status ?? "not_started";
                 const itemDocuments = documentsByItem[item.id] ?? [];
+                const itemComments = commentsByItem[item.id] ?? [];
+                const canSubmit = ["not_started", "draft"].includes(status) && itemDocuments.length > 0;
+                const canResubmit = ["changes_requested", "rejected"].includes(status) && itemDocuments.length > 0;
 
                 return (
                   <li key={item.id} className="py-4">
@@ -383,6 +441,27 @@ export default async function MsmeCompliancePage() {
                             {item.expires_at ? <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Expires {formatDate(item.expires_at)}</span> : null}
                           </div>
                           <ComplianceEvidencePanel complianceItemId={item.id} documents={itemDocuments} />
+                          {itemComments.length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reviewer comments</p>
+                              {itemComments.map((comment) => (
+                                <div key={comment.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-slate-700">
+                                  <p>{comment.comment_body}</p>
+                                  <p className="mt-2 text-xs text-slate-500">{comment.author_role ?? "reviewer"} • {formatDateTime(comment.created_at)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {canSubmit || canResubmit ? (
+                            <form action={submitComplianceReviewAction} className="mt-3">
+                              <input type="hidden" name="compliance_item_id" value={item.id} />
+                              <button type="submit" className="inline-flex h-9 items-center justify-center rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-800">
+                                {canResubmit ? "Resubmit for review" : "Submit for review"}
+                              </button>
+                            </form>
+                          ) : status === "under_review" || status === "submitted" || status === "resubmitted" ? (
+                            <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">This requirement is with a reviewer.</p>
+                          ) : null}
                         </div>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses[status] ?? "bg-slate-100 text-slate-700"}`}>{formatStatus(status)}</span>

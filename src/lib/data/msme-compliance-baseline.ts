@@ -153,7 +153,7 @@ function deriveOverallStatus(items: ComplianceItemRow[]) {
   if (items.some((item) => item.status === "expired")) return "expired";
   if (items.some((item) => item.status === "rejected")) return "rejected";
   if (items.some((item) => item.status === "changes_requested")) return "changes_requested";
-  if (items.some((item) => item.status === "submitted" || item.status === "under_review")) return "under_review";
+  if (items.some((item) => item.status === "submitted" || item.status === "resubmitted" || item.status === "under_review")) return "under_review";
 
   const requiredItems = items.filter((item) => item.is_required);
   if (requiredItems.length > 0 && requiredItems.every((item) => item.status === "approved")) return "approved";
@@ -163,7 +163,7 @@ function deriveOverallStatus(items: ComplianceItemRow[]) {
 function deriveRiskLevel(items: ComplianceItemRow[]) {
   if (items.some((item) => item.status === "suspended" || item.status === "revoked" || item.status === "expired")) return "critical";
   if (items.some((item) => item.status === "rejected" || item.status === "changes_requested")) return "high";
-  if (items.some((item) => ["not_started", "draft", "submitted", "under_review"].includes(item.status ?? ""))) return "medium";
+  if (items.some((item) => ["not_started", "draft", "submitted", "resubmitted", "under_review"].includes(item.status ?? ""))) return "medium";
   return items.length > 0 ? "low" : "medium";
 }
 
@@ -275,7 +275,7 @@ async function recalculateComplianceProfile(serviceSupabase: SupabaseClient, msm
       risk_level: deriveRiskLevel(items),
       total_required_count: requiredItems.length,
       approved_count: items.filter((item) => item.status === "approved").length,
-      pending_count: items.filter((item) => ["not_started", "draft", "submitted"].includes(item.status ?? "")).length,
+      pending_count: items.filter((item) => ["not_started", "draft", "submitted", "resubmitted"].includes(item.status ?? "")).length,
       under_review_count: items.filter((item) => item.status === "under_review").length,
       changes_requested_count: items.filter((item) => item.status === "changes_requested").length,
       rejected_count: items.filter((item) => item.status === "rejected").length,
