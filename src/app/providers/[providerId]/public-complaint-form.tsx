@@ -23,7 +23,6 @@ export function PublicComplaintForm({
         event.preventDefault();
         setClientError(null);
         setIsSubmitting(true);
-        console.info("public-complaint submit path = api-route");
 
         try {
           const form = event.currentTarget;
@@ -43,11 +42,9 @@ export function PublicComplaintForm({
             throw new Error(result.message ?? "submit_failed");
           }
 
-          console.info("public-complaint submit success = api-route");
           router.push(result.redirectPath);
           router.refresh();
-        } catch (error) {
-          console.error("public-complaint submit failure = api-route", error);
+        } catch {
           setClientError("We could not submit your complaint right now. Please retry.");
         } finally {
           setIsSubmitting(false);
@@ -78,6 +75,7 @@ export function PublicComplaintForm({
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>
+        <option value="critical">Critical</option>
       </select>
       <input name="short_summary" placeholder="Short summary" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />
       <textarea name="description" placeholder="Describe the issue" className="min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" required />

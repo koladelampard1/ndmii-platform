@@ -9,6 +9,7 @@ export const COMPLAINT_STATUSES = [
   "under_review",
   "awaiting_msme_response",
   "awaiting_complainant_response",
+  "resolution_proposed",
   "association_follow_up",
   "regulator_review",
   "resolved",
@@ -18,6 +19,26 @@ export const COMPLAINT_STATUSES = [
 ] as const;
 
 export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
+
+type ComplaintAccessRecord = {
+  id?: string | null;
+  msme_id?: string | null;
+  provider_msme_id?: string | null;
+  provider_profile_id?: string | null;
+  provider_id?: string | null;
+  association_id?: string | null;
+};
+
+type MsmeComplaintWorkspace = {
+  msme: {
+    id: string;
+    msme_id?: string | null;
+  };
+  provider: {
+    id: string;
+    msme_id?: string | null;
+  };
+};
 
 type ComplaintScope = {
   role: UserRole;
@@ -63,7 +84,12 @@ export async function getComplaintScope(): Promise<ComplaintScope> {
 }
 
 export async function emitComplaintEvent(event: "complaint_submitted" | "complaint_responded" | "complaint_status_changed" | "complaint_assigned", payload: Record<string, unknown>) {
-  logComplaint(`event:${event}`, payload);
+  logComplaint(`event:${event}`, {
+    complaintId: payload.complaintId ?? null,
+    providerId: payload.providerId ?? payload.providerProfileId ?? null,
+    operation: event,
+    status: payload.status ?? payload.toStatus ?? null,
+  });
 }
 
 export async function createComplaintStatusHistory(params: {
@@ -90,10 +116,60 @@ export async function createComplaintStatusHistory(params: {
 export function canRoleUpdateStatus(role: UserRole, nextStatus: string) {
   if (![...COMPLAINT_STATUSES].includes(nextStatus as ComplaintStatus)) return false;
   if (role === "admin") return true;
-  if (role === "msme") return ["awaiting_complainant_response", "resolved"].includes(nextStatus);
+  if (role === "msme") return ["awaiting_complainant_response", "resolution_proposed"].includes(nextStatus);
   if (role === "association_officer") return ["association_follow_up", "escalated", "under_review"].includes(nextStatus);
   if (role === "fccpc_officer" || role === "reviewer") return ["regulator_review", "under_review", "resolved", "dismissed", "closed", "escalated"].includes(nextStatus);
   return false;
+}
+
+export function normalizeComplaintStatus(value: string | null | undefined): ComplaintStatus {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "open" || normalized === "new") return "submitted";
+  if ([...COMPLAINT_STATUSES].includes(normalized as ComplaintStatus)) return normalized as ComplaintStatus;
+  return "submitted";
+}
+
+export function canTransitionComplaintStatus(params: {
+  role: UserRole | string;
+  fromStatus?: string | null;
+  toStatus: string;
+}) {
+  const role = params.role as UserRole;
+  const toStatus = normalizeComplaintStatus(params.toStatus);
+
+  if (!canRoleUpdateStatus(role, toStatus)) return false;
+
+  if (role === "msme" && ["resolved", "closed", "dismissed"].includes(toStatus)) return false;
+  if (role === "association_officer" && ["resolved", "closed", "dismissed"].includes(toStatus)) return false;
+
+  return true;
+}
+
+export function buildMsmeComplaintOwnershipValues(workspace: MsmeComplaintWorkspace) {
+  return {
+    msmeIds: Array.from(new Set([workspace.msme.id, workspace.msme.msme_id, workspace.provider.msme_id].filter(Boolean) as string[])),
+    providerIds: Array.from(new Set([workspace.provider.id].filter(Boolean))),
+  };
+}
+
+export function buildMsmeComplaintOrFilter(workspace: MsmeComplaintWorkspace) {
+  const { msmeIds, providerIds } = buildMsmeComplaintOwnershipValues(workspace);
+  const clauses = [
+    ...msmeIds.flatMap((id) => [`msme_id.eq.${id}`, `provider_msme_id.eq.${id}`]),
+    ...providerIds.flatMap((id) => [`provider_profile_id.eq.${id}`, `provider_id.eq.${id}`]),
+  ];
+  return clauses.join(",");
+}
+
+export function canMsmeAccessComplaint(complaint: ComplaintAccessRecord | null | undefined, workspace: MsmeComplaintWorkspace) {
+  if (!complaint) return false;
+  const { msmeIds, providerIds } = buildMsmeComplaintOwnershipValues(workspace);
+  return Boolean(
+    (complaint.msme_id && msmeIds.includes(complaint.msme_id)) ||
+      (complaint.provider_msme_id && msmeIds.includes(complaint.provider_msme_id)) ||
+      (complaint.provider_profile_id && providerIds.includes(complaint.provider_profile_id)) ||
+      (complaint.provider_id && providerIds.includes(complaint.provider_id))
+  );
 }
 
 export async function assertComplaintAccess(complaint: any, scope: ComplaintScope) {
@@ -102,7 +178,10 @@ export async function assertComplaintAccess(complaint: any, scope: ComplaintScop
   if (role === "admin") return true;
 
   if (role === "msme") {
-    const allowed = scope.providerIds.includes(complaint.provider_profile_id);
+    const allowed =
+      Boolean(scope.linkedMsmeId && [complaint.msme_id, complaint.provider_msme_id].includes(scope.linkedMsmeId)) ||
+      scope.providerIds.includes(complaint.provider_profile_id) ||
+      scope.providerIds.includes(complaint.provider_id);
     logComplaint("ownership_check_msme", {
       complaintId: complaint.id,
       providerProfileId: complaint.provider_profile_id,

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "smoke:dbin": "node scripts/smoke-dbin.mjs"
+    "smoke:dbin": "node scripts/smoke-dbin.mjs",
+    "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",

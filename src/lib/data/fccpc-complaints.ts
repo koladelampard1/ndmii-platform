@@ -1,6 +1,7 @@
 export const FCCPC_STATUS_OPTIONS = [
   "submitted",
   "under_review",
+  "resolution_proposed",
   "regulator_review",
   "escalated",
   "resolved",
@@ -16,6 +17,7 @@ const LEGACY_TO_STATUS: Record<string, FccpcStatus> = {
   submitted: "submitted",
   investigating: "under_review",
   under_review: "under_review",
+  resolution_proposed: "resolution_proposed",
   regulator_review: "regulator_review",
   enforcement: "escalated",
   escalated: "escalated",

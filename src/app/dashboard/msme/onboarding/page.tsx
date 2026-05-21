@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { OnboardingWizard } from "@/components/msme/onboarding-wizard";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
+import { ensurePendingCredential } from "@/lib/data/credential-trust";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -44,7 +45,7 @@ async function saveOnboarding(formData: FormData) {
 
   const { data: existing } = await supabase
     .from("msmes")
-    .select("id,msme_id,passport_photo_url")
+    .select("id,msme_id,passport_photo_url,passport_photo_path")
     .eq("created_by", appUserId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -64,7 +65,8 @@ async function saveOnboarding(formData: FormData) {
     bvn: kycPayload.BVN,
     cac_number: kycPayload.CAC,
     tin: kycPayload.TIN,
-    passport_photo_url: String(formData.get("passport_photo_url") ?? "") || existing?.passport_photo_url || null,
+    passport_photo_path: String(formData.get("passport_photo_path") ?? "") || existing?.passport_photo_path || null,
+    passport_photo_url: null,
     association_id: String(formData.get("association_id") || "") || null,
     verification_status: intent === "submit" ? "pending_review" : "draft",
     review_status: intent === "submit" ? "pending_review" : "draft",
@@ -73,11 +75,11 @@ async function saveOnboarding(formData: FormData) {
 
   const generatedMsmeId = existing?.msme_id ?? generateMsmeId(state);
   const { data, error } = existing?.id
-    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id,passport_photo_url").single()
+    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id,passport_photo_url,passport_photo_path").single()
     : await supabase
         .from("msmes")
         .insert({ msme_id: generatedMsmeId, ...basePayload })
-        .select("id,msme_id,passport_photo_url")
+        .select("id,msme_id,passport_photo_url,passport_photo_path")
         .single();
 
   if (error || !data) {
@@ -142,26 +144,19 @@ async function saveOnboarding(formData: FormData) {
     const ndmiiId = existingId.startsWith("BIN-") || existingId.startsWith("NDMII-")
       ? existingId.replace(/^NDMII-/, "BIN-")
       : generatedMsmeId;
-    const verifyUrl = `https://bin.gov.ng/verify/${ndmiiId}`;
-    await supabase.from("digital_ids").upsert(
-      {
-        msme_id: data.id,
-        ndmii_id: ndmiiId,
-        issued_at: nowIso,
-        qr_code_ref: verifyUrl,
-        status: "active",
-        validation_snapshot: {
-          overall_status: overallStatus,
-          nin_status: ninStatus,
-          bvn_status: bvnStatus,
-          cac_status: cacStatus,
-          tin_status: tinStatus,
-          validated_at: nowIso,
-        },
-        updated_at: nowIso,
+    await ensurePendingCredential(supabase, {
+      msmeId: data.id,
+      ndmiiId,
+      actor: context,
+      validationSnapshot: {
+        overall_status: overallStatus,
+        nin_status: ninStatus,
+        bvn_status: bvnStatus,
+        cac_status: cacStatus,
+        tin_status: tinStatus,
+        validated_at: nowIso,
       },
-      { onConflict: "msme_id" }
-    );
+    });
     await supabase.from("msmes").update({ issued_at: nowIso }).eq("id", data.id);
   }
 

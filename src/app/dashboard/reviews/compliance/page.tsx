@@ -17,6 +17,7 @@ type SearchParams = {
   status?: string;
   msme?: string;
   date?: string;
+  deadline?: string;
   saved?: string;
   error?: string;
 };
@@ -33,6 +34,7 @@ type QueueItem = {
   regulator_id: string;
   status: string | null;
   submitted_at: string | null;
+  expires_at: string | null;
   updated_at: string | null;
   decision_reason: string | null;
   reviewer_user_id: string | null;
@@ -85,7 +87,7 @@ type EventRow = {
   created_at: string | null;
 };
 
-const reviewableStatuses = ["submitted", "resubmitted", "under_review", "changes_requested", "rejected", "approved"];
+const reviewableStatuses = ["submitted", "resubmitted", "under_review", "changes_requested", "rejected", "approved", "expiring_soon", "expired"];
 
 function relationOne<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -101,6 +103,20 @@ function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "Not available";
+  return new Date(value).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function lagosDateString() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function formatBytes(value: number) {
   if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.ceil(value / 1024))} KB`;
@@ -108,9 +124,10 @@ function formatBytes(value: number) {
 
 function statusClass(status: string | null | undefined) {
   if (status === "approved") return "bg-emerald-100 text-emerald-700";
+  if (status === "expiring_soon") return "bg-amber-100 text-amber-700";
   if (status === "under_review" || status === "submitted" || status === "resubmitted") return "bg-blue-100 text-blue-700";
   if (status === "changes_requested") return "bg-amber-100 text-amber-700";
-  if (status === "rejected") return "bg-rose-100 text-rose-700";
+  if (status === "rejected" || status === "expired") return "bg-rose-100 text-rose-700";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -193,14 +210,21 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
 
   let query = supabase
     .from("msme_compliance_items")
-    .select("id,msme_id,regulator_id,status,submitted_at,updated_at,decision_reason,reviewer_user_id,latest_review_id,msmes(id,msme_id,business_name,state,sector),compliance_regulators(id,code,name),compliance_requirement_definitions(code,title,category,description)")
+    .select("id,msme_id,regulator_id,status,submitted_at,expires_at,updated_at,decision_reason,reviewer_user_id,latest_review_id,msmes(id,msme_id,business_name,state,sector),compliance_regulators(id,code,name),compliance_requirement_definitions(code,title,category,description)")
     .in("status", reviewableStatuses)
     .order("updated_at", { ascending: false })
     .limit(100);
 
   if (selectedRegulator) query = query.eq("regulator_id", selectedRegulator.id);
-  if (params.status) query = query.eq("status", params.status);
+  if (params.status === "overdue") {
+    query = query.eq("status", "expired").lt("expires_at", lagosDateString());
+  } else if (params.status === "next_deadline") {
+    query = query.not("expires_at", "is", null).order("expires_at", { ascending: true });
+  } else if (params.status) {
+    query = query.eq("status", params.status);
+  }
   if (params.date) query = query.gte("updated_at", new Date(params.date).toISOString());
+  if (params.deadline) query = query.lte("expires_at", params.deadline);
 
   const { data: itemRows } = await query;
   const rows = ((itemRows ?? []) as QueueItem[]).filter((row) => {
@@ -247,6 +271,7 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
     ...(params.status ? { status: params.status } : {}),
     ...(params.msme ? { msme: params.msme } : {}),
     ...(params.date ? { date: params.date } : {}),
+    ...(params.deadline ? { deadline: params.deadline } : {}),
   }).toString()}`;
 
   return (
@@ -266,7 +291,7 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
       {params.saved ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Review action recorded: {formatStatus(params.saved)}.</p> : null}
       {params.error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{params.error}</p> : null}
 
-      <form className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-5">
+      <form className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-6">
         <select name="regulator" defaultValue={params.regulator ?? ""} className="rounded-md border px-3 py-2 text-sm">
           <option value="">All regulators</option>
           {regulators.map((regulator) => (
@@ -276,9 +301,12 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
         <select name="status" defaultValue={params.status ?? ""} className="rounded-md border px-3 py-2 text-sm">
           <option value="">All statuses</option>
           {reviewableStatuses.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}
+          <option value="overdue">Overdue</option>
+          <option value="next_deadline">Next deadline</option>
         </select>
         <input name="msme" defaultValue={params.msme ?? ""} placeholder="MSME name or ID" className="rounded-md border px-3 py-2 text-sm" />
         <input name="date" defaultValue={params.date ?? ""} type="date" className="rounded-md border px-3 py-2 text-sm" />
+        <input name="deadline" defaultValue={params.deadline ?? ""} type="date" title="Next deadline on or before" className="rounded-md border px-3 py-2 text-sm" />
         <Button type="submit">Apply filters</Button>
       </form>
 
@@ -303,6 +331,7 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
                   <th className="px-3 py-2">MSME</th>
                   <th className="px-3 py-2">Requirement</th>
                   <th className="px-3 py-2">Regulator</th>
+                  <th className="px-3 py-2">Next deadline</th>
                   <th className="px-3 py-2">Evidence</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Row action</th>
@@ -310,7 +339,7 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={7}>No compliance review items match the selected filters.</td></tr>
+                  <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={8}>No compliance review items match the selected filters.</td></tr>
                 ) : rows.map((row) => {
                   const regulator = relationOne(row.compliance_regulators);
                   const requirement = relationOne(row.compliance_requirement_definitions);
@@ -328,6 +357,11 @@ export default async function ComplianceReviewQueuePage({ searchParams }: { sear
                         <p className="text-xs text-slate-500">{requirement?.category ?? "requirement"}</p>
                       </td>
                       <td className="px-3 py-3">{regulator?.code ?? "REG"}</td>
+                      <td className="px-3 py-3">
+                        <p className="text-slate-700">{formatDate(row.expires_at)}</p>
+                        {row.status === "expiring_soon" ? <p className="mt-1 text-xs font-medium text-amber-700">Renewal window open</p> : null}
+                        {row.status === "expired" ? <p className="mt-1 text-xs font-medium text-rose-700">Overdue renewal</p> : null}
+                      </td>
                       <td className="px-3 py-3">{evidenceCount} active</td>
                       <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusClass(row.status)}`}>{formatStatus(row.status)}</span></td>
                       <td className="px-3 py-3">

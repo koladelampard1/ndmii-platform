@@ -29,6 +29,7 @@ type ComplaintRow = {
 
 type Props = {
   complaints: ComplaintRow[];
+  errorMessage?: string | null;
 };
 
 type DisplayStatus = "open" | "in_progress" | "resolved" | "escalated";
@@ -46,7 +47,7 @@ const ISSUE_FALLBACK = ["Service Quality", "Communication", "Delivery Time", "Pr
 
 function normalizeStatus(value: string | null): DisplayStatus {
   const status = String(value ?? "submitted").trim().toLowerCase();
-  if (["resolved", "closed", "dismissed", "awaiting_complainant_response"].includes(status)) return "resolved";
+  if (["resolved", "closed", "dismissed"].includes(status)) return "resolved";
   if (status === "escalated") return "escalated";
   if (["under_review", "awaiting_msme_response", "association_follow_up", "regulator_review"].includes(status)) return "in_progress";
   return "open";
@@ -110,7 +111,7 @@ function timeRangeMatch(dateValue: string | null, timeFilter: string) {
   return true;
 }
 
-export function MsmeComplaintsDashboard({ complaints }: Props) {
+export function MsmeComplaintsDashboard({ complaints, errorMessage = null }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | DisplayStatus>("all");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high">("all");
@@ -187,6 +188,12 @@ export function MsmeComplaintsDashboard({ complaints }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Provider Complaint Log</h1>
           <p className="mt-1 text-sm text-slate-600">Track complaints raised against your provider profile and respond to move cases forward.</p>
         </header>
+
+        {errorMessage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {errorMessage}
+          </div>
+        ) : null}
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
@@ -342,9 +349,11 @@ export function MsmeComplaintsDashboard({ complaints }: Props) {
 
             {filteredComplaints.length === 0 ? (
               <div className="mx-4 my-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-                <p className="text-lg font-semibold text-slate-900">No complaints yet</p>
+                <p className="text-lg font-semibold text-slate-900">{errorMessage ? "Complaint queue unavailable" : "No complaints yet"}</p>
                 <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">
-                  When customers submit complaints about your services, they will appear here for review and response.
+                  {errorMessage
+                    ? "Please retry later or contact support if this persists."
+                    : "When customers submit complaints about your services, they will appear here for review and response."}
                 </p>
               </div>
             ) : null}

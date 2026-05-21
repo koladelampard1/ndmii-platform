@@ -238,7 +238,9 @@ export default async function LandingPage() {
                 <h3 className="line-clamp-2 text-sm font-semibold">{provider.business_name}</h3>
                 <p className="text-xs text-slate-600">{provider.lga ? `${provider.lga}, ` : ""}{provider.state}</p>
                 <p className="text-xs text-slate-600">{provider.category}</p>
-                <p className="inline-flex items-center gap-1 text-xs font-medium text-amber-600"><Star className="h-3.5 w-3.5 fill-current" /> {provider.avg_rating.toFixed(1)}</p>
+                <p className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                  <Star className="h-3.5 w-3.5 fill-current" /> {provider.review_count > 0 ? provider.avg_rating.toFixed(1) : "No reviews yet"}
+                </p>
                 <Link href={`/providers/${provider.public_slug}`} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
                   View profile <ArrowRight className="h-4 w-4" />
                 </Link>

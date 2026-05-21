@@ -64,8 +64,14 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
 
       <div className="mt-3 flex items-center gap-1 text-sm text-slate-700">
         <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-        <span className="font-semibold">{provider.avg_rating ? provider.avg_rating.toFixed(1) : "—"}</span>
-        <span className="text-slate-500">({provider.review_count} reviews)</span>
+        {provider.review_count > 0 ? (
+          <>
+            <span className="font-semibold">{provider.avg_rating.toFixed(1)}</span>
+            <span className="text-slate-500">({provider.review_count} reviews)</span>
+          </>
+        ) : (
+          <span className="font-semibold text-slate-500">No reviews yet</span>
+        )}
       </div>
 
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">

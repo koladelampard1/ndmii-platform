@@ -1,7 +1,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { createComplaintStatusHistory, emitComplaintEvent } from "@/lib/data/complaints";
+import {
+  canMsmeAccessComplaint,
+  canTransitionComplaintStatus,
+  createComplaintStatusHistory,
+  emitComplaintEvent,
+  normalizeComplaintStatus,
+} from "@/lib/data/complaints";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
@@ -17,22 +23,11 @@ async function msmeComplaintAction(formData: FormData) {
 
   const { data: complaint } = await supabase
     .from("complaints")
-    .select("id,status,provider_profile_id,msme_id")
+    .select("id,status,provider_profile_id,provider_id,provider_msme_id,msme_id")
     .eq("id", complaintId)
     .maybeSingle();
 
-  const ownsComplaint = Boolean(
-    (complaint?.msme_id && complaint.msme_id === workspace.msme.id) ||
-      (complaint?.provider_profile_id && complaint.provider_profile_id === workspace.provider.id)
-  );
-  console.info("[complaints] msme_workspace_ownership_check", {
-    complaintId,
-    complaintMsmeId: complaint?.msme_id ?? null,
-    workspaceMsmeId: workspace.msme.id,
-    providerProfileId: complaint?.provider_profile_id ?? null,
-    workspaceProviderId: workspace.provider.id,
-    ownsComplaint,
-  });
+  const ownsComplaint = canMsmeAccessComplaint(complaint, workspace);
 
   if (!complaint || !ownsComplaint) {
     redirect("/access-denied");
@@ -46,20 +41,29 @@ async function msmeComplaintAction(formData: FormData) {
         complaint_id: complaintId,
         author_user_id: ctx.appUserId,
         author_role: ctx.role,
+        created_by_role: ctx.role,
         message,
         message_type: "response",
         visibility: "shared",
         attachment_url: attachmentUrl,
       });
-      console.info("[complaints] response_insertion_event", { complaintId, hasAttachment: Boolean(attachmentUrl) });
+      await createComplaintStatusHistory({
+        complaintId,
+        fromStatus: normalizeComplaintStatus(complaint.status),
+        toStatus: normalizeComplaintStatus(complaint.status),
+        changedByUserId: ctx.appUserId,
+        changedByRole: ctx.role,
+        note: "MSME response posted.",
+        metadata: { action: "response_posted", has_attachment: Boolean(attachmentUrl) },
+      });
       await emitComplaintEvent("complaint_responded", { complaintId, authorRole: ctx.role });
     }
   }
 
   if (kind === "status") {
-    const nextStatus = String(formData.get("status") ?? "").trim();
-    if (["awaiting_complainant_response", "resolved"].includes(nextStatus)) {
-      await supabase.from("complaints").update({ status: nextStatus, resolved_at: nextStatus === "resolved" ? new Date().toISOString() : null }).eq("id", complaintId);
+    const nextStatus = normalizeComplaintStatus(String(formData.get("status") ?? "").trim());
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: complaint.status, toStatus: nextStatus })) {
+      await supabase.from("complaints").update({ status: nextStatus }).eq("id", complaintId);
       await createComplaintStatusHistory({
         complaintId,
         fromStatus: complaint.status,
@@ -68,7 +72,6 @@ async function msmeComplaintAction(formData: FormData) {
         changedByRole: ctx.role,
         note: "MSME status update",
       });
-      console.info("[complaints] status_change_event", { complaintId, from: complaint.status, to: nextStatus, actorRole: ctx.role });
       await emitComplaintEvent("complaint_status_changed", { complaintId, fromStatus: complaint.status, toStatus: nextStatus, actorRole: ctx.role });
     }
   }
@@ -90,14 +93,25 @@ export default async function MsmeComplaintDetailPage({
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServiceRoleSupabaseClient();
 
-  const { data: complaint } = await supabase
+  const { data: complaint, error: complaintError } = await supabase
     .from("complaints")
     .select("*")
     .eq("id", complaintId)
-    .eq("msme_id", workspace.msme.id)
     .maybeSingle();
 
-  if (!complaint) return <section className="rounded-xl border bg-white p-6">Complaint not found for this provider workspace.</section>;
+  if (complaintError) {
+    console.error("[complaints][detail_load_failed]", {
+      complaintId,
+      operation: "load_msme_complaint_detail",
+      status: "error",
+      error: complaintError.message,
+    });
+    return <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-800">Complaint details could not be loaded right now.</section>;
+  }
+
+  if (!complaint || !canMsmeAccessComplaint(complaint, workspace)) {
+    return <section className="rounded-xl border bg-white p-6">Complaint not found for this provider workspace.</section>;
+  }
 
   const [{ data: messages }, { data: history }] = await Promise.all([
     supabase.from("complaint_messages").select("*").eq("complaint_id", complaintId).eq("visibility", "shared").order("created_at", { ascending: true }),
@@ -142,8 +156,8 @@ export default async function MsmeComplaintDetailPage({
           <input type="hidden" name="kind" value="status" />
           <input type="hidden" name="complaint_id" value={complaint.id} />
           <select name="status" className="rounded border px-2 py-2 text-sm">
+            <option value="resolution_proposed">Resolution proposed</option>
             <option value="awaiting_complainant_response">Awaiting complainant response</option>
-            <option value="resolved">Resolved</option>
           </select>
           <button className="rounded bg-indigo-700 px-3 py-2 text-sm text-white">Update status</button>
         </form>

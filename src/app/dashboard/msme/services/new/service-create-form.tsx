@@ -86,12 +86,12 @@ export function ServiceCreateForm({ categories, createAction }: ServiceCreateFor
       {showPriceRange ? (
         <>
           <div className="space-y-1.5">
-            <label htmlFor="price_min" className="text-sm font-medium text-slate-700">
+            <label htmlFor="min_price" className="text-sm font-medium text-slate-700">
               Minimum price (₦)
             </label>
             <input
-              id="price_min"
-              name="price_min"
+              id="min_price"
+              name="min_price"
               type="number"
               min={0}
               step="0.01"
@@ -101,12 +101,12 @@ export function ServiceCreateForm({ categories, createAction }: ServiceCreateFor
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="price_max" className="text-sm font-medium text-slate-700">
+            <label htmlFor="max_price" className="text-sm font-medium text-slate-700">
               Maximum price (₦)
             </label>
             <input
-              id="price_max"
-              name="price_max"
+              id="max_price"
+              name="max_price"
               type="number"
               min={0}
               step="0.01"
@@ -118,12 +118,43 @@ export function ServiceCreateForm({ categories, createAction }: ServiceCreateFor
         </>
       ) : (
         <>
-          <input type="hidden" name="price_min" value="" />
-          <input type="hidden" name="price_max" value="" />
+          <input type="hidden" name="min_price" value="" />
+          <input type="hidden" name="max_price" value="" />
         </>
       )}
 
-      <input type="hidden" name="is_active" value="true" />
+      <div className="space-y-1.5">
+        <label htmlFor="turnaround_days" className="text-sm font-medium text-slate-700">
+          Turnaround days (optional)
+        </label>
+        <input
+          id="turnaround_days"
+          name="turnaround_days"
+          type="number"
+          min={0}
+          step={1}
+          placeholder="7"
+          className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm shadow-sm"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="availability_status" className="text-sm font-medium text-slate-700">
+          Availability
+        </label>
+        <select id="availability_status" name="availability_status" defaultValue="available" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm">
+          <option value="available">Available</option>
+          <option value="limited">Limited</option>
+          <option value="unavailable">Unavailable</option>
+        </select>
+      </div>
+
+      <input type="hidden" name="currency" value="NGN" />
+
+      <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm md:col-span-2">
+        <input type="checkbox" name="vat_applicable" value="true" className="h-4 w-4 rounded border-slate-300" />
+        VAT applies to this service
+      </label>
 
       <div className="flex items-end justify-end md:col-span-2">
         <button className="inline-flex h-11 items-center rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800">

@@ -3,7 +3,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { logActivity } from "@/lib/data/operations";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { createComplaintStatusHistory } from "@/lib/data/complaints";
+import { canTransitionComplaintStatus, createComplaintStatusHistory } from "@/lib/data/complaints";
 import { fccpcStatusLabel, normalizeFccpcStatus } from "@/lib/data/fccpc-complaints";
 
 type ComplaintRecord = {
@@ -84,6 +84,9 @@ async function enforcementAction(formData: FormData) {
 
   if (kind === "suspend") {
     await supabase.from("msmes").update({ suspended: true, verification_status: "suspended", enforcement_note: note || "Suspended by FCCPC" }).eq("id", msmeId);
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: currentStatus, toStatus: "escalated" })) {
+      await supabase.from("complaints").update({ status: "escalated" }).eq("id", complaintId);
+    }
     await createComplaintStatusHistory({
       complaintId,
       fromStatus: currentStatus,
@@ -98,6 +101,9 @@ async function enforcementAction(formData: FormData) {
 
   if (kind === "reinstate") {
     await supabase.from("msmes").update({ suspended: false, flagged: false, verification_status: "verified", enforcement_note: note || "Reinstated by FCCPC" }).eq("id", msmeId);
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: currentStatus, toStatus: "under_review" })) {
+      await supabase.from("complaints").update({ status: "under_review" }).eq("id", complaintId);
+    }
     await createComplaintStatusHistory({
       complaintId,
       fromStatus: currentStatus,
@@ -111,17 +117,19 @@ async function enforcementAction(formData: FormData) {
   }
 
   if (kind === "close") {
-    await supabase.from("complaints").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", complaintId);
-    await createComplaintStatusHistory({
-      complaintId,
-      fromStatus: currentStatus,
-      toStatus: "closed",
-      changedByUserId: ctx.appUserId,
-      changedByRole: ctx.role,
-      note: note || "Complaint closed by FCCPC.",
-      metadata: { action: kind },
-    });
-    await logActivity("fccpc_close_complaint", "complaint", complaintId, { note });
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: currentStatus, toStatus: "closed" })) {
+      await supabase.from("complaints").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", complaintId);
+      await createComplaintStatusHistory({
+        complaintId,
+        fromStatus: currentStatus,
+        toStatus: "closed",
+        changedByUserId: ctx.appUserId,
+        changedByRole: ctx.role,
+        note: note || "Complaint closed by FCCPC.",
+        metadata: { action: kind },
+      });
+      await logActivity("fccpc_close_complaint", "complaint", complaintId, { note });
+    }
   }
 
   redirect(`/dashboard/fccpc/${complaintId}?saved=1`);

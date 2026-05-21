@@ -23,6 +23,7 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
   const [step, setStep] = useState(0);
   const [passportPreview, setPassportPreview] = useState(initialPassportPhotoUrl ?? "");
   const [passportPhotoUrl, setPassportPhotoUrl] = useState(initialPassportPhotoUrl ?? "");
+  const [passportPhotoPath, setPassportPhotoPath] = useState("");
   const [passportError, setPassportError] = useState("");
   const [isUploadingPassport, setIsUploadingPassport] = useState(false);
   const progress = useMemo(() => Math.round(((step + 1) / steps.length) * 100), [step]);
@@ -49,6 +50,7 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
 
     if (!validationResult.ok) {
       setPassportPhotoUrl("");
+      setPassportPhotoPath("");
       setPassportPreview("");
       setPassportError(validationResult.message);
       return;
@@ -71,14 +73,17 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         setPassportPhotoUrl("");
+        setPassportPhotoPath("");
         setPassportError(String(payload?.error ?? "Failed to upload passport photo. Please try again."));
         return;
       }
 
       setPassportPhotoUrl(String(payload.publicUrl ?? ""));
+      setPassportPhotoPath(String(payload.uploadPath ?? ""));
       setPassportError("");
     } catch {
       setPassportPhotoUrl("");
+      setPassportPhotoPath("");
       setPassportError("Failed to upload passport photo. Please check your connection and retry.");
     } finally {
       setIsUploadingPassport(false);
@@ -89,6 +94,7 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
     <form action={onSave} className="space-y-6 rounded-xl border bg-white p-6 shadow-sm">
       <input type="hidden" name="currentStep" value={steps[step]} />
       <input type="hidden" name="passport_photo_url" value={passportPhotoUrl} />
+      <input type="hidden" name="passport_photo_path" value={passportPhotoPath} />
 
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">MSME onboarding wizard</p>

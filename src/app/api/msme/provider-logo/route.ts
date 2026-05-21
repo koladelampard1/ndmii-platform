@@ -1,11 +1,17 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import { sanitizeProviderLogoFileName, validateProviderLogoFile } from "@/lib/msme/provider-logo-upload";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const PROVIDER_LOGO_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_PROVIDER_LOGO_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_PORTFOLIO_BUCKET || "provider-gallery";
+const DEBUG_LOGO_UPLOAD = process.env.NODE_ENV !== "production" && process.env.DBIN_DEBUG_LOGS === "1";
+
+function debugLogoLog(message: string, payload: Record<string, unknown>) {
+  if (!DEBUG_LOGO_UPLOAD) return;
+  console.info(`[msme-settings][logo-upload] ${message}`, payload);
+}
 
 function toErrorLog(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -27,10 +33,7 @@ export async function POST(request: Request) {
   const corsHeaders = getCredentialedCorsHeaders(request, ["POST", "OPTIONS"]);
 
   try {
-    const context = await getCurrentUserContext();
-    if (!context.appUserId || !["msme", "admin"].includes(context.role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
-    }
+    const workspace = await getProviderWorkspaceContext();
 
     const formData = await request.formData();
     const file = formData.get("logo_file");
@@ -45,48 +48,22 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createServiceRoleSupabaseClient();
-
-    let msmeQuery = supabase
-      .from("msmes")
-      .select("id,msme_id")
-      .eq("created_by", context.appUserId)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    let { data: msmeRow, error: msmeLookupError } = await msmeQuery.maybeSingle();
-
-    if (!msmeRow?.msme_id && context.linkedMsmeId) {
-      msmeQuery = supabase
-        .from("msmes")
-        .select("id,msme_id")
-        .or(`id.eq.${context.linkedMsmeId},msme_id.eq.${context.linkedMsmeId}`)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const linkedMsmeLookup = await msmeQuery.maybeSingle();
-      msmeRow = linkedMsmeLookup.data;
-      msmeLookupError = linkedMsmeLookup.error;
-    }
-
-    if (msmeLookupError || !msmeRow?.msme_id) {
-      console.error("[msme-settings][logo-upload][msme-lookup-failed]", {
-        appUserId: context.appUserId,
-        linkedMsmeId: context.linkedMsmeId,
-        error: toErrorLog(msmeLookupError),
-      });
-      return NextResponse.json({ error: "Could not resolve your MSME profile for logo upload." }, { status: 400, headers: corsHeaders });
-    }
-
-    const { data: providerRow, error: providerLookupError } = await supabase
+    const { data: providerRows, error: providerLookupError } = await supabase
       .from("provider_profiles")
       .select("id,msme_id")
-      .eq("msme_id", msmeRow.msme_id)
+      .or(`id.eq.${workspace.provider.id},msme_id.eq.${workspace.msme.id}`)
       .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
+
+    const providerRow = (providerRows ?? []).find((row) => {
+      const msmeRef = String(row.msme_id ?? "");
+      return row.id === workspace.provider.id || msmeRef === workspace.msme.id;
+    });
 
     if (providerLookupError || !providerRow?.id) {
       console.error("[msme-settings][logo-upload][provider-lookup-failed]", {
-        appUserId: context.appUserId,
-        msmePublicId: msmeRow.msme_id,
+        providerProfileResolved: Boolean(workspace.provider.id),
+        rowCount: providerRows?.length ?? 0,
         error: toErrorLog(providerLookupError),
       });
       return NextResponse.json({ error: "Could not resolve your provider profile for logo upload." }, { status: 400, headers: corsHeaders });
@@ -95,13 +72,9 @@ export async function POST(request: Request) {
     const safeName = sanitizeProviderLogoFileName(file.name);
     const storagePath = `${providerRow.msme_id}/${providerRow.id}/logo-${Date.now()}-${safeName}`;
 
-    console.info("[msme-settings][logo-upload][start]", {
-      appUserId: context.appUserId,
+    debugLogoLog("start", {
       providerProfileId: providerRow.id,
-      msmePublicId: providerRow.msme_id,
       bucket: PROVIDER_LOGO_BUCKET,
-      storagePath,
-      fileName: file.name,
       bytes: file.size,
       mimeType: file.type || null,
     });
@@ -113,11 +86,8 @@ export async function POST(request: Request) {
 
     if (uploadError) {
       console.error("[msme-settings][logo-upload][upload-failed]", {
-        appUserId: context.appUserId,
         providerProfileId: providerRow.id,
-        msmePublicId: providerRow.msme_id,
         bucket: PROVIDER_LOGO_BUCKET,
-        storagePath,
         error: toErrorLog(uploadError),
       });
       return NextResponse.json({ error: "Failed to upload logo image to storage." }, { status: 500, headers: corsHeaders });
@@ -126,24 +96,16 @@ export async function POST(request: Request) {
     const { data: publicUrlData } = supabase.storage.from(PROVIDER_LOGO_BUCKET).getPublicUrl(storagePath);
     const logoUrl = publicUrlData.publicUrl;
 
-    console.info("[msme-settings][logo-upload][upload-success]", {
-      appUserId: context.appUserId,
+    debugLogoLog("upload-success", {
       providerProfileId: providerRow.id,
-      msmePublicId: providerRow.msme_id,
       bucket: PROVIDER_LOGO_BUCKET,
-      storagePath,
-      logoUrl,
     });
 
     const payload = {
       logo_url: logoUrl,
     };
 
-    console.log("[msme-settings][logo-upload][provider-profile-update-payload]", {
-      table: "provider_profiles",
-      lookup: { id: providerRow.id, msme_id: providerRow.msme_id },
-      payload,
-    });
+    debugLogoLog("provider-profile-update", { table: "provider_profiles", providerProfileId: providerRow.id, payloadKeyCount: Object.keys(payload).length });
 
     const { data: persistedRows, error: persistError } = await supabase
       .from("provider_profiles")
@@ -154,20 +116,14 @@ export async function POST(request: Request) {
 
     if (persistError || !persistedRows?.length) {
       console.error("[msme-settings][logo-upload][persist-failed]", {
-        appUserId: context.appUserId,
         providerProfileId: providerRow.id,
-        msmePublicId: providerRow.msme_id,
-        logoUrl,
         error: toErrorLog(persistError ?? "no_rows_updated"),
       });
       return NextResponse.json({ error: "Logo upload succeeded, but profile save failed. Please retry." }, { status: 500, headers: corsHeaders });
     }
 
-    console.info("[msme-settings][logo-upload][persist-success]", {
-      appUserId: context.appUserId,
+    debugLogoLog("persist-success", {
       providerProfileId: providerRow.id,
-      msmePublicId: providerRow.msme_id,
-      logoUrl,
     });
 
     revalidatePath("/dashboard/msme/settings");
@@ -177,10 +133,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         logoUrl,
-        bucket: PROVIDER_LOGO_BUCKET,
-        storagePath,
         providerProfileId: providerRow.id,
-        msmePublicId: providerRow.msme_id,
       },
       { headers: corsHeaders },
     );

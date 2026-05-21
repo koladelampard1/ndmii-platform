@@ -19,7 +19,7 @@ import {
 import { logActivity } from "@/lib/data/operations";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { createComplaintStatusHistory } from "@/lib/data/complaints";
+import { canTransitionComplaintStatus, createComplaintStatusHistory } from "@/lib/data/complaints";
 import { FCCPC_STATUS_OPTIONS, fccpcStatusLabel, normalizeFccpcStatus } from "@/lib/data/fccpc-complaints";
 
 type ComplaintQueueRow = {
@@ -158,7 +158,7 @@ async function fetchComplaintQueue(role: string, params: Record<string, string |
     queryError,
   });
 
-  return { queue, querySource };
+  return { queue, querySource, queryError };
 }
 
 async function complaintAction(formData: FormData) {
@@ -189,17 +189,23 @@ async function complaintAction(formData: FormData) {
     const { data: currentRow } = await supabase.from("complaints").select("status").eq("id", complaintId).maybeSingle();
     const status = normalizeFccpcStatus(String(formData.get("status") ?? "submitted"));
     const currentStatus = normalizeFccpcStatus(currentRow?.status ?? null);
-    await supabase.from("complaints").update({ status, closed_at: status === "closed" ? new Date().toISOString() : null }).eq("id", complaintId);
-    await createComplaintStatusHistory({
-      complaintId,
-      fromStatus: currentStatus,
-      toStatus: status,
-      changedByUserId: ctx.appUserId,
-      changedByRole: ctx.role,
-      note: "FCCPC status updated from queue.",
-      metadata: { action: "status_update" },
-    });
-    await logActivity("fccpc_update_status", "complaint", complaintId, { status });
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: currentStatus, toStatus: status })) {
+      await supabase.from("complaints").update({
+        status,
+        closed_at: status === "closed" ? new Date().toISOString() : null,
+        resolved_at: status === "resolved" ? new Date().toISOString() : null,
+      }).eq("id", complaintId);
+      await createComplaintStatusHistory({
+        complaintId,
+        fromStatus: currentStatus,
+        toStatus: status,
+        changedByUserId: ctx.appUserId,
+        changedByRole: ctx.role,
+        note: "FCCPC status updated from queue.",
+        metadata: { action: "status_update" },
+      });
+      await logActivity("fccpc_update_status", "complaint", complaintId, { status });
+    }
   }
 
   redirect("/dashboard/fccpc?saved=1");
@@ -220,7 +226,7 @@ export default async function FccpcPage({
     .eq("role", "fccpc_officer");
   const officers = (officerData ?? []) as OfficerRow[];
 
-  const { queue: complaints, querySource } = await fetchComplaintQueue(ctx.role, params);
+  const { queue: complaints, querySource, queryError } = await fetchComplaintQueue(ctx.role, params);
   const providerIds = (complaints ?? []).map((item) => item.provider_profile_id ?? item.provider_id).filter(Boolean);
   const { data: providerRows } = await supabase
     .from("provider_profiles")
@@ -272,6 +278,11 @@ export default async function FccpcPage({
 
       {params.saved && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Complaint action saved successfully.</p>
+      )}
+      {queryError && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Complaint queue could not be fully loaded. Please retry later.
+        </p>
       )}
 
       <div className="grid min-w-0 gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -386,10 +397,10 @@ export default async function FccpcPage({
             <p className="text-xs text-slate-500">Regulatory case-management queue</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">
+            <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-400">
               <ArrowUpRight className="h-4 w-4" /> Export
             </button>
-            <button type="button" className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white">
+            <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-300 px-3 py-2 text-sm font-medium text-white">
               <ShieldCheck className="h-4 w-4" /> Bulk Actions
             </button>
           </div>

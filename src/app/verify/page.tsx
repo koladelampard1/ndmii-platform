@@ -3,7 +3,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { searchPublicVerificationRecords } from "@/lib/data/public-verification";
 
 const trustChips = [
-  "Instant QR verification",
+  "Signed QR verification",
   "Independent business registry",
   "Built for partners and institutions",
 ];
@@ -64,7 +64,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
             <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-950/80 to-slate-900/70 p-5">
               <p className="text-sm text-emerald-100/90">Digital Business Identity Network (DBIN)</p>
               <p className="mt-2 text-lg font-semibold text-white">Credential ready for verification</p>
-              <p className="mt-3 text-sm text-emerald-100/80">Use Business ID, MSME ID, DBIN ID, or Business Name.</p>
+              <p className="mt-3 text-sm text-emerald-100/80">Use a business name or credential ID to find active public credentials.</p>
             </div>
           </div>
         </div>
@@ -82,7 +82,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Verify Business ID</p>
                 <h2 className="mt-1 text-2xl font-semibold text-slate-900">Look up a business identity</h2>
-                <p className="mt-1 text-sm text-slate-600">Label: Business ID, MSME ID, DBIN ID, or Business Name</p>
+                <p className="mt-1 text-sm text-slate-600">Label: active credential ID or business name</p>
               </div>
             </div>
 
@@ -90,7 +90,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
               <input
                 name="q"
                 defaultValue={params.q}
-                placeholder="Enter Business ID, MSME ID, or business name"
+                placeholder="Enter credential ID or business name"
                 className="h-12 rounded-xl border border-slate-300 px-4 text-slate-900 outline-none ring-emerald-500 transition focus:ring-2"
               />
               <button className="h-12 rounded-xl bg-emerald-700 px-6 font-medium text-white transition hover:bg-emerald-600">Verify Credential</button>
@@ -160,12 +160,9 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
                     </dl>
 
                     <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                      <Link href={`/verify/${encodeURIComponent(row.route_id)}`} className="font-medium text-emerald-700 hover:text-emerald-600">
-                        View verification result →
-                      </Link>
-                      {row.qr_code_ref ? (
-                        <Link href={row.qr_code_ref} className="font-medium text-emerald-700 hover:text-emerald-600">
-                          QR verification link
+                      {row.verify_path ? (
+                        <Link href={row.verify_path} className="font-medium text-emerald-700 hover:text-emerald-600">
+                          View secure verification result →
                         </Link>
                       ) : null}
                     </div>

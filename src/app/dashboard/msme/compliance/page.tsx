@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck } from "lucide-react";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { ensureBaselineComplianceItemsForMsme } from "@/lib/data/msme-compliance-baseline";
@@ -70,6 +70,15 @@ type ReviewComment = {
   created_at: string | null;
 };
 
+type ComplianceReminder = {
+  id: string;
+  compliance_item_id: string;
+  reminder_type: string | null;
+  scheduled_for: string | null;
+  status: string | null;
+  sent_at: string | null;
+};
+
 const statusLabel: Record<string, string> = {
   not_started: "Not started",
   draft: "Draft",
@@ -129,6 +138,8 @@ function isMigrated(metadata: Record<string, unknown> | null | undefined, source
 
 function reviewStatusLabel(status: string) {
   if (status === "approved") return "Reviewed and approved";
+  if (status === "expiring_soon") return "Approved, renewal window open";
+  if (status === "expired") return "Expired, renewal required";
   if (status === "rejected") return "Reviewed with issues";
   if (status === "under_review") return "Under review";
   if (status === "submitted" || status === "resubmitted") return "Awaiting reviewer action";
@@ -216,7 +227,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
   const serviceSupabase = await createServiceRoleSupabaseClient();
   let baselineGenerationFailed = false;
 
-  let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }, { data: commentRows }] = await Promise.all([
+  let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }, { data: commentRows }, { data: reminderRows }] = await Promise.all([
     serviceSupabase
       .from("msme_compliance_profiles")
       .select(
@@ -248,6 +259,12 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
       .eq("msme_id", ctx.linkedMsmeId)
       .eq("visibility", "msme_visible")
       .order("created_at", { ascending: false }),
+    serviceSupabase
+      .from("compliance_reminders")
+      .select("id,compliance_item_id,reminder_type,scheduled_for,status,sent_at")
+      .eq("msme_id", ctx.linkedMsmeId)
+      .order("scheduled_for", { ascending: true })
+      .limit(12),
   ]);
 
   if ((itemRows ?? []).length === 0) {
@@ -260,7 +277,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
       });
       baselineGenerationFailed = !result.ok;
 
-      const [repairedProfile, repairedItems, repairedEvents, repairedDocuments, repairedComments] = await Promise.all([
+      const [repairedProfile, repairedItems, repairedEvents, repairedDocuments, repairedComments, repairedReminders] = await Promise.all([
         serviceSupabase
           .from("msme_compliance_profiles")
           .select(
@@ -292,6 +309,12 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
           .eq("msme_id", ctx.linkedMsmeId)
           .eq("visibility", "msme_visible")
           .order("created_at", { ascending: false }),
+        serviceSupabase
+          .from("compliance_reminders")
+          .select("id,compliance_item_id,reminder_type,scheduled_for,status,sent_at")
+          .eq("msme_id", ctx.linkedMsmeId)
+          .order("scheduled_for", { ascending: true })
+          .limit(12),
       ]);
 
       profile = repairedProfile.data;
@@ -299,6 +322,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
       eventRows = repairedEvents.data;
       documentRows = repairedDocuments.data;
       commentRows = repairedComments.data;
+      reminderRows = repairedReminders.data;
       baselineGenerationFailed = baselineGenerationFailed || (repairedItems.data ?? []).length === 0;
     } catch (error) {
       const typedError = error as { code?: string; message?: string };
@@ -322,6 +346,7 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
   const events = (eventRows ?? []) as ComplianceEvent[];
   const documents = (documentRows ?? []) as ComplianceEvidenceListItem[];
   const comments = (commentRows ?? []) as ReviewComment[];
+  const reminders = (reminderRows ?? []) as ComplianceReminder[];
   const documentsByItem = documents.reduce<Record<string, ComplianceEvidenceListItem[]>>((acc, document) => {
     acc[document.compliance_item_id] = [...(acc[document.compliance_item_id] ?? []), document];
     return acc;
@@ -335,12 +360,22 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
   const approvedRequired = complianceProfile?.approved_count ?? items.filter((item) => item.is_required && item.status === "approved").length;
   const score = complianceProfile?.compliance_score ?? (totalRequired ? Math.round((approvedRequired / totalRequired) * 100) : 0);
   const overallStatus = complianceProfile?.overall_status ?? (items.length ? "not_started" : "not_started");
+  const expiringSoonCount = complianceProfile?.expiring_soon_count ?? items.filter((item) => item.status === "expiring_soon").length;
+  const expiredCount = complianceProfile?.expired_count ?? items.filter((item) => item.status === "expired").length;
+  const pendingReminderCount = reminders.filter((reminder) => reminder.status === "pending").length;
+  const sentReminderCount = reminders.filter((reminder) => reminder.status === "sent").length;
+  const upcomingComplianceDates = items
+    .filter((item) => item.expires_at && ["approved", "expiring_soon", "expired"].includes(item.status ?? ""))
+    .sort((a, b) => String(a.expires_at).localeCompare(String(b.expires_at)))
+    .slice(0, 5);
 
   const summaryCards = [
     { label: "Compliance score", value: `${score}%`, detail: "Calculated from active compliance requirements" },
     { label: "Approved required", value: `${approvedRequired} / ${totalRequired}`, detail: "Required requirements approved" },
-    { label: "Needs attention", value: String((complianceProfile?.changes_requested_count ?? 0) + (complianceProfile?.rejected_count ?? 0) + (complianceProfile?.expired_count ?? 0)), detail: "Changes, rejected, or expired items" },
+    { label: "Expiring soon", value: String(expiringSoonCount), detail: "Approved items inside their renewal window" },
+    { label: "Expired", value: String(expiredCount), detail: "Items requiring renewal before they count as compliant" },
     { label: "Next deadline", value: complianceProfile?.next_deadline_at ? formatDate(complianceProfile.next_deadline_at) : "Not set", detail: "Next known document or permit expiry" },
+    { label: "Reminders", value: `${pendingReminderCount} queued / ${sentReminderCount} sent`, detail: "In-app compliance reminder records" },
   ];
 
   return (
@@ -364,8 +399,12 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
           <div>
             <p className="text-base font-semibold text-slate-900">Overall status: {formatStatus(overallStatus)}</p>
             <p className="mt-1 text-sm text-slate-700">
-              {items.length
-                ? "Upload CAC, tax, permit, and certification evidence against each requirement. Baseline items are not approvals and still need review."
+              {expiredCount > 0
+                ? "Some approved evidence has expired. Upload renewed evidence and submit it for review to restore compliance."
+                : expiringSoonCount > 0
+                  ? "Some approved evidence is inside its renewal window. Start renewal before the deadline to avoid an expired status."
+                  : items.length
+                    ? "Upload CAC, tax, permit, and certification evidence against each requirement. Baseline items are not approvals and still need review."
                 : "Your compliance checklist is being prepared. Once your required compliance items are available, you will be able to upload CAC, tax, permit, and certification evidence here."}
             </p>
             {migratedProfile ? (
@@ -474,6 +513,50 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
         </article>
 
         <aside className="space-y-4">
+          <article className="rounded-2xl border bg-white p-5">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><CalendarDays className="h-5 w-5 text-emerald-700" /> Upcoming compliance dates</h2>
+            {upcomingComplianceDates.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No expiry dates are currently attached to approved compliance items.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {upcomingComplianceDates.map((item) => {
+                  const requirement = relationOne(item.compliance_requirement_definitions);
+                  const status = item.status ?? "not_started";
+                  return (
+                    <li key={item.id} className="rounded-lg border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-slate-900">{requirement?.title ?? requirement?.code ?? "Compliance item"}</p>
+                          <p className="mt-1 text-xs text-slate-500">Due {formatDate(item.expires_at)}</p>
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClasses[status] ?? "bg-slate-100 text-slate-700"}`}>{formatStatus(status)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </article>
+
+          <article className="rounded-2xl border bg-white p-5">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><Bell className="h-5 w-5 text-amber-600" /> Reminder queue</h2>
+            {reminders.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No reminder records have been scheduled yet.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {reminders.slice(0, 6).map((reminder) => (
+                  <li key={reminder.id} className="rounded-lg border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium capitalize text-slate-900">{reminder.reminder_type?.replaceAll("_", " ") ?? "Reminder"}</p>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold capitalize text-slate-700">{formatStatus(reminder.status)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Scheduled {formatDate(reminder.scheduled_for)}{reminder.sent_at ? ` • Sent ${formatDateTime(reminder.sent_at)}` : ""}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+
           <article className="rounded-2xl border bg-white p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><History className="h-5 w-5 text-slate-500" /> Recent compliance events</h2>
             {events.length === 0 ? (

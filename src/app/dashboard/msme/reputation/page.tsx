@@ -14,7 +14,66 @@ import {
 } from "lucide-react";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { getProviderWorkspaceContext, type ProviderWorkspaceContext } from "@/lib/data/provider-operations";
+
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
+
+type ReviewDiagnostics = {
+  providerId: string | null;
+  providerProfileId: string | null;
+  reviewCount: number;
+  operation: string;
+  error?: { code?: string | null; message?: string | null } | null;
+};
+
+function logReviewDiagnostic(payload: ReviewDiagnostics) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info("[reviews-integrity]", payload);
+}
+
+async function resolveWorkspaceProviderIds(supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>, workspace: ProviderWorkspaceContext | null) {
+  if (!workspace) return null;
+
+  const canonicalProviderId = workspace.provider.id;
+  const { data: canonicalProvider, error: canonicalError } = await supabase
+    .from("provider_profiles")
+    .select("id")
+    .eq("id", canonicalProviderId)
+    .maybeSingle();
+
+  if (canonicalProvider?.id) {
+    return [canonicalProvider.id as string];
+  }
+
+  logReviewDiagnostic({
+    providerId: canonicalProviderId,
+    providerProfileId: canonicalProviderId,
+    reviewCount: 0,
+    operation: "resolve_canonical_provider",
+    error: canonicalError ? { code: canonicalError.code ?? null, message: canonicalError.message ?? null } : null,
+  });
+
+  const fallbackRefs = Array.from(new Set([workspace.provider.msme_id, workspace.msme.id, workspace.msme.msme_id].filter(Boolean)));
+  if (!fallbackRefs.length) return [];
+
+  const { data: fallbackProviders, error: fallbackError } = await supabase
+    .from("provider_profiles")
+    .select("id")
+    .in("msme_id", fallbackRefs);
+
+  if (fallbackError) {
+    logReviewDiagnostic({
+      providerId: canonicalProviderId,
+      providerProfileId: canonicalProviderId,
+      reviewCount: 0,
+      operation: "resolve_legacy_provider_mapping",
+      error: { code: fallbackError.code ?? null, message: fallbackError.message ?? null },
+    });
+    return [];
+  }
+
+  return (fallbackProviders ?? []).map((row) => row.id as string);
+}
 
 async function submitReply(formData: FormData) {
   "use server";
@@ -34,14 +93,16 @@ async function submitReply(formData: FormData) {
   }
 
   const workspace = ctx.role === "msme" ? await getProviderWorkspaceContext() : null;
+  const ownedProviderIds = await resolveWorkspaceProviderIds(supabase, workspace);
 
-  let providerQuery = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
-  if (workspace) {
-    providerQuery = providerQuery.eq("msme_id", workspace.msme.msme_id);
-  }
-
-  const { data: provider } = await providerQuery.maybeSingle();
-  if (!provider) {
+  if (ownedProviderIds && !ownedProviderIds.includes(providerId)) {
+    logReviewDiagnostic({
+      providerId,
+      providerProfileId: workspace?.provider.id ?? null,
+      reviewCount: 0,
+      operation: "reply_provider_ownership_denied",
+      error: null,
+    });
     redirect("/access-denied");
   }
 
@@ -49,6 +110,7 @@ async function submitReply(formData: FormData) {
     .from("reviews")
     .select("id,provider_id")
     .eq("id", reviewId)
+    .in("provider_id", ownedProviderIds ?? [providerId])
     .maybeSingle();
 
   if (!review || review.provider_id !== providerId) {
@@ -67,6 +129,13 @@ async function submitReply(formData: FormData) {
     .eq("provider_id", providerId);
 
   if (error || !updatedRows?.length) {
+    logReviewDiagnostic({
+      providerId,
+      providerProfileId: workspace?.provider.id ?? providerId,
+      reviewCount: updatedRows?.length ?? 0,
+      operation: "reply_update_failed",
+      error: error ? { code: error.code ?? null, message: error.message ?? null } : null,
+    });
     redirect("/dashboard/msme/reviews?error=save_failed");
   }
 
@@ -95,13 +164,8 @@ async function updateProviderProfile(formData: FormData) {
   const workspace = ctx.role === "msme" ? await getProviderWorkspaceContext() : null;
 
   const supabase = await createServiceRoleSupabaseClient();
-  let query = supabase.from("provider_profiles").select("id").eq("id", providerId).limit(1);
-  if (workspace) {
-    query = query.eq("msme_id", workspace.msme.msme_id);
-  }
-
-  const { data: provider } = await query.maybeSingle();
-  if (!provider) {
+  const ownedProviderIds = await resolveWorkspaceProviderIds(supabase, workspace);
+  if (ownedProviderIds && !ownedProviderIds.includes(providerId)) {
     redirect("/dashboard/msme/reviews?error=ownership_scope");
   }
 
@@ -112,7 +176,8 @@ async function updateProviderProfile(formData: FormData) {
       tagline: shortDescription,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", providerId);
+    .eq("id", providerId)
+    .in("id", ownedProviderIds ?? [providerId]);
 
   if (error) {
     redirect("/dashboard/msme/reviews?error=save_failed");
@@ -146,27 +211,29 @@ export default async function MsmeReputationPage({
   const params = await searchParams;
   const supabase = await createServiceRoleSupabaseClient();
 
+  const ownedProviderIds = await resolveWorkspaceProviderIds(supabase, workspace);
+
   let providerQuery = supabase
     .from("provider_profiles")
     .select("id,display_name,tagline,description,public_slug,msme_id,msmes(msme_id,business_name,owner_name)")
     .order("updated_at", { ascending: false })
     .limit(5);
 
-  if (workspace) {
-    providerQuery = providerQuery.eq("msme_id", workspace.msme.msme_id);
+  if (ownedProviderIds) {
+    providerQuery = providerQuery.in("id", ownedProviderIds.length ? ownedProviderIds : [EMPTY_UUID]);
   }
 
   const { data: providers } = await providerQuery;
   const providerIds = (providers ?? []).map((row) => row.id);
   const { data: providerMetrics } = await supabase
     .from("marketplace_provider_search")
-    .select("provider_id,avg_rating,review_count,trust_score")
-    .in("provider_id", providerIds.length ? providerIds : ["00000000-0000-0000-0000-000000000000"]);
+    .select("provider_id,avg_rating,review_count,positive_reviews,trust_score")
+    .in("provider_id", providerIds.length ? providerIds : [EMPTY_UUID]);
 
   const { data: reviews } = await supabase
     .from("reviews")
-    .select("id,provider_id,reviewer_name,rating,review_title,review_body,provider_reply,created_at")
-    .in("provider_id", providerIds.length ? providerIds : ["00000000-0000-0000-0000-000000000000"])
+    .select("id,provider_id,reviewer_name,rating,review_title,review_body,provider_reply,created_at,publication_status")
+    .in("provider_id", providerIds.length ? providerIds : [EMPTY_UUID])
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -422,6 +489,9 @@ export default async function MsmeReputationPage({
                         }`}
                       >
                         {review.provider_reply?.trim() ? "Replied" : "Pending reply"}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium capitalize text-slate-700">
+                        {String(review.publication_status ?? "published")}
                       </span>
                     </div>
 

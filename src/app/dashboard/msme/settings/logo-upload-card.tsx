@@ -103,7 +103,7 @@ export function LogoUploadCard({ initialLogoUrl, onUploadSuccess }: Props) {
         disabled={isUploading}
       >
         {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {isUploading ? "Uploading…" : "Upload Business Logo / Profile Image"}
+        {isUploading ? "Uploading..." : "Upload Business Logo"}
       </button>
 
       <input type="hidden" name="logo_url" value={logoUrl} />

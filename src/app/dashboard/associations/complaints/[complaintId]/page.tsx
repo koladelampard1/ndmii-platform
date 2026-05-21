@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import { createComplaintStatusHistory, emitComplaintEvent } from "@/lib/data/complaints";
+import { canTransitionComplaintStatus, createComplaintStatusHistory, emitComplaintEvent, normalizeComplaintStatus } from "@/lib/data/complaints";
 
 async function associationComplaintAction(formData: FormData) {
   "use server";
@@ -20,13 +20,22 @@ async function associationComplaintAction(formData: FormData) {
   if (kind === "note") {
     const note = String(formData.get("note") ?? "").trim();
     if (note) {
-      await supabase.from("complaint_messages").insert({ complaint_id: complaintId, author_user_id: ctx.appUserId, author_role: ctx.role, message: note, message_type: "follow_up", visibility: "internal" });
+      await supabase.from("complaint_messages").insert({ complaint_id: complaintId, author_user_id: ctx.appUserId, author_role: ctx.role, created_by_role: ctx.role, message: note, message_type: "follow_up", visibility: "internal" });
+      await createComplaintStatusHistory({
+        complaintId,
+        fromStatus: normalizeComplaintStatus(complaint.status),
+        toStatus: normalizeComplaintStatus(complaint.status),
+        changedByUserId: ctx.appUserId,
+        changedByRole: ctx.role,
+        note: "Association internal note added.",
+        metadata: { action: "internal_note_added" },
+      });
     }
   }
 
   if (kind === "status") {
-    const status = String(formData.get("status") ?? "").trim();
-    if (["association_follow_up", "under_review", "escalated"].includes(status)) {
+    const status = normalizeComplaintStatus(String(formData.get("status") ?? "").trim());
+    if (canTransitionComplaintStatus({ role: ctx.role, fromStatus: complaint.status, toStatus: status })) {
       await supabase.from("complaints").update({ status }).eq("id", complaintId);
       await createComplaintStatusHistory({ complaintId, fromStatus: complaint.status, toStatus: status, changedByUserId: ctx.appUserId, changedByRole: ctx.role, note: "Association workflow update" });
       await emitComplaintEvent("complaint_status_changed", { complaintId, fromStatus: complaint.status, toStatus: status, actorRole: ctx.role });

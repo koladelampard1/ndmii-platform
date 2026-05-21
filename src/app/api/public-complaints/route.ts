@@ -19,6 +19,7 @@ const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+const ALLOWED_SEVERITIES = new Set(["low", "medium", "high", "critical"]);
 
 type ComplaintFormValidationResult =
   | {
@@ -137,8 +138,16 @@ function isEvidenceFileAllowed(file: File) {
   return false;
 }
 
+function safeComplaintLog(message: string, payload: Record<string, unknown>) {
+  console.info(`[complaint-submit] ${message}`, payload);
+}
+
+function safeComplaintError(message: string, payload: Record<string, unknown>) {
+  console.error(`[complaint-submit] ${message}`, payload);
+}
+
 function resolveSeverity(formData: FormData) {
-  const rawPriority = String(formData.get("priority") ?? formData.get("urgency") ?? "")
+  const rawPriority = String(formData.get("severity") ?? formData.get("priority") ?? formData.get("urgency") ?? "")
     .trim()
     .toLowerCase();
 
@@ -146,7 +155,11 @@ function resolveSeverity(formData: FormData) {
     return "medium";
   }
 
-  if (["critical", "high", "urgent"].includes(rawPriority)) {
+  if (rawPriority === "critical") {
+    return "critical";
+  }
+
+  if (["high", "urgent"].includes(rawPriority)) {
     return "high";
   }
 
@@ -159,6 +172,10 @@ function resolveSeverity(formData: FormData) {
   }
 
   return "medium";
+}
+
+function isSeverityAllowed(value: string) {
+  return ALLOWED_SEVERITIES.has(value);
 }
 
 function validateComplaintForm(formData: FormData): ComplaintFormValidationResult {
@@ -194,6 +211,16 @@ function validateComplaintForm(formData: FormData): ComplaintFormValidationResul
       ok: false,
       response: NextResponse.json(
         { ok: false, code: "missing_fields", message: "Please complete all required complaint fields." },
+        { status: 400 }
+      ),
+    };
+  }
+
+  if (!isSeverityAllowed(severity)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, code: "invalid_severity", message: "Complaint severity must be low, medium, high, or critical." },
         { status: 400 }
       ),
     };
@@ -283,28 +310,16 @@ export async function POST(request: Request) {
     summary,
     description,
     related_reference,
-    consent_confirmation,
     providerProfileId,
     providerMsmePublicId,
-    formProviderSlug,
     evidenceAttachment,
     severity,
   } = validation.fields;
 
-  console.info("[complaint-submit][payload]", {
-    providerPathSegment,
-    complainant_name,
-    complainant_email,
-    complainant_phone,
-    preferred_contact_method,
-    complaint_type,
-    summary,
-    description,
-    related_reference,
-    consent_confirmation,
-    hidden_provider_profile_id: providerProfileId,
-    hidden_provider_msme_public_id: providerMsmePublicId,
-    hidden_provider_slug: formProviderSlug,
+  safeComplaintLog("request_received", {
+    operation: "public_complaint_submit",
+    providerId: providerProfileId || null,
+    status: "received",
     hasEvidenceAttachment: evidenceAttachment instanceof File && evidenceAttachment.size > 0,
   });
 
@@ -315,13 +330,11 @@ export async function POST(request: Request) {
       providerRouteParam: providerPathSegment,
     });
 
-    console.info("[complaint-submit][provider_resolution]", {
-      providerPathSegment,
+    safeComplaintLog("provider_resolution", {
+      operation: "resolve_provider",
       found: Boolean(providerContext.provider),
-      providerProfile: providerContext.provider,
-      resolvedProviderProfileId: providerContext.provider_profile_id,
-      resolvedProviderMsmeId: providerContext.provider_profile_msme_id,
-      resolvedAssociationId: providerContext.association_id,
+      providerId: providerContext.provider_profile_id ?? null,
+      status: providerContext.provider_profile_id ? "resolved" : "not_found",
     });
 
     if (!providerContext.provider_profile_id) {
@@ -333,7 +346,6 @@ export async function POST(request: Request) {
 
     const resolvedProviderId = providerContext.provider_profile_id;
     const canonicalSlug = providerContext.provider?.public_slug ?? providerPathSegment;
-    const providerPublicSlug = providerContext.provider?.public_slug ?? formProviderSlug ?? providerPathSegment;
     const providerPublicMsmeId = providerMsmePublicId || providerContext.provider?.msme_id || null;
 
     let resolvedInternalMsmeUuid = UUID_PATTERN.test(providerContext.provider_profile_msme_id ?? "")
@@ -348,12 +360,11 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (providerProfileLookupError) {
-        console.error("[complaint-submit][provider_profile_lookup_error]", {
-          providerPathSegment,
-          resolvedProviderId,
+        safeComplaintError("provider_profile_lookup_error", {
+          operation: "resolve_provider_msme",
+          providerId: resolvedProviderId,
+          status: "error",
           message: providerProfileLookupError.message,
-          details: providerProfileLookupError.details,
-          hint: providerProfileLookupError.hint,
         });
       }
 
@@ -374,29 +385,47 @@ export async function POST(request: Request) {
           .maybeSingle();
 
         if (msmeResolveError) {
-          console.error("[complaint-submit][msme_resolution_error]", {
-            providerPathSegment,
-            providerPublicMsmeId,
+          safeComplaintError("msme_resolution_error", {
+            operation: "resolve_provider_msme",
+            providerId: resolvedProviderId,
+            status: "error",
             message: msmeResolveError.message,
-            details: msmeResolveError.details,
-            hint: msmeResolveError.hint,
           });
         }
         resolvedInternalMsmeUuid = resolvedMsme?.id ?? null;
       }
     }
 
-    console.info("[complaint-submit][resolved_identifiers]", {
-      providerPathSegment,
-      providerPublicSlug,
-      providerPublicMsmeId,
-      resolvedProviderId,
-      resolvedInternalMsmeUuid,
+    let resolvedAssociationId = providerContext.association_id ?? null;
+    if (!resolvedAssociationId && resolvedInternalMsmeUuid) {
+      const { data: msmeAssociation, error: associationLookupError } = await supabase
+        .from("msmes")
+        .select("association_id")
+        .eq("id", resolvedInternalMsmeUuid)
+        .maybeSingle();
+
+      if (associationLookupError) {
+        safeComplaintError("association_lookup_error", {
+          operation: "resolve_association",
+          providerId: resolvedProviderId,
+          status: "error",
+          message: associationLookupError.message,
+        });
+      }
+
+      resolvedAssociationId = msmeAssociation?.association_id ?? null;
+    }
+
+    safeComplaintLog("resolved_identifiers", {
+      operation: "resolve_complaint_linkage",
+      providerId: resolvedProviderId,
+      status: resolvedInternalMsmeUuid ? "resolved" : "missing_msme",
+      associationLinked: Boolean(resolvedAssociationId),
     });
 
     if (!resolvedInternalMsmeUuid || !UUID_PATTERN.test(resolvedInternalMsmeUuid)) {
       throw new Error(
-        `[complaint-submit] internal_msme_uuid_resolution_failed provider=${providerPathSegment} publicMsmeId=${providerPublicMsmeId ?? "n/a"}`
+        "[complaint-submit] internal_msme_uuid_resolution_failed"
       );
     }
 
@@ -412,6 +441,7 @@ export async function POST(request: Request) {
     const complaintInsertPayload = {
       msme_id: resolvedInternalMsmeUuid,
       provider_msme_id: resolvedInternalMsmeUuid,
+      association_id: resolvedAssociationId,
       provider_id: resolvedProviderId,
       provider_profile_id: resolvedProviderId,
       provider_business_name: providerContext.provider?.display_name ?? null,
@@ -433,13 +463,12 @@ export async function POST(request: Request) {
       reporter_name: complainant_name,
       reporter_email: complainant_email,
       related_reference: related_reference || null,
+      created_by_role: "public",
       created_at: new Date().toISOString(),
       status: normalizeFccpcStatus("submitted"),
     };
 
-    console.log("[complaint-submit][actual_insert_payload]", complaintInsertPayload);
     const postInsertSelectClause = "id,msme_id,association_id,status,complaint_type";
-    console.log("[complaint-submit][post_insert_select_clause]", postInsertSelectClause);
 
     const { data: complaintRow, error: complaintInsertError } = await supabase
       .from("complaints")
@@ -447,14 +476,15 @@ export async function POST(request: Request) {
       .select(postInsertSelectClause)
       .single();
 
-    console.info("[complaint-submit][insert_result]", {
+    safeComplaintLog("insert_result", {
+      operation: "insert_complaint",
+      providerId: resolvedProviderId,
+      status: complaintInsertError ? "error" : "created",
       ok: !complaintInsertError && Boolean(complaintRow),
       complaintId: complaintRow?.id ?? null,
       error: complaintInsertError
         ? {
             message: complaintInsertError.message,
-            details: complaintInsertError.details,
-            hint: complaintInsertError.hint,
           }
         : null,
     });
@@ -479,15 +509,13 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log("[complaint-submit][inserted_row_actual]", {
+    safeComplaintLog("inserted_row_linkage", {
+      operation: "insert_complaint",
       id: complaintRow?.id ?? null,
-      msme_id: complaintRow?.msme_id ?? null,
-      association_id: complaintRow?.association_id ?? null,
-    });
-
-    console.log("[complaint-submit][saved-record-linkage]", {
       complaintId: complaintRow.id,
-      savedMsmeId: complaintInsertPayload.msme_id,
+      providerId: resolvedProviderId,
+      status: complaintRow?.status ?? "created",
+      associationLinked: Boolean(complaintRow?.association_id),
     });
 
     if (evidenceAttachment instanceof File && evidenceAttachment.size > 0) {
@@ -500,14 +528,18 @@ export async function POST(request: Request) {
 
         const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(evidenceBucket);
         if (bucketLookupError) {
-          console.error("[complaint-submit][evidence_bucket_lookup_error]", {
+          safeComplaintError("evidence_bucket_lookup_error", {
+            operation: "upload_evidence",
+            complaintId: complaintRow.id,
+            providerId: resolvedProviderId,
+            status: "error",
             bucket: evidenceBucket,
             error: toStorageErrorLog(bucketLookupError),
           });
         }
 
         if (!existingBucket) {
-          const { data: createdBucket, error: createBucketError } = await supabase.storage.createBucket(evidenceBucket, {
+          const { error: createBucketError } = await supabase.storage.createBucket(evidenceBucket, {
             public: false,
             fileSizeLimit: `${MAX_EVIDENCE_FILE_BYTES}`,
             allowedMimeTypes: Array.from(ALLOWED_EVIDENCE_MIME_TYPES),
@@ -517,14 +549,20 @@ export async function POST(request: Request) {
             throw new Error(`[complaint-submit] evidence_bucket_prepare_failed: ${createBucketError.message}`);
           }
 
-          console.info("[complaint-submit][evidence_bucket_created]", {
+          safeComplaintLog("evidence_bucket_created", {
+            operation: "prepare_evidence_bucket",
+            complaintId: complaintRow.id,
+            providerId: resolvedProviderId,
+            status: "created",
             bucket: evidenceBucket,
-            id: createdBucket?.name ?? null,
           });
         } else {
-          console.info("[complaint-submit][evidence_bucket_ready]", {
+          safeComplaintLog("evidence_bucket_ready", {
+            operation: "prepare_evidence_bucket",
+            complaintId: complaintRow.id,
+            providerId: resolvedProviderId,
+            status: "ready",
             bucket: evidenceBucket,
-            id: existingBucket.name,
           });
         }
 
@@ -546,9 +584,12 @@ export async function POST(request: Request) {
         };
       } catch (evidenceError) {
         warningMessage = "Complaint saved, but evidence upload failed.";
-        console.error("[complaint-submit][evidence_non_blocking_error]", {
+        safeComplaintError("evidence_non_blocking_error", {
+          operation: "upload_evidence",
           complaintId: complaintRow.id,
-          error: evidenceError,
+          providerId: resolvedProviderId,
+          status: "error",
+          message: evidenceError instanceof Error ? evidenceError.message : "evidence_upload_failed",
         });
       }
     }
@@ -560,20 +601,18 @@ export async function POST(request: Request) {
         file_url: attachmentUrl,
         file_name: evidenceAttachmentRecord.originalName,
         visibility: "shared",
+        uploaded_by_role: "public",
       });
 
-      console.info("[complaint-submit][attachment_insert_result]", {
+      safeComplaintLog("attachment_insert_result", {
+        operation: "link_evidence_attachment",
         ok: !attachmentInsertError,
         complaintId: complaintRow.id,
-        attachmentUrl,
-        fileName: evidenceAttachmentRecord.originalName,
-        fileSizeBytes: evidenceAttachmentRecord.sizeBytes,
-        mimeType: evidenceAttachmentRecord.mimeType,
+        providerId: resolvedProviderId,
+        status: attachmentInsertError ? "error" : "linked",
         error: attachmentInsertError
           ? {
               message: attachmentInsertError.message,
-              details: attachmentInsertError.details,
-              hint: attachmentInsertError.hint,
             }
           : null,
       });
@@ -594,9 +633,11 @@ export async function POST(request: Request) {
       warning: warningMessage,
     });
   } catch (error) {
-    console.error("[complaint-submit][submit_pipeline_error]", {
-      providerPathSegment,
-      error,
+    safeComplaintError("submit_pipeline_error", {
+      operation: "public_complaint_submit",
+      providerId: null,
+      status: "error",
+      message: error instanceof Error ? error.message : "submit_failed",
     });
     return NextResponse.json(
       { ok: false, code: "submit_failed", message: "We could not submit your complaint right now. Please retry." },
