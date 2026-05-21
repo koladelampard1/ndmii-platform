@@ -306,7 +306,8 @@ export async function submitComplianceItemForReview(ctx: UserContext, compliance
       updated_at: new Date().toISOString(),
     })
     .eq("id", complianceItem.id)
-    .eq("msme_id", complianceItem.msme_id);
+    .eq("msme_id", complianceItem.msme_id)
+    .eq("status", currentStatus);
 
   if (updateError) throw updateError;
 
@@ -411,6 +412,17 @@ export async function performComplianceReviewAction(ctx: UserContext, params: {
 
   if (currentStatus !== "under_review" || !review || review.review_status !== "under_review") {
     throw new Error("Approve, reject, and changes requested actions require an under-review session.");
+  }
+
+  if (params.action === "approve") {
+    const { count: evidenceCount, error: evidenceError } = await supabase
+      .from("compliance_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("compliance_item_id", complianceItem.id)
+      .eq("msme_id", complianceItem.msme_id)
+      .eq("is_deleted", false);
+    if (evidenceError) throw evidenceError;
+    if ((evidenceCount ?? 0) === 0) throw new Error("Approval requires at least one active evidence document.");
   }
 
   const nextStatus = itemStatusForAction(params.action);

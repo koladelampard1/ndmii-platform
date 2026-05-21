@@ -99,6 +99,36 @@ export async function POST(request: Request) {
     const buffer = await file.arrayBuffer();
     const checksumSha256 = await computeSha256(buffer);
     const safeName = sanitizeComplianceEvidenceFileName(file.name);
+    const { data: duplicateDocument, error: duplicateLookupError } = await supabase
+      .from("compliance_documents")
+      .select("id")
+      .eq("msme_id", msmeId)
+      .eq("compliance_item_id", complianceItem.id)
+      .eq("checksum_sha256", checksumSha256)
+      .eq("is_deleted", false)
+      .limit(1)
+      .maybeSingle();
+
+    if (duplicateLookupError) {
+      const errorInfo = toSupabaseErrorInfo(duplicateLookupError);
+      logComplianceEvidenceDiagnostic({
+        operation: "duplicate_lookup_failed",
+        msmeId,
+        complianceItemId,
+        mimeType,
+        fileSize,
+        uploadSucceeded: false,
+        supabaseErrorCode: errorInfo.code,
+        supabaseErrorMessage: errorInfo.message,
+      });
+      return NextResponse.json({ ok: false, code: "duplicate_check_failed", error: "Evidence upload could not be checked for duplicates. Please retry." }, { status: 500, headers: corsHeaders });
+    }
+
+    if (duplicateDocument?.id) {
+      logComplianceEvidenceDiagnostic({ operation: "duplicate_upload_blocked", msmeId, complianceItemId, mimeType, fileSize, uploadSucceeded: false });
+      return NextResponse.json({ ok: false, code: "duplicate_evidence", error: "This evidence file is already attached to this requirement." }, { status: 409, headers: corsHeaders });
+    }
+
     storagePath = `${msmeId}/${complianceItemId}/${Date.now()}-${randomUUID()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage.from(COMPLIANCE_EVIDENCE_BUCKET).upload(storagePath, Buffer.from(buffer), {

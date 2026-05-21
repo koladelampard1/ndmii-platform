@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck, UploadCloud } from "lucide-react";
+import { ComplianceNotifications, type ComplianceNotification } from "@/components/compliance/compliance-notifications";
+import { ComplianceToastBridge } from "@/components/compliance/compliance-toast-bridge";
+import { SubmitButton } from "@/components/compliance/submit-button";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { ensureBaselineComplianceItemsForMsme } from "@/lib/data/msme-compliance-baseline";
@@ -146,6 +149,45 @@ function reviewStatusLabel(status: string) {
   return "Not yet reviewed";
 }
 
+function nextActionForStatus(status: string, evidenceCount: number) {
+  if (status === "approved") return "Keep evidence current until renewal.";
+  if (status === "expiring_soon") return "Upload renewed evidence before expiry.";
+  if (status === "expired") return "Upload renewed evidence and submit for review.";
+  if (status === "changes_requested") return evidenceCount > 0 ? "Review comments, upload corrections, then resubmit." : "Upload corrected evidence, then resubmit.";
+  if (status === "rejected") return "Replace rejected evidence and resubmit.";
+  if (["submitted", "resubmitted", "under_review"].includes(status)) return "Wait for reviewer decision.";
+  return evidenceCount > 0 ? "Submit this requirement for review." : "Upload required evidence.";
+}
+
+function requirementTiming(requirement: RequirementDefinition | null) {
+  const frequency = requirement?.frequency?.replaceAll("_", " ") || "annual";
+  const category = requirement?.category?.toLowerCase() ?? "";
+  const processingTime = category.includes("tax") || requirement?.code?.includes("TIN") ? "1-3 business days" : category.includes("permit") ? "3-7 business days" : "2-5 business days";
+  return {
+    processingTime,
+    expiryPeriod: frequency === "one time" ? "No routine expiry" : frequency,
+  };
+}
+
+function eventText(event: ComplianceEvent) {
+  if (event.summary) return event.summary;
+  if (event.event_type === "uploaded") return "Compliance evidence uploaded";
+  if (event.event_type === "changes_requested") return "Reviewer requested changes";
+  if (event.event_type?.includes("reminder")) return "Compliance reminder scheduled";
+  return formatStatus(event.to_status);
+}
+
+function dateGroupLabel(value: string | null) {
+  if (!value) return "No date";
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString("en-NG", { day: "2-digit", month: "long", year: "numeric" });
+}
+
 function itemSortValue(item: ComplianceItem) {
   const requirement = relationOne(item.compliance_requirement_definitions);
   if (item.is_required) return `0-${requirement?.code ?? item.id}`;
@@ -205,8 +247,7 @@ async function submitComplianceReviewAction(formData: FormData) {
   redirect("/dashboard/msme/compliance?saved=submitted");
 }
 
-export default async function MsmeCompliancePage({ searchParams }: { searchParams?: Promise<{ saved?: string; error?: string }> }) {
-  const params = searchParams ? await searchParams : {};
+export default async function MsmeCompliancePage() {
   const ctx = await getCurrentUserContext();
 
   if (ctx.role !== "msme") {
@@ -368,6 +409,52 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
     .filter((item) => item.expires_at && ["approved", "expiring_soon", "expired"].includes(item.status ?? ""))
     .sort((a, b) => String(a.expires_at).localeCompare(String(b.expires_at)))
     .slice(0, 5);
+  const eventsByDate = events.reduce<Record<string, ComplianceEvent[]>>((acc, event) => {
+    const label = dateGroupLabel(event.created_at);
+    acc[label] = [...(acc[label] ?? []), event];
+    return acc;
+  }, {});
+  const notifications: ComplianceNotification[] = [
+    ...items
+      .filter((item) => item.status === "changes_requested")
+      .map((item) => {
+        const requirement = relationOne(item.compliance_requirement_definitions);
+        return {
+          id: `changes-${item.id}`,
+          title: "Changes requested",
+          detail: `${requirement?.title ?? "Compliance item"} needs updated evidence.`,
+          href: "/dashboard/msme/compliance",
+          severity: "warning" as const,
+          createdAt: item.rejected_at ?? item.approved_at,
+        };
+      }),
+    ...items
+      .filter((item) => item.status === "rejected")
+      .map((item) => {
+        const requirement = relationOne(item.compliance_requirement_definitions);
+        return {
+          id: `rejected-${item.id}`,
+          title: "Evidence rejected",
+          detail: `${requirement?.title ?? "Compliance item"} was rejected. Replace the evidence and resubmit.`,
+          href: "/dashboard/msme/compliance",
+          severity: "danger" as const,
+          createdAt: item.rejected_at,
+        };
+      }),
+    ...items
+      .filter((item) => ["expiring_soon", "expired"].includes(item.status ?? ""))
+      .map((item) => {
+        const requirement = relationOne(item.compliance_requirement_definitions);
+        return {
+          id: `deadline-${item.id}`,
+          title: item.status === "expired" ? "Document expired" : "Document expiring soon",
+          detail: `${requirement?.title ?? "Compliance item"} deadline: ${formatDate(item.expires_at)}.`,
+          href: "/dashboard/msme/compliance",
+          severity: item.status === "expired" ? ("danger" as const) : ("warning" as const),
+          createdAt: item.expires_at,
+        };
+      }),
+  ];
 
   const summaryCards = [
     { label: "Compliance score", value: `${score}%`, detail: "Calculated from active compliance requirements" },
@@ -385,13 +472,14 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Compliance</h1>
           <p className="mt-1 text-sm text-slate-600">Compliance requirements, private evidence uploads, and audit trail.</p>
         </div>
-        <Link href="/dashboard/msme/id-card" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800">
-          View Business Identity Credential
-        </Link>
+        <div className="flex items-center gap-2">
+          <ComplianceNotifications notifications={notifications} scope={`msme-${ctx.linkedMsmeId}`} />
+          <Link href="/dashboard/msme/id-card" className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+            View Business Identity Credential
+          </Link>
+        </div>
       </header>
-
-      {params?.saved ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Compliance review submission recorded.</p> : null}
-      {params?.error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{params.error}</p> : null}
+      <ComplianceToastBridge />
 
       <section className={`rounded-2xl border p-5 ${overallStatus === "approved" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
         <div className="flex items-start gap-3">
@@ -438,7 +526,8 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
 
           {items.length === 0 ? (
             <div className="mt-6 rounded-xl border border-dashed bg-slate-50 px-4 py-8 text-center">
-              <p className="text-sm font-semibold text-slate-700">Your compliance checklist is being prepared.</p>
+              <UploadCloud className="mx-auto h-10 w-10 text-slate-300" />
+              <p className="mt-3 text-sm font-semibold text-slate-700">Your compliance checklist is being prepared.</p>
               <p className="mt-1 text-sm text-slate-500">Once your required compliance items are available, you will be able to upload CAC, tax, permit, and certification evidence here.</p>
               {baselineGenerationFailed ? (
                 <form action={prepareComplianceChecklist} className="mt-4">
@@ -470,6 +559,23 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
                             {regulator?.name ?? regulator?.code ?? "Regulator"} • {item.is_required ? "Required" : "Optional"} • {reviewStatusLabel(status)}
                           </p>
                           {requirement?.description ? <p className="mt-1 text-sm text-slate-600">{requirement.description}</p> : null}
+                          <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
+                            {(() => {
+                              const timing = requirementTiming(requirement);
+                              return [
+                                ["Document needed", requirement?.title ?? requirement?.code ?? "Compliance evidence"],
+                                ["Why it matters", requirement?.description ?? "Supports regulator verification and public trust signals."],
+                                ["Regulator", regulator?.name ?? regulator?.code ?? "Assigned regulator"],
+                                ["Processing time", timing.processingTime],
+                                ["Expiry period", timing.expiryPeriod],
+                              ].map(([label, value]) => (
+                                <div key={label}>
+                                  <p className="font-semibold text-slate-500">{label}</p>
+                                  <p className="mt-1 text-slate-800">{value}</p>
+                                </div>
+                              ));
+                            })()}
+                          </div>
                           <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                             <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Evidence required</span>
                             <span className="rounded bg-slate-100 px-2 py-1">{itemDocuments.length} document{itemDocuments.length === 1 ? "" : "s"}</span>
@@ -478,6 +584,8 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
                             {item.approved_at ? <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">Approved {formatDate(item.approved_at)}</span> : null}
                             {item.rejected_at ? <span className="rounded bg-rose-50 px-2 py-1 text-rose-700">Rejected {formatDate(item.rejected_at)}</span> : null}
                             {item.expires_at ? <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">Expires {formatDate(item.expires_at)}</span> : null}
+                            <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">Next action: {nextActionForStatus(status, itemDocuments.length)}</span>
+                            <span className="rounded bg-slate-100 px-2 py-1">Last reviewed: {formatDateTime(item.approved_at ?? item.rejected_at)}</span>
                           </div>
                           <ComplianceEvidencePanel complianceItemId={item.id} documents={itemDocuments} />
                           {itemComments.length > 0 ? (
@@ -494,9 +602,9 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
                           {canSubmit || canResubmit ? (
                             <form action={submitComplianceReviewAction} className="mt-3">
                               <input type="hidden" name="compliance_item_id" value={item.id} />
-                              <button type="submit" className="inline-flex h-9 items-center justify-center rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-800">
+                              <SubmitButton type="submit" pendingLabel="Submitting..." className="inline-flex h-9 items-center justify-center rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300">
                                 {canResubmit ? "Resubmit for review" : "Submit for review"}
-                              </button>
+                              </SubmitButton>
                             </form>
                           ) : status === "under_review" || status === "submitted" || status === "resubmitted" ? (
                             <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">This requirement is with a reviewer.</p>
@@ -563,10 +671,15 @@ export default async function MsmeCompliancePage({ searchParams }: { searchParam
               <p className="mt-4 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No compliance activity has been recorded yet.</p>
             ) : (
               <ul className="mt-4 space-y-3">
-                {events.map((event) => (
-                  <li key={event.id} className="rounded-lg border p-3 text-sm">
-                    <p className="font-medium text-slate-900">{event.summary ?? formatStatus(event.to_status)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{event.event_type?.replaceAll("_", " ")} • {event.actor_type ?? "system"} • {formatDateTime(event.created_at)}</p>
+                {Object.entries(eventsByDate).map(([label, groupedEvents]) => (
+                  <li key={label} className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                    {groupedEvents.map((event) => (
+                      <div key={event.id} className="rounded-lg border p-3 text-sm">
+                        <p className="font-medium text-slate-900">{eventText(event)}</p>
+                        <p className="mt-1 text-xs text-slate-500">{event.event_type?.replaceAll("_", " ")} • {event.actor_type ?? "system"} • {formatDateTime(event.created_at)}</p>
+                      </div>
+                    ))}
                   </li>
                 ))}
               </ul>

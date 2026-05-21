@@ -17,6 +17,7 @@ import {
   User,
   Users,
   Landmark,
+  ShieldCheck,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -81,6 +82,8 @@ export default async function MsmePage() {
     { data: quoteActivity },
     { data: reviewActivity },
     { data: invoiceActivity },
+    { data: complianceProfile },
+    { data: complianceItems },
     quoteCount,
   ] = await Promise.all([
     supabase.from("provider_services").select("id", { count: "exact", head: true }).eq("provider_id", workspace.provider.id),
@@ -97,6 +100,16 @@ export default async function MsmePage() {
     supabase.from("provider_quotes").select("id,created_at").eq("provider_profile_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
     supabase.from("reviews").select("id,created_at").eq("provider_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
     supabase.from("invoices").select("id,created_at,status").eq("provider_profile_id", workspace.provider.id).order("created_at", { ascending: false }).limit(1),
+    supabase
+      .from("msme_compliance_profiles")
+      .select("compliance_score,approved_count,pending_count,under_review_count,expired_count,next_deadline_at,last_recalculated_at")
+      .eq("msme_id", workspace.msme.id)
+      .maybeSingle(),
+    supabase
+      .from("msme_compliance_items")
+      .select("id,status,expires_at")
+      .eq("msme_id", workspace.msme.id)
+      .is("renewal_of", null),
     quoteCountPromise,
   ]);
 
@@ -162,6 +175,17 @@ export default async function MsmePage() {
   const hasPublicProfile = Boolean(workspace.provider.public_slug);
   const profileSearchable = hasPublicProfile && Boolean(workspace.provider.is_active ?? true);
   const improveVisibilityRoute = safeServiceCount === 0 ? "/dashboard/msme/services" : "/dashboard/msme/profile";
+  const complianceRows = (complianceItems ?? []) as Array<{ id: string; status: string | null; expires_at: string | null }>;
+  const approvedCompliance = complianceProfile?.approved_count ?? complianceRows.filter((item) => item.status === "approved").length;
+  const pendingCompliance =
+    (complianceProfile?.pending_count ?? 0) +
+    (complianceProfile?.under_review_count ?? 0) ||
+    complianceRows.filter((item) => ["not_started", "draft", "submitted", "resubmitted", "under_review"].includes(item.status ?? "")).length;
+  const overdueCompliance = complianceProfile?.expired_count ?? complianceRows.filter((item) => item.status === "expired" || (item.expires_at && new Date(item.expires_at).getTime() < Date.now())).length;
+  const upcomingDeadlines = complianceRows
+    .filter((item) => item.expires_at && ["approved", "expiring_soon", "expired"].includes(item.status ?? ""))
+    .sort((a, b) => String(a.expires_at).localeCompare(String(b.expires_at)))
+    .slice(0, 3);
 
   return (
     <section className="space-y-5">
@@ -289,6 +313,35 @@ export default async function MsmePage() {
                         <Icon className="h-5 w-5 text-emerald-700" />
                         <p className="text-sm font-semibold text-slate-800">{action.label}</p>
                       </Link>
+                    );
+                  })}
+                </div>
+              </article>
+
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold text-slate-900">Compliance Operations</h3>
+                  <Link href="/dashboard/msme/compliance" className="text-sm font-medium text-emerald-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+                    Open compliance
+                  </Link>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    { label: "Compliance Score", value: complianceProfile?.compliance_score != null ? `${complianceProfile.compliance_score}%` : "Not calculated", detail: complianceProfile?.last_recalculated_at ? `Updated ${formatDate(complianceProfile.last_recalculated_at)}` : "Trend starts after recalculation", tone: "text-emerald-700 bg-emerald-100", icon: ShieldCheck },
+                    { label: "Upcoming Deadlines", value: String(upcomingDeadlines.length), detail: upcomingDeadlines[0]?.expires_at ? `Next: ${formatDate(upcomingDeadlines[0].expires_at)}` : "No dated approved items", tone: "text-sky-700 bg-sky-100", icon: Bell },
+                    { label: "Overdue Count", value: String(overdueCompliance), detail: "Expired compliance items", tone: "text-rose-700 bg-rose-100", icon: XCircle },
+                    { label: "Approved vs Pending", value: `${approvedCompliance}/${pendingCompliance}`, detail: "Approved compared with pending or under review", tone: "text-amber-700 bg-amber-100", icon: CheckCircle2 },
+                  ].map((metric) => {
+                    const Icon = metric.icon;
+                    return (
+                      <div key={metric.label} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className={`inline-flex rounded-full p-2 ${metric.tone}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <p className="mt-3 text-2xl font-semibold text-slate-900">{metric.value}</p>
+                        <p className="text-sm text-slate-600">{metric.label}</p>
+                        <p className="mt-2 text-xs text-slate-500">{metric.detail}</p>
+                      </div>
                     );
                   })}
                 </div>
