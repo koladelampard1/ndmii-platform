@@ -12,8 +12,9 @@ type DashboardShellProps = {
 export function DashboardShell({ children, navbar, sidebar }: DashboardShellProps) {
   const pathname = usePathname();
   const isMsmeWorkspace = pathname.startsWith("/dashboard/msme");
+  const isComplianceReviewWorkspace = pathname.startsWith("/dashboard/reviews/compliance");
 
-  if (isMsmeWorkspace) {
+  if (isMsmeWorkspace || isComplianceReviewWorkspace) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
   }
 

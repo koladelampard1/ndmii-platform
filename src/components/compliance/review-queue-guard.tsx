@@ -4,17 +4,29 @@ import { useEffect, useState } from "react";
 
 export function ReviewQueueGuard({ formId }: { formId: string }) {
   const [selectedCount, setSelectedCount] = useState(0);
+  const [helperText, setHelperText] = useState("Select rows before using bulk actions.");
 
   useEffect(() => {
     const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) return;
 
     const update = () => {
-      const count = form.querySelectorAll<HTMLInputElement>('input[name="item_id"]:checked').length;
-      setSelectedCount(count);
+      const checked = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="item_id"]:checked'));
+      const count = checked.length;
       form.querySelectorAll<HTMLButtonElement>("[data-bulk-action]").forEach((button) => {
-        button.disabled = count === 0;
+        const allowedStatuses = (button.dataset.allowedStatuses ?? "").split(",").filter(Boolean);
+        const requiresEvidence = button.dataset.requiresEvidence === "true";
+        const hasInvalidStatus = allowedStatuses.length > 0 && checked.some((input) => !allowedStatuses.includes(input.dataset.status ?? ""));
+        const hasMissingEvidence = requiresEvidence && checked.some((input) => Number(input.dataset.evidenceCount ?? "0") < 1);
+        button.disabled = count === 0 || hasInvalidStatus || hasMissingEvidence;
       });
+      setSelectedCount(count);
+      if (count === 0) {
+        setHelperText("Select rows before using bulk actions.");
+      } else {
+        const statuses = Array.from(new Set(checked.map((input) => input.dataset.status ?? "unknown")));
+        setHelperText(`${count} selected. Bulk actions enable only when every selected item is in a valid status: ${statuses.join(", ")}.`);
+      }
     };
 
     const onSubmit = (event: SubmitEvent) => {
@@ -42,8 +54,9 @@ export function ReviewQueueGuard({ formId }: { formId: string }) {
   }, [formId]);
 
   return (
-    <p className="text-xs font-medium text-slate-600" aria-live="polite">
-      {selectedCount === 0 ? "Select rows before using bulk actions." : `${selectedCount} row${selectedCount === 1 ? "" : "s"} selected.`}
-    </p>
+    <div className="min-w-0" aria-live="polite">
+      <p className="text-sm font-bold text-slate-900">{selectedCount} selected</p>
+      <p className="mt-0.5 text-xs font-medium text-slate-500">{helperText}</p>
+    </div>
   );
 }
