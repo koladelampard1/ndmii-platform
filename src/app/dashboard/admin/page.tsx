@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
-import { normalizeComplaintStatus } from "@/lib/data/complaints";
+import { loadAdminWorkQueues, type AdminWorkQueues } from "@/lib/data/admin-work-queues";
 import Link from "next/link";
 
 function StatusPill({ children, tone = "slate" }: { children: React.ReactNode; tone?: "emerald" | "amber" | "rose" | "slate" }) {
@@ -44,6 +44,105 @@ function SummaryCard({
   );
 }
 
+function formatQueueDate(value: string | null | undefined) {
+  if (!value) return "Date not recorded";
+  return new Date(value).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatOldestAge(value: string | null | undefined) {
+  if (!value) return "No pending age";
+  const ageMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "New";
+  const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "Today";
+  if (days === 1) return "1 day";
+  return `${days} days`;
+}
+
+function labelText(value: string | null | undefined) {
+  return String(value ?? "unknown").replaceAll("_", " ");
+}
+
+function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "emerald" | "amber" | "rose" | "blue" | "slate" }) {
+  const tones = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-800",
+    rose: "bg-rose-50 text-rose-700",
+    blue: "bg-blue-50 text-blue-700",
+    slate: "bg-slate-100 text-slate-600",
+  };
+
+  return <span className={`rounded-full px-2 py-1 text-[11px] font-semibold capitalize ${tones[tone]}`}>{children}</span>;
+}
+
+function statusTone(value: string | null | undefined): "emerald" | "amber" | "rose" | "blue" | "slate" {
+  const normalized = String(value ?? "").toLowerCase();
+  if (["active", "approved", "resolved", "closed"].includes(normalized)) return "emerald";
+  if (["critical", "high", "suspended", "revoked", "rejected", "escalated"].includes(normalized)) return "rose";
+  if (["pending", "pending_review", "submitted", "resubmitted", "under_review", "medium"].includes(normalized)) return "amber";
+  if (["low", "open", "in_progress", "regulator_review"].includes(normalized)) return "blue";
+  return "slate";
+}
+
+function QueueCard<T>({
+  title,
+  emptyText,
+  queue,
+  href,
+  ctaLabel = "View queue",
+  unavailableCtaLabel = "Workspace pending",
+  renderRecord,
+}: {
+  title: string;
+  emptyText: string;
+  queue: { records: T[]; count: number; oldestAt: string | null; unavailable: boolean };
+  href?: string;
+  ctaLabel?: string;
+  unavailableCtaLabel?: string;
+  renderRecord: (record: T) => React.ReactNode;
+}) {
+  const hasLink = Boolean(href) && !queue.unavailable;
+
+  return (
+    <article className="flex min-h-[320px] flex-col rounded-xl border bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-950">{title}</h3>
+          <p className="mt-1 text-xs text-slate-500">Oldest: {formatOldestAge(queue.oldestAt)}</p>
+        </div>
+        <div className="rounded-lg bg-slate-950 px-3 py-2 text-right text-white">
+          <p className="text-xl font-semibold">{queue.count.toLocaleString()}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-300">items</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex-1 space-y-2">
+        {queue.unavailable ? (
+          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">Queue source unavailable.</p>
+        ) : queue.records.length ? (
+          queue.records.map((record, index) => (
+            <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              {renderRecord(record)}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">{emptyText}</p>
+        )}
+      </div>
+
+      {hasLink ? (
+        <Link href={href as string} className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+          {ctaLabel}
+        </Link>
+      ) : (
+        <span className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-slate-100 px-3 text-sm font-semibold text-slate-500">
+          {queue.unavailable ? "Source unavailable" : unavailableCtaLabel}
+        </span>
+      )}
+    </article>
+  );
+}
+
 export default async function DashboardPage() {
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "admin") {
@@ -62,34 +161,31 @@ export default async function DashboardPage() {
     currentPathname: "/dashboard/admin",
   });
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [
     { data: msmes },
     { data: complaints },
     { data: payments },
     { data: kyc },
     { data: associations },
-    { data: digitalCredentials },
-    { data: complianceReviews },
     { count: manufacturerCount },
     { count: riskAlerts },
+    workQueues,
   ] = await Promise.all([
-    supabase.from("msmes").select("id,state,sector,verification_status,review_status,suspended,flagged,created_at"),
+    supabase.from("msmes").select("id,state,sector,verification_status,review_status,suspended,created_at"),
     supabase.from("complaints").select("severity,status,created_at"),
     supabase.from("payments").select("amount,status,created_at"),
     supabase.from("compliance_profiles").select("msme_id,overall_status,created_at"),
     supabase.from("association_members").select("association_id"),
-    supabase.from("digital_identity_credentials").select("id,status,suspended_at,created_at"),
-    supabase.from("compliance_reviews").select("id,review_status,created_at"),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }).eq("counterfeit_risk_flag", true),
+    loadAdminWorkQueues(supabase),
   ]);
 
   const msmeRows = msmes ?? [];
   const totalMsmes = msmeRows.length;
   const verifiedMsmes = msmeRows.filter((row) => row.verification_status === "verified").length;
   const pendingReviews = msmeRows.filter((row) => ["pending_review", "submitted", "changes_requested"].includes(normalizeReviewStatus(row.verification_status, row.review_status))).length;
-  const flaggedMsmes = msmeRows.filter((row) => row.flagged).length;
   const suspendedMsmes = msmeRows.filter((row) => row.suspended).length;
 
   const complaintBySeverity = Object.entries((complaints ?? []).reduce<Record<string, number>>((acc, row) => {
@@ -101,13 +197,6 @@ export default async function DashboardPage() {
   const kycRows = kyc ?? [];
   const kycRate = kycRows.length ? Math.round((kycRows.filter((k) => k.overall_status === "verified").length / kycRows.length) * 100) : 0;
   const recordedPayments = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-  const credentialRows = digitalCredentials ?? [];
-  const pendingDigitalIdApprovals = credentialRows.filter((row) => row.status === "pending").length;
-  const suspendedCredentials = credentialRows.filter((row) => row.status === "suspended" || row.suspended_at).length;
-  const complianceReviewRows = complianceReviews ?? [];
-  const pendingComplianceReviews = complianceReviewRows.filter((row) => ["pending_review", "under_review"].includes(String(row.review_status ?? ""))).length;
-  const openComplaints = (complaints ?? []).filter((row) => !["resolved", "closed", "dismissed"].includes(normalizeComplaintStatus(row.status))).length;
-
   const topStates = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.state] = (acc[row.state] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const topSectors = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.sector] = (acc[row.sector] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const topAssociations = Object.entries((associations ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.association_id] = (acc[row.association_id] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
@@ -126,20 +215,120 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Operational Attention</h2>
-            <p className="mt-1 text-sm text-slate-600">Counts that may require review using existing platform records.</p>
+            <h2 className="text-lg font-semibold text-slate-950">Operational Work Queues</h2>
+            <p className="mt-1 text-sm text-slate-600">Actionable admin queues from current platform records. Empty states mean no matching records were returned.</p>
           </div>
-          <StatusPill tone="amber">Database-backed counts</StatusPill>
+          <StatusPill tone="amber">Service-role reads after admin validation</StatusPill>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-5">
-          <DashboardCard title="Pending digital ID approvals" value={pendingDigitalIdApprovals.toLocaleString()} href="/dashboard/admin/digital-ids" definition="Digital identity credentials currently in pending status." />
-          <DashboardCard title="Pending compliance reviews" value={pendingComplianceReviews.toLocaleString()} unavailable definition="Compliance review rows with pending_review or under_review status. Detail workspace is not available in the admin area yet." />
-          <DashboardCard title="Open complaints" value={openComplaints.toLocaleString()} unavailable definition="Complaint rows that are not resolved, closed, or dismissed. Admin complaint workspace is not available yet." />
-          <DashboardCard title="Flagged MSMEs" value={flaggedMsmes.toLocaleString()} unavailable definition="MSME records where the flagged field is true. A dedicated admin review workspace is not available yet." />
-          <DashboardCard title="Suspended credentials" value={suspendedCredentials.toLocaleString()} href="/dashboard/admin/digital-ids" definition="Digital identity credentials with suspended status or a suspended timestamp." />
+        <div className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+          <QueueCard
+            title="Pending Digital ID Approvals"
+            emptyText="No pending digital ID approvals"
+            queue={workQueues.pendingDigitalIdApprovals}
+            href="/dashboard/admin/digital-ids"
+            renderRecord={(record: AdminWorkQueues["pendingDigitalIdApprovals"]["records"][number]) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{record.businessName}</p>
+                    <p className="text-xs text-slate-500">{record.msmeId}</p>
+                  </div>
+                  <Badge tone={statusTone(record.credentialStatus)}>{labelText(record.credentialStatus)}</Badge>
+                </div>
+                <p className="text-xs text-slate-500">Submitted {formatQueueDate(record.submittedAt)}</p>
+              </div>
+            )}
+          />
+
+          <QueueCard
+            title="Pending Compliance Reviews"
+            emptyText="No compliance reviews awaiting action"
+            queue={workQueues.pendingComplianceReviews}
+            href="/dashboard/reviews/compliance"
+            renderRecord={(record: AdminWorkQueues["pendingComplianceReviews"]["records"][number]) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{record.businessName}</p>
+                    <p className="text-xs text-slate-500">{record.requirement}</p>
+                  </div>
+                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>{record.regulator}</span>
+                  <span>{record.evidenceCount} evidence file{record.evidenceCount === 1 ? "" : "s"}</span>
+                  <span>Submitted {formatQueueDate(record.submittedAt)}</span>
+                </div>
+              </div>
+            )}
+          />
+
+          <QueueCard
+            title="Open Complaints"
+            emptyText="No open complaints"
+            queue={workQueues.openComplaints}
+            href="/dashboard/fccpc"
+            renderRecord={(record: AdminWorkQueues["openComplaints"]["records"][number]) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{record.complaintReference}</p>
+                    <p className="text-xs text-slate-500">{record.businessName}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <Badge tone={statusTone(record.severity)}>{labelText(record.severity)}</Badge>
+                    <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                  <span>Submitted {formatQueueDate(record.submittedAt)}</span>
+                  <Link href={`/dashboard/fccpc/${record.id}`} className="font-semibold text-emerald-700 hover:underline">Open workspace</Link>
+                </div>
+              </div>
+            )}
+          />
+
+          <QueueCard
+            title="Flagged MSMEs"
+            emptyText="No flagged MSMEs"
+            queue={workQueues.flaggedMsmes}
+            unavailableCtaLabel="Workspace pending"
+            renderRecord={(record: AdminWorkQueues["flaggedMsmes"]["records"][number]) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{record.businessName}</p>
+                    <p className="text-xs text-slate-500">{record.msmeId}</p>
+                  </div>
+                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
+                </div>
+                <p className="text-xs text-slate-500">{record.reason}</p>
+              </div>
+            )}
+          />
+
+          <QueueCard
+            title="Suspended Credentials"
+            emptyText="No suspended credentials"
+            queue={workQueues.suspendedCredentials}
+            href="/dashboard/admin/digital-ids"
+            renderRecord={(record: AdminWorkQueues["suspendedCredentials"]["records"][number]) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{record.businessName}</p>
+                    <p className="text-xs text-slate-500">{record.msmeId}</p>
+                  </div>
+                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
+                </div>
+                <p className="text-xs text-slate-500">Suspended {formatQueueDate(record.suspendedAt)}</p>
+                <p className="text-xs text-slate-500">{record.reason}</p>
+              </div>
+            )}
+          />
         </div>
       </section>
 
