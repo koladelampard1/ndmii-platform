@@ -4,18 +4,44 @@ import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
+import { normalizeComplaintStatus } from "@/lib/data/complaints";
 import Link from "next/link";
 
-type MonthPoint = { period: string; registrations: number; kycRate: number; complaints: number; tax: number };
+function StatusPill({ children, tone = "slate" }: { children: React.ReactNode; tone?: "emerald" | "amber" | "rose" | "slate" }) {
+  const tones = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-800",
+    rose: "bg-rose-50 text-rose-700",
+    slate: "bg-slate-100 text-slate-600",
+  };
 
-function monthKey(value: string) {
-  const date = new Date(value);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  return <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
 }
 
-function monthLabel(key: string) {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(Date.UTC(year, (month || 1) - 1, 1)).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+function SummaryCard({
+  title,
+  children,
+  href,
+  unavailable,
+}: {
+  title: string;
+  children: React.ReactNode;
+  href?: string;
+  unavailable?: boolean;
+}) {
+  return (
+    <article className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="font-semibold text-slate-950">{title}</h2>
+        {href && !unavailable ? (
+          <Link href={href} className="text-xs font-semibold text-emerald-700 hover:underline">Open</Link>
+        ) : (
+          <StatusPill>Not yet available</StatusPill>
+        )}
+      </div>
+      <div className="mt-3 space-y-2 text-sm text-slate-600">{children}</div>
+    </article>
+  );
 }
 
 export default async function DashboardPage() {
@@ -43,14 +69,18 @@ export default async function DashboardPage() {
     { data: payments },
     { data: kyc },
     { data: associations },
+    { data: digitalCredentials },
+    { data: complianceReviews },
     { count: manufacturerCount },
     { count: riskAlerts },
   ] = await Promise.all([
     supabase.from("msmes").select("id,state,sector,verification_status,review_status,suspended,flagged,created_at"),
-    supabase.from("complaints").select("severity,created_at"),
-    supabase.from("payments").select("amount,created_at"),
+    supabase.from("complaints").select("severity,status,created_at"),
+    supabase.from("payments").select("amount,status,created_at"),
     supabase.from("compliance_profiles").select("msme_id,overall_status,created_at"),
     supabase.from("association_members").select("association_id"),
+    supabase.from("digital_identity_credentials").select("id,status,suspended_at,created_at"),
+    supabase.from("compliance_reviews").select("id,review_status,created_at"),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }),
     supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }).eq("counterfeit_risk_flag", true),
   ]);
@@ -59,7 +89,8 @@ export default async function DashboardPage() {
   const totalMsmes = msmeRows.length;
   const verifiedMsmes = msmeRows.filter((row) => row.verification_status === "verified").length;
   const pendingReviews = msmeRows.filter((row) => ["pending_review", "submitted", "changes_requested"].includes(normalizeReviewStatus(row.verification_status, row.review_status))).length;
-  const suspendedFlagged = msmeRows.filter((row) => row.suspended || row.flagged).length;
+  const flaggedMsmes = msmeRows.filter((row) => row.flagged).length;
+  const suspendedMsmes = msmeRows.filter((row) => row.suspended).length;
 
   const complaintBySeverity = Object.entries((complaints ?? []).reduce<Record<string, number>>((acc, row) => {
     const key = row.severity ?? "unknown";
@@ -69,79 +100,96 @@ export default async function DashboardPage() {
 
   const kycRows = kyc ?? [];
   const kycRate = kycRows.length ? Math.round((kycRows.filter((k) => k.overall_status === "verified").length / kycRows.length) * 100) : 0;
-  const revenue = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  const recordedPayments = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  const credentialRows = digitalCredentials ?? [];
+  const pendingDigitalIdApprovals = credentialRows.filter((row) => row.status === "pending").length;
+  const suspendedCredentials = credentialRows.filter((row) => row.status === "suspended" || row.suspended_at).length;
+  const complianceReviewRows = complianceReviews ?? [];
+  const pendingComplianceReviews = complianceReviewRows.filter((row) => ["pending_review", "under_review"].includes(String(row.review_status ?? ""))).length;
+  const openComplaints = (complaints ?? []).filter((row) => !["resolved", "closed", "dismissed"].includes(normalizeComplaintStatus(row.status))).length;
 
   const topStates = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.state] = (acc[row.state] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const topSectors = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.sector] = (acc[row.sector] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const topAssociations = Object.entries((associations ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.association_id] = (acc[row.association_id] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
 
-  const monthly = new Map<string, MonthPoint>();
-  for (const row of msmeRows) {
-    const key = monthKey(row.created_at);
-    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
-    point.registrations += 1;
-    monthly.set(key, point);
-  }
-  for (const row of kycRows) {
-    const key = monthKey(row.created_at);
-    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
-    if (row.overall_status === "verified") point.kycRate += 1;
-    monthly.set(key, point);
-  }
-  for (const row of complaints ?? []) {
-    const key = monthKey(row.created_at);
-    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
-    point.complaints += 1;
-    monthly.set(key, point);
-  }
-  for (const row of payments ?? []) {
-    const key = monthKey(row.created_at);
-    const point = monthly.get(key) ?? { period: monthLabel(key), registrations: 0, kycRate: 0, complaints: 0, tax: 0 };
-    point.tax += Number(row.amount ?? 0);
-    monthly.set(key, point);
-  }
-
-  const trendRows = [...monthly.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-6)
-    .map(([, point]) => ({
-      ...point,
-      kycRate: point.registrations > 0 ? Math.round((point.kycRate / point.registrations) * 100) : 0,
-    }));
-
   return (
     <section className="space-y-6">
       <header className="rounded-2xl border bg-gradient-to-r from-indigo-900 via-slate-900 to-emerald-900 p-7 text-white shadow-xl">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="mt-2 text-sm text-slate-200">Federal-level oversight for MSME identity, compliance, tax simulation, and enforcement operations.</p>
+        <p className="mt-2 max-w-3xl text-sm text-slate-200">
+          Operational view of the platform records currently available to admins. This dashboard reports recorded counts and routes to working admin tools where those tools exist.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Link href="/dashboard/admin/msmes" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">MSME registry</Link>
-          <Link href="/dashboard/admin/verifications" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Verification queue</Link>
           <Link href="/dashboard/admin/digital-ids" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Digital IDs</Link>
+          <Link href="/dashboard/admin/associations" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Associations</Link>
+          <Link href="/dashboard/admin/association-upload" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Bulk upload</Link>
         </div>
       </header>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard title="Total Registered MSMEs" value={totalMsmes.toLocaleString()} status="up" />
-        <DashboardCard title="Verified Businesses" value={verifiedMsmes.toLocaleString()} status="up" />
-        <DashboardCard title="Pending Reviews" value={pendingReviews.toLocaleString()} status="down" />
-        <DashboardCard title="Suspended / Flagged" value={suspendedFlagged.toLocaleString()} status="down" />
-        <DashboardCard title="Simulated Tax Revenue" value={`₦${revenue.toLocaleString()}`} status="up" />
-        <DashboardCard title="KYC Verification Rate" value={`${kycRate}%`} status="up" />
-        <DashboardCard title="Manufacturer Count" value={(manufacturerCount ?? 0).toLocaleString()} status="up" />
-        <DashboardCard title="Product Risk Alerts" value={(riskAlerts ?? 0).toLocaleString()} status="down" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <article className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Complaints by severity</h2>{complaintBySeverity.map(([s,c]) => <p key={s} className="mt-2 text-sm">{s}: {c}</p>)}</article>
-        <article className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Top states by registration</h2>{topStates.map(([s,c]) => <p key={s} className="mt-2 text-sm">{s}: {c}</p>)}</article>
-        <article className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Top sectors by registration</h2>{topSectors.map(([s,c]) => <p key={s} className="mt-2 text-sm">{s}: {c}</p>)}</article>
-      </div>
-      <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">Monthly trend widgets (database-backed)</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-sm"><thead className="bg-slate-100"><tr><th className="px-3 py-2">Period</th><th className="px-3 py-2">Registrations</th><th className="px-3 py-2">KYC Rate</th><th className="px-3 py-2">Complaints</th><th className="px-3 py-2">Tax Simulation</th></tr></thead><tbody>{trendRows.map((row) => <tr key={row.period} className="border-t"><td className="px-3 py-2">{row.period}</td><td className="px-3 py-2">{row.registrations}</td><td className="px-3 py-2">{row.kycRate}%</td><td className="px-3 py-2">{row.complaints}</td><td className="px-3 py-2">₦{row.tax.toLocaleString()}</td></tr>)}</tbody></table>
+
+      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Operational Attention</h2>
+            <p className="mt-1 text-sm text-slate-600">Counts that may require review using existing platform records.</p>
+          </div>
+          <StatusPill tone="amber">Database-backed counts</StatusPill>
         </div>
-        <p className="mt-3 text-xs text-slate-500">Top associations by active members: {topAssociations.map(([id, total]) => `${id.slice(0, 6)}.. (${total})`).join(", ") || "No associations yet"}.</p>
-      </article>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <DashboardCard title="Pending digital ID approvals" value={pendingDigitalIdApprovals.toLocaleString()} href="/dashboard/admin/digital-ids" definition="Digital identity credentials currently in pending status." />
+          <DashboardCard title="Pending compliance reviews" value={pendingComplianceReviews.toLocaleString()} unavailable definition="Compliance review rows with pending_review or under_review status. Detail workspace is not available in the admin area yet." />
+          <DashboardCard title="Open complaints" value={openComplaints.toLocaleString()} unavailable definition="Complaint rows that are not resolved, closed, or dismissed. Admin complaint workspace is not available yet." />
+          <DashboardCard title="Flagged MSMEs" value={flaggedMsmes.toLocaleString()} unavailable definition="MSME records where the flagged field is true. A dedicated admin review workspace is not available yet." />
+          <DashboardCard title="Suspended credentials" value={suspendedCredentials.toLocaleString()} href="/dashboard/admin/digital-ids" definition="Digital identity credentials with suspended status or a suspended timestamp." />
+        </div>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <DashboardCard title="Total registered MSMEs" value={totalMsmes.toLocaleString()} unavailable definition="Total MSME records visible to the admin dashboard. The full admin registry page is not available yet." />
+        <DashboardCard title="Verified businesses" value={verifiedMsmes.toLocaleString()} unavailable definition="MSME records with verification_status set to verified." />
+        <DashboardCard title="Pending MSME reviews" value={pendingReviews.toLocaleString()} unavailable definition="MSME records normalized to pending_review, submitted, or changes_requested." />
+        <DashboardCard title="Suspended MSMEs" value={suspendedMsmes.toLocaleString()} unavailable definition="MSME records where the suspended field is true." />
+        <DashboardCard title="Recorded platform payments" value={`₦${recordedPayments.toLocaleString()}`} unavailable definition="Sum of amounts recorded in the payments table. This is not reported as tax revenue unless the payment records are confirmed tax-related." />
+        <DashboardCard title="KYC verification rate" value={`${kycRate}%`} unavailable definition="Share of compliance_profiles rows where overall_status is verified." />
+        <DashboardCard title="Manufacturer profiles" value={(manufacturerCount ?? 0).toLocaleString()} unavailable definition="Count of manufacturer profile records. Admin traceability workspace is not available yet." />
+        <DashboardCard title="Product risk alerts" value={(riskAlerts ?? 0).toLocaleString()} unavailable definition="Manufacturer profiles where counterfeit_risk_flag is true." />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard title="Complaints by severity" unavailable>
+          {complaintBySeverity.length ? complaintBySeverity.map(([severity, count]) => (
+            <div key={severity} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+              <span className="capitalize">{severity}</span>
+              <span className="font-semibold text-slate-950">{count}</span>
+            </div>
+          )) : <p>No complaint severity records yet.</p>}
+        </SummaryCard>
+        <SummaryCard title="Top states by registration" unavailable>
+          {topStates.length ? topStates.map(([state, count]) => (
+            <div key={state} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+              <span>{state || "Unknown state"}</span>
+              <span className="font-semibold text-slate-950">{count}</span>
+            </div>
+          )) : <p>No state records yet.</p>}
+        </SummaryCard>
+        <SummaryCard title="Top sectors by registration" unavailable>
+          {topSectors.length ? topSectors.map(([sector, count]) => (
+            <div key={sector} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+              <span>{sector || "Unknown sector"}</span>
+              <span className="font-semibold text-slate-950">{count}</span>
+            </div>
+          )) : <p>No sector records yet.</p>}
+        </SummaryCard>
+      </div>
+
+      <SummaryCard title="Association member concentration" href="/dashboard/admin/associations">
+        {topAssociations.length ? topAssociations.map(([id, total]) => (
+          <div key={id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+            <span className="font-mono text-xs text-slate-500">{id ? `${id.slice(0, 8)}...` : "Unassigned"}</span>
+            <span className="font-semibold text-slate-950">{total} member records</span>
+          </div>
+        )) : <p>No association member records yet.</p>}
+        <p className="text-xs text-slate-500">This summary uses association member record counts only; member approval workflow detail is not available on this dashboard yet.</p>
+      </SummaryCard>
     </section>
   );
 }
