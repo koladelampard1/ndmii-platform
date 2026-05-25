@@ -1,56 +1,89 @@
+import type { ReactNode } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { DashboardCard } from "@/components/dashboard/dashboard-card";
+import type { LucideIcon } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  BadgeCheck,
+  Building2,
+  CheckCircle2,
+  Clock3,
+  FileClock,
+  FileText,
+  Flag,
+  Info,
+  LockKeyhole,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
 import { loadAdminWorkQueues, type AdminWorkQueues } from "@/lib/data/admin-work-queues";
-import Link from "next/link";
 
-function StatusPill({ children, tone = "slate" }: { children: React.ReactNode; tone?: "emerald" | "amber" | "rose" | "slate" }) {
-  const tones = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-800",
-    rose: "bg-rose-50 text-rose-700",
-    slate: "bg-slate-100 text-slate-600",
-  };
+type Tone = "emerald" | "blue" | "amber" | "rose" | "violet" | "slate";
 
-  return <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
-}
+type QueueShape<T> = {
+  records: T[];
+  count: number;
+  oldestAt: string | null;
+  unavailable: boolean;
+};
 
-function SummaryCard({
-  title,
-  children,
-  href,
-  unavailable,
-}: {
-  title: string;
-  children: React.ReactNode;
-  href?: string;
-  unavailable?: boolean;
-}) {
-  return (
-    <article className="rounded-xl border bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="font-semibold text-slate-950">{title}</h2>
-        {href && !unavailable ? (
-          <Link href={href} className="text-xs font-semibold text-emerald-700 hover:underline">Open</Link>
-        ) : (
-          <StatusPill>Not yet available</StatusPill>
-        )}
-      </div>
-      <div className="mt-3 space-y-2 text-sm text-slate-600">{children}</div>
-    </article>
-  );
-}
+const toneStyles: Record<Tone, { icon: string; badge: string; button: string; soft: string }> = {
+  emerald: {
+    icon: "bg-emerald-50 text-emerald-700",
+    badge: "bg-emerald-50 text-emerald-700",
+    button: "bg-emerald-700 text-white hover:bg-emerald-800",
+    soft: "bg-emerald-50 text-emerald-700",
+  },
+  blue: {
+    icon: "bg-blue-50 text-blue-700",
+    badge: "bg-blue-50 text-blue-700",
+    button: "bg-blue-700 text-white hover:bg-blue-800",
+    soft: "bg-blue-50 text-blue-700",
+  },
+  amber: {
+    icon: "bg-amber-50 text-amber-700",
+    badge: "bg-amber-50 text-amber-800",
+    button: "bg-amber-600 text-white hover:bg-amber-700",
+    soft: "bg-amber-50 text-amber-800",
+  },
+  rose: {
+    icon: "bg-rose-50 text-rose-700",
+    badge: "bg-rose-50 text-rose-700",
+    button: "bg-red-700 text-white hover:bg-red-800",
+    soft: "bg-rose-50 text-rose-700",
+  },
+  violet: {
+    icon: "bg-violet-50 text-violet-700",
+    badge: "bg-violet-50 text-violet-700",
+    button: "bg-violet-700 text-white hover:bg-violet-800",
+    soft: "bg-violet-50 text-violet-700",
+  },
+  slate: {
+    icon: "bg-slate-100 text-slate-600",
+    badge: "bg-slate-100 text-slate-600",
+    button: "bg-slate-900 text-white hover:bg-slate-800",
+    soft: "bg-slate-100 text-slate-600",
+  },
+};
 
-function formatQueueDate(value: string | null | undefined) {
-  if (!value) return "Date not recorded";
-  return new Date(value).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" });
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
 }
 
 function formatOldestAge(value: string | null | undefined) {
-  if (!value) return "No pending age";
+  if (!value) return "-";
   const ageMs = Date.now() - new Date(value).getTime();
   if (!Number.isFinite(ageMs) || ageMs < 0) return "New";
   const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
@@ -63,84 +96,173 @@ function labelText(value: string | null | undefined) {
   return String(value ?? "unknown").replaceAll("_", " ");
 }
 
-function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "emerald" | "amber" | "rose" | "blue" | "slate" }) {
-  const tones = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-800",
-    rose: "bg-rose-50 text-rose-700",
-    blue: "bg-blue-50 text-blue-700",
-    slate: "bg-slate-100 text-slate-600",
-  };
-
-  return <span className={`rounded-full px-2 py-1 text-[11px] font-semibold capitalize ${tones[tone]}`}>{children}</span>;
-}
-
-function statusTone(value: string | null | undefined): "emerald" | "amber" | "rose" | "blue" | "slate" {
+function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["active", "approved", "resolved", "closed"].includes(normalized)) return "emerald";
+  if (["active", "approved", "resolved", "closed", "verified", "healthy"].includes(normalized)) return "emerald";
   if (["critical", "high", "suspended", "revoked", "rejected", "escalated"].includes(normalized)) return "rose";
-  if (["pending", "pending_review", "submitted", "resubmitted", "under_review", "medium"].includes(normalized)) return "amber";
+  if (["pending", "pending_review", "submitted", "resubmitted", "under_review", "medium", "changes_requested"].includes(normalized)) return "amber";
   if (["low", "open", "in_progress", "regulator_review"].includes(normalized)) return "blue";
   return "slate";
 }
 
+function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }) {
+  return <span className={`rounded-full px-2 py-1 text-[11px] font-bold capitalize ${toneStyles[tone].badge}`}>{children}</span>;
+}
+
+function KpiCard({ title, value, definition, icon: Icon, tone }: { title: string; value: string; definition: string; icon: LucideIcon; tone: Tone }) {
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
+      <div className="flex items-start gap-4">
+        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${toneStyles[tone].icon}`}>
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-600">{title}</h3>
+          <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+          <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-500">
+            {definition}
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SystemIndicator({ icon: Icon, label, value, tone = "slate" }: { icon: LucideIcon; label: string; value: string; tone?: Tone }) {
+  return (
+    <div className="flex min-w-[170px] items-center gap-3 border-slate-200 py-2 md:border-r md:pr-8 last:border-r-0">
+      <span className={`grid h-10 w-10 place-items-center rounded-xl ${toneStyles[tone].icon}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div>
+        <p className="text-xs font-bold text-slate-500">{label}</p>
+        <p className="mt-0.5 text-sm font-black text-slate-950">{value}</p>
+      </div>
+    </div>
+  );
+}
+
 function QueueCard<T>({
   title,
-  emptyText,
+  icon: Icon,
+  tone,
   queue,
+  emptyText,
   href,
-  ctaLabel = "View queue",
-  unavailableCtaLabel = "Workspace pending",
+  ctaLabel,
+  pendingWorkspace,
   renderRecord,
 }: {
   title: string;
+  icon: LucideIcon;
+  tone: Tone;
+  queue: QueueShape<T>;
   emptyText: string;
-  queue: { records: T[]; count: number; oldestAt: string | null; unavailable: boolean };
   href?: string;
-  ctaLabel?: string;
-  unavailableCtaLabel?: string;
-  renderRecord: (record: T) => React.ReactNode;
+  ctaLabel: string;
+  pendingWorkspace?: boolean;
+  renderRecord: (record: T) => ReactNode;
 }) {
-  const hasLink = Boolean(href) && !queue.unavailable;
+  const canOpen = Boolean(href) && !pendingWorkspace && !queue.unavailable;
+  const records = queue.records.slice(0, 3);
 
   return (
-    <article className="flex min-h-[320px] flex-col rounded-xl border bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-slate-950">{title}</h3>
-          <p className="mt-1 text-xs text-slate-500">Oldest: {formatOldestAge(queue.oldestAt)}</p>
+    <article className="flex min-h-[356px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+      <div className="flex items-start gap-3">
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${toneStyles[tone].icon}`}>
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-black leading-snug text-slate-950">{title}</h3>
         </div>
-        <div className="rounded-lg bg-slate-950 px-3 py-2 text-right text-white">
-          <p className="text-xl font-semibold">{queue.count.toLocaleString()}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-300">items</p>
-        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="text-3xl font-black tracking-tight text-slate-950">{queue.count.toLocaleString()}</p>
+        <p className="text-sm font-bold text-slate-500">Items</p>
+      </div>
+
+      <div className="mt-3">
+        <Badge tone={queue.unavailable ? "slate" : tone}>Oldest: {queue.unavailable ? "Source unavailable" : formatOldestAge(queue.oldestAt)}</Badge>
       </div>
 
       <div className="mt-4 flex-1 space-y-2">
         {queue.unavailable ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">Queue source unavailable.</p>
-        ) : queue.records.length ? (
-          queue.records.map((record, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-slate-500">Queue source unavailable.</div>
+        ) : records.length ? (
+          records.map((record, index) => (
+            <div key={index} className="rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
               {renderRecord(record)}
             </div>
           ))
         ) : (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">{emptyText}</p>
+          <div className="grid min-h-[128px] place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+            <div>
+              <LockKeyhole className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
+              <p className="mt-3 text-sm font-bold text-slate-500">{emptyText}</p>
+            </div>
+          </div>
         )}
       </div>
 
-      {hasLink ? (
-        <Link href={href as string} className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+      {canOpen ? (
+        <Link href={href as string} className={`mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-black transition ${toneStyles[tone].button}`}>
           {ctaLabel}
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       ) : (
-        <span className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-slate-100 px-3 text-sm font-semibold text-slate-500">
-          {queue.unavailable ? "Source unavailable" : unavailableCtaLabel}
+        <span className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-3 text-sm font-black text-slate-500">
+          {queue.unavailable ? "Source unavailable" : "Workspace pending"}
+          <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
       )}
     </article>
   );
+}
+
+function QueueRecordLine({
+  title,
+  subtitle,
+  age,
+  badge,
+}: {
+  title: string;
+  subtitle: string;
+  age?: string | null;
+  badge?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-black text-slate-950">{title}</p>
+        <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{subtitle}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        {badge}
+        {age ? <p className="mt-1 text-xs font-black text-slate-500">{formatOldestAge(age)}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function InsightItem({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: string; tone: Tone }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 border-slate-200 py-2 md:border-r md:pr-6 last:border-r-0">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${toneStyles[tone].icon}`}>
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-slate-500">{label}</p>
+        <p className="mt-0.5 truncate text-sm font-black text-slate-800">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function getTopEntry(rows: [string, number][], emptyLabel: string) {
+  const [label, count] = rows[0] ?? [emptyLabel, 0];
+  return `${label || emptyLabel} (${count.toLocaleString()} MSME${count === 1 ? "" : "s"})`;
 }
 
 export default async function DashboardPage() {
@@ -165,220 +287,176 @@ export default async function DashboardPage() {
   const [
     { data: msmes },
     { data: complaints },
-    { data: payments },
     { data: kyc },
-    { data: associations },
-    { count: manufacturerCount },
-    { count: riskAlerts },
+    { count: totalAdmins },
     workQueues,
   ] = await Promise.all([
     supabase.from("msmes").select("id,state,sector,verification_status,review_status,suspended,created_at"),
-    supabase.from("complaints").select("severity,status,created_at"),
-    supabase.from("payments").select("amount,status,created_at"),
+    supabase.from("complaints").select("status,created_at"),
     supabase.from("compliance_profiles").select("msme_id,overall_status,created_at"),
-    supabase.from("association_members").select("association_id"),
-    supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }),
-    supabase.from("manufacturer_profiles").select("*", { count: "exact", head: true }).eq("counterfeit_risk_flag", true),
+    supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "admin"),
     loadAdminWorkQueues(supabase),
   ]);
 
   const msmeRows = msmes ?? [];
+  const complaintRows = complaints ?? [];
+  const kycRows = kyc ?? [];
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
   const totalMsmes = msmeRows.length;
   const verifiedMsmes = msmeRows.filter((row) => row.verification_status === "verified").length;
-  const pendingReviews = msmeRows.filter((row) => ["pending_review", "submitted", "changes_requested"].includes(normalizeReviewStatus(row.verification_status, row.review_status))).length;
-  const suspendedMsmes = msmeRows.filter((row) => row.suspended).length;
+  const pendingReviews = msmeRows.filter((row) =>
+    ["pending_review", "submitted", "changes_requested"].includes(normalizeReviewStatus(row.verification_status, row.review_status)),
+  ).length;
+  const kycRate = kycRows.length ? Math.round((kycRows.filter((row) => row.overall_status === "verified").length / kycRows.length) * 100) : 0;
+  const recentRegistrations = msmeRows.filter((row) => row.created_at && new Date(row.created_at).getTime() >= monthStart).length;
+  const newComplaints = complaintRows.filter((row) => row.created_at && new Date(row.created_at).getTime() >= monthStart).length;
 
-  const complaintBySeverity = Object.entries((complaints ?? []).reduce<Record<string, number>>((acc, row) => {
-    const key = row.severity ?? "unknown";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {}));
+  const topStates = Object.entries(
+    msmeRows.reduce<Record<string, number>>((acc, row) => {
+      const key = row.state || "State unavailable";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
 
-  const kycRows = kyc ?? [];
-  const kycRate = kycRows.length ? Math.round((kycRows.filter((k) => k.overall_status === "verified").length / kycRows.length) * 100) : 0;
-  const recordedPayments = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-  const topStates = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.state] = (acc[row.state] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
-  const topSectors = Object.entries(msmeRows.reduce<Record<string, number>>((acc, row) => { acc[row.sector] = (acc[row.sector] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
-  const topAssociations = Object.entries((associations ?? []).reduce<Record<string, number>>((acc, row) => { acc[row.association_id] = (acc[row.association_id] ?? 0) + 1; return acc; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const topSectors = Object.entries(
+    msmeRows.reduce<Record<string, number>>((acc, row) => {
+      const key = row.sector || "Sector unavailable";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
 
   return (
-    <section className="space-y-6">
-      <header className="rounded-2xl border bg-gradient-to-r from-indigo-900 via-slate-900 to-emerald-900 p-7 text-white shadow-xl">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="mt-2 max-w-3xl text-sm text-slate-200">
-          Operational view of the platform records currently available to admins. This dashboard reports recorded counts and routes to working admin tools where those tools exist.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Link href="/dashboard/admin/digital-ids" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Digital IDs</Link>
-          <Link href="/dashboard/admin/associations" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Associations</Link>
-          <Link href="/dashboard/admin/association-upload" className="rounded bg-white/15 px-2 py-1 hover:bg-white/25">Bulk upload</Link>
+    <section className="mx-auto max-w-[1680px] space-y-5">
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-black tracking-tight text-slate-950">Welcome back, Admin</h2>
+              <CheckCircle2 className="h-5 w-5 fill-emerald-100 text-emerald-700" aria-hidden="true" />
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-600">Operational overview of platform records and admin work queues.</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <p className="text-xs font-bold text-slate-500">Last updated: {formatDateTime(now)}</p>
+            <Link href="/dashboard/admin" className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50">
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Refresh
+            </Link>
+          </div>
         </div>
-      </header>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SystemIndicator icon={Clock3} label="Platform uptime" value="Not connected" />
+          <SystemIndicator icon={Users} label="Total admins" value={totalAdmins === null ? "Unavailable" : totalAdmins.toLocaleString()} />
+          <SystemIndicator icon={ShieldCheck} label="Active sessions" value="Unavailable" />
+          <SystemIndicator icon={CheckCircle2} label="System status" value="Healthy" tone="emerald" />
+        </div>
+      </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <KpiCard title="Total MSMEs" value={totalMsmes.toLocaleString()} definition="Registered on platform" icon={Building2} tone="emerald" />
+        <KpiCard title="Verified MSMEs" value={verifiedMsmes.toLocaleString()} definition="Verification complete" icon={BadgeCheck} tone="blue" />
+        <KpiCard title="Pending Reviews" value={pendingReviews.toLocaleString()} definition="Awaiting action" icon={FileClock} tone="amber" />
+        <KpiCard title="Open Complaints" value={workQueues.openComplaints.count.toLocaleString()} definition="Require attention" icon={AlertCircle} tone="rose" />
+        <KpiCard title="Suspended Credentials" value={workQueues.suspendedCredentials.count.toLocaleString()} definition="Currently suspended" icon={LockKeyhole} tone="violet" />
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Operational Work Queues</h2>
-            <p className="mt-1 text-sm text-slate-600">Actionable admin queues from current platform records. Empty states mean no matching records were returned.</p>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">Operational Work Queues</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Actionable admin queues from current platform records.</p>
           </div>
-          <StatusPill tone="amber">Service-role reads after admin validation</StatusPill>
+          <span className="inline-flex items-center gap-2 text-sm font-black text-emerald-700">
+            View all queues
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </span>
         </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-5">
           <QueueCard
             title="Pending Digital ID Approvals"
-            emptyText="No pending digital ID approvals"
+            icon={BadgeCheck}
+            tone="emerald"
             queue={workQueues.pendingDigitalIdApprovals}
+            emptyText="No pending digital ID approvals"
             href="/dashboard/admin/digital-ids"
+            ctaLabel="View Digital IDs"
             renderRecord={(record: AdminWorkQueues["pendingDigitalIdApprovals"]["records"][number]) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{record.businessName}</p>
-                    <p className="text-xs text-slate-500">{record.msmeId}</p>
-                  </div>
-                  <Badge tone={statusTone(record.credentialStatus)}>{labelText(record.credentialStatus)}</Badge>
-                </div>
-                <p className="text-xs text-slate-500">Submitted {formatQueueDate(record.submittedAt)}</p>
-              </div>
+              <QueueRecordLine title={record.businessName} subtitle={record.msmeId} age={record.submittedAt} badge={<Badge tone={statusTone(record.credentialStatus)}>{labelText(record.credentialStatus)}</Badge>} />
             )}
           />
 
           <QueueCard
             title="Pending Compliance Reviews"
-            emptyText="No compliance reviews awaiting action"
+            icon={ShieldCheck}
+            tone="blue"
             queue={workQueues.pendingComplianceReviews}
+            emptyText="No compliance reviews awaiting action"
             href="/dashboard/reviews/compliance"
+            ctaLabel="View Compliance Reviews"
             renderRecord={(record: AdminWorkQueues["pendingComplianceReviews"]["records"][number]) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{record.businessName}</p>
-                    <p className="text-xs text-slate-500">{record.requirement}</p>
-                  </div>
-                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>{record.regulator}</span>
-                  <span>{record.evidenceCount} evidence file{record.evidenceCount === 1 ? "" : "s"}</span>
-                  <span>Submitted {formatQueueDate(record.submittedAt)}</span>
-                </div>
-              </div>
+              <QueueRecordLine title={record.businessName} subtitle={`${record.regulator} - ${record.requirement}`} age={record.submittedAt} badge={<Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>} />
             )}
           />
 
           <QueueCard
             title="Open Complaints"
-            emptyText="No open complaints"
+            icon={AlertCircle}
+            tone="rose"
             queue={workQueues.openComplaints}
+            emptyText="No open complaints"
             href="/dashboard/fccpc"
+            ctaLabel="View Complaints"
             renderRecord={(record: AdminWorkQueues["openComplaints"]["records"][number]) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{record.complaintReference}</p>
-                    <p className="text-xs text-slate-500">{record.businessName}</p>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    <Badge tone={statusTone(record.severity)}>{labelText(record.severity)}</Badge>
-                    <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-                  <span>Submitted {formatQueueDate(record.submittedAt)}</span>
-                  <Link href={`/dashboard/fccpc/${record.id}`} className="font-semibold text-emerald-700 hover:underline">Open workspace</Link>
-                </div>
-              </div>
+              <QueueRecordLine title={record.complaintReference} subtitle={record.businessName} age={record.submittedAt} badge={<Badge tone={statusTone(record.severity)}>{labelText(record.severity)}</Badge>} />
             )}
           />
 
           <QueueCard
             title="Flagged MSMEs"
-            emptyText="No flagged MSMEs"
+            icon={Flag}
+            tone="amber"
             queue={workQueues.flaggedMsmes}
-            unavailableCtaLabel="Workspace pending"
+            emptyText="No flagged MSMEs"
+            ctaLabel="Workspace pending"
+            pendingWorkspace
             renderRecord={(record: AdminWorkQueues["flaggedMsmes"]["records"][number]) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{record.businessName}</p>
-                    <p className="text-xs text-slate-500">{record.msmeId}</p>
-                  </div>
-                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
-                </div>
-                <p className="text-xs text-slate-500">{record.reason}</p>
-              </div>
+              <QueueRecordLine title={record.businessName} subtitle={record.reason} age={record.createdAt} badge={<Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>} />
             )}
           />
 
           <QueueCard
             title="Suspended Credentials"
-            emptyText="No suspended credentials"
+            icon={LockKeyhole}
+            tone="violet"
             queue={workQueues.suspendedCredentials}
+            emptyText="No suspended credentials"
             href="/dashboard/admin/digital-ids"
+            ctaLabel="View Digital IDs"
             renderRecord={(record: AdminWorkQueues["suspendedCredentials"]["records"][number]) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{record.businessName}</p>
-                    <p className="text-xs text-slate-500">{record.msmeId}</p>
-                  </div>
-                  <Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>
-                </div>
-                <p className="text-xs text-slate-500">Suspended {formatQueueDate(record.suspendedAt)}</p>
-                <p className="text-xs text-slate-500">{record.reason}</p>
-              </div>
+              <QueueRecordLine title={record.businessName} subtitle={record.msmeId} age={record.suspendedAt} badge={<Badge tone={statusTone(record.status)}>{labelText(record.status)}</Badge>} />
             )}
           />
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard title="Total registered MSMEs" value={totalMsmes.toLocaleString()} unavailable definition="Total MSME records visible to the admin dashboard. The full admin registry page is not available yet." />
-        <DashboardCard title="Verified businesses" value={verifiedMsmes.toLocaleString()} unavailable definition="MSME records with verification_status set to verified." />
-        <DashboardCard title="Pending MSME reviews" value={pendingReviews.toLocaleString()} unavailable definition="MSME records normalized to pending_review, submitted, or changes_requested." />
-        <DashboardCard title="Suspended MSMEs" value={suspendedMsmes.toLocaleString()} unavailable definition="MSME records where the suspended field is true." />
-        <DashboardCard title="Recorded platform payments" value={`₦${recordedPayments.toLocaleString()}`} unavailable definition="Sum of amounts recorded in the payments table. This is not reported as tax revenue unless the payment records are confirmed tax-related." />
-        <DashboardCard title="KYC verification rate" value={`${kycRate}%`} unavailable definition="Share of compliance_profiles rows where overall_status is verified." />
-        <DashboardCard title="Manufacturer profiles" value={(manufacturerCount ?? 0).toLocaleString()} unavailable definition="Count of manufacturer profile records. Admin traceability workspace is not available yet." />
-        <DashboardCard title="Product risk alerts" value={(riskAlerts ?? 0).toLocaleString()} unavailable definition="Manufacturer profiles where counterfeit_risk_flag is true." />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard title="Complaints by severity" unavailable>
-          {complaintBySeverity.length ? complaintBySeverity.map(([severity, count]) => (
-            <div key={severity} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-              <span className="capitalize">{severity}</span>
-              <span className="font-semibold text-slate-950">{count}</span>
-            </div>
-          )) : <p>No complaint severity records yet.</p>}
-        </SummaryCard>
-        <SummaryCard title="Top states by registration" unavailable>
-          {topStates.length ? topStates.map(([state, count]) => (
-            <div key={state} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-              <span>{state || "Unknown state"}</span>
-              <span className="font-semibold text-slate-950">{count}</span>
-            </div>
-          )) : <p>No state records yet.</p>}
-        </SummaryCard>
-        <SummaryCard title="Top sectors by registration" unavailable>
-          {topSectors.length ? topSectors.map(([sector, count]) => (
-            <div key={sector} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-              <span>{sector || "Unknown sector"}</span>
-              <span className="font-semibold text-slate-950">{count}</span>
-            </div>
-          )) : <p>No sector records yet.</p>}
-        </SummaryCard>
-      </div>
-
-      <SummaryCard title="Association member concentration" href="/dashboard/admin/associations">
-        {topAssociations.length ? topAssociations.map(([id, total]) => (
-          <div key={id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-            <span className="font-mono text-xs text-slate-500">{id ? `${id.slice(0, 8)}...` : "Unassigned"}</span>
-            <span className="font-semibold text-slate-950">{total} member records</span>
-          </div>
-        )) : <p>No association member records yet.</p>}
-        <p className="text-xs text-slate-500">This summary uses association member record counts only; member approval workflow detail is not available on this dashboard yet.</p>
-      </SummaryCard>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">Platform Insights</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Quick insights from platform data.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <InsightItem icon={Building2} label="Top Registration State" value={getTopEntry(topStates, "State unavailable")} tone="emerald" />
+          <InsightItem icon={FileText} label="Top Sector" value={getTopEntry(topSectors, "Sector unavailable")} tone="blue" />
+          <InsightItem icon={CheckCircle2} label="Verification Rate" value={`KYC verified: ${kycRate}%`} tone="emerald" />
+          <InsightItem icon={Users} label="Recent Registrations" value={`This month: ${recentRegistrations.toLocaleString()}`} tone="violet" />
+          <InsightItem icon={AlertCircle} label="New Complaints" value={`This month: ${newComplaints.toLocaleString()}`} tone="rose" />
+        </div>
+      </section>
     </section>
   );
 }
