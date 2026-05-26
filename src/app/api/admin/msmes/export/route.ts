@@ -79,13 +79,20 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const filters = filterFromUrl(url);
+  const selectedIds = new Set(
+    (url.searchParams.get("ids") ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
 
   try {
     const supabase = await createServiceRoleSupabaseClient();
     const registry = await loadAdminMsmeRegistry(supabase, filters);
-    await recordExportAudit({ actorUserId: ctx.appUserId, filters, rowCount: registry.rows.length });
+    const rows = selectedIds.size ? registry.rows.filter((row) => selectedIds.has(row.id)) : registry.rows;
+    await recordExportAudit({ actorUserId: ctx.appUserId, filters, rowCount: rows.length });
 
-    return new NextResponse(`${buildAdminMsmeRegistryCsv(registry.rows)}\r\n`, {
+    return new NextResponse(`${buildAdminMsmeRegistryCsv(rows)}\r\n`, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",

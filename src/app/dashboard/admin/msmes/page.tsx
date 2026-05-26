@@ -23,6 +23,7 @@ import {
   type RegistrySourceState,
 } from "@/lib/data/admin-msme-registry";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { AdminMsmeBulkActions } from "@/components/admin/admin-msme-bulk-actions";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -238,7 +239,7 @@ function RegistryDetailPreview({ row }: { row: AdminMsmeRegistryRow | null }) {
 }
 
 export default async function AdminMsmesPage({ searchParams }: PageProps) {
-  await requireRole(["admin"]);
+  const ctx = await requireRole(["admin", "reviewer", "fccpc_officer", "firs_officer"]);
   const params = await searchParams;
   const filters = parseFilters(params);
 
@@ -281,7 +282,7 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
         <div>
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Admin console</p>
           <h1 className="mt-1 text-3xl font-semibold text-slate-950">MSME Registry</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Read-only federal registry view across identity, compliance, association, and complaint signals.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Federal registry view across identity, compliance, association, complaint, and operational signals.</p>
         </div>
         <Link href={exportHref} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-3 text-sm font-black text-white shadow-sm hover:bg-emerald-900">
           <Download className="h-4 w-4" aria-hidden="true" />
@@ -345,13 +346,17 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
             <p className="text-sm font-black text-slate-950">
               {registry.totalRows.toLocaleString()} result{registry.totalRows === 1 ? "" : "s"}
             </p>
-            <p className="text-xs font-bold text-slate-500">Page {registry.page} of {registry.totalPages}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              {ctx.role === "admin" ? <AdminMsmeBulkActions exportHref={exportHref} /> : null}
+              <p className="text-xs font-bold text-slate-500">Page {registry.page} of {registry.totalPages}</p>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-[1320px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Business</th>
+                  {ctx.role === "admin" ? <th className="px-4 py-3">Select</th> : null}
                   <th className="px-4 py-3">Owner</th>
                   <th className="px-4 py-3">Location</th>
                   <th className="px-4 py-3">Sector</th>
@@ -363,12 +368,13 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
                   <th className="px-4 py-3">Association</th>
                   <th className="px-4 py-3">Created</th>
                   <th className="px-4 py-3">Flags</th>
+                  <th className="px-4 py-3">Last action</th>
                 </tr>
               </thead>
               <tbody>
                 {registry.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center">
+                    <td colSpan={ctx.role === "admin" ? 14 : 13} className="px-4 py-12 text-center">
                       <Landmark className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
                       <p className="mt-3 text-sm font-black text-slate-600">No MSMEs match the current filters.</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">Adjust filters or clear search to expand the registry view.</p>
@@ -384,6 +390,11 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
                           <span className="mt-1 block text-xs font-bold text-slate-500">{row.msmeId}</span>
                         </Link>
                       </td>
+                      {ctx.role === "admin" ? (
+                        <td className="px-4 py-3">
+                          <input data-msme-bulk-checkbox type="checkbox" value={row.id} aria-label={`Select ${row.businessName}`} className="h-4 w-4 rounded border-slate-300 text-emerald-700" />
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3 font-semibold text-slate-700">{row.ownerName}</td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-slate-800">{row.state ?? "Unavailable"}</p>
@@ -413,8 +424,14 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
                         <div className="flex flex-wrap gap-1">
                           {row.flagged ? <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.rose}`}><Flag className="h-3 w-3" />Flagged</span> : null}
                           {row.suspended ? <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.rose}`}><LockKeyhole className="h-3 w-3" />Suspended</span> : null}
-                          {!row.flagged && !row.suspended ? <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.slate}`}>Clear</span> : null}
+                          {row.escalated ? <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.violet}`}>Escalated</span> : null}
+                          {row.reviewRequested ? <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.blue}`}>Review requested</span> : null}
+                          {!row.flagged && !row.suspended && !row.escalated && !row.reviewRequested ? <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.slate}`}>Clear</span> : null}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-slate-800">{humanize(row.latestAdminAction, "No action")}</p>
+                        <p className="text-xs font-semibold text-slate-500">{formatDate(row.latestAdminActionAt)}</p>
                       </td>
                     </tr>
                   );

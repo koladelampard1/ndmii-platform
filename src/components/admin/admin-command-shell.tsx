@@ -23,11 +23,13 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import type { UserRole } from "@/types/roles";
 
 type AdminCommandShellProps = {
   children: ReactNode;
   notificationCount?: number;
   adminName?: string | null;
+  adminRole?: UserRole;
 };
 
 type NavItem = {
@@ -81,9 +83,15 @@ function isActive(pathname: string, href?: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminCommandShell({ children, notificationCount = 0, adminName }: AdminCommandShellProps) {
+export function AdminCommandShell({ children, notificationCount = 0, adminName, adminRole = "admin" }: AdminCommandShellProps) {
   const pathname = usePathname();
   const displayName = adminName?.trim() || "Admin User";
+  const roleLabel = adminRole === "admin" ? "Super Administrator" : adminRole.replaceAll("_", " ");
+  const visibleGroups = adminRole === "admin"
+    ? navGroups
+    : navGroups
+        .map((group) => ({ ...group, items: group.items.filter((item) => item.href === "/dashboard/admin/msmes") }))
+        .filter((group) => group.items.length);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
@@ -98,7 +106,7 @@ export function AdminCommandShell({ children, notificationCount = 0, adminName }
         </Link>
 
         <nav className="mt-10 space-y-8" aria-label="Admin workspace navigation">
-          {navGroups.map((group) => (
+          {visibleGroups.map((group) => (
             <section key={group.label} className="space-y-2">
               <h2 className="px-1 text-[0.68rem] font-bold uppercase tracking-[0.18em] text-emerald-100/60">{group.label}</h2>
               <ul className="space-y-1">
@@ -183,7 +191,7 @@ export function AdminCommandShell({ children, notificationCount = 0, adminName }
               </span>
               <div className="hidden leading-tight sm:block">
                 <p className="text-sm font-bold text-slate-950">{displayName}</p>
-                <p className="text-xs font-medium text-slate-500">Super Administrator</p>
+                <p className="text-xs font-medium capitalize text-slate-500">{roleLabel}</p>
               </div>
               <ChevronDown className="hidden h-4 w-4 text-slate-500 sm:block" aria-hidden="true" />
             </div>

@@ -13,6 +13,7 @@ import {
   Link2,
   LockKeyhole,
   MessageSquareWarning,
+  NotebookPen,
   ShieldCheck,
   Users,
   type LucideIcon,
@@ -20,6 +21,7 @@ import {
 import { requireRole } from "@/lib/data/authorization-scope";
 import { getAdminMsmeDetail, type AdminMsmeDetail, type AdminMsmeTimelineItem, type RegistrySourceState } from "@/lib/data/admin-msme-registry";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { AdminMsmeOperationalControls } from "@/components/admin/admin-msme-operational-controls";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -174,7 +176,7 @@ function Header({ detail }: { detail: AdminMsmeDetail }) {
 }
 
 export default async function AdminMsmeDetailPage({ params }: PageProps) {
-  await requireRole(["admin"]);
+  const ctx = await requireRole(["admin", "reviewer", "fccpc_officer", "firs_officer"]);
   const { id } = await params;
 
   let detail: AdminMsmeDetail | null = null;
@@ -297,11 +299,46 @@ export default async function AdminMsmeDetailPage({ params }: PageProps) {
           </SectionCard>
 
           <SectionCard title="Operational indicators" icon={AlertCircle}>
-            <div className="flex flex-wrap gap-2">
-              <StatusPill value={row.flagged ? "flagged" : "clear"} />
-              <StatusPill value={row.suspended ? "suspended" : "active"} />
-              <StatusPill value={detail.credential.status} />
-              <StatusPill value={detail.compliance.riskLevel} />
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <StatusPill value={row.flagged ? "flagged" : "clear"} />
+                <StatusPill value={row.suspended ? "suspended" : "active"} />
+                <StatusPill value={row.reviewRequested ? "review_requested" : "review_not_requested"} />
+                <StatusPill value={row.escalated ? "escalated" : "not_escalated"} />
+              </div>
+              <DataGrid rows={[
+                { label: "Latest admin action", value: humanize(row.latestAdminAction, "No admin action") },
+                { label: "Action date", value: formatDateTime(row.latestAdminActionAt) },
+                { label: "Credential status", value: <StatusPill value={detail.credential.status} /> },
+                { label: "Compliance risk", value: <StatusPill value={detail.compliance.riskLevel} /> },
+              ]} />
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Admin actions" icon={ShieldCheck}>
+            <AdminMsmeOperationalControls msmeId={row.id} role={ctx.role} flagged={row.flagged} suspended={row.suspended} />
+          </SectionCard>
+
+          <SectionCard title="Internal notes" icon={NotebookPen}>
+            <div className="space-y-2">
+              {detail.internalNotes.length ? detail.internalNotes.map((note) => (
+                <div key={note.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-800">{note.noteBody}</p>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-500">{humanize(note.authorRole)} · {formatDateTime(note.createdAt)}</p>
+                </div>
+              )) : <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">No internal notes recorded.</p>}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Possible duplicate MSMEs" icon={AlertCircle}>
+            <div className="space-y-2">
+              {detail.duplicateSignals.length ? detail.duplicateSignals.map((signal) => (
+                <Link key={signal.id} href={`/dashboard/admin/msmes/${encodeURIComponent(signal.id)}`} className="block rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-emerald-50">
+                  <span className="block text-sm font-black text-slate-950">{signal.businessName}</span>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">{signal.msmeId} · {humanize(signal.confidence)} confidence</span>
+                  <span className="mt-1 block text-xs font-semibold text-slate-600">{signal.reasons.join(", ")}</span>
+                </Link>
+              )) : <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">No duplicate signals detected.</p>}
             </div>
           </SectionCard>
 

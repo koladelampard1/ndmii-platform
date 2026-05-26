@@ -36,6 +36,7 @@ export type RegistrySourceName =
   | "validation_results"
   | "compliance_profiles"
   | "activity_logs"
+  | "admin_internal_notes"
   | "invoices"
   | "invoice_events";
 
@@ -76,6 +77,10 @@ export type AdminMsmeRegistryRow = {
   contactPhoneMasked: string | null;
   cacMasked: string | null;
   tinMasked: string | null;
+  reviewRequested: boolean;
+  escalated: boolean;
+  latestAdminAction: string | null;
+  latestAdminActionAt: string | null;
 };
 
 export type AdminMsmeRegistryKpis = {
@@ -179,6 +184,14 @@ export type AdminMsmeDetail = {
     legacyComplianceRiskLevel: string | null;
   };
   timeline: AdminMsmeTimelineItem[];
+  internalNotes: Array<{ id: string; authorRole: string | null; noteBody: string; createdAt: string | null }>;
+  duplicateSignals: Array<{
+    id: string;
+    msmeId: string;
+    businessName: string;
+    confidence: "high" | "medium" | "low";
+    reasons: string[];
+  }>;
   sources: Record<RegistrySourceName, RegistrySourceState>;
   diagnostics: {
     operation: string;
@@ -215,6 +228,10 @@ type MsmeRow = {
   flagged?: boolean | null;
   suspended?: boolean | null;
   enforcement_note?: string | null;
+  operational_review_requested?: boolean | null;
+  operational_escalated?: boolean | null;
+  latest_admin_action?: string | null;
+  latest_admin_action_at?: string | null;
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -244,6 +261,10 @@ const TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
     "flagged",
     "suspended",
     "enforcement_note",
+    "operational_review_requested",
+    "operational_escalated",
+    "latest_admin_action",
+    "latest_admin_action_at",
   ],
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "token_expires_at", "public_token_hash", "created_at", "updated_at"],
   credential_events: ["id", "credential_id", "action", "actor_role", "metadata", "created_at"],
@@ -260,6 +281,7 @@ const TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
   validation_results: ["msme_id", "confidence_score", "validation_summary", "validated_at", "nin_status", "bvn_status", "cac_status", "tin_status"],
   compliance_profiles: ["msme_id", "overall_status", "score", "risk_level", "nin_status", "bvn_status", "cac_status", "tin_status"],
   activity_logs: ["id", "actor_user_id", "action", "entity_type", "entity_id", "metadata", "created_at"],
+  admin_internal_notes: ["id", "msme_id", "author_role", "note_body", "created_at"],
   invoices: ["id", "msme_id", "invoice_number", "status", "created_at"],
   invoice_events: ["id", "invoice_id", "event_type", "actor_role", "metadata", "created_at"],
 };
@@ -281,6 +303,7 @@ const REQUIRED_TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
   validation_results: ["msme_id", "confidence_score"],
   compliance_profiles: ["msme_id", "overall_status"],
   activity_logs: ["id", "action", "entity_type"],
+  admin_internal_notes: ["id", "msme_id", "note_body"],
   invoices: ["id", "msme_id"],
   invoice_events: ["id", "invoice_id", "event_type"],
 };
@@ -526,6 +549,10 @@ function detailRowFromSources(params: {
     flagged: Boolean(msme.flagged),
     suspended: Boolean(msme.suspended),
     enforcementNote: asString(msme.enforcement_note) || null,
+    reviewRequested: Boolean(msme.operational_review_requested),
+    escalated: Boolean(msme.operational_escalated),
+    latestAdminAction: asString(msme.latest_admin_action) || null,
+    latestAdminActionAt: asString(msme.latest_admin_action_at) || null,
     validationStatus: asString(validation?.validation_summary) || null,
     validationConfidence: Number.isFinite(Number(validation?.confidence_score)) ? Number(validation?.confidence_score) : null,
     contactEmailMasked: maskEmail(msme.contact_email),
@@ -564,6 +591,75 @@ function searchHaystack(row: AdminMsmeRegistryRow, raw: MsmeRow) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function normalizedComparable(value: string | null | undefined) {
+  return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function bigrams(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length < 2) return new Set(compact ? [compact] : []);
+  const grams = new Set<string>();
+  for (let index = 0; index < compact.length - 1; index += 1) grams.add(compact.slice(index, index + 2));
+  return grams;
+}
+
+function nameSimilarity(a: string | null | undefined, b: string | null | undefined) {
+  const left = bigrams(normalizedComparable(a));
+  const right = bigrams(normalizedComparable(b));
+  if (!left.size || !right.size) return 0;
+  let overlap = 0;
+  for (const gram of left) if (right.has(gram)) overlap += 1;
+  return (2 * overlap) / (left.size + right.size);
+}
+
+function buildDuplicateSignals(msme: MsmeRow, allMsmes: MsmeRow[]) {
+  return allMsmes
+    .filter((candidate) => asString(candidate.id) && asString(candidate.id) !== asString(msme.id))
+    .map((candidate) => {
+      const reasons: string[] = [];
+      let score = 0;
+      if (asString(msme.cac_number) && normalizedComparable(msme.cac_number) === normalizedComparable(candidate.cac_number)) {
+        score += 45;
+        reasons.push("CAC match");
+      }
+      if (asString(msme.tin) && normalizedComparable(msme.tin) === normalizedComparable(candidate.tin)) {
+        score += 45;
+        reasons.push("TIN match");
+      }
+      if (asString(msme.contact_phone) && normalizedComparable(msme.contact_phone) === normalizedComparable(candidate.contact_phone)) {
+        score += 30;
+        reasons.push("Phone match");
+      }
+      if (asString(msme.contact_email) && normalizedComparable(msme.contact_email) === normalizedComparable(candidate.contact_email)) {
+        score += 30;
+        reasons.push("Email match");
+      }
+      const similarity = nameSimilarity(msme.business_name, candidate.business_name);
+      if (similarity >= 0.72) {
+        score += Math.round(similarity * 25);
+        reasons.push(`Business name similarity ${Math.round(similarity * 100)}%`);
+      }
+      return {
+        id: asString(candidate.id),
+        msmeId: asString(candidate.msme_id) || "Unassigned MSME ID",
+        businessName: asString(candidate.business_name) || "Unnamed MSME",
+        confidence: score >= 60 ? "high" as const : score >= 35 ? "medium" as const : "low" as const,
+        reasons,
+        score,
+      };
+    })
+    .filter((signal) => signal.score >= 25 && signal.reasons.length)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map((signal) => ({
+      id: signal.id,
+      msmeId: signal.msmeId,
+      businessName: signal.businessName,
+      confidence: signal.confidence,
+      reasons: signal.reasons,
+    }));
 }
 
 function applyFilters(rows: Array<{ row: AdminMsmeRegistryRow; raw: MsmeRow }>, filters: AdminMsmeRegistryFilters) {
@@ -646,6 +742,7 @@ export async function loadAdminMsmeRegistry(
   sources.association_memberships = { available: false, message: "Not used in Phase 1 list view" };
   sources.invoices = { available: false, message: "Not used in Phase 1 list view" };
   sources.invoice_events = { available: false, message: "Not used in Phase 1 list view" };
+  sources.admin_internal_notes = { available: false, message: "Not used in Phase 1 list view" };
 
   const credentialsByMsme = latestByMsme(credentialsResult.rows, "updated_at");
   const complianceByMsme = latestByMsme(complianceProfilesResult.rows, "updated_at");
@@ -691,6 +788,10 @@ export async function loadAdminMsmeRegistry(
         flagged: Boolean(raw.flagged),
         suspended: Boolean(raw.suspended),
         enforcementNote: asString(raw.enforcement_note) || null,
+        reviewRequested: Boolean(raw.operational_review_requested),
+        escalated: Boolean(raw.operational_escalated),
+        latestAdminAction: asString(raw.latest_admin_action) || null,
+        latestAdminActionAt: asString(raw.latest_admin_action_at) || null,
         validationStatus: asString(validation?.validation_summary) || null,
         validationConfidence: Number.isFinite(Number(validation?.confidence_score)) ? Number(validation?.confidence_score) : null,
         contactEmailMasked: maskEmail(raw.contact_email),
@@ -770,6 +871,7 @@ export async function getAdminMsmeDetail(
     validationResult,
     legacyComplianceResult,
     activityLogsResult,
+    internalNotesResult,
     invoicesResult,
     invoiceEventsResult,
   ] = await Promise.all([
@@ -789,6 +891,7 @@ export async function getAdminMsmeDetail(
     readOptionalTable<Record<string, unknown>>(supabase, "validation_results", TABLE_COLUMNS.validation_results),
     readOptionalTable<Record<string, unknown>>(supabase, "compliance_profiles", TABLE_COLUMNS.compliance_profiles),
     readOptionalTable<Record<string, unknown>>(supabase, "activity_logs", TABLE_COLUMNS.activity_logs, 2000),
+    readOptionalTable<Record<string, unknown>>(supabase, "admin_internal_notes", TABLE_COLUMNS.admin_internal_notes, 1000),
     readOptionalTable<Record<string, unknown>>(supabase, "invoices", TABLE_COLUMNS.invoices),
     readOptionalTable<Record<string, unknown>>(supabase, "invoice_events", TABLE_COLUMNS.invoice_events, 2000),
   ]);
@@ -809,6 +912,7 @@ export async function getAdminMsmeDetail(
   sources.validation_results = validationResult.source;
   sources.compliance_profiles = legacyComplianceResult.source;
   sources.activity_logs = activityLogsResult.source;
+  sources.admin_internal_notes = internalNotesResult.source;
   sources.invoices = invoicesResult.source;
   sources.invoice_events = invoiceEventsResult.source;
 
@@ -875,6 +979,16 @@ export async function getAdminMsmeDetail(
     const metadataMsmeId = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? asString((metadata as Record<string, unknown>).msme_id) : "";
     return asString(row.entity_id) === id || metadataMsmeId === id;
   });
+  const internalNotes = internalNotesResult.rows
+    .filter((row) => asString(row.msme_id) === id)
+    .sort((a, b) => (Date.parse(asString(b.created_at)) || 0) - (Date.parse(asString(a.created_at)) || 0))
+    .slice(0, 10)
+    .map((row) => ({
+      id: asString(row.id),
+      authorRole: asString(row.author_role) || null,
+      noteBody: asString(row.note_body),
+      createdAt: asString(row.created_at) || null,
+    }));
 
   const complianceTimeline = [
     ...complianceEvents.map((row) => timelineItem("compliance_events", row, asString(row.event_type) || "compliance_event", "Compliance event recorded")),
@@ -894,6 +1008,13 @@ export async function getAdminMsmeDetail(
 
   const timeline = sortLatestTimeline([
     ...activityLogs.map((item) => timelineItem("activity_logs", item, asString(item.action) || "activity", `Activity: ${asString(item.action) || "recorded"}`)),
+    ...internalNotes.map((item) => ({
+      id: item.id,
+      eventType: "internal_note_added",
+      date: item.createdAt,
+      source: "admin_internal_notes" as const,
+      summary: `Internal note added by ${item.authorRole ?? "admin"}`,
+    })),
     ...credentialEvents.map((item) => timelineItem("credential_events", item, asString(item.action) || "credential_event", `Credential ${asString(item.action) || "event"}`)),
     ...complianceTimeline,
     ...complaintHistory.map((item) => timelineItem("complaint_status_history", item, asString(item.to_status) || "complaint_status", `Complaint status changed to ${asString(item.to_status) || "updated"}`)),
@@ -957,6 +1078,8 @@ export async function getAdminMsmeDetail(
       legacyComplianceRiskLevel: asString(legacyCompliance?.risk_level) || null,
     },
     timeline,
+    internalNotes,
+    duplicateSignals: buildDuplicateSignals(msme, msmesResult.rows),
     sources,
     diagnostics: {
       operation: "get_admin_msme_detail",
@@ -1016,6 +1139,9 @@ export function buildAdminMsmeRegistryCsv(rows: AdminMsmeRegistryRow[]) {
     "Created At",
     "Flagged",
     "Suspended",
+    "Review Requested",
+    "Escalated",
+    "Last Operational Action",
     "Contact Email",
     "Contact Phone",
     "CAC",
@@ -1043,6 +1169,9 @@ export function buildAdminMsmeRegistryCsv(rows: AdminMsmeRegistryRow[]) {
       row.createdAt,
       row.flagged ? "Yes" : "No",
       row.suspended ? "Yes" : "No",
+      row.reviewRequested ? "Yes" : "No",
+      row.escalated ? "Yes" : "No",
+      row.latestAdminAction ?? "",
       row.contactEmailMasked ?? "",
       row.contactPhoneMasked ?? "",
       row.cacMasked ?? "",

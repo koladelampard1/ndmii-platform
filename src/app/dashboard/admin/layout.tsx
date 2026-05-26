@@ -1,11 +1,29 @@
 import { ReactNode } from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireWorkspaceRole } from "@/lib/auth/workspace-guards";
-import { getCurrentUserContext } from "@/lib/auth/session";
 import { AdminCommandShell } from "@/components/admin/admin-command-shell";
 
-export default async function AdminWorkspaceLayout({ children }: { children: ReactNode }) {
-  await requireWorkspaceRole(["admin"]);
-  const ctx = await getCurrentUserContext();
+async function currentPathname() {
+  const headerStore = await headers();
+  const directPath =
+    headerStore.get("next-url") ??
+    headerStore.get("x-next-url") ??
+    headerStore.get("x-pathname") ??
+    headerStore.get("x-invoke-path") ??
+    headerStore.get("x-matched-path");
 
-  return <AdminCommandShell adminName={ctx.fullName}>{children}</AdminCommandShell>;
+  if (directPath) return directPath.startsWith("http") ? new URL(directPath).pathname : directPath;
+  const referer = headerStore.get("referer");
+  return referer ? new URL(referer).pathname : "unknown";
+}
+
+export default async function AdminWorkspaceLayout({ children }: { children: ReactNode }) {
+  const pathname = await currentPathname();
+  const ctx = await requireWorkspaceRole(["admin", "reviewer", "fccpc_officer", "firs_officer"], pathname);
+  if (ctx.role !== "admin" && pathname !== "/dashboard/admin/msmes" && !pathname.startsWith("/dashboard/admin/msmes/")) {
+    redirect("/access-denied");
+  }
+
+  return <AdminCommandShell adminName={ctx.fullName} adminRole={ctx.role}>{children}</AdminCommandShell>;
 }
