@@ -48,7 +48,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "MSME Management",
     items: [
       { label: "MSME Registry", href: "/dashboard/admin/msmes", icon: Building2, pending: true },
-      { label: "Verifications", href: "/dashboard/admin/verifications", icon: ShieldCheck, pending: true },
+      { label: "Verifications", href: "/dashboard/admin/verifications", icon: ShieldCheck },
       { label: "Digital IDs", href: "/dashboard/admin/digital-ids", icon: BadgeCheck },
     ],
   },
@@ -90,7 +90,7 @@ export function AdminCommandShell({ children, notificationCount = 0, adminName, 
   const visibleGroups = adminRole === "admin"
     ? navGroups
     : navGroups
-        .map((group) => ({ ...group, items: group.items.filter((item) => item.href === "/dashboard/admin/msmes") }))
+        .map((group) => ({ ...group, items: group.items.filter((item) => item.href === "/dashboard/admin/msmes" || item.href === "/dashboard/admin/verifications") }))
         .filter((group) => group.items.length);
 
   return (
