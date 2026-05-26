@@ -7,9 +7,11 @@ import {
   BadgeCheck,
   Building2,
   ClipboardCheck,
+  Gauge,
   FileClock,
   Flag,
   IdCard,
+  ListChecks,
   Link2,
   LockKeyhole,
   MessageSquareWarning,
@@ -129,6 +131,32 @@ function CountTile({ label, value }: { label: string; value: string | number | n
   );
 }
 
+function attentionTone(value: AdminMsmeDetail["intelligence"]["attentionLevel"]): Tone {
+  if (value === "critical") return "rose";
+  if (value === "elevated") return "amber";
+  if (value === "watch") return "blue";
+  return "emerald";
+}
+
+function SignalList({ detail }: { detail: AdminMsmeDetail }) {
+  const signals = detail.intelligence.contributingSignals;
+  if (!signals.length) return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No attention signals found in available sources.</p>;
+  return (
+    <div className="space-y-2">
+      {signals.map((item) => (
+        <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-black text-slate-950">{item.label}</p>
+            <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses[attentionTone(item.severity)]}`}>{humanize(item.severity)}</span>
+          </div>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{item.description}</p>
+          <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{humanize(item.source)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TimelineList({ items, emptyText }: { items: AdminMsmeTimelineItem[]; emptyText: string }) {
   if (!items.length) return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">{emptyText}</p>;
   return (
@@ -162,6 +190,10 @@ function Header({ detail }: { detail: AdminMsmeDetail }) {
           <p className="mt-2 text-sm font-bold text-slate-500">{row.msmeId}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses[attentionTone(detail.intelligence.attentionLevel)]}`}>
+            <Gauge className="h-3 w-3" />
+            {humanize(detail.intelligence.attentionLevel)} attention
+          </span>
           <StatusPill value={row.verificationStatus} />
           <StatusPill value={row.reviewStatus} />
           <StatusPill value={row.digitalIdStatus} />
@@ -201,6 +233,18 @@ export default async function AdminMsmeDetailPage({ params }: PageProps) {
       <Header detail={detail} />
       <SourceBanner sources={detail.sources} />
 
+      <SectionCard title="Intelligence posture" icon={Gauge}>
+        <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Attention level</p>
+            <p className={`mt-3 inline-flex rounded-full border px-3 py-1 text-sm font-black ${toneClasses[attentionTone(detail.intelligence.attentionLevel)]}`}>{humanize(detail.intelligence.attentionLevel)}</p>
+            <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">{detail.intelligence.trustPostureSummary}</p>
+            <p className="mt-3 text-xs font-bold text-slate-500">Transparent rule signals only. No hidden score, automated enforcement, auto-suspension, or duplicate merge is applied.</p>
+          </div>
+          <SignalList detail={detail} />
+        </div>
+      </SectionCard>
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
           <SectionCard title="Profile summary" icon={Building2}>
@@ -216,6 +260,17 @@ export default async function AdminMsmeDetailPage({ params }: PageProps) {
               { label: "TIN", value: display(row.tinMasked) },
               { label: "Association", value: row.associationName ?? "Not linked" },
             ]} />
+          </SectionCard>
+
+          <SectionCard title="Profile completeness" icon={ListChecks}>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {detail.intelligence.profileCompletenessBreakdown.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <span className="text-sm font-black text-slate-800">{item.label}</span>
+                  <StatusPill value={item.complete ? "complete" : "missing"} fallback={item.complete ? "Complete" : "Missing"} />
+                </div>
+              ))}
+            </div>
           </SectionCard>
 
           <SectionCard
@@ -313,6 +368,18 @@ export default async function AdminMsmeDetailPage({ params }: PageProps) {
                 { label: "Compliance risk", value: <StatusPill value={detail.compliance.riskLevel} /> },
               ]} />
             </div>
+          </SectionCard>
+
+          <SectionCard title="Health summary" icon={Gauge}>
+            <DataGrid rows={[
+              { label: "Complaint health", value: `${humanize(detail.intelligence.complaintHealth.status)} - ${detail.intelligence.complaintHealth.summary}` },
+              { label: "Compliance health", value: `${humanize(detail.intelligence.complianceHealth.status)} - ${detail.intelligence.complianceHealth.summary}` },
+              { label: "Credential health", value: `${humanize(detail.intelligence.credentialHealth.status)} - ${detail.intelligence.credentialHealth.summary}` },
+            ]} />
+          </SectionCard>
+
+          <SectionCard title="Recent activity" icon={FileClock}>
+            <TimelineList items={detail.intelligence.recentOperationalActivity} emptyText="No recent operational activity is available." />
           </SectionCard>
 
           <SectionCard title="Admin actions" icon={ShieldCheck}>

@@ -1,9 +1,12 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   AlertCircle,
   BadgeCheck,
   Building2,
   CalendarDays,
+  ClipboardList,
+  Database,
   Download,
   Filter,
   Flag,
@@ -12,6 +15,7 @@ import {
   Search,
   ExternalLink,
   ShieldCheck,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { requireRole } from "@/lib/data/authorization-scope";
@@ -19,7 +23,9 @@ import {
   loadAdminMsmeRegistry,
   normalizeRegistryFilters,
   type AdminMsmeRegistryFilters,
+  type AdminMsmeRegistryResult,
   type AdminMsmeRegistryRow,
+  type AdminMsmeDistributionItem,
   type RegistrySourceState,
 } from "@/lib/data/admin-msme-registry";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -112,6 +118,168 @@ function KpiCard({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: 
         </div>
       </div>
     </article>
+  );
+}
+
+function IntelligenceCard({ label, value, detail, tone = "slate", href }: { label: string; value: string; detail: string; tone?: Tone; href?: string | null }) {
+  const body = (
+    <article className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 hover:border-emerald-200">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500" title={detail}>{label}</p>
+      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">{value}</p>
+      <p className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses[tone]}`}>{detail}</p>
+    </article>
+  );
+  return href ? <Link href={href}>{body}</Link> : body;
+}
+
+function MiniBarList({ items, emptyText }: { items: AdminMsmeDistributionItem[]; emptyText: string }) {
+  if (!items.length) return <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">{emptyText}</p>;
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const content = (
+          <>
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-black text-slate-800">{item.label}</span>
+              <span className="font-bold text-slate-500">{item.count.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-emerald-700" style={{ width: `${Math.max(2, item.percent)}%` }} />
+            </div>
+          </>
+        );
+        return item.href ? (
+          <Link key={item.label} href={item.href} className="block rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-emerald-50">{content}</Link>
+        ) : (
+          <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">{content}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InsightPanel({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+      <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-slate-600">
+        <Icon className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+        {title}
+      </h2>
+      <div className="mt-4">{children}</div>
+    </article>
+  );
+}
+
+function AttentionList({ rows, emptyText }: { rows: AdminMsmeRegistryRow[]; emptyText: string }) {
+  if (!rows.length) return <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">{emptyText}</p>;
+  return (
+    <div className="space-y-2">
+      {rows.map((row) => (
+        <Link key={row.id} href={`/dashboard/admin/msmes/${encodeURIComponent(row.id)}`} className="block rounded-lg border border-slate-200 bg-slate-50 p-3 hover:bg-emerald-50">
+          <span className="block text-sm font-black text-slate-950">{row.businessName}</span>
+          <span className="mt-1 block text-xs font-bold text-slate-500">{row.msmeId} - {row.state ?? "State unavailable"}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function formatCoverage(metric: { percent: number | null; available: boolean }) {
+  if (!metric.available || metric.percent === null) return "Unavailable";
+  return `${metric.percent}%`;
+}
+
+function RegistryIntelligence({ registry }: { registry: AdminMsmeRegistryResult }) {
+  const intel = registry.intelligence;
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Registry intelligence</p>
+          <h2 className="mt-1 text-xl font-black text-slate-950">Read-only decision support</h2>
+        </div>
+        <p className="max-w-2xl text-sm font-semibold text-slate-600">Rule-based summaries from available registry sources. No AI scoring, automated enforcement, auto-suspension, or duplicate merging is performed.</p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <IntelligenceCard label="Verification Coverage" value={formatCoverage(intel.verificationCoverage)} detail={`${intel.verificationCoverage.count ?? "Unavailable"} verified`} tone="blue" href="/dashboard/admin/msmes?verificationStatus=verified" />
+        <IntelligenceCard label="Credential Coverage" value={formatCoverage(intel.credentialCoverage)} detail={intel.credentialCoverage.available ? `${intel.credentialCoverage.count} with credential` : "Source unavailable"} tone="violet" href="/dashboard/admin/msmes?digitalIdStatus=active" />
+        <IntelligenceCard label="Compliance Readiness" value={formatCoverage(intel.complianceCoverage)} detail={intel.complianceCoverage.available ? `${intel.complianceCoverage.count} ready` : "Source unavailable"} tone="emerald" />
+        <IntelligenceCard label="Open Complaint Density" value={intel.complaintDensity.per100Msmes === null ? "Unavailable" : `${intel.complaintDensity.per100Msmes}/100`} detail={intel.complaintDensity.available ? `${intel.complaintDensity.openComplaints} open complaints` : "Source unavailable"} tone="rose" />
+        <IntelligenceCard label="Flagged MSMEs" value={intel.flaggedSuspendedDistribution.flagged.toLocaleString()} detail={`${intel.flaggedSuspendedDistribution.suspended} suspended MSMEs`} tone={intel.flaggedSuspendedDistribution.flagged ? "rose" : "slate"} href="/dashboard/admin/msmes?flagged=true" />
+        <IntelligenceCard label="Possible Duplicate Signals" value={intel.duplicateSignalCount.toLocaleString()} detail="CAC, TIN, phone, email, or name match groups" tone={intel.duplicateSignalCount ? "amber" : "slate"} />
+        <IntelligenceCard label="Top State" value={intel.topState?.label ?? "Unavailable"} detail={intel.topState ? `${intel.topState.count} MSMEs` : "No state data"} tone="blue" href={intel.topState?.href} />
+        <IntelligenceCard label="Top Sector" value={intel.topSector?.label ?? "Unavailable"} detail={intel.topSector ? `${intel.topSector.count} MSMEs` : "No sector data"} tone="emerald" href={intel.topSector?.href} />
+        <IntelligenceCard label="Top Association" value={intel.topAssociation?.label ?? "Unavailable"} detail={intel.topAssociation ? `${intel.topAssociation.count} MSMEs` : "No association data"} tone="violet" />
+        <IntelligenceCard label="High Attention" value={intel.highAttentionMsmeCount.toLocaleString()} detail="Flagged, suspended, restricted credential, or rejected/expired compliance" tone={intel.highAttentionMsmeCount ? "rose" : "slate"} />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <InsightPanel title="Needs Attention" icon={ClipboardList}>
+          <div className="grid gap-4">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Unverified with complaint</h3>
+              <div className="mt-2"><AttentionList rows={intel.needsAttention.unverifiedWithComplaint} emptyText="No unverified MSMEs with open complaints." /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Suspended credential</h3>
+              <div className="mt-2"><AttentionList rows={intel.needsAttention.suspendedCredential} emptyText={registry.sources.digital_identity_credentials.available ? "No suspended credentials found." : "Digital credential source unavailable."} /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Flagged MSME</h3>
+              <div className="mt-2"><AttentionList rows={intel.needsAttention.flaggedMsmes} emptyText="No flagged MSMEs found." /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Compliance rejected / expired</h3>
+              <div className="mt-2"><AttentionList rows={intel.needsAttention.complianceRejectedOrExpired} emptyText="No rejected or expired compliance profiles found." /></div>
+            </div>
+          </div>
+        </InsightPanel>
+
+        <InsightPanel title="Data Quality" icon={Database}>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["Missing Contact", intel.dataQuality.missingOwnerContact, "amber" as Tone],
+              ["Missing CAC/TIN", intel.dataQuality.missingCacOrTin, "amber" as Tone],
+              ["Duplicate Indicators", intel.dataQuality.duplicatePhoneEmailCacTin, "rose" as Tone],
+              ["Incomplete Profile", intel.dataQuality.incompleteProfile, "slate" as Tone],
+            ].map(([label, value, tone]) => (
+              <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-black text-slate-950">{Number(value).toLocaleString()}</p>
+                <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses[tone as Tone]}`}>Signal count</span>
+              </div>
+            ))}
+          </div>
+        </InsightPanel>
+
+        <InsightPanel title="Growth Distribution" icon={TrendingUp}>
+          <div className="space-y-5">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Onboarding trend</p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">Last 30 days: {intel.onboardingTrend.last30Days.toLocaleString()} / previous 30 days: {intel.onboardingTrend.previous30Days.toLocaleString()}</p>
+              <p className="mt-1 text-xs font-bold text-slate-500">Change: {intel.onboardingTrend.changePercent === null ? "Unavailable" : `${intel.onboardingTrend.changePercent}%`}</p>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">By state</h3>
+              <div className="mt-2"><MiniBarList items={intel.stateDistribution.slice(0, 5)} emptyText="No state distribution available." /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">By sector</h3>
+              <div className="mt-2"><MiniBarList items={intel.sectorDistribution.slice(0, 5)} emptyText="No sector distribution available." /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">By association</h3>
+              <div className="mt-2"><MiniBarList items={intel.associationDistribution.slice(0, 5)} emptyText="No association distribution available." /></div>
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">By registration path</h3>
+              <div className="mt-2"><MiniBarList items={intel.registrationPathDistribution} emptyText="No registration path distribution available." /></div>
+            </div>
+          </div>
+        </InsightPanel>
+      </div>
+    </section>
   );
 }
 
@@ -300,6 +468,8 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
         <KpiCard icon={ShieldCheck} label="Active Credentials" value={registry.kpis.activeCredentials === null ? "Unavailable" : registry.kpis.activeCredentials.toLocaleString()} tone="violet" />
         <KpiCard icon={AlertCircle} label="Open Complaints" value={registry.kpis.openComplaints === null ? "Unavailable" : registry.kpis.openComplaints.toLocaleString()} tone="rose" />
       </section>
+
+      <RegistryIntelligence registry={registry} />
 
       <form className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="flex items-center gap-2 text-sm font-black text-slate-950">

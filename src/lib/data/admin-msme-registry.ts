@@ -92,6 +92,73 @@ export type AdminMsmeRegistryKpis = {
   openComplaints: number | null;
 };
 
+export type AdminMsmeAttentionLevel = "normal" | "watch" | "elevated" | "critical";
+
+export type AdminMsmeIntelligenceSignal = {
+  id: string;
+  label: string;
+  description: string;
+  severity: Exclude<AdminMsmeAttentionLevel, "normal">;
+  source: RegistrySourceName | "registry_rules";
+};
+
+export type AdminMsmeDistributionItem = {
+  label: string;
+  count: number;
+  percent: number;
+  href?: string | null;
+};
+
+export type AdminMsmeCoverageMetric = {
+  count: number | null;
+  total: number;
+  percent: number | null;
+  available: boolean;
+};
+
+export type AdminMsmeRegistryIntelligence = {
+  onboardingTrend: {
+    last30Days: number;
+    previous30Days: number;
+    changePercent: number | null;
+  };
+  stateDistribution: AdminMsmeDistributionItem[];
+  sectorDistribution: AdminMsmeDistributionItem[];
+  associationDistribution: AdminMsmeDistributionItem[];
+  registrationPathDistribution: AdminMsmeDistributionItem[];
+  verificationCoverage: AdminMsmeCoverageMetric;
+  credentialCoverage: AdminMsmeCoverageMetric;
+  complianceCoverage: AdminMsmeCoverageMetric;
+  complaintDensity: {
+    openComplaints: number | null;
+    per100Msmes: number | null;
+    available: boolean;
+  };
+  flaggedSuspendedDistribution: {
+    flagged: number;
+    suspended: number;
+    credentialSuspended: number | null;
+  };
+  associationContribution: AdminMsmeCoverageMetric;
+  duplicateSignalCount: number;
+  highAttentionMsmeCount: number;
+  topState: AdminMsmeDistributionItem | null;
+  topSector: AdminMsmeDistributionItem | null;
+  topAssociation: AdminMsmeDistributionItem | null;
+  needsAttention: {
+    unverifiedWithComplaint: AdminMsmeRegistryRow[];
+    suspendedCredential: AdminMsmeRegistryRow[];
+    flaggedMsmes: AdminMsmeRegistryRow[];
+    complianceRejectedOrExpired: AdminMsmeRegistryRow[];
+  };
+  dataQuality: {
+    missingOwnerContact: number;
+    missingCacOrTin: number;
+    duplicatePhoneEmailCacTin: number;
+    incompleteProfile: number;
+  };
+};
+
 export type AdminMsmeRegistryOption = {
   value: string;
   label: string;
@@ -105,6 +172,7 @@ export type AdminMsmeRegistryResult = {
   pageSize: number;
   totalPages: number;
   kpis: AdminMsmeRegistryKpis;
+  intelligence: AdminMsmeRegistryIntelligence;
   options: {
     states: string[];
     sectors: string[];
@@ -192,6 +260,17 @@ export type AdminMsmeDetail = {
     confidence: "high" | "medium" | "low";
     reasons: string[];
   }>;
+  intelligence: {
+    attentionLevel: AdminMsmeAttentionLevel;
+    contributingSignals: AdminMsmeIntelligenceSignal[];
+    riskIndicators: AdminMsmeIntelligenceSignal[];
+    profileCompletenessBreakdown: Array<{ label: string; complete: boolean }>;
+    complaintHealth: { status: string; summary: string };
+    complianceHealth: { status: string; summary: string };
+    credentialHealth: { status: string; summary: string };
+    recentOperationalActivity: AdminMsmeTimelineItem[];
+    trustPostureSummary: string;
+  };
   sources: Record<RegistrySourceName, RegistrySourceState>;
   diagnostics: {
     operation: string;
@@ -510,6 +589,202 @@ function profileCompletenessScore(msme: MsmeRow) {
   return Math.round((complete / fields.length) * 100);
 }
 
+function profileCompletenessBreakdown(msme: MsmeRow) {
+  return [
+    { label: "Business name", complete: Boolean(asString(msme.business_name)) },
+    { label: "Owner name", complete: Boolean(asString(msme.owner_name)) },
+    { label: "Owner email", complete: Boolean(asString(msme.contact_email)) },
+    { label: "Owner phone", complete: Boolean(asString(msme.contact_phone)) },
+    { label: "State", complete: Boolean(asString(msme.state)) },
+    { label: "LGA", complete: Boolean(asString(msme.lga)) },
+    { label: "Sector", complete: Boolean(asString(msme.sector)) },
+    { label: "Business type", complete: Boolean(asString(msme.business_type)) },
+    { label: "Address", complete: Boolean(asString(msme.address)) },
+    { label: "CAC", complete: Boolean(asString(msme.cac_number)) },
+    { label: "TIN", complete: Boolean(asString(msme.tin)) },
+  ];
+}
+
+function percent(count: number, total: number) {
+  if (!total) return 0;
+  return Math.round((count / total) * 100);
+}
+
+function nullablePercent(count: number | null, total: number) {
+  if (count === null) return null;
+  return percent(count, total);
+}
+
+function isVerifiedStatus(value: string | null | undefined) {
+  return ["verified", "approved", "active"].includes(normalizeStatus(value, ""));
+}
+
+function isComplianceReadyStatus(value: string | null | undefined) {
+  return ["approved", "complete", "compliant", "verified", "active"].includes(normalizeStatus(value, ""));
+}
+
+function isBadComplianceStatus(value: string | null | undefined) {
+  return ["rejected", "expired", "failed"].includes(normalizeStatus(value, ""));
+}
+
+function isCredentialSuspendedStatus(value: string | null | undefined) {
+  return ["suspended", "revoked"].includes(normalizeStatus(value, ""));
+}
+
+function signal(id: string, label: string, description: string, severity: Exclude<AdminMsmeAttentionLevel, "normal">, source: AdminMsmeIntelligenceSignal["source"]): AdminMsmeIntelligenceSignal {
+  return { id, label, description, severity, source };
+}
+
+function attentionFromSignals(signals: AdminMsmeIntelligenceSignal[]): AdminMsmeAttentionLevel {
+  if (signals.some((item) => item.severity === "critical")) return "critical";
+  if (signals.some((item) => item.severity === "elevated")) return "elevated";
+  if (signals.some((item) => item.severity === "watch")) return "watch";
+  return "normal";
+}
+
+function buildRiskIndicators(params: {
+  row: AdminMsmeDetail["row"];
+  credentialStatus: string | null;
+  duplicateCount: number;
+  complianceRejectedCount: number | null;
+  complianceExpiredCount: number | null;
+  reviewFailureCount: number;
+  profileBreakdown: Array<{ label: string; complete: boolean }>;
+}) {
+  const indicators: AdminMsmeIntelligenceSignal[] = [];
+  const { row, credentialStatus, duplicateCount, complianceRejectedCount, complianceExpiredCount, reviewFailureCount, profileBreakdown } = params;
+  if ((row.openComplaintCount ?? 0) > 0) indicators.push(signal("open_complaints", "Open complaints", `${row.openComplaintCount} open complaint(s) linked to this MSME.`, "watch", "complaints"));
+  if (row.flagged) indicators.push(signal("flagged_msme", "Flagged MSME", "Operational flag is active on this MSME.", "elevated", "registry_rules"));
+  if (row.suspended) indicators.push(signal("suspended_msme", "Suspended MSME", "MSME operational status is suspended.", "critical", "registry_rules"));
+  if (isCredentialSuspendedStatus(credentialStatus)) indicators.push(signal("credential_restricted", "Credential restricted", `Digital credential status is ${normalizeStatus(credentialStatus, "unavailable")}.`, "critical", "digital_identity_credentials"));
+  if (isBadComplianceStatus(row.complianceStatus)) indicators.push(signal("compliance_status_attention", "Compliance attention", `Compliance status is ${normalizeStatus(row.complianceStatus, "unavailable")}.`, "elevated", "msme_compliance_profiles"));
+  if ((complianceRejectedCount ?? 0) > 0) indicators.push(signal("rejected_compliance_items", "Rejected compliance items", `${complianceRejectedCount} compliance item(s) rejected.`, "elevated", "msme_compliance_items"));
+  if ((complianceExpiredCount ?? 0) > 0) indicators.push(signal("expired_compliance_items", "Expired compliance items", `${complianceExpiredCount} compliance item(s) expired.`, "elevated", "msme_compliance_items"));
+  const missingRequired = profileBreakdown.filter((item) => !item.complete).map((item) => item.label);
+  if (missingRequired.length) indicators.push(signal("missing_profile_fields", "Missing profile fields", `${missingRequired.slice(0, 4).join(", ")}${missingRequired.length > 4 ? " and more" : ""} missing.`, "watch", "msmes"));
+  if (duplicateCount > 0) indicators.push(signal("possible_duplicates", "Possible duplicate signals", `${duplicateCount} possible matching MSME record(s) found.`, "watch", "registry_rules"));
+  if (reviewFailureCount >= 2) indicators.push(signal("repeated_review_failures", "Repeated review failures", `${reviewFailureCount} rejected or failed review event(s) found.`, "elevated", "compliance_events"));
+  return indicators;
+}
+
+function distributionFromRows(
+  rows: AdminMsmeRegistryRow[],
+  getLabel: (row: AdminMsmeRegistryRow) => string | null | undefined,
+  hrefForLabel?: (label: string) => string | null,
+  limit = 8,
+): AdminMsmeDistributionItem[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const label = asString(getLabel(row)) || "Unavailable";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count, percent: percent(count, rows.length), href: hrefForLabel?.(label) ?? null }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+function countDuplicateRegistrySignals(msmes: MsmeRow[]) {
+  const keys = new Map<string, Set<string>>();
+  const add = (kind: string, value: string | null | undefined, id: string) => {
+    const normalized = normalizedComparable(value);
+    if (!normalized || !id) return;
+    const key = `${kind}:${normalized}`;
+    const set = keys.get(key) ?? new Set<string>();
+    set.add(id);
+    keys.set(key, set);
+  };
+  for (const msme of msmes) {
+    const id = asString(msme.id);
+    add("cac", msme.cac_number, id);
+    add("tin", msme.tin, id);
+    add("phone", msme.contact_phone, id);
+    add("email", msme.contact_email, id);
+    add("name", msme.business_name, id);
+  }
+  return Array.from(keys.values()).filter((ids) => ids.size > 1).length;
+}
+
+function hasDuplicateExactSignal(msme: MsmeRow, allMsmes: MsmeRow[]) {
+  const id = asString(msme.id);
+  return allMsmes.some((candidate) => {
+    if (asString(candidate.id) === id) return false;
+    return (
+      (asString(msme.cac_number) && normalizedComparable(msme.cac_number) === normalizedComparable(candidate.cac_number)) ||
+      (asString(msme.tin) && normalizedComparable(msme.tin) === normalizedComparable(candidate.tin)) ||
+      (asString(msme.contact_phone) && normalizedComparable(msme.contact_phone) === normalizedComparable(candidate.contact_phone)) ||
+      (asString(msme.contact_email) && normalizedComparable(msme.contact_email) === normalizedComparable(candidate.contact_email))
+    );
+  });
+}
+
+function buildRegistryIntelligence(params: {
+  rows: AdminMsmeRegistryRow[];
+  raws: MsmeRow[];
+  sources: Record<RegistrySourceName, RegistrySourceState>;
+}): AdminMsmeRegistryIntelligence {
+  const { rows, raws, sources } = params;
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const last30Days = rows.filter((row) => {
+    const time = Date.parse(row.createdAt ?? "");
+    return Number.isFinite(time) && now - time <= 30 * day;
+  }).length;
+  const previous30Days = rows.filter((row) => {
+    const time = Date.parse(row.createdAt ?? "");
+    return Number.isFinite(time) && now - time > 30 * day && now - time <= 60 * day;
+  }).length;
+  const changePercent = previous30Days ? Math.round(((last30Days - previous30Days) / previous30Days) * 100) : null;
+  const total = rows.length;
+  const stateDistribution = distributionFromRows(rows, (row) => row.state, (label) => label === "Unavailable" ? null : `/dashboard/admin/msmes?state=${encodeURIComponent(label)}`);
+  const sectorDistribution = distributionFromRows(rows, (row) => row.sector, (label) => label === "Unavailable" ? null : `/dashboard/admin/msmes?sector=${encodeURIComponent(label)}`);
+  const associationDistribution = distributionFromRows(rows, (row) => row.associationName ?? "Not linked", (label) => label === "Not linked" || label === "Unavailable" ? null : null);
+  const registrationPathDistribution = distributionFromRows(rows, (row) => row.associationId ? "Association-assisted" : "Direct MSME onboarding");
+  const verifiedCount = rows.filter((row) => isVerifiedStatus(row.verificationStatus)).length;
+  const credentialCount = sources.digital_identity_credentials.available ? rows.filter((row) => Boolean(row.digitalId)).length : null;
+  const complianceCount = sources.msme_compliance_profiles.available || sources.compliance_profiles.available ? rows.filter((row) => isComplianceReadyStatus(row.complianceStatus)).length : null;
+  const openComplaints = sources.complaints.available ? rows.reduce((sum, row) => sum + (row.openComplaintCount ?? 0), 0) : null;
+  const flaggedMsmes = rows.filter((row) => row.flagged);
+  const suspendedCredential = sources.digital_identity_credentials.available ? rows.filter((row) => normalizeStatus(row.digitalIdStatus, "") === "suspended") : [];
+  const complianceRejectedOrExpired = rows.filter((row) => isBadComplianceStatus(row.complianceStatus));
+  const unverifiedWithComplaint = rows.filter((row) => !isVerifiedStatus(row.verificationStatus) && (row.openComplaintCount ?? 0) > 0);
+  const highAttentionMsmeCount = rows.filter((row) => row.suspended || row.flagged || isCredentialSuspendedStatus(row.digitalIdStatus) || isBadComplianceStatus(row.complianceStatus)).length;
+  return {
+    onboardingTrend: { last30Days, previous30Days, changePercent },
+    stateDistribution,
+    sectorDistribution,
+    associationDistribution,
+    registrationPathDistribution,
+    verificationCoverage: { count: verifiedCount, total, percent: percent(verifiedCount, total), available: sources.msmes.available },
+    credentialCoverage: { count: credentialCount, total, percent: nullablePercent(credentialCount, total), available: sources.digital_identity_credentials.available },
+    complianceCoverage: { count: complianceCount, total, percent: nullablePercent(complianceCount, total), available: sources.msme_compliance_profiles.available || sources.compliance_profiles.available },
+    complaintDensity: { openComplaints, per100Msmes: openComplaints === null || !total ? null : Math.round((openComplaints / total) * 100), available: sources.complaints.available },
+    flaggedSuspendedDistribution: {
+      flagged: flaggedMsmes.length,
+      suspended: rows.filter((row) => row.suspended).length,
+      credentialSuspended: sources.digital_identity_credentials.available ? suspendedCredential.length : null,
+    },
+    associationContribution: { count: rows.filter((row) => row.associationId).length, total, percent: percent(rows.filter((row) => row.associationId).length, total), available: sources.associations.available || sources.association_members.available },
+    duplicateSignalCount: countDuplicateRegistrySignals(raws),
+    highAttentionMsmeCount,
+    topState: stateDistribution[0] ?? null,
+    topSector: sectorDistribution[0] ?? null,
+    topAssociation: associationDistribution.find((item) => item.label !== "Not linked" && item.label !== "Unavailable") ?? null,
+    needsAttention: {
+      unverifiedWithComplaint: unverifiedWithComplaint.slice(0, 6),
+      suspendedCredential: suspendedCredential.slice(0, 6),
+      flaggedMsmes: flaggedMsmes.slice(0, 6),
+      complianceRejectedOrExpired: complianceRejectedOrExpired.slice(0, 6),
+    },
+    dataQuality: {
+      missingOwnerContact: raws.filter((row) => !asString(row.contact_email) || !asString(row.contact_phone)).length,
+      missingCacOrTin: raws.filter((row) => !asString(row.cac_number) || !asString(row.tin)).length,
+      duplicatePhoneEmailCacTin: raws.filter((row) => hasDuplicateExactSignal(row, raws)).length,
+      incompleteProfile: raws.filter((row) => profileCompletenessScore(row) < 80).length,
+    },
+  };
+}
+
 function detailRowFromSources(params: {
   msme: MsmeRow;
   credential?: Record<string, unknown>;
@@ -822,6 +1097,11 @@ export async function loadAdminMsmeRegistry(
     pageSize: filters.pageSize,
     totalPages,
     kpis: buildKpis(allRows),
+    intelligence: buildRegistryIntelligence({
+      rows: allRows,
+      raws: decorated.map(({ raw }) => raw),
+      sources,
+    }),
     options: {
       states: uniqueSorted(allRows.map((row) => row.state)),
       sectors: uniqueSorted(allRows.map((row) => row.sector)),
@@ -1020,6 +1300,44 @@ export async function getAdminMsmeDetail(
     ...complaintHistory.map((item) => timelineItem("complaint_status_history", item, asString(item.to_status) || "complaint_status", `Complaint status changed to ${asString(item.to_status) || "updated"}`)),
     ...invoiceEvents.map((item) => timelineItem("invoice_events", item, asString(item.event_type) || "invoice_event", `Invoice event: ${asString(item.event_type) || "recorded"}`)),
   ]);
+  const duplicateSignals = buildDuplicateSignals(msme, msmesResult.rows);
+  const profileBreakdown = profileCompletenessBreakdown(msme);
+  const reviewFailureCount = complianceEvents.filter((item) => {
+    const event = normalizeStatus(asString(item.event_type), "");
+    const toStatus = normalizeStatus(asString(item.to_status), "");
+    return ["rejected", "failed", "changes_requested"].includes(event) || ["rejected", "failed", "changes_requested"].includes(toStatus);
+  }).length;
+  const riskIndicators = buildRiskIndicators({
+    row,
+    credentialStatus: normalizeStatus(asString(credential?.status), "") || null,
+    duplicateCount: duplicateSignals.length,
+    complianceRejectedCount: sources.msme_compliance_items.available ? countByStatus(complianceItems, "rejected") : null,
+    complianceExpiredCount: sources.msme_compliance_items.available ? countByStatus(complianceItems, "expired") : null,
+    reviewFailureCount,
+    profileBreakdown,
+  });
+  const attentionLevel = attentionFromSignals(riskIndicators);
+  const complaintHealth = sources.complaints.available
+    ? {
+        status: (row.openComplaintCount ?? 0) > 0 ? "attention" : "clear",
+        summary: `${row.openComplaintCount ?? 0} open of ${row.complaintCount ?? 0} linked complaint(s).`,
+      }
+    : { status: "unavailable", summary: "Complaint source unavailable." };
+  const complianceHealth = sources.msme_compliance_profiles.available || sources.compliance_profiles.available || sources.msme_compliance_items.available
+    ? {
+        status: isBadComplianceStatus(row.complianceStatus) || (countByStatus(complianceItems, "rejected") + countByStatus(complianceItems, "expired")) > 0 ? "attention" : "available",
+        summary: `${normalizeStatus(row.complianceStatus, "unavailable")} profile; ${countByStatus(complianceItems, "rejected")} rejected and ${countByStatus(complianceItems, "expired")} expired item(s).`,
+      }
+    : { status: "unavailable", summary: "Compliance sources unavailable." };
+  const credentialHealth = sources.digital_identity_credentials.available
+    ? {
+        status: isCredentialSuspendedStatus(row.digitalIdStatus) ? "attention" : normalizeStatus(row.digitalIdStatus, "not_issued"),
+        summary: row.digitalId ? `${row.digitalIdStatus ?? "unknown"} credential issued as ${row.digitalId}.` : "No digital credential found.",
+      }
+    : { status: "unavailable", summary: "Digital credential source unavailable." };
+  const trustPostureSummary = attentionLevel === "normal"
+    ? "No attention signals found in available registry, complaint, compliance, credential, or duplicate-signal sources."
+    : `${riskIndicators.length} transparent rule-based signal(s) require human review. No automated enforcement action has been taken.`;
 
   const detail: AdminMsmeDetail = {
     row,
@@ -1079,7 +1397,18 @@ export async function getAdminMsmeDetail(
     },
     timeline,
     internalNotes,
-    duplicateSignals: buildDuplicateSignals(msme, msmesResult.rows),
+    duplicateSignals,
+    intelligence: {
+      attentionLevel,
+      contributingSignals: riskIndicators,
+      riskIndicators,
+      profileCompletenessBreakdown: profileBreakdown,
+      complaintHealth,
+      complianceHealth,
+      credentialHealth,
+      recentOperationalActivity: timeline.slice(0, 5),
+      trustPostureSummary,
+    },
     sources,
     diagnostics: {
       operation: "get_admin_msme_detail",
