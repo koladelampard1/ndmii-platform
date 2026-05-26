@@ -22,14 +22,22 @@ export type AdminMsmeRegistryFilters = {
 export type RegistrySourceName =
   | "msmes"
   | "digital_identity_credentials"
+  | "credential_events"
   | "msme_compliance_profiles"
   | "msme_compliance_items"
+  | "compliance_events"
+  | "compliance_documents"
+  | "compliance_document_events"
   | "complaints"
+  | "complaint_status_history"
   | "associations"
   | "association_members"
+  | "association_memberships"
   | "validation_results"
   | "compliance_profiles"
-  | "activity_logs";
+  | "activity_logs"
+  | "invoices"
+  | "invoice_events";
 
 export type RegistrySourceState = {
   available: boolean;
@@ -111,6 +119,76 @@ export type AdminMsmeRegistryResult = {
   };
 };
 
+export type AdminMsmeTimelineItem = {
+  id: string;
+  eventType: string;
+  date: string | null;
+  source: RegistrySourceName;
+  summary: string;
+};
+
+export type AdminMsmeDetail = {
+  row: AdminMsmeRegistryRow & {
+    address: string | null;
+    profileCompletenessScore: number;
+  };
+  credential: {
+    id: string | null;
+    status: string | null;
+    ndmiiId: string | null;
+    issuedAt: string | null;
+    approvedAt: string | null;
+    revokedAt: string | null;
+    suspendedAt: string | null;
+    expiresAt: string | null;
+    tokenExists: boolean | null;
+    latestEvent: AdminMsmeTimelineItem | null;
+  };
+  compliance: {
+    profileStatus: string | null;
+    score: number | null;
+    riskLevel: string | null;
+    approvedCount: number | null;
+    pendingCount: number | null;
+    underReviewCount: number | null;
+    submittedCount: number | null;
+    rejectedCount: number | null;
+    changesRequestedCount: number | null;
+    expiredCount: number | null;
+    expiringSoonCount: number | null;
+    evidenceCount: number | null;
+    latestEvents: AdminMsmeTimelineItem[];
+  };
+  complaints: {
+    count: number | null;
+    openCount: number | null;
+    highestSeverity: string | null;
+    latestReferences: Array<{ id: string; reference: string; status: string | null; severity: string | null; createdAt: string | null }>;
+  };
+  association: {
+    id: string | null;
+    name: string | null;
+    membershipStatus: string | null;
+    source: string | null;
+    memberRecordCount: number | null;
+  };
+  verification: {
+    validationSummaries: Array<{ label: string; value: string | null }>;
+    legacyComplianceStatus: string | null;
+    legacyComplianceScore: number | null;
+    legacyComplianceRiskLevel: string | null;
+  };
+  timeline: AdminMsmeTimelineItem[];
+  sources: Record<RegistrySourceName, RegistrySourceState>;
+  diagnostics: {
+    operation: string;
+    msmeId: string;
+    sourceAvailability: Record<string, boolean>;
+    supabaseErrorCode?: string | null;
+    supabaseErrorMessage?: string | null;
+  };
+};
+
 type TableReadResult<T> = {
   rows: T[];
   source: RegistrySourceState;
@@ -125,6 +203,7 @@ type MsmeRow = {
   lga?: string | null;
   sector?: string | null;
   business_type?: string | null;
+  address?: string | null;
   verification_status?: string | null;
   review_status?: string | null;
   association_id?: string | null;
@@ -153,6 +232,7 @@ const TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
     "lga",
     "sector",
     "business_type",
+    "address",
     "verification_status",
     "review_status",
     "association_id",
@@ -165,28 +245,44 @@ const TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
     "suspended",
     "enforcement_note",
   ],
-  digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "suspended_at", "created_at"],
-  msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "updated_at"],
-  msme_compliance_items: ["id", "msme_id", "status"],
-  complaints: ["id", "msme_id", "provider_msme_id", "status"],
+  digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "token_expires_at", "public_token_hash", "created_at", "updated_at"],
+  credential_events: ["id", "credential_id", "action", "actor_role", "metadata", "created_at"],
+  msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "approved_count", "pending_count", "under_review_count", "changes_requested_count", "rejected_count", "expired_count", "expiring_soon_count", "updated_at"],
+  msme_compliance_items: ["id", "msme_id", "status", "expires_at", "updated_at"],
+  compliance_events: ["id", "msme_id", "compliance_item_id", "event_type", "from_status", "to_status", "actor_role", "summary", "created_at"],
+  compliance_documents: ["id", "msme_id", "is_deleted", "uploaded_at"],
+  compliance_document_events: ["id", "msme_id", "compliance_item_id", "event_type", "actor_role", "summary", "created_at"],
+  complaints: ["id", "msme_id", "provider_msme_id", "status", "priority", "severity", "complaint_reference", "reference_code", "title", "created_at"],
+  complaint_status_history: ["id", "complaint_id", "from_status", "to_status", "changed_by_role", "note", "created_at"],
   associations: ["id", "name"],
-  association_members: ["id", "association_id", "msme_id"],
+  association_members: ["id", "association_id", "msme_id", "member_status", "invite_status", "role", "created_at"],
+  association_memberships: ["id", "association_id", "msme_id", "membership_type", "approval_status", "created_at"],
   validation_results: ["msme_id", "confidence_score", "validation_summary", "validated_at", "nin_status", "bvn_status", "cac_status", "tin_status"],
   compliance_profiles: ["msme_id", "overall_status", "score", "risk_level", "nin_status", "bvn_status", "cac_status", "tin_status"],
   activity_logs: ["id", "actor_user_id", "action", "entity_type", "entity_id", "metadata", "created_at"],
+  invoices: ["id", "msme_id", "invoice_number", "status", "created_at"],
+  invoice_events: ["id", "invoice_id", "event_type", "actor_role", "metadata", "created_at"],
 };
 
 const REQUIRED_TABLE_COLUMNS: Record<RegistrySourceName, string[]> = {
   msmes: ["id", "msme_id", "business_name", "owner_name", "state", "sector", "verification_status", "association_id", "created_at"],
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status"],
+  credential_events: ["id", "credential_id", "action"],
   msme_compliance_profiles: ["msme_id", "overall_status"],
   msme_compliance_items: ["id", "msme_id", "status"],
+  compliance_events: ["id", "msme_id", "event_type"],
+  compliance_documents: ["id", "msme_id"],
+  compliance_document_events: ["id", "msme_id", "event_type"],
   complaints: ["id", "msme_id", "status"],
+  complaint_status_history: ["id", "complaint_id", "to_status"],
   associations: ["id", "name"],
   association_members: ["id", "association_id", "msme_id"],
+  association_memberships: ["id", "association_id", "msme_id"],
   validation_results: ["msme_id", "confidence_score"],
   compliance_profiles: ["msme_id", "overall_status"],
   activity_logs: ["id", "action", "entity_type"],
+  invoices: ["id", "msme_id"],
+  invoice_events: ["id", "invoice_id", "event_type"],
 };
 
 function normalizePage(value: unknown) {
@@ -339,6 +435,107 @@ function buildItemCounts(rows: Array<Record<string, unknown>>) {
   return counts;
 }
 
+function countByStatus(rows: Array<Record<string, unknown>>, status: string) {
+  return rows.filter((row) => normalizeStatus(asString(row.status), "not_started") === status).length;
+}
+
+function severityRank(value: string | null | undefined) {
+  const normalized = normalizeStatus(value, "");
+  if (["critical", "urgent"].includes(normalized)) return 4;
+  if (["high"].includes(normalized)) return 3;
+  if (["medium"].includes(normalized)) return 2;
+  if (["low"].includes(normalized)) return 1;
+  return 0;
+}
+
+function safeTimelineSummary(row: Record<string, unknown>, fallback: string) {
+  return asString(row.summary) || fallback;
+}
+
+function timelineItem(source: RegistrySourceName, row: Record<string, unknown>, eventType: string, fallback: string): AdminMsmeTimelineItem {
+  return {
+    id: asString(row.id) || `${source}-${eventType}-${asString(row.created_at)}`,
+    eventType,
+    date: asString(row.created_at) || null,
+    source,
+    summary: safeTimelineSummary(row, fallback),
+  };
+}
+
+function sortLatestTimeline(items: AdminMsmeTimelineItem[], limit = 20) {
+  return items
+    .filter((item) => item.date)
+    .sort((a, b) => (Date.parse(b.date ?? "") || 0) - (Date.parse(a.date ?? "") || 0))
+    .slice(0, limit);
+}
+
+function profileCompletenessScore(msme: MsmeRow) {
+  const fields = [
+    msme.business_name,
+    msme.owner_name,
+    msme.contact_email,
+    msme.contact_phone,
+    msme.state,
+    msme.lga,
+    msme.sector,
+    msme.business_type,
+    msme.address,
+    msme.cac_number,
+    msme.tin,
+  ];
+  const complete = fields.filter((value) => Boolean(asString(value))).length;
+  return Math.round((complete / fields.length) * 100);
+}
+
+function detailRowFromSources(params: {
+  msme: MsmeRow;
+  credential?: Record<string, unknown>;
+  compliance?: Record<string, unknown>;
+  legacyCompliance?: Record<string, unknown>;
+  validation?: Record<string, unknown>;
+  complaints: { total: number; open: number } | undefined;
+  complianceItemsCount: number | null;
+  associationName: string | null;
+}) {
+  const { msme, credential, compliance, legacyCompliance, validation, complaints, complianceItemsCount, associationName } = params;
+  const id = asString(msme.id);
+  return {
+    id,
+    msmeId: asString(msme.msme_id) || "Unassigned MSME ID",
+    businessName: asString(msme.business_name) || "Unnamed MSME",
+    ownerName: asString(msme.owner_name) || "Owner unavailable",
+    state: asString(msme.state) || null,
+    lga: asString(msme.lga) || null,
+    sector: asString(msme.sector) || null,
+    businessType: asString(msme.business_type) || null,
+    address: asString(msme.address) || null,
+    verificationStatus: normalizeStatus(msme.verification_status, "pending"),
+    reviewStatus: normalizeStatus(msme.review_status, normalizeStatus(msme.verification_status, "pending_review")),
+    complianceStatus: normalizeStatus(asString(compliance?.overall_status ?? legacyCompliance?.overall_status), "") || null,
+    complianceScore: Number.isFinite(Number(compliance?.compliance_score ?? legacyCompliance?.score)) ? Number(compliance?.compliance_score ?? legacyCompliance?.score) : null,
+    complianceRiskLevel: asString(compliance?.risk_level ?? legacyCompliance?.risk_level) || null,
+    complianceItemsCount,
+    digitalIdStatus: normalizeStatus(asString(credential?.status), "") || null,
+    digitalId: asString(credential?.ndmii_id) || null,
+    digitalIdIssuedAt: asString(credential?.issued_at) || null,
+    complaintCount: complaints?.total ?? null,
+    openComplaintCount: complaints?.open ?? null,
+    associationId: asString(msme.association_id) || null,
+    associationName,
+    createdAt: asString(msme.created_at) || null,
+    flagged: Boolean(msme.flagged),
+    suspended: Boolean(msme.suspended),
+    enforcementNote: asString(msme.enforcement_note) || null,
+    validationStatus: asString(validation?.validation_summary) || null,
+    validationConfidence: Number.isFinite(Number(validation?.confidence_score)) ? Number(validation?.confidence_score) : null,
+    contactEmailMasked: maskEmail(msme.contact_email),
+    contactPhoneMasked: maskPhone(msme.contact_phone),
+    cacMasked: maskTrailing(msme.cac_number),
+    tinMasked: maskTrailing(msme.tin),
+    profileCompletenessScore: profileCompletenessScore(msme),
+  };
+}
+
 function matchesDateRange(createdAt: string | null, from?: string, to?: string) {
   const createdTime = createdAt ? Date.parse(createdAt) : NaN;
   if (!Number.isFinite(createdTime)) return !from && !to;
@@ -441,6 +638,14 @@ export async function loadAdminMsmeRegistry(
   sources.validation_results = validationResult.source;
   sources.compliance_profiles = legacyComplianceResult.source;
   sources.activity_logs = { available: false, message: "Not used in Phase 1 list view" };
+  sources.credential_events = { available: false, message: "Not used in Phase 1 list view" };
+  sources.compliance_events = { available: false, message: "Not used in Phase 1 list view" };
+  sources.compliance_documents = { available: false, message: "Not used in Phase 1 list view" };
+  sources.compliance_document_events = { available: false, message: "Not used in Phase 1 list view" };
+  sources.complaint_status_history = { available: false, message: "Not used in Phase 1 list view" };
+  sources.association_memberships = { available: false, message: "Not used in Phase 1 list view" };
+  sources.invoices = { available: false, message: "Not used in Phase 1 list view" };
+  sources.invoice_events = { available: false, message: "Not used in Phase 1 list view" };
 
   const credentialsByMsme = latestByMsme(credentialsResult.rows, "updated_at");
   const complianceByMsme = latestByMsme(complianceProfilesResult.rows, "updated_at");
@@ -537,6 +742,233 @@ export async function loadAdminMsmeRegistry(
       supabaseErrorMessage: null,
     },
   };
+}
+
+export async function getAdminMsmeDetail(
+  supabase: SupabaseClient<any>,
+  msmeId: string,
+): Promise<AdminMsmeDetail | null> {
+  const normalizedMsmeId = asString(msmeId);
+  const sources = Object.fromEntries(
+    (Object.keys(TABLE_COLUMNS) as RegistrySourceName[]).map((source) => [source, { available: false, message: "Not loaded" }]),
+  ) as Record<RegistrySourceName, RegistrySourceState>;
+
+  const [
+    msmesResult,
+    credentialsResult,
+    credentialEventsResult,
+    complianceProfilesResult,
+    complianceItemsResult,
+    complianceEventsResult,
+    complianceDocumentsResult,
+    complianceDocumentEventsResult,
+    complaintsResult,
+    complaintHistoryResult,
+    associationsResult,
+    associationMembersResult,
+    associationMembershipsResult,
+    validationResult,
+    legacyComplianceResult,
+    activityLogsResult,
+    invoicesResult,
+    invoiceEventsResult,
+  ] = await Promise.all([
+    readOptionalTable<MsmeRow>(supabase, "msmes", TABLE_COLUMNS.msmes),
+    readOptionalTable<Record<string, unknown>>(supabase, "digital_identity_credentials", TABLE_COLUMNS.digital_identity_credentials),
+    readOptionalTable<Record<string, unknown>>(supabase, "credential_events", TABLE_COLUMNS.credential_events, 1000),
+    readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_profiles", TABLE_COLUMNS.msme_compliance_profiles),
+    readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_items", TABLE_COLUMNS.msme_compliance_items),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_events", TABLE_COLUMNS.compliance_events, 2000),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_documents", TABLE_COLUMNS.compliance_documents),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_document_events", TABLE_COLUMNS.compliance_document_events, 2000),
+    readOptionalTable<Record<string, unknown>>(supabase, "complaints", TABLE_COLUMNS.complaints),
+    readOptionalTable<Record<string, unknown>>(supabase, "complaint_status_history", TABLE_COLUMNS.complaint_status_history, 2000),
+    readOptionalTable<Record<string, unknown>>(supabase, "associations", TABLE_COLUMNS.associations),
+    readOptionalTable<Record<string, unknown>>(supabase, "association_members", TABLE_COLUMNS.association_members),
+    readOptionalTable<Record<string, unknown>>(supabase, "association_memberships", TABLE_COLUMNS.association_memberships),
+    readOptionalTable<Record<string, unknown>>(supabase, "validation_results", TABLE_COLUMNS.validation_results),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_profiles", TABLE_COLUMNS.compliance_profiles),
+    readOptionalTable<Record<string, unknown>>(supabase, "activity_logs", TABLE_COLUMNS.activity_logs, 2000),
+    readOptionalTable<Record<string, unknown>>(supabase, "invoices", TABLE_COLUMNS.invoices),
+    readOptionalTable<Record<string, unknown>>(supabase, "invoice_events", TABLE_COLUMNS.invoice_events, 2000),
+  ]);
+
+  sources.msmes = msmesResult.source;
+  sources.digital_identity_credentials = credentialsResult.source;
+  sources.credential_events = credentialEventsResult.source;
+  sources.msme_compliance_profiles = complianceProfilesResult.source;
+  sources.msme_compliance_items = complianceItemsResult.source;
+  sources.compliance_events = complianceEventsResult.source;
+  sources.compliance_documents = complianceDocumentsResult.source;
+  sources.compliance_document_events = complianceDocumentEventsResult.source;
+  sources.complaints = complaintsResult.source;
+  sources.complaint_status_history = complaintHistoryResult.source;
+  sources.associations = associationsResult.source;
+  sources.association_members = associationMembersResult.source;
+  sources.association_memberships = associationMembershipsResult.source;
+  sources.validation_results = validationResult.source;
+  sources.compliance_profiles = legacyComplianceResult.source;
+  sources.activity_logs = activityLogsResult.source;
+  sources.invoices = invoicesResult.source;
+  sources.invoice_events = invoiceEventsResult.source;
+
+  const msme = msmesResult.rows.find((row) => asString(row.id) === normalizedMsmeId || asString(row.msme_id) === normalizedMsmeId);
+  if (!msme?.id) {
+    console.info("[admin-msme-registry]", {
+      operation: "get_admin_msme_detail",
+      msmeId: normalizedMsmeId,
+      sourceAvailability: Object.fromEntries(Object.entries(sources).map(([source, state]) => [source, state.available])),
+      supabaseErrorCode: null,
+      supabaseErrorMessage: null,
+    });
+    return null;
+  }
+
+  const id = asString(msme.id);
+  const credentials = credentialsResult.rows
+    .filter((row) => asString(row.msme_id) === id)
+    .sort((a, b) => (Date.parse(asString(b.updated_at ?? b.created_at)) || 0) - (Date.parse(asString(a.updated_at ?? a.created_at)) || 0));
+  const credential = credentials[0];
+  const credentialId = asString(credential?.id);
+  const credentialEvents = credentialEventsResult.rows.filter((row) => credentialId && asString(row.credential_id) === credentialId);
+  const latestCredentialEvent = sortLatestTimeline(
+    credentialEvents.map((row) => timelineItem("credential_events", row, asString(row.action) || "credential_event", `Credential ${asString(row.action) || "event"}`)),
+    1,
+  )[0] ?? null;
+
+  const compliance = latestByMsme(complianceProfilesResult.rows, "updated_at").get(id);
+  const legacyCompliance = latestByMsme(legacyComplianceResult.rows, "last_reviewed_at").get(id);
+  const validation = latestByMsme(validationResult.rows, "validated_at").get(id);
+  const complianceItems = complianceItemsResult.rows.filter((row) => asString(row.msme_id) === id);
+  const complianceEvents = complianceEventsResult.rows.filter((row) => asString(row.msme_id) === id);
+  const complianceDocumentEvents = complianceDocumentEventsResult.rows.filter((row) => asString(row.msme_id) === id);
+  const evidenceRows = complianceDocumentsResult.rows.filter((row) => asString(row.msme_id) === id && row.is_deleted !== true);
+
+  const complaintRows = complaintsResult.rows.filter((row) => [asString(row.msme_id), asString(row.provider_msme_id)].includes(id));
+  const complaintIds = new Set(complaintRows.map((row) => asString(row.id)).filter(Boolean));
+  const complaintCounts = buildComplaintCounts(complaintRows).get(id);
+  const complaintHistory = complaintHistoryResult.rows.filter((row) => complaintIds.has(asString(row.complaint_id)));
+  const latestComplaintReferences = complaintRows
+    .slice()
+    .sort((a, b) => (Date.parse(asString(b.created_at)) || 0) - (Date.parse(asString(a.created_at)) || 0))
+    .slice(0, 5)
+    .map((row) => ({
+      id: asString(row.id),
+      reference: asString(row.complaint_reference ?? row.reference_code) || asString(row.id).slice(0, 8),
+      status: normalizeStatus(asString(row.status), "submitted"),
+      severity: asString(row.severity ?? row.priority) || null,
+      createdAt: asString(row.created_at) || null,
+    }));
+
+  const associationId = asString(msme.association_id) || null;
+  const association = associationId ? associationsResult.rows.find((row) => asString(row.id) === associationId) : null;
+  const associationMembers = associationMembersResult.rows.filter((row) => asString(row.msme_id) === id || (associationId && asString(row.association_id) === associationId && asString(row.msme_id) === id));
+  const associationMemberships = associationMembershipsResult.rows.filter((row) => asString(row.msme_id) === id || (associationId && asString(row.association_id) === associationId && asString(row.msme_id) === id));
+  const associationStatus = asString(associationMemberships[0]?.approval_status ?? associationMembers[0]?.member_status ?? associationMembers[0]?.invite_status) || null;
+  const associationSource = associationMemberships.length ? "association_memberships" : associationMembers.length ? "association_members" : associationId ? "msmes.association_id" : null;
+
+  const invoices = invoicesResult.rows.filter((row) => asString(row.msme_id) === id);
+  const invoiceIds = new Set(invoices.map((row) => asString(row.id)).filter(Boolean));
+  const invoiceEvents = invoiceEventsResult.rows.filter((row) => invoiceIds.has(asString(row.invoice_id)));
+  const activityLogs = activityLogsResult.rows.filter((row) => {
+    const metadata = row.metadata;
+    const metadataMsmeId = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? asString((metadata as Record<string, unknown>).msme_id) : "";
+    return asString(row.entity_id) === id || metadataMsmeId === id;
+  });
+
+  const complianceTimeline = [
+    ...complianceEvents.map((row) => timelineItem("compliance_events", row, asString(row.event_type) || "compliance_event", "Compliance event recorded")),
+    ...complianceDocumentEvents.map((row) => timelineItem("compliance_document_events", row, asString(row.event_type) || "document_event", "Compliance document event recorded")),
+  ];
+
+  const row = detailRowFromSources({
+    msme,
+    credential,
+    compliance,
+    legacyCompliance,
+    validation,
+    complaints: sources.complaints.available ? complaintCounts ?? { total: 0, open: 0 } : undefined,
+    complianceItemsCount: sources.msme_compliance_items.available ? complianceItems.length : null,
+    associationName: associationId ? asString(association?.name) || "Unavailable" : null,
+  });
+
+  const timeline = sortLatestTimeline([
+    ...activityLogs.map((item) => timelineItem("activity_logs", item, asString(item.action) || "activity", `Activity: ${asString(item.action) || "recorded"}`)),
+    ...credentialEvents.map((item) => timelineItem("credential_events", item, asString(item.action) || "credential_event", `Credential ${asString(item.action) || "event"}`)),
+    ...complianceTimeline,
+    ...complaintHistory.map((item) => timelineItem("complaint_status_history", item, asString(item.to_status) || "complaint_status", `Complaint status changed to ${asString(item.to_status) || "updated"}`)),
+    ...invoiceEvents.map((item) => timelineItem("invoice_events", item, asString(item.event_type) || "invoice_event", `Invoice event: ${asString(item.event_type) || "recorded"}`)),
+  ]);
+
+  const detail: AdminMsmeDetail = {
+    row,
+    credential: {
+      id: credentialId || null,
+      status: normalizeStatus(asString(credential?.status), "") || null,
+      ndmiiId: asString(credential?.ndmii_id) || null,
+      issuedAt: asString(credential?.issued_at) || null,
+      approvedAt: asString(credential?.approved_at) || null,
+      revokedAt: asString(credential?.revoked_at) || null,
+      suspendedAt: asString(credential?.suspended_at) || null,
+      expiresAt: asString(credential?.token_expires_at) || null,
+      tokenExists: Object.prototype.hasOwnProperty.call(credential ?? {}, "public_token_hash") ? Boolean(asString(credential?.public_token_hash)) : null,
+      latestEvent: latestCredentialEvent,
+    },
+    compliance: {
+      profileStatus: row.complianceStatus,
+      score: row.complianceScore,
+      riskLevel: row.complianceRiskLevel,
+      approvedCount: Number.isFinite(Number(compliance?.approved_count)) ? Number(compliance?.approved_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "approved") : null,
+      pendingCount: Number.isFinite(Number(compliance?.pending_count)) ? Number(compliance?.pending_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "pending") + countByStatus(complianceItems, "not_started") : null,
+      underReviewCount: Number.isFinite(Number(compliance?.under_review_count)) ? Number(compliance?.under_review_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "under_review") : null,
+      submittedCount: sources.msme_compliance_items.available ? countByStatus(complianceItems, "submitted") : null,
+      rejectedCount: Number.isFinite(Number(compliance?.rejected_count)) ? Number(compliance?.rejected_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "rejected") : null,
+      changesRequestedCount: Number.isFinite(Number(compliance?.changes_requested_count)) ? Number(compliance?.changes_requested_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "changes_requested") : null,
+      expiredCount: Number.isFinite(Number(compliance?.expired_count)) ? Number(compliance?.expired_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "expired") : null,
+      expiringSoonCount: Number.isFinite(Number(compliance?.expiring_soon_count)) ? Number(compliance?.expiring_soon_count) : sources.msme_compliance_items.available ? countByStatus(complianceItems, "expiring_soon") : null,
+      evidenceCount: sources.compliance_documents.available ? evidenceRows.length : null,
+      latestEvents: sortLatestTimeline(complianceTimeline, 5),
+    },
+    complaints: {
+      count: sources.complaints.available ? complaintRows.length : null,
+      openCount: sources.complaints.available ? complaintRows.filter((item) => !CLOSED_COMPLAINT_STATUSES.has(normalizeStatus(asString(item.status), "submitted"))).length : null,
+      highestSeverity: complaintRows
+        .map((item) => asString(item.severity ?? item.priority))
+        .sort((a, b) => severityRank(b) - severityRank(a))[0] || null,
+      latestReferences: latestComplaintReferences,
+    },
+    association: {
+      id: associationId,
+      name: associationId ? asString(association?.name) || "Unavailable" : null,
+      membershipStatus: associationStatus,
+      source: associationSource,
+      memberRecordCount: sources.association_members.available || sources.association_memberships.available ? associationMembers.length + associationMemberships.length : null,
+    },
+    verification: {
+      validationSummaries: [
+        { label: "NIN adapter", value: asString(validation?.nin_status) || null },
+        { label: "BVN adapter", value: asString(validation?.bvn_status) || null },
+        { label: "CAC adapter", value: asString(validation?.cac_status) || null },
+        { label: "TIN adapter", value: asString(validation?.tin_status) || null },
+        { label: "Validation summary", value: asString(validation?.validation_summary) || null },
+      ],
+      legacyComplianceStatus: asString(legacyCompliance?.overall_status) || null,
+      legacyComplianceScore: Number.isFinite(Number(legacyCompliance?.score)) ? Number(legacyCompliance?.score) : null,
+      legacyComplianceRiskLevel: asString(legacyCompliance?.risk_level) || null,
+    },
+    timeline,
+    sources,
+    diagnostics: {
+      operation: "get_admin_msme_detail",
+      msmeId: id,
+      sourceAvailability: Object.fromEntries(Object.entries(sources).map(([source, state]) => [source, state.available])),
+      supabaseErrorCode: null,
+      supabaseErrorMessage: null,
+    },
+  };
+
+  console.info("[admin-msme-registry]", detail.diagnostics);
+  return detail;
 }
 
 export function registryFiltersForDiagnostics(filters: AdminMsmeRegistryFilters) {

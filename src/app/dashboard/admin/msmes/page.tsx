@@ -10,6 +10,7 @@ import {
   Landmark,
   LockKeyhole,
   Search,
+  ExternalLink,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -177,6 +178,10 @@ function RegistryDetailPreview({ row }: { row: AdminMsmeRegistryRow | null }) {
         </div>
         <StatusPill value={row.reviewStatus} />
       </div>
+      <Link href={`/dashboard/admin/msmes/${encodeURIComponent(row.id)}`} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        Open workspace
+      </Link>
 
       <div className="mt-5 space-y-4">
         <section>
@@ -374,7 +379,7 @@ export default async function AdminMsmesPage({ searchParams }: PageProps) {
                   return (
                     <tr key={row.id} className={`border-t border-slate-100 align-top hover:bg-emerald-50/40 ${active ? "bg-emerald-50/60" : ""}`}>
                       <td className="px-4 py-3">
-                        <Link href={buildHref(filters, { selectedId: row.id })} className="block focus-visible:outline-none">
+                        <Link href={`/dashboard/admin/msmes/${encodeURIComponent(row.id)}`} className="block focus-visible:outline-none">
                           <span className="block font-black text-slate-950">{row.businessName}</span>
                           <span className="mt-1 block text-xs font-bold text-slate-500">{row.msmeId}</span>
                         </Link>
