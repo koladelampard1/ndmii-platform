@@ -238,7 +238,9 @@ function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null })
 
         <PreviewSection title="Suggested next action">
           <p className="text-sm font-semibold leading-6 text-slate-800">{row.suggestedNextAction}</p>
-          <p className="mt-2 text-xs font-semibold text-slate-500">No approve/reject actions are available in this phase.</p>
+          <Link href={`/dashboard/admin/verifications/${encodeURIComponent(row.id)}`} className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-xs font-black text-white">
+            Open operations workspace
+          </Link>
         </PreviewSection>
       </div>
     </aside>

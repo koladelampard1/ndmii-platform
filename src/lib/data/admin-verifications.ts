@@ -27,6 +27,7 @@ export type AdminVerificationSourceName =
   | "digital_identity_credentials"
   | "msme_compliance_profiles"
   | "msme_compliance_items"
+  | "verification_reviews"
   | "complaints"
   | "activity_logs";
 
@@ -152,7 +153,8 @@ type MsmeRow = {
 const DEFAULT_PAGE_SIZE = 25;
 const PAGE_SIZES = new Set([25, 50, 100]);
 const READ_LIMIT = 5000;
-const REVIEW_QUEUE_STATUSES = new Set(["pending_review", "submitted", "changes_requested"]);
+const REVIEW_QUEUE_STATUSES = new Set(["pending_review", "under_review", "awaiting_documents", "escalated", "submitted", "changes_requested"]);
+const CANONICAL_REVIEW_STATUSES = ["pending_review", "under_review", "awaiting_documents", "escalated", "verified", "rejected"] as const;
 const VERIFIED_STATUSES = new Set(["verified", "approved", "active"]);
 const HEALTHY_CHECK_STATUSES = new Set(["verified", "passed", "matched", "complete", "approved", "valid"]);
 const FAILED_CHECK_STATUSES = new Set(["failed", "rejected", "mismatch", "invalid", "error"]);
@@ -186,6 +188,7 @@ const TABLE_COLUMNS: Record<AdminVerificationSourceName, string[]> = {
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "token_expires_at", "created_at", "updated_at"],
   msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "pending_count", "under_review_count", "changes_requested_count", "rejected_count", "expired_count", "suspended_count", "revoked_count", "updated_at"],
   msme_compliance_items: ["id", "msme_id", "status", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
+  verification_reviews: ["id", "msme_id", "status", "created_at", "updated_at"],
   complaints: ["id", "msme_id", "provider_msme_id", "status", "priority", "severity", "created_at", "updated_at"],
   activity_logs: ["id", "action", "entity_type", "entity_id", "metadata", "created_at"],
 };
@@ -197,6 +200,7 @@ const REQUIRED_TABLE_COLUMNS: Record<AdminVerificationSourceName, string[]> = {
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status"],
   msme_compliance_profiles: ["msme_id", "overall_status"],
   msme_compliance_items: ["id", "msme_id", "status"],
+  verification_reviews: ["id", "msme_id", "status"],
   complaints: ["id", "msme_id", "status"],
   activity_logs: ["id", "action", "entity_type", "entity_id", "created_at"],
 };
@@ -206,8 +210,13 @@ function asString(value: unknown) {
 }
 
 function normalizeStatus(value: string | null | undefined, fallback = "unavailable") {
-  const normalized = asString(value).toLowerCase().replace(/\s+/g, "_");
+  const normalized = asString(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   return normalized || fallback;
+}
+
+function normalizeReviewStatus(value: unknown, fallback = "pending_review") {
+  const normalized = normalizeStatus(asString(value), fallback);
+  return (CANONICAL_REVIEW_STATUSES as readonly string[]).includes(normalized) ? normalized : fallback;
 }
 
 function normalizePage(value: unknown) {
@@ -531,6 +540,7 @@ export async function loadAdminVerificationQueue(
     credentialsResult,
     complianceProfilesResult,
     complianceItemsResult,
+    reviewsResult,
     complaintsResult,
     activityLogsResult,
   ] = await Promise.all([
@@ -540,6 +550,7 @@ export async function loadAdminVerificationQueue(
     readOptionalTable<Record<string, unknown>>(supabase, "digital_identity_credentials", TABLE_COLUMNS.digital_identity_credentials),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_profiles", TABLE_COLUMNS.msme_compliance_profiles),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_items", TABLE_COLUMNS.msme_compliance_items),
+    readOptionalTable<Record<string, unknown>>(supabase, "verification_reviews", TABLE_COLUMNS.verification_reviews),
     readOptionalTable<Record<string, unknown>>(supabase, "complaints", TABLE_COLUMNS.complaints),
     readOptionalTable<Record<string, unknown>>(supabase, "activity_logs", TABLE_COLUMNS.activity_logs),
   ]);
@@ -550,6 +561,7 @@ export async function loadAdminVerificationQueue(
   sources.digital_identity_credentials = credentialsResult.source;
   sources.msme_compliance_profiles = complianceProfilesResult.source;
   sources.msme_compliance_items = complianceItemsResult.source;
+  sources.verification_reviews = reviewsResult.source;
   sources.complaints = complaintsResult.source;
   sources.activity_logs = activityLogsResult.source;
 
@@ -558,6 +570,7 @@ export async function loadAdminVerificationQueue(
   const credentialsByMsme = latestByMsme(credentialsResult.rows, ["updated_at", "approved_at", "issued_at", "created_at"]);
   const complianceByMsme = latestByMsme(complianceProfilesResult.rows, ["updated_at"]);
   const complianceItemStats = buildComplianceItemStats(complianceItemsResult.rows);
+  const reviewByMsme = latestByMsme(reviewsResult.rows, ["updated_at", "created_at"]);
   const complaintCounts = buildComplaintCounts(complaintsResult.rows);
   const activityByMsme = buildActivityByMsme(activityLogsResult.rows);
 
@@ -570,10 +583,13 @@ export async function loadAdminVerificationQueue(
       const credential = credentialsByMsme.get(id);
       const compliance = complianceByMsme.get(id);
       const complianceItems = complianceItemStats.get(id);
+      const review = reviewByMsme.get(id);
       const complaints = complaintCounts.get(id);
       const latestActivity = activityByMsme.get(id);
       const verificationStatus = normalizeStatus(raw.verification_status, "pending");
-      const reviewStatus = normalizeStatus(raw.review_status, verificationStatus === "verified" ? "approved" : "pending_review");
+      const reviewStatus = sources.verification_reviews.available
+        ? normalizeReviewStatus(review?.status, "pending_review")
+        : normalizeReviewStatus(raw.review_status, verificationStatus === "verified" ? "verified" : "pending_review");
       const complianceStatus = normalizeStatus(asString(compliance?.overall_status ?? legacyCompliance?.overall_status), "") || null;
       const digitalCredentialStatus = sources.digital_identity_credentials.available
         ? normalizeStatus(asString(credential?.status), "missing")
@@ -586,6 +602,7 @@ export async function loadAdminVerificationQueue(
         asString(credential?.updated_at) || asString(credential?.issued_at) || null,
         asString(compliance?.updated_at) || asString(legacyCompliance?.last_reviewed_at) || null,
         complianceItems?.latestAt ?? null,
+        asString(review?.updated_at) || asString(review?.created_at) || null,
         complaints?.latestAt ?? null,
         asString(latestActivity?.created_at) || null,
       ].reduce<string | null>((latest, value) => maxDate(latest, value), null);
@@ -593,7 +610,8 @@ export async function loadAdminVerificationQueue(
       const reasons: QueueReason[] = [];
       const createdAt = asString(raw.created_at) || null;
       const verificationDate = asString(raw.updated_at) || createdAt;
-      if (REVIEW_QUEUE_STATUSES.has(reviewStatus)) reasons.push({ code: "review_queue_status", label: `Review status is ${reviewStatus.replaceAll("_", " ")}`, source: "msmes", severity: "watch", detectedAt: verificationDate });
+      const reviewDate = asString(review?.updated_at) || asString(review?.created_at) || verificationDate;
+      if (REVIEW_QUEUE_STATUSES.has(reviewStatus)) reasons.push({ code: "review_queue_status", label: `Review status is ${reviewStatus.replaceAll("_", " ")}`, source: sources.verification_reviews.available ? "verification_reviews" : "msmes", severity: "watch", detectedAt: reviewDate });
       if (!VERIFIED_STATUSES.has(verificationStatus)) reasons.push({ code: "unverified_status", label: `Verification status is ${verificationStatus.replaceAll("_", " ")}`, source: "msmes", severity: "watch", detectedAt: verificationDate });
       if (complianceStatus && !VERIFIED_STATUSES.has(complianceStatus)) reasons.push({ code: "compliance_not_verified", label: `Compliance profile is ${complianceStatus.replaceAll("_", " ")}`, source: sources.msme_compliance_profiles.available ? "msme_compliance_profiles" : "compliance_profiles", severity: ["rejected", "expired", "suspended", "revoked", "failed"].includes(complianceStatus) ? "elevated" : "watch", detectedAt: asString(compliance?.updated_at) || asString(legacyCompliance?.last_reviewed_at) || createdAt });
       if (kyc.overall === "failed") reasons.push({ code: "failed_kyc", label: "One or more KYC adapter checks failed", source: sources.validation_results.available ? "validation_results" : "compliance_profiles", severity: "elevated", detectedAt: asString(validation?.validated_at) || asString(legacyCompliance?.last_reviewed_at) || createdAt });
