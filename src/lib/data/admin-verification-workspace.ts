@@ -3,6 +3,10 @@ import {
   buildVerificationIntelligence,
   type VerificationIntelligence,
 } from "@/lib/data/admin-verification-intelligence";
+import {
+  buildVerificationDocumentIntelligence,
+  type VerificationDocumentIntelligence,
+} from "@/lib/data/admin-verification-documents";
 
 export type VerificationReviewStatus = "pending_review" | "under_review" | "awaiting_documents" | "escalated" | "verified" | "rejected";
 
@@ -14,13 +18,17 @@ export type VerificationWorkspaceSourceName =
   | "credential_events"
   | "msme_compliance_profiles"
   | "msme_compliance_items"
+  | "compliance_requirement_definitions"
   | "compliance_events"
   | "compliance_documents"
+  | "compliance_document_events"
   | "complaints"
   | "complaint_status_history"
   | "verification_reviews"
+  | "verification_document_requests"
   | "verification_review_events"
   | "verification_review_comments"
+  | "activity_logs"
   | "users";
 
 export type VerificationSourceState = {
@@ -120,6 +128,7 @@ export type AdminVerificationWorkspace = {
   };
   duplicateSignals: Array<{ id: string; businessName: string; msmeId: string; signals: string[]; confidence: "high" | "medium" | "low" }>;
   intelligence: VerificationIntelligence;
+  documentIntelligence: VerificationDocumentIntelligence;
   documents: VerificationDocument[];
   review: VerificationReview;
   reviewers: Array<{ id: string; label: string }>;
@@ -167,14 +176,18 @@ const TABLE_COLUMNS: Record<VerificationWorkspaceSourceName, string[]> = {
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "created_at", "updated_at"],
   credential_events: ["id", "credential_id", "action", "actor_role", "metadata", "created_at"],
   msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "pending_count", "under_review_count", "changes_requested_count", "rejected_count", "expired_count", "suspended_count", "revoked_count", "updated_at"],
-  msme_compliance_items: ["id", "msme_id", "status", "requirement_code", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
+  msme_compliance_items: ["id", "msme_id", "status", "requirement_code", "requirement_id", "expires_at", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
+  compliance_requirement_definitions: ["id", "code", "requirement_code", "title", "description", "evidence_type", "metadata"],
   compliance_events: ["id", "msme_id", "compliance_item_id", "event_type", "from_status", "to_status", "actor_role", "summary", "created_at"],
-  compliance_documents: ["id", "msme_id", "document_type", "original_filename", "mime_type", "file_size_bytes", "uploaded_at", "is_deleted"],
+  compliance_documents: ["id", "msme_id", "compliance_item_id", "requirement_id", "document_type", "original_filename", "storage_path", "mime_type", "file_size_bytes", "checksum_sha256", "uploaded_at", "verified_at", "expires_at", "is_deleted", "metadata", "created_at", "updated_at"],
+  compliance_document_events: ["id", "document_id", "msme_id", "compliance_item_id", "requirement_id", "event_type", "actor_user_id", "actor_role", "summary", "metadata", "created_at"],
   complaints: ["id", "msme_id", "provider_msme_id", "status", "priority", "severity", "complaint_reference", "reference_code", "title", "created_at", "updated_at"],
   complaint_status_history: ["id", "complaint_id", "from_status", "to_status", "changed_by_role", "note", "created_at"],
   verification_reviews: ["id", "msme_id", "status", "assigned_reviewer_id", "assigned_at", "started_at", "completed_at", "escalation_reason", "rejection_reason", "requested_documents", "internal_notes", "created_at", "updated_at"],
+  verification_document_requests: ["id", "verification_review_id", "msme_id", "document_type", "label", "status", "requested_by", "requested_at", "fulfilled_at", "metadata", "created_at", "updated_at"],
   verification_review_events: ["id", "verification_review_id", "event_type", "actor_role", "previous_status", "new_status", "metadata", "created_at"],
   verification_review_comments: ["id", "verification_review_id", "visibility", "comment", "actor_role", "created_at"],
+  activity_logs: ["id", "action", "entity_type", "entity_id", "metadata", "created_at"],
   users: ["id", "full_name", "email", "role"],
 };
 
@@ -186,13 +199,17 @@ const REQUIRED_TABLE_COLUMNS: Record<VerificationWorkspaceSourceName, string[]> 
   credential_events: ["id", "credential_id", "action", "created_at"],
   msme_compliance_profiles: ["msme_id", "overall_status"],
   msme_compliance_items: ["id", "msme_id", "status"],
+  compliance_requirement_definitions: ["id"],
   compliance_events: ["id", "msme_id", "event_type", "created_at"],
   compliance_documents: ["id", "msme_id", "uploaded_at"],
+  compliance_document_events: ["id", "msme_id", "event_type"],
   complaints: ["id", "msme_id", "status"],
   complaint_status_history: ["id", "complaint_id", "to_status"],
   verification_reviews: ["id", "msme_id", "status"],
+  verification_document_requests: ["id", "verification_review_id", "msme_id", "document_type", "label", "status"],
   verification_review_events: ["id", "verification_review_id", "event_type", "created_at"],
   verification_review_comments: ["id", "verification_review_id", "comment", "created_at"],
+  activity_logs: ["id", "action", "entity_type", "entity_id", "created_at"],
   users: ["id", "full_name", "email", "role"],
 };
 
@@ -431,13 +448,17 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     credentialEventsResult,
     complianceProfilesResult,
     complianceItemsResult,
+    requirementDefinitionsResult,
     complianceEventsResult,
     documentsResult,
+    documentEventsResult,
     complaintsResult,
     complaintHistoryResult,
     reviewsResult,
+    documentRequestsResult,
     reviewEventsResult,
     reviewCommentsResult,
+    activityLogsResult,
     usersResult,
   ] = await Promise.all([
     readOptionalTable<MsmeRow>(supabase, "msmes", TABLE_COLUMNS.msmes),
@@ -447,13 +468,17 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     readOptionalTable<Record<string, unknown>>(supabase, "credential_events", TABLE_COLUMNS.credential_events),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_profiles", TABLE_COLUMNS.msme_compliance_profiles),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_items", TABLE_COLUMNS.msme_compliance_items),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_requirement_definitions", TABLE_COLUMNS.compliance_requirement_definitions),
     readOptionalTable<Record<string, unknown>>(supabase, "compliance_events", TABLE_COLUMNS.compliance_events),
     readOptionalTable<Record<string, unknown>>(supabase, "compliance_documents", TABLE_COLUMNS.compliance_documents),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_document_events", TABLE_COLUMNS.compliance_document_events),
     readOptionalTable<Record<string, unknown>>(supabase, "complaints", TABLE_COLUMNS.complaints),
     readOptionalTable<Record<string, unknown>>(supabase, "complaint_status_history", TABLE_COLUMNS.complaint_status_history),
     readOptionalTable<Record<string, unknown>>(supabase, "verification_reviews", TABLE_COLUMNS.verification_reviews),
+    readOptionalTable<Record<string, unknown>>(supabase, "verification_document_requests", TABLE_COLUMNS.verification_document_requests),
     readOptionalTable<Record<string, unknown>>(supabase, "verification_review_events", TABLE_COLUMNS.verification_review_events),
     readOptionalTable<Record<string, unknown>>(supabase, "verification_review_comments", TABLE_COLUMNS.verification_review_comments),
+    readOptionalTable<Record<string, unknown>>(supabase, "activity_logs", TABLE_COLUMNS.activity_logs),
     readOptionalTable<Record<string, unknown>>(supabase, "users", TABLE_COLUMNS.users),
   ]);
 
@@ -465,13 +490,17 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     credential_events: credentialEventsResult.source,
     msme_compliance_profiles: complianceProfilesResult.source,
     msme_compliance_items: complianceItemsResult.source,
+    compliance_requirement_definitions: requirementDefinitionsResult.source,
     compliance_events: complianceEventsResult.source,
     compliance_documents: documentsResult.source,
+    compliance_document_events: documentEventsResult.source,
     complaints: complaintsResult.source,
     complaint_status_history: complaintHistoryResult.source,
     verification_reviews: reviewsResult.source,
+    verification_document_requests: documentRequestsResult.source,
     verification_review_events: reviewEventsResult.source,
     verification_review_comments: reviewCommentsResult.source,
+    activity_logs: activityLogsResult.source,
     users: usersResult.source,
   });
 
@@ -485,7 +514,8 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
   const credentialEvents = credentialEventsResult.rows.filter((row) => asString(row.credential_id) === asString(credential?.id));
   const complianceItems = complianceItemsResult.rows.filter((row) => asString(row.msme_id) === msmeId);
   const complianceEvents = complianceEventsResult.rows.filter((row) => asString(row.msme_id) === msmeId);
-  const documents = documentsResult.rows.filter((row) => asString(row.msme_id) === msmeId && !Boolean(row.is_deleted));
+  const documents = documentsResult.rows.filter((row) => asString(row.msme_id) === msmeId);
+  const documentEvents = documentEventsResult.rows.filter((row) => asString(row.msme_id) === msmeId);
   const complaints = complaintsResult.rows.filter((row) => asString(row.msme_id) === msmeId || asString(row.provider_msme_id) === msmeId);
   const complaintIds = new Set(complaints.map((row) => asString(row.id)));
   const complaintHistory = complaintHistoryResult.rows.filter((row) => complaintIds.has(asString(row.complaint_id)));
@@ -495,6 +525,7 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
   const canonicalReviewStatus = normalizeVerificationReviewStatus(reviewRow?.status);
   const reviewEvents = reviewEventsResult.rows.filter((row) => asString(row.verification_review_id) === reviewId);
   const reviewComments = reviewCommentsResult.rows.filter((row) => asString(row.verification_review_id) === reviewId);
+  const documentRequests = documentRequestsResult.rows.filter((row) => asString(row.msme_id) === msmeId || asString(row.verification_review_id) === reviewId);
   const usersById = new Map(usersResult.rows.map((row) => [asString(row.id), row]));
   const assignedReviewer = usersById.get(asString(reviewRow?.assigned_reviewer_id));
   const reviewers = usersResult.rows
@@ -540,6 +571,20 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     repeatedRejectedReviews,
     reviewStatus: canonicalReviewStatus,
     queueDate,
+  });
+  const documentIntelligence = buildVerificationDocumentIntelligence({
+    msmeId,
+    documents,
+    allDocuments: documentsResult.rows,
+    complianceItems,
+    requirementDefinitions: requirementDefinitionsResult.rows,
+    documentEvents,
+    review: reviewRow,
+    reviewEvents,
+    reviewComments,
+    documentRequests,
+    usersById,
+    sources,
   });
 
   return {
@@ -591,16 +636,8 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     },
     duplicateSignals,
     intelligence,
-    documents: documents.map((document) => ({
-      id: asString(document.id),
-      documentType: asString(document.document_type) || "verification_file",
-      fileName: asString(document.original_filename) || "Uploaded verification file",
-      mimeType: asString(document.mime_type) || null,
-      fileSizeBytes: Number.isFinite(Number(document.file_size_bytes)) ? Number(document.file_size_bytes) : null,
-      uploadedAt: asString(document.uploaded_at) || null,
-      previewHref: `/api/msme/compliance/evidence/${encodeURIComponent(asString(document.id))}?disposition=inline`,
-      downloadHref: `/api/msme/compliance/evidence/${encodeURIComponent(asString(document.id))}?disposition=attachment`,
-    })),
+    documentIntelligence,
+    documents: documentIntelligence.evidence,
     review: {
       id: reviewId,
       status: canonicalReviewStatus,

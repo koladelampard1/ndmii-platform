@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { ArrowLeft, BadgeCheck, Building2, ClipboardCheck, Copy, FileClock, FileText, Gauge, IdCard, ListChecks, MessageSquareWarning, ShieldAlert, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Building2, ClipboardCheck, Copy, FileClock, FileSearch, FileText, Gauge, IdCard, ListChecks, MessageSquareWarning, ShieldAlert, ShieldCheck, type LucideIcon } from "lucide-react";
 import { ReviewerDecisionPanel } from "@/components/admin/verification/reviewer-decision-panel";
 import { requireRole } from "@/lib/data/authorization-scope";
 import { getAdminVerificationWorkspace, type AdminVerificationWorkspace, type VerificationSourceState, type VerificationTimelineItem } from "@/lib/data/admin-verification-workspace";
@@ -209,6 +209,125 @@ function IntelligencePanel({ workspace }: { workspace: AdminVerificationWorkspac
   );
 }
 
+function DocumentIntelligencePanel({ workspace }: { workspace: AdminVerificationWorkspace }) {
+  const intelligence = workspace.documentIntelligence;
+  const completeness = intelligence.completeness;
+
+  return (
+    <SectionCard title="Document Intelligence" icon={FileSearch}>
+      <div className="grid gap-3 md:grid-cols-5">
+        <CountTile label="Completeness" value={completeness.percentage === null ? "Unavailable" : `${completeness.percentage}%`} />
+        <CountTile label="Uploaded" value={completeness.uploadedCount} />
+        <CountTile label="Missing" value={completeness.missingCount} />
+        <CountTile label="Rejected" value={completeness.rejectedCount} />
+        <CountTile label="Outstanding Requests" value={completeness.outstandingRequestCount} />
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <section>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Document Checklist</h3>
+          <div className="mt-2 space-y-2">
+            {intelligence.checklist.map((item) => (
+              <div key={item.category} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">{item.label}</p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">{item.required ? "Required" : item.applicable ? "Applicable" : "Optional"} · Uploaded files: {item.uploadedCount ?? "Unavailable"}</p>
+                  </div>
+                  <StatusPill value={item.status} />
+                </div>
+                {item.notes.length ? <p className="mt-2 text-xs font-semibold text-slate-600">{item.notes.join(" ")}</p> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Reviewer Focus</h3>
+          <TextList items={intelligence.reviewerFocus} emptyText="No document-specific focus areas detected." />
+
+          <h3 className="mt-4 text-xs font-black uppercase tracking-wide text-slate-500">Document Risk Signals</h3>
+          <div className="mt-2 space-y-2">
+            {intelligence.riskSignals.length ? intelligence.riskSignals.map((signal) => (
+              <div key={signal.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-amber-950">{signal.label}</p>
+                    <p className="mt-1 text-xs font-bold text-amber-900">{humanize(signal.category)} · Linked MSMEs: {signal.linkedMsmeCount ?? "Not applicable"}</p>
+                  </div>
+                  <StatusPill value={signal.confidence} />
+                </div>
+                <p className="mt-2 text-xs font-semibold text-amber-900">{signal.reason}</p>
+              </div>
+            )) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No document reuse, stale, expiry, or repeated rejection signals detected.</p>}
+          </div>
+        </section>
+      </div>
+
+      <section className="mt-5">
+        <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Evidence Library</h3>
+        <div className="mt-2 space-y-3">
+          {intelligence.evidence.length ? intelligence.evidenceByCategory.filter((group) => group.documents.length).map((group) => (
+            <div key={group.category} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-black text-slate-950">{group.label}</p>
+              <div className="mt-2 space-y-2">
+                {group.documents.map((document) => (
+                  <div key={document.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-slate-950">{document.fileName}</p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          {humanize(document.documentType)} · {formatBytes(document.fileSizeBytes)} · Uploaded {formatDateTime(document.uploadedAt)} · Expires {formatDate(document.expiresAt)}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <StatusPill value={document.status} />
+                          {document.stale ? <StatusPill value="stale" /> : null}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={document.previewHref} target="_blank" rel="noreferrer" className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-black text-emerald-800 hover:bg-emerald-50">Preview</a>
+                        <a href={document.downloadHref} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-white">Download</a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No submitted verification documents found in available sources.</p>}
+        </div>
+      </section>
+
+      <section className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Outstanding Requested Documents</h3>
+          <div className="mt-2 space-y-2">
+            {intelligence.outstandingRequests.length ? intelligence.outstandingRequests.map((request) => (
+              <div key={request.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-black text-amber-950">{request.label}</p>
+                <p className="mt-1 text-xs font-bold text-amber-900">Requested {formatDateTime(request.requestedAt)} by {request.requestedBy ?? "Unavailable"}</p>
+                {request.reason ? <p className="mt-2 text-xs font-semibold text-amber-900">{request.reason}</p> : null}
+              </div>
+            )) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No outstanding document requests.</p>}
+          </div>
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Fulfilled Requested Documents</h3>
+          <div className="mt-2 space-y-2">
+            {intelligence.fulfilledRequests.length ? intelligence.fulfilledRequests.map((request) => (
+              <div key={request.id} className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-sm font-black text-emerald-950">{request.label}</p>
+                <p className="mt-1 text-xs font-bold text-emerald-900">Requested {formatDateTime(request.requestedAt)} · Fulfilled {formatDateTime(request.fulfilledAt)}</p>
+              </div>
+            )) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No fulfilled document requests recorded.</p>}
+          </div>
+        </div>
+      </section>
+
+      <p className="mt-4 text-xs font-bold text-slate-500">Rule-based human-review organization only. No OCR, AI extraction, external registry call, face matching, sanctions check, or automated decision is performed.</p>
+    </SectionCard>
+  );
+}
+
 function Header({ workspace }: { workspace: AdminVerificationWorkspace }) {
   const { msme, review } = workspace;
   return (
@@ -251,6 +370,7 @@ export default async function AdminVerificationWorkspacePage({ params }: PagePro
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
           <IntelligencePanel workspace={workspace} />
+          <DocumentIntelligencePanel workspace={workspace} />
 
           <SectionCard title="MSME summary" icon={Building2}>
             <DataGrid rows={[
@@ -377,6 +497,7 @@ export default async function AdminVerificationWorkspacePage({ params }: PagePro
           assignedAt={workspace.review.assignedAt}
           internalNotes={workspace.review.internalNotes}
           requestedDocuments={workspace.review.requestedDocuments}
+          documentChecklist={workspace.documentIntelligence.checklist}
           reviewers={workspace.reviewers}
         />
       </div>

@@ -8,6 +8,10 @@ import {
   type VerificationIntelligence,
   type VerificationQueuePriority,
 } from "@/lib/data/admin-verification-intelligence";
+import {
+  buildVerificationDocumentIntelligence,
+  type VerificationDocumentIntelligence,
+} from "@/lib/data/admin-verification-documents";
 
 export type AdminVerificationFilters = {
   q?: string;
@@ -24,6 +28,11 @@ export type AdminVerificationFilters = {
   duplicateSignal?: string;
   missingCredential?: string;
   staleReview?: string;
+  missingCriticalDocuments?: string;
+  outstandingDocumentRequests?: string;
+  reusedDocumentSignal?: string;
+  rejectedDocuments?: string;
+  documentCompletenessBelow50?: string;
   sort?: string;
   flagged?: string;
   suspended?: string;
@@ -42,7 +51,13 @@ export type AdminVerificationSourceName =
   | "digital_identity_credentials"
   | "msme_compliance_profiles"
   | "msme_compliance_items"
+  | "compliance_requirement_definitions"
+  | "compliance_documents"
+  | "compliance_document_events"
   | "verification_reviews"
+  | "verification_document_requests"
+  | "verification_review_events"
+  | "verification_review_comments"
   | "complaints"
   | "activity_logs";
 
@@ -87,6 +102,7 @@ export type AdminVerificationQueueRow = {
   confidenceCategory: VerificationConfidenceCategory;
   queuePriority: VerificationQueuePriority;
   intelligence: VerificationIntelligence;
+  documentIntelligence: VerificationDocumentIntelligence;
   oldestPendingAt: string | null;
   oldestPendingAgeDays: number | null;
   queueAgeDays: number | null;
@@ -226,8 +242,14 @@ const TABLE_COLUMNS: Record<AdminVerificationSourceName, string[]> = {
   compliance_profiles: ["msme_id", "overall_status", "score", "risk_level", "nin_status", "bvn_status", "cac_status", "tin_status", "last_reviewed_at"],
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "token_expires_at", "created_at", "updated_at"],
   msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "pending_count", "under_review_count", "changes_requested_count", "rejected_count", "expired_count", "suspended_count", "revoked_count", "updated_at"],
-  msme_compliance_items: ["id", "msme_id", "status", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
-  verification_reviews: ["id", "msme_id", "status", "assigned_reviewer_id", "created_at", "updated_at"],
+  msme_compliance_items: ["id", "msme_id", "status", "requirement_code", "requirement_id", "expires_at", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
+  compliance_requirement_definitions: ["id", "code", "requirement_code", "title", "description", "evidence_type", "metadata"],
+  compliance_documents: ["id", "msme_id", "compliance_item_id", "requirement_id", "document_type", "original_filename", "storage_path", "mime_type", "file_size_bytes", "checksum_sha256", "uploaded_at", "verified_at", "expires_at", "is_deleted", "metadata", "created_at", "updated_at"],
+  compliance_document_events: ["id", "document_id", "msme_id", "compliance_item_id", "requirement_id", "event_type", "actor_user_id", "actor_role", "summary", "metadata", "created_at"],
+  verification_reviews: ["id", "msme_id", "status", "assigned_reviewer_id", "requested_documents", "internal_notes", "created_at", "updated_at"],
+  verification_document_requests: ["id", "verification_review_id", "msme_id", "document_type", "label", "status", "requested_by", "requested_at", "fulfilled_at", "metadata", "created_at", "updated_at"],
+  verification_review_events: ["id", "verification_review_id", "event_type", "actor_id", "actor_role", "metadata", "created_at"],
+  verification_review_comments: ["id", "verification_review_id", "visibility", "comment", "actor_id", "actor_role", "created_at"],
   complaints: ["id", "msme_id", "provider_msme_id", "status", "priority", "severity", "created_at", "updated_at"],
   activity_logs: ["id", "action", "entity_type", "entity_id", "metadata", "created_at"],
 };
@@ -239,7 +261,13 @@ const REQUIRED_TABLE_COLUMNS: Record<AdminVerificationSourceName, string[]> = {
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status"],
   msme_compliance_profiles: ["msme_id", "overall_status"],
   msme_compliance_items: ["id", "msme_id", "status"],
+  compliance_requirement_definitions: ["id"],
+  compliance_documents: ["id", "msme_id", "uploaded_at"],
+  compliance_document_events: ["id", "msme_id", "event_type"],
   verification_reviews: ["id", "msme_id", "status"],
+  verification_document_requests: ["id", "verification_review_id", "msme_id", "document_type", "label", "status"],
+  verification_review_events: ["id", "verification_review_id", "event_type", "created_at"],
+  verification_review_comments: ["id", "verification_review_id", "comment", "created_at"],
   complaints: ["id", "msme_id", "status"],
   activity_logs: ["id", "action", "entity_type", "entity_id", "created_at"],
 };
@@ -619,6 +647,16 @@ function applyFilters(rows: Array<{ row: AdminVerificationQueueRow; raw: MsmeRow
     if (filters.missingCredential === "false" && row.intelligence.indicators.missingCredential) return false;
     if (filters.staleReview === "true" && !row.intelligence.indicators.staleReview) return false;
     if (filters.staleReview === "false" && row.intelligence.indicators.staleReview) return false;
+    if (filters.missingCriticalDocuments === "true" && !((row.documentIntelligence.completeness.missingCriticalCount ?? 0) > 0)) return false;
+    if (filters.missingCriticalDocuments === "false" && ((row.documentIntelligence.completeness.missingCriticalCount ?? 0) > 0)) return false;
+    if (filters.outstandingDocumentRequests === "true" && !((row.documentIntelligence.completeness.outstandingRequestCount ?? 0) > 0)) return false;
+    if (filters.outstandingDocumentRequests === "false" && ((row.documentIntelligence.completeness.outstandingRequestCount ?? 0) > 0)) return false;
+    if (filters.reusedDocumentSignal === "true" && !((row.documentIntelligence.completeness.reusedSignalCount ?? 0) > 0)) return false;
+    if (filters.reusedDocumentSignal === "false" && ((row.documentIntelligence.completeness.reusedSignalCount ?? 0) > 0)) return false;
+    if (filters.rejectedDocuments === "true" && !((row.documentIntelligence.completeness.rejectedCount ?? 0) > 0)) return false;
+    if (filters.rejectedDocuments === "false" && ((row.documentIntelligence.completeness.rejectedCount ?? 0) > 0)) return false;
+    if (filters.documentCompletenessBelow50 === "true" && !((row.documentIntelligence.completeness.percentage ?? 100) < 50)) return false;
+    if (filters.documentCompletenessBelow50 === "false" && ((row.documentIntelligence.completeness.percentage ?? 100) < 50)) return false;
     if (filters.flagged === "true" && !row.flagged) return false;
     if (filters.flagged === "false" && row.flagged) return false;
     if (filters.suspended === "true" && !row.suspended) return false;
@@ -643,6 +681,9 @@ function applySort(rows: Array<{ row: AdminVerificationQueueRow; raw: MsmeRow }>
     if (sort === "attention_level") return attentionRank(b.row.attentionLevel) - attentionRank(a.row.attentionLevel) || priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority);
     if (sort === "most_complaints") return (b.row.openComplaintCount ?? -1) - (a.row.openComplaintCount ?? -1) || (b.row.complaintCount ?? -1) - (a.row.complaintCount ?? -1);
     if (sort === "missing_credential_first") return Number(b.row.intelligence.indicators.missingCredential) - Number(a.row.intelligence.indicators.missingCredential) || priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority);
+    if (sort === "least_document_complete") return (a.row.documentIntelligence.completeness.percentage ?? 101) - (b.row.documentIntelligence.completeness.percentage ?? 101);
+    if (sort === "most_missing_documents") return (b.row.documentIntelligence.completeness.missingCount ?? -1) - (a.row.documentIntelligence.completeness.missingCount ?? -1);
+    if (sort === "outstanding_requests_first") return (b.row.documentIntelligence.completeness.outstandingRequestCount ?? -1) - (a.row.documentIntelligence.completeness.outstandingRequestCount ?? -1);
     return priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority) || attentionRank(b.row.attentionLevel) - attentionRank(a.row.attentionLevel) || (b.row.queueAgeDays ?? -1) - (a.row.queueAgeDays ?? -1);
   });
 }
@@ -701,6 +742,11 @@ export function adminVerificationFiltersForDiagnostics(filters: AdminVerificatio
     duplicateSignal: filters.duplicateSignal ?? null,
     missingCredential: filters.missingCredential ?? null,
     staleReview: filters.staleReview ?? null,
+    missingCriticalDocuments: filters.missingCriticalDocuments ?? null,
+    outstandingDocumentRequests: filters.outstandingDocumentRequests ?? null,
+    reusedDocumentSignal: filters.reusedDocumentSignal ?? null,
+    rejectedDocuments: filters.rejectedDocuments ?? null,
+    documentCompletenessBelow50: filters.documentCompletenessBelow50 ?? null,
     sort: filters.sort ?? null,
     flagged: filters.flagged ?? null,
     suspended: filters.suspended ?? null,
@@ -729,7 +775,13 @@ export async function loadAdminVerificationQueue(
     credentialsResult,
     complianceProfilesResult,
     complianceItemsResult,
+    requirementDefinitionsResult,
+    documentsResult,
+    documentEventsResult,
     reviewsResult,
+    documentRequestsResult,
+    reviewEventsResult,
+    reviewCommentsResult,
     complaintsResult,
     activityLogsResult,
   ] = await Promise.all([
@@ -739,7 +791,13 @@ export async function loadAdminVerificationQueue(
     readOptionalTable<Record<string, unknown>>(supabase, "digital_identity_credentials", TABLE_COLUMNS.digital_identity_credentials),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_profiles", TABLE_COLUMNS.msme_compliance_profiles),
     readOptionalTable<Record<string, unknown>>(supabase, "msme_compliance_items", TABLE_COLUMNS.msme_compliance_items),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_requirement_definitions", TABLE_COLUMNS.compliance_requirement_definitions),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_documents", TABLE_COLUMNS.compliance_documents),
+    readOptionalTable<Record<string, unknown>>(supabase, "compliance_document_events", TABLE_COLUMNS.compliance_document_events),
     readOptionalTable<Record<string, unknown>>(supabase, "verification_reviews", TABLE_COLUMNS.verification_reviews),
+    readOptionalTable<Record<string, unknown>>(supabase, "verification_document_requests", TABLE_COLUMNS.verification_document_requests),
+    readOptionalTable<Record<string, unknown>>(supabase, "verification_review_events", TABLE_COLUMNS.verification_review_events),
+    readOptionalTable<Record<string, unknown>>(supabase, "verification_review_comments", TABLE_COLUMNS.verification_review_comments),
     readOptionalTable<Record<string, unknown>>(supabase, "complaints", TABLE_COLUMNS.complaints),
     readOptionalTable<Record<string, unknown>>(supabase, "activity_logs", TABLE_COLUMNS.activity_logs),
   ]);
@@ -750,7 +808,13 @@ export async function loadAdminVerificationQueue(
   sources.digital_identity_credentials = credentialsResult.source;
   sources.msme_compliance_profiles = complianceProfilesResult.source;
   sources.msme_compliance_items = complianceItemsResult.source;
+  sources.compliance_requirement_definitions = requirementDefinitionsResult.source;
+  sources.compliance_documents = documentsResult.source;
+  sources.compliance_document_events = documentEventsResult.source;
   sources.verification_reviews = reviewsResult.source;
+  sources.verification_document_requests = documentRequestsResult.source;
+  sources.verification_review_events = reviewEventsResult.source;
+  sources.verification_review_comments = reviewCommentsResult.source;
   sources.complaints = complaintsResult.source;
   sources.activity_logs = activityLogsResult.source;
 
@@ -775,6 +839,7 @@ export async function loadAdminVerificationQueue(
       const compliance = complianceByMsme.get(id);
       const complianceItems = complianceItemStats.get(id);
       const review = reviewByMsme.get(id);
+      const reviewId = asString(review?.id);
       const reviews = reviewStats.get(id);
       const complaints = complaintCounts.get(id);
       const duplicateSignals = duplicateIndex.labelsById.get(id) ?? [];
@@ -845,6 +910,31 @@ export async function loadAdminVerificationQueue(
         reviewStatus,
         queueDate,
       });
+      const documentIntelligence = buildVerificationDocumentIntelligence({
+        msmeId: id,
+        documents: documentsResult.rows.filter((document) => asString(document.msme_id) === id),
+        allDocuments: documentsResult.rows,
+        complianceItems: complianceItemsResult.rows.filter((item) => asString(item.msme_id) === id),
+        requirementDefinitions: requirementDefinitionsResult.rows,
+        documentEvents: documentEventsResult.rows.filter((event) => asString(event.msme_id) === id),
+        review,
+        reviewEvents: reviewEventsResult.rows.filter((event) => asString(event.verification_review_id) === reviewId),
+        reviewComments: reviewCommentsResult.rows.filter((comment) => asString(comment.verification_review_id) === reviewId),
+        documentRequests: documentRequestsResult.rows.filter((request) => asString(request.msme_id) === id || asString(request.verification_review_id) === reviewId),
+        sources,
+      });
+      if ((documentIntelligence.completeness.missingCriticalCount ?? 0) > 0) {
+        reasons.push({ code: "missing_critical_documents", label: `${documentIntelligence.completeness.missingCriticalCount} missing critical document(s)`, source: "compliance_documents", severity: "elevated", detectedAt: createdAt });
+      }
+      if ((documentIntelligence.completeness.outstandingRequestCount ?? 0) > 0) {
+        reasons.push({ code: "outstanding_document_requests", label: `${documentIntelligence.completeness.outstandingRequestCount} outstanding document request(s)`, source: "verification_document_requests", severity: "watch", detectedAt: documentIntelligence.outstandingRequests[0]?.requestedAt ?? createdAt });
+      }
+      if ((documentIntelligence.completeness.reusedSignalCount ?? 0) > 0) {
+        reasons.push({ code: "document_reuse_signal", label: "Possible document reuse signal", source: "compliance_documents", severity: "elevated", detectedAt: createdAt });
+      }
+      if ((documentIntelligence.completeness.rejectedCount ?? 0) > 0) {
+        reasons.push({ code: "rejected_documents", label: `${documentIntelligence.completeness.rejectedCount} rejected document signal(s)`, source: "compliance_documents", severity: "elevated", detectedAt: createdAt });
+      }
 
       const oldestPendingAt = queueDate ?? reasons.reduce<string | null>((oldest, reason) => minDate(oldest, reason.detectedAt), null);
       if (!reasons.length) return null;
@@ -869,6 +959,7 @@ export async function loadAdminVerificationQueue(
         confidenceCategory: intelligence.confidenceCategory,
         queuePriority: intelligence.queuePriority,
         intelligence,
+        documentIntelligence,
         oldestPendingAt,
         oldestPendingAgeDays: ageDays(oldestPendingAt),
         queueAgeDays: intelligence.queueAging.ageDays,
@@ -932,6 +1023,9 @@ export async function loadAdminVerificationQueue(
         { value: "attention_level", label: "Attention level" },
         { value: "most_complaints", label: "Most complaints" },
         { value: "missing_credential_first", label: "Missing credential first" },
+        { value: "least_document_complete", label: "Least document complete" },
+        { value: "most_missing_documents", label: "Most missing documents" },
+        { value: "outstanding_requests_first", label: "Outstanding requests first" },
       ],
     },
     reviewerWorkload,
@@ -977,6 +1071,11 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
     "Masked TIN",
     "Masked Phone",
     "Masked Email",
+    "Document Completeness %",
+    "Missing Critical Documents",
+    "Outstanding Document Requests",
+    "Document Reuse Signals",
+    "Rejected Document Signals",
     "Risk Signals",
     "Duplicate Signals",
     "Queue Reasons",
@@ -1015,6 +1114,11 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
       row.tinMasked ?? "",
       row.phoneMasked ?? "",
       row.emailMasked ?? "",
+      row.documentIntelligence.completeness.percentage ?? "Unavailable",
+      row.documentIntelligence.completeness.missingCriticalCount ?? "Unavailable",
+      row.documentIntelligence.completeness.outstandingRequestCount ?? "Unavailable",
+      row.documentIntelligence.completeness.reusedSignalCount ?? "Unavailable",
+      row.documentIntelligence.completeness.rejectedCount ?? "Unavailable",
       row.riskSignals.join("; "),
       row.duplicateSignals.join("; "),
       row.reasons.map((reason) => reason.label).join("; "),

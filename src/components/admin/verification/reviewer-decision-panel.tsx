@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, FileQuestion, MessageSquareText, Play, Rot
 import { submitAdminVerificationAction } from "@/app/dashboard/admin/verifications/[id]/actions";
 import { Toast } from "@/components/ui/toast";
 import type { AdminVerificationAction } from "@/lib/data/admin-verification-actions";
+import type { VerificationDocumentCategory } from "@/lib/data/admin-verification-documents";
 import type { VerificationReviewStatus } from "@/lib/data/admin-verification-workspace";
 import type { UserRole } from "@/types/roles";
 
@@ -18,6 +19,7 @@ type ReviewPanelProps = {
   assignedAt: string | null;
   internalNotes: string | null;
   requestedDocuments: string[];
+  documentChecklist: Array<{ category: VerificationDocumentCategory; label: string; status: string; required: boolean; applicable: boolean }>;
   reviewers: Array<{ id: string; label: string }>;
 };
 
@@ -29,7 +31,16 @@ type ActionConfig = {
   reasonLabel?: string;
 };
 
-const DOC_OPTIONS = ["CAC certificate", "TIN proof", "Utility bill", "Tax clearance"];
+const FALLBACK_DOC_OPTIONS: Array<{ category: VerificationDocumentCategory; label: string }> = [
+  { category: "CAC_CERTIFICATE", label: "CAC certificate" },
+  { category: "TIN_PROOF", label: "TIN proof" },
+  { category: "UTILITY_BILL", label: "Address proof / utility bill" },
+  { category: "TAX_CLEARANCE", label: "Tax clearance" },
+  { category: "BUSINESS_PREMISES_PERMIT", label: "Business premises permit" },
+  { category: "BANK_PROOF", label: "Bank proof" },
+  { category: "PRODUCT_CERTIFICATION", label: "Product certification" },
+  { category: "OTHER", label: "Other requested documents" },
+];
 
 const ACTIONS: ActionConfig[] = [
   { action: "start_review", label: "Start Review", icon: Play, tone: "border-blue-200 bg-blue-50 text-blue-800" },
@@ -76,6 +87,7 @@ export function ReviewerDecisionPanel({
   assignedAt,
   internalNotes,
   requestedDocuments,
+  documentChecklist,
   reviewers,
 }: ReviewPanelProps) {
   const router = useRouter();
@@ -88,6 +100,9 @@ export function ReviewerDecisionPanel({
   const canReassign = role === "admin";
   const visibleActions = ACTIONS.filter((item) => allowed.has(item.action));
   const activeSelection = selected && allowed.has(selected.action) ? selected : null;
+  const documentOptions = documentChecklist.length
+    ? documentChecklist.map((item) => ({ category: item.category, label: item.label, suffix: item.required ? "Required" : item.applicable ? "Applicable" : "Optional" }))
+    : FALLBACK_DOC_OPTIONS.map((item) => ({ ...item, suffix: "Document" }));
 
   return (
     <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 xl:sticky xl:top-24">
@@ -205,10 +220,13 @@ export function ReviewerDecisionPanel({
             </div>
             {activeSelection.action === "request_documents" ? (
               <div className="mt-4 grid grid-cols-2 gap-2">
-                {DOC_OPTIONS.map((document) => (
-                  <label key={document} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">
-                    <input type="checkbox" name="requested_documents" value={document} className="h-4 w-4 rounded border-slate-300" />
-                    {document}
+                {documentOptions.map((document) => (
+                  <label key={document.category} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">
+                    <input type="checkbox" name="requested_documents" value={`${document.category}|${document.label}`} className="h-4 w-4 rounded border-slate-300" />
+                    <span>
+                      <span className="block">{document.label}</span>
+                      <span className="block text-[10px] font-semibold text-slate-500">{document.suffix}</span>
+                    </span>
                   </label>
                 ))}
                 <input name="custom_document" className="col-span-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" placeholder="Other custom request" />

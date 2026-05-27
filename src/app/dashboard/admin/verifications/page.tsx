@@ -58,6 +58,11 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Ad
     duplicateSignal: firstParam(params.duplicateSignal),
     missingCredential: firstParam(params.missingCredential),
     staleReview: firstParam(params.staleReview),
+    missingCriticalDocuments: firstParam(params.missingCriticalDocuments),
+    outstandingDocumentRequests: firstParam(params.outstandingDocumentRequests),
+    reusedDocumentSignal: firstParam(params.reusedDocumentSignal),
+    rejectedDocuments: firstParam(params.rejectedDocuments),
+    documentCompletenessBelow50: firstParam(params.documentCompletenessBelow50),
     sort: firstParam(params.sort),
     flagged: firstParam(params.flagged),
     suspended: firstParam(params.suspended),
@@ -256,6 +261,16 @@ function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null })
           <p className="text-xs font-semibold text-slate-500">Open: {row.openComplaintCount ?? "Unavailable"} · High severity: {row.highSeverityComplaintCount ?? "Unavailable"}</p>
         </PreviewSection>
 
+        <PreviewSection title="Document intelligence">
+          <p className="text-sm font-black text-slate-950">{row.documentIntelligence.completeness.percentage === null ? "Unavailable" : `${row.documentIntelligence.completeness.percentage}% complete`}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Missing critical: {row.documentIntelligence.completeness.missingCriticalCount ?? "Unavailable"} · Outstanding requests: {row.documentIntelligence.completeness.outstandingRequestCount ?? "Unavailable"}</p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {(row.documentIntelligence.completeness.reusedSignalCount ?? 0) > 0 ? <StatusPill value="reuse_signal" /> : null}
+            {(row.documentIntelligence.completeness.rejectedCount ?? 0) > 0 ? <StatusPill value="rejected_documents" /> : null}
+            {(row.documentIntelligence.completeness.reusedSignalCount ?? 0) === 0 && (row.documentIntelligence.completeness.rejectedCount ?? 0) === 0 ? <StatusPill value="no_document_signals" /> : null}
+          </div>
+        </PreviewSection>
+
         <PreviewSection title="Signals detected">
           <SignalChips signals={row.riskSignals} />
         </PreviewSection>
@@ -374,6 +389,11 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
           <SelectFilter name="duplicateSignal" label="Duplicate signal" value={filters.duplicateSignal} options={[{ value: "true", label: "Duplicate signal" }, { value: "false", label: "No duplicate" }]} />
           <SelectFilter name="missingCredential" label="Credential" value={filters.missingCredential} options={[{ value: "true", label: "Missing credential" }, { value: "false", label: "Credential present" }]} />
           <SelectFilter name="staleReview" label="Stale review" value={filters.staleReview} options={[{ value: "true", label: "Stale review" }, { value: "false", label: "Not stale" }]} />
+          <SelectFilter name="missingCriticalDocuments" label="Missing docs" value={filters.missingCriticalDocuments} options={[{ value: "true", label: "Missing critical docs" }, { value: "false", label: "No critical gaps" }]} />
+          <SelectFilter name="outstandingDocumentRequests" label="Doc requests" value={filters.outstandingDocumentRequests} options={[{ value: "true", label: "Outstanding requests" }, { value: "false", label: "No outstanding" }]} />
+          <SelectFilter name="reusedDocumentSignal" label="Document reuse" value={filters.reusedDocumentSignal} options={[{ value: "true", label: "Reuse signal" }, { value: "false", label: "No reuse signal" }]} />
+          <SelectFilter name="rejectedDocuments" label="Rejected docs" value={filters.rejectedDocuments} options={[{ value: "true", label: "Rejected documents" }, { value: "false", label: "No rejected docs" }]} />
+          <SelectFilter name="documentCompletenessBelow50" label="Doc complete" value={filters.documentCompletenessBelow50} options={[{ value: "true", label: "Below 50%" }, { value: "false", label: "50% or above" }]} />
           <SelectFilter name="sort" label="Sort" value={filters.sort ?? "highest_priority"} options={queue.options.sortOptions} />
           <SelectFilter name="flagged" label="Flagged" value={filters.flagged} options={[{ value: "true", label: "Flagged" }, { value: "false", label: "Not flagged" }]} />
           <SelectFilter name="suspended" label="Suspended" value={filters.suspended} options={[{ value: "true", label: "Suspended" }, { value: "false", label: "Not suspended" }]} />
@@ -401,7 +421,7 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
             <p className="text-xs font-bold text-slate-500">Page {queue.page} of {queue.totalPages}</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-[1680px] w-full text-left text-sm">
+            <table className="min-w-[1840px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Business</th>
@@ -413,6 +433,7 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
                   <th className="px-4 py-3">KYC Checks</th>
                   <th className="px-4 py-3">Digital ID</th>
                   <th className="px-4 py-3">Complaints</th>
+                  <th className="px-4 py-3">Documents</th>
                   <th className="px-4 py-3">Intelligence</th>
                   <th className="px-4 py-3">Attention</th>
                   <th className="px-4 py-3">Queue Age</th>
@@ -424,7 +445,7 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
               <tbody>
                 {queue.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-4 py-12 text-center">
+                    <td colSpan={16} className="px-4 py-12 text-center">
                       <CheckCircle2 className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
                       <p className="mt-3 text-sm font-black text-slate-600">No verification queue items match the current filters.</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">Clear filters to review all available operational signals.</p>
@@ -460,6 +481,15 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
                       <td className="px-4 py-3 font-black text-slate-800">
                         {row.complaintCount ?? "Unavailable"}
                         <p className="text-xs font-semibold text-slate-500">Open: {row.openComplaintCount ?? "Unavailable"}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-black text-slate-900">{row.documentIntelligence.completeness.percentage === null ? "Unavailable" : `${row.documentIntelligence.completeness.percentage}%`}</p>
+                        <p className="text-xs font-semibold text-slate-500">Missing critical: {row.documentIntelligence.completeness.missingCriticalCount ?? "Unavailable"}</p>
+                        <p className="text-xs font-semibold text-slate-500">Requests: {row.documentIntelligence.completeness.outstandingRequestCount ?? "Unavailable"}</p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {(row.documentIntelligence.completeness.reusedSignalCount ?? 0) > 0 ? <StatusPill value="reuse_signal" /> : null}
+                          {(row.documentIntelligence.completeness.rejectedCount ?? 0) > 0 ? <StatusPill value="rejected" /> : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">

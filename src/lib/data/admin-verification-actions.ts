@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserContext } from "@/lib/auth/authorization";
+import { DOCUMENT_CATEGORIES, type VerificationDocumentCategory } from "@/lib/data/admin-verification-documents";
 import type { VerificationReviewStatus } from "@/lib/data/admin-verification-workspace";
 
 export const ADMIN_VERIFICATION_ACTIONS = [
@@ -35,6 +36,11 @@ type MsmeRow = {
   business_name: string | null;
   verification_status: string | null;
   review_status: string | null;
+};
+
+type RequestedDocumentSpec = {
+  documentType: VerificationDocumentCategory;
+  label: string;
 };
 
 const ALLOWED_TRANSITIONS: Record<VerificationReviewStatus, VerificationReviewStatus[]> = {
@@ -82,6 +88,20 @@ function requestedDocumentsFromInput(value: unknown) {
     .map(cleanText)
     .filter(Boolean)
     .slice(0, 12);
+}
+
+function requestedDocumentSpecsFromInput(value: unknown): RequestedDocumentSpec[] {
+  const labels = requestedDocumentsFromInput(value);
+  return labels.map((label) => {
+    const [rawType, ...rest] = label.split("|");
+    const documentType = (DOCUMENT_CATEGORIES as readonly string[]).includes(rawType) ? rawType as VerificationDocumentCategory : "OTHER";
+    const cleanLabel = cleanText(rest.join("|")) || cleanText(rawType) || "Other requested document";
+    return { documentType, label: cleanLabel };
+  }).slice(0, 12);
+}
+
+function requestedDocumentLabels(specs: RequestedDocumentSpec[]) {
+  return specs.map((spec) => spec.label);
 }
 
 function normalizeStatus(value: unknown): VerificationReviewStatus {
@@ -196,6 +216,48 @@ function buildReviewPatch(params: {
   return patch;
 }
 
+async function recordStructuredDocumentRequests(
+  supabase: SupabaseClient<any>,
+  params: {
+    reviewId: string;
+    msmeId: string;
+    ctx: UserContext;
+    reason: string;
+    specs: RequestedDocumentSpec[];
+    timestamp: string;
+  },
+) {
+  if (!params.specs.length) return;
+  const { error } = await supabase.from("verification_document_requests").insert(
+    params.specs.map((spec) => ({
+      verification_review_id: params.reviewId,
+      msme_id: params.msmeId,
+      document_type: spec.documentType,
+      label: spec.label,
+      status: "requested",
+      requested_by: params.ctx.appUserId,
+      requested_at: params.timestamp,
+      metadata: {
+        source_workspace: "admin_verification_workspace",
+        reason: params.reason,
+      },
+    })),
+  );
+  if (!error) return;
+  if (["42P01", "42703"].includes(error.code ?? "")) {
+    console.info("[admin-verification-actions]", {
+      operation: "record_structured_document_requests",
+      msmeId: params.msmeId,
+      verificationReviewId: params.reviewId,
+      documentCount: params.specs.length,
+      supabaseErrorCode: error.code ?? null,
+      supabaseErrorMessage: error.message ?? null,
+    });
+    return;
+  }
+  throw error;
+}
+
 function buildMsmePatch(action: AdminVerificationAction, toStatus: VerificationReviewStatus | null, timestamp: string, actorId: string | null) {
   const patch: Record<string, unknown> = {
     latest_admin_action: `verification_${action}`,
@@ -301,7 +363,8 @@ export async function runAdminVerificationAction(
 ) {
   const reason = cleanText(params.reason);
   const notes = cleanText(params.notes);
-  const requestedDocuments = requestedDocumentsFromInput(params.requestedDocuments);
+  const requestedDocumentSpecs = requestedDocumentSpecsFromInput(params.requestedDocuments);
+  const requestedDocuments = requestedDocumentLabels(requestedDocumentSpecs);
   assertAllowed({ ctx: params.ctx, action: params.action, reason, requestedDocuments });
 
   const timestamp = nowIso();
@@ -360,6 +423,16 @@ export async function runAdminVerificationAction(
 
   const commentText = params.action === "save_notes" ? notes : reason;
   await recordCommentIfNeeded(supabase, { reviewId: review.id, ctx: params.ctx, action: params.action, comment: commentText, timestamp });
+  if (params.action === "request_documents") {
+    await recordStructuredDocumentRequests(supabase, {
+      reviewId: review.id,
+      msmeId: msme.id,
+      ctx: params.ctx,
+      reason,
+      specs: requestedDocumentSpecs,
+      timestamp,
+    });
+  }
   await recordReviewEvent(supabase, {
     reviewId: review.id,
     actor: params.ctx,
