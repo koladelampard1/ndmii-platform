@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { csvValue } from "@/lib/data/admin-msme-registry";
+import {
+  buildVerificationIntelligence,
+  verificationAgeDays,
+  type VerificationAttentionLevel,
+  type VerificationConfidenceCategory,
+  type VerificationIntelligence,
+  type VerificationQueuePriority,
+} from "@/lib/data/admin-verification-intelligence";
 
 export type AdminVerificationFilters = {
   q?: string;
@@ -10,6 +18,13 @@ export type AdminVerificationFilters = {
   state?: string;
   sector?: string;
   attentionLevel?: string;
+  confidenceCategory?: string;
+  priority?: string;
+  complaintLinked?: string;
+  duplicateSignal?: string;
+  missingCredential?: string;
+  staleReview?: string;
+  sort?: string;
   flagged?: string;
   suspended?: string;
   updatedFrom?: string;
@@ -67,9 +82,16 @@ export type AdminVerificationQueueRow = {
   digitalCredentialId: string | null;
   complaintCount: number | null;
   openComplaintCount: number | null;
-  attentionLevel: "watch" | "elevated" | "critical";
+  highSeverityComplaintCount: number | null;
+  attentionLevel: VerificationAttentionLevel;
+  confidenceCategory: VerificationConfidenceCategory;
+  queuePriority: VerificationQueuePriority;
+  intelligence: VerificationIntelligence;
   oldestPendingAt: string | null;
   oldestPendingAgeDays: number | null;
+  queueAgeDays: number | null;
+  agingBucket: string;
+  overdue: boolean;
   lastUpdatedAt: string | null;
   flagged: boolean;
   suspended: boolean;
@@ -83,6 +105,8 @@ export type AdminVerificationQueueRow = {
   complianceFailedCount: number | null;
   compliancePendingCount: number | null;
   reasons: QueueReason[];
+  riskSignals: string[];
+  duplicateSignals: string[];
   suggestedNextAction: string;
   latestActivity: string | null;
   latestActivityAt: string | null;
@@ -112,7 +136,11 @@ export type AdminVerificationQueueResult = {
     kycStatuses: string[];
     digitalIdStatuses: string[];
     attentionLevels: string[];
+    confidenceCategories: string[];
+    priorities: string[];
+    sortOptions: Array<{ value: string; label: string }>;
   };
+  reviewerWorkload: AdminVerificationReviewerWorkload;
   sources: Record<AdminVerificationSourceName, AdminVerificationSourceState>;
   diagnostics: {
     operation: string;
@@ -121,6 +149,17 @@ export type AdminVerificationQueueResult = {
     supabaseErrorCode?: string | null;
     supabaseErrorMessage?: string | null;
   };
+};
+
+export type AdminVerificationReviewerWorkload = {
+  available: boolean;
+  assignedToMe: number | null;
+  unassigned: number | null;
+  underReview: number | null;
+  awaitingDocuments: number | null;
+  escalated: number | null;
+  averageReviewAgeDays: number | null;
+  message: string | null;
 };
 
 type TableReadResult<T> = {
@@ -188,7 +227,7 @@ const TABLE_COLUMNS: Record<AdminVerificationSourceName, string[]> = {
   digital_identity_credentials: ["id", "msme_id", "ndmii_id", "status", "issued_at", "approved_at", "revoked_at", "suspended_at", "token_expires_at", "created_at", "updated_at"],
   msme_compliance_profiles: ["msme_id", "overall_status", "compliance_score", "risk_level", "pending_count", "under_review_count", "changes_requested_count", "rejected_count", "expired_count", "suspended_count", "revoked_count", "updated_at"],
   msme_compliance_items: ["id", "msme_id", "status", "created_at", "updated_at", "submitted_at", "rejected_at", "approved_at"],
-  verification_reviews: ["id", "msme_id", "status", "created_at", "updated_at"],
+  verification_reviews: ["id", "msme_id", "status", "assigned_reviewer_id", "created_at", "updated_at"],
   complaints: ["id", "msme_id", "provider_msme_id", "status", "priority", "severity", "created_at", "updated_at"],
   activity_logs: ["id", "action", "entity_type", "entity_id", "metadata", "created_at"],
 };
@@ -323,15 +362,19 @@ function latestTime(row: Record<string, unknown>, columns: string[]) {
 }
 
 function buildComplaintCounts(rows: Array<Record<string, unknown>>) {
-  const counts = new Map<string, { total: number; open: number; latestAt: string | null }>();
+  const counts = new Map<string, { total: number; open: number; highSeverityOpen: number; latestAt: string | null }>();
   for (const row of rows) {
     const ids = [asString(row.msme_id), asString(row.provider_msme_id)].filter(Boolean);
     const status = normalizeStatus(asString(row.status), "submitted");
+    const severity = normalizeStatus(asString(row.severity ?? row.priority), "");
     const date = asString(row.updated_at) || asString(row.created_at) || null;
     for (const id of new Set(ids)) {
-      const current = counts.get(id) ?? { total: 0, open: 0, latestAt: null };
+      const current = counts.get(id) ?? { total: 0, open: 0, highSeverityOpen: 0, latestAt: null };
       current.total += 1;
-      if (!CLOSED_COMPLAINT_STATUSES.has(status)) current.open += 1;
+      if (!CLOSED_COMPLAINT_STATUSES.has(status)) {
+        current.open += 1;
+        if (["high", "critical", "urgent"].includes(severity)) current.highSeverityOpen += 1;
+      }
       current.latestAt = maxDate(current.latestAt, date);
       counts.set(id, current);
     }
@@ -361,6 +404,60 @@ function buildComplianceItemStats(rows: Array<Record<string, unknown>>) {
   return stats;
 }
 
+function buildReviewStats(rows: Array<Record<string, unknown>>) {
+  const stats = new Map<string, { rejected: number; latestAt: string | null; oldestOpenAt: string | null }>();
+  for (const row of rows) {
+    const msmeId = asString(row.msme_id);
+    if (!msmeId) continue;
+    const status = normalizeStatus(asString(row.status), "");
+    const date = asString(row.updated_at) || asString(row.created_at) || null;
+    const current = stats.get(msmeId) ?? { rejected: 0, latestAt: null, oldestOpenAt: null };
+    if (status === "rejected") current.rejected += 1;
+    if (REVIEW_QUEUE_STATUSES.has(status)) current.oldestOpenAt = minDate(current.oldestOpenAt, asString(row.created_at) || date);
+    current.latestAt = maxDate(current.latestAt, date);
+    stats.set(msmeId, current);
+  }
+  return stats;
+}
+
+function buildDuplicateIndex(rows: MsmeRow[]) {
+  const byKey = new Map<string, string[]>();
+  const labelsById = new Map<string, string[]>();
+  const strongById = new Set<string>();
+  const keys: Array<{ field: keyof MsmeRow; label: string; strong: boolean }> = [
+    { field: "cac_number", label: "Duplicate CAC", strong: true },
+    { field: "tin", label: "Duplicate TIN", strong: true },
+    { field: "contact_phone", label: "Duplicate phone", strong: false },
+    { field: "contact_email", label: "Duplicate email", strong: false },
+    { field: "business_name", label: "Duplicate business name", strong: false },
+  ];
+
+  for (const row of rows) {
+    const id = asString(row.id);
+    if (!id) continue;
+    for (const key of keys) {
+      const value = asString(row[key.field]).toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (!value || value.length < 3) continue;
+      const mapKey = `${key.field}:${value}`;
+      byKey.set(mapKey, [...(byKey.get(mapKey) ?? []), id]);
+    }
+  }
+
+  for (const [mapKey, ids] of byKey.entries()) {
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length < 2) continue;
+    const field = mapKey.split(":")[0] as keyof MsmeRow;
+    const match = keys.find((item) => item.field === field);
+    if (!match) continue;
+    for (const id of uniqueIds) {
+      labelsById.set(id, [...(labelsById.get(id) ?? []), match.label]);
+      if (match.strong) strongById.add(id);
+    }
+  }
+
+  return { labelsById, strongById };
+}
+
 function buildActivityByMsme(rows: Array<Record<string, unknown>>) {
   const map = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
@@ -387,9 +484,7 @@ function minDate(left: string | null, right: string | null) {
 }
 
 function ageDays(value: string | null) {
-  const time = Date.parse(value ?? "");
-  if (!Number.isFinite(time)) return null;
-  return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
+  return verificationAgeDays(value);
 }
 
 function checkStatus(value: string | null | undefined) {
@@ -427,6 +522,35 @@ function profileCompletenessScore(msme: MsmeRow) {
     msme.tin,
   ];
   return Math.round((fields.filter((value) => Boolean(asString(value))).length / fields.length) * 100);
+}
+
+function missingProfileFields(msme: MsmeRow): string[] {
+  return [
+    ["Business name", msme.business_name],
+    ["Owner name", msme.owner_name],
+    ["Email", msme.contact_email],
+    ["Phone", msme.contact_phone],
+    ["State", msme.state],
+    ["LGA", msme.lga],
+    ["Sector", msme.sector],
+    ["Business type", msme.business_type],
+    ["Address", msme.address],
+    ["CAC", msme.cac_number],
+    ["TIN", msme.tin],
+  ].filter(([, value]) => !asString(value)).map(([label]) => String(label));
+}
+
+function coreCheckBreakdown(kyc: KycCheckSummary) {
+  const entries = [
+    ["NIN", kyc.nin],
+    ["BVN", kyc.bvn],
+    ["CAC", kyc.cac],
+    ["TIN", kyc.tin],
+  ] as const;
+  return {
+    failed: entries.filter(([, status]) => FAILED_CHECK_STATUSES.has(checkStatus(status))).map(([label]) => label),
+    pending: entries.filter(([, status]) => PENDING_CHECK_STATUSES.has(checkStatus(status))).map(([label]) => label),
+  };
 }
 
 function attentionFromReasons(reasons: QueueReason[]): AdminVerificationQueueRow["attentionLevel"] {
@@ -485,12 +609,41 @@ function applyFilters(rows: Array<{ row: AdminVerificationQueueRow; raw: MsmeRow
     if (filters.state && row.state !== filters.state) return false;
     if (filters.sector && row.sector !== filters.sector) return false;
     if (filters.attentionLevel && row.attentionLevel !== filters.attentionLevel) return false;
+    if (filters.confidenceCategory && row.confidenceCategory !== filters.confidenceCategory) return false;
+    if (filters.priority && row.queuePriority !== filters.priority) return false;
+    if (filters.complaintLinked === "true" && !row.intelligence.indicators.complaintLinked) return false;
+    if (filters.complaintLinked === "false" && row.intelligence.indicators.complaintLinked) return false;
+    if (filters.duplicateSignal === "true" && !row.intelligence.indicators.duplicateSignal) return false;
+    if (filters.duplicateSignal === "false" && row.intelligence.indicators.duplicateSignal) return false;
+    if (filters.missingCredential === "true" && !row.intelligence.indicators.missingCredential) return false;
+    if (filters.missingCredential === "false" && row.intelligence.indicators.missingCredential) return false;
+    if (filters.staleReview === "true" && !row.intelligence.indicators.staleReview) return false;
+    if (filters.staleReview === "false" && row.intelligence.indicators.staleReview) return false;
     if (filters.flagged === "true" && !row.flagged) return false;
     if (filters.flagged === "false" && row.flagged) return false;
     if (filters.suspended === "true" && !row.suspended) return false;
     if (filters.suspended === "false" && row.suspended) return false;
     if (!dateInRange(row.lastUpdatedAt, filters.updatedFrom, filters.updatedTo)) return false;
     return true;
+  });
+}
+
+function priorityRank(value: VerificationQueuePriority) {
+  return { Low: 1, Medium: 2, High: 3, Urgent: 4 }[value];
+}
+
+function attentionRank(value: VerificationAttentionLevel) {
+  return { normal: 0, watch: 1, elevated: 2, critical: 3 }[value];
+}
+
+function applySort(rows: Array<{ row: AdminVerificationQueueRow; raw: MsmeRow }>, sort = "highest_priority") {
+  return [...rows].sort((a, b) => {
+    if (sort === "newest") return (Date.parse(b.row.intelligence.queueAging.queueDate ?? b.row.lastUpdatedAt ?? "") || 0) - (Date.parse(a.row.intelligence.queueAging.queueDate ?? a.row.lastUpdatedAt ?? "") || 0);
+    if (sort === "oldest") return (Date.parse(a.row.intelligence.queueAging.queueDate ?? a.row.lastUpdatedAt ?? "") || 0) - (Date.parse(b.row.intelligence.queueAging.queueDate ?? b.row.lastUpdatedAt ?? "") || 0);
+    if (sort === "attention_level") return attentionRank(b.row.attentionLevel) - attentionRank(a.row.attentionLevel) || priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority);
+    if (sort === "most_complaints") return (b.row.openComplaintCount ?? -1) - (a.row.openComplaintCount ?? -1) || (b.row.complaintCount ?? -1) - (a.row.complaintCount ?? -1);
+    if (sort === "missing_credential_first") return Number(b.row.intelligence.indicators.missingCredential) - Number(a.row.intelligence.indicators.missingCredential) || priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority);
+    return priorityRank(b.row.queuePriority) - priorityRank(a.row.queuePriority) || attentionRank(b.row.attentionLevel) - attentionRank(a.row.attentionLevel) || (b.row.queueAgeDays ?? -1) - (a.row.queueAgeDays ?? -1);
   });
 }
 
@@ -504,6 +657,34 @@ function buildKpis(rows: AdminVerificationQueueRow[]): AdminVerificationKpis {
   };
 }
 
+function buildReviewerWorkload(rows: Array<Record<string, unknown>>, available: boolean, currentUserId?: string | null): AdminVerificationReviewerWorkload {
+  if (!available) {
+    return {
+      available: false,
+      assignedToMe: null,
+      unassigned: null,
+      underReview: null,
+      awaitingDocuments: null,
+      escalated: null,
+      averageReviewAgeDays: null,
+      message: "Verification review source unavailable",
+    };
+  }
+
+  const openRows = rows.filter((row) => REVIEW_QUEUE_STATUSES.has(normalizeReviewStatus(row.status, "pending_review")));
+  const ages = openRows.map((row) => ageDays(asString(row.created_at) || asString(row.updated_at) || null)).filter((value): value is number => value !== null);
+  return {
+    available: true,
+    assignedToMe: currentUserId ? openRows.filter((row) => asString(row.assigned_reviewer_id) === currentUserId).length : null,
+    unassigned: openRows.filter((row) => !asString(row.assigned_reviewer_id)).length,
+    underReview: openRows.filter((row) => normalizeReviewStatus(row.status, "pending_review") === "under_review").length,
+    awaitingDocuments: openRows.filter((row) => normalizeReviewStatus(row.status, "pending_review") === "awaiting_documents").length,
+    escalated: openRows.filter((row) => normalizeReviewStatus(row.status, "pending_review") === "escalated").length,
+    averageReviewAgeDays: ages.length ? Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length) : null,
+    message: currentUserId ? null : "Current reviewer assignment unavailable",
+  };
+}
+
 export function adminVerificationFiltersForDiagnostics(filters: AdminVerificationFilters) {
   return {
     hasSearch: Boolean(asString(filters.q)) ? "true" : "false",
@@ -514,6 +695,13 @@ export function adminVerificationFiltersForDiagnostics(filters: AdminVerificatio
     state: filters.state ?? null,
     sector: filters.sector ?? null,
     attentionLevel: filters.attentionLevel ?? null,
+    confidenceCategory: filters.confidenceCategory ?? null,
+    priority: filters.priority ?? null,
+    complaintLinked: filters.complaintLinked ?? null,
+    duplicateSignal: filters.duplicateSignal ?? null,
+    missingCredential: filters.missingCredential ?? null,
+    staleReview: filters.staleReview ?? null,
+    sort: filters.sort ?? null,
     flagged: filters.flagged ?? null,
     suspended: filters.suspended ?? null,
     updatedFrom: filters.updatedFrom ?? null,
@@ -527,6 +715,7 @@ export function adminVerificationFiltersForDiagnostics(filters: AdminVerificatio
 export async function loadAdminVerificationQueue(
   supabase: SupabaseClient<any>,
   inputFilters: AdminVerificationFilters,
+  currentUserId?: string | null,
 ): Promise<AdminVerificationQueueResult> {
   const filters = normalizeAdminVerificationFilters(inputFilters);
   const sources = Object.fromEntries(
@@ -571,7 +760,9 @@ export async function loadAdminVerificationQueue(
   const complianceByMsme = latestByMsme(complianceProfilesResult.rows, ["updated_at"]);
   const complianceItemStats = buildComplianceItemStats(complianceItemsResult.rows);
   const reviewByMsme = latestByMsme(reviewsResult.rows, ["updated_at", "created_at"]);
+  const reviewStats = buildReviewStats(reviewsResult.rows);
   const complaintCounts = buildComplaintCounts(complaintsResult.rows);
+  const duplicateIndex = buildDuplicateIndex(msmesResult.rows);
   const activityByMsme = buildActivityByMsme(activityLogsResult.rows);
 
   const decorated = msmesResult.rows
@@ -584,7 +775,9 @@ export async function loadAdminVerificationQueue(
       const compliance = complianceByMsme.get(id);
       const complianceItems = complianceItemStats.get(id);
       const review = reviewByMsme.get(id);
+      const reviews = reviewStats.get(id);
       const complaints = complaintCounts.get(id);
+      const duplicateSignals = duplicateIndex.labelsById.get(id) ?? [];
       const latestActivity = activityByMsme.get(id);
       const verificationStatus = normalizeStatus(raw.verification_status, "pending");
       const reviewStatus = sources.verification_reviews.available
@@ -596,6 +789,8 @@ export async function loadAdminVerificationQueue(
         : "unavailable";
       const kyc = summarizeKyc(validation, legacyCompliance, sources.validation_results.available || sources.compliance_profiles.available);
       const profileScore = profileCompletenessScore(raw);
+      const missingFields = missingProfileFields(raw);
+      const coreChecks = coreCheckBreakdown(kyc);
       const lastUpdatedAt = [
         asString(raw.updated_at) || asString(raw.created_at) || null,
         asString(validation?.updated_at) || asString(validation?.validated_at) || null,
@@ -611,6 +806,7 @@ export async function loadAdminVerificationQueue(
       const createdAt = asString(raw.created_at) || null;
       const verificationDate = asString(raw.updated_at) || createdAt;
       const reviewDate = asString(review?.updated_at) || asString(review?.created_at) || verificationDate;
+      const queueDate = asString(review?.created_at) || (REVIEW_QUEUE_STATUSES.has(reviewStatus) ? createdAt : null);
       if (REVIEW_QUEUE_STATUSES.has(reviewStatus)) reasons.push({ code: "review_queue_status", label: `Review status is ${reviewStatus.replaceAll("_", " ")}`, source: sources.verification_reviews.available ? "verification_reviews" : "msmes", severity: "watch", detectedAt: reviewDate });
       if (!VERIFIED_STATUSES.has(verificationStatus)) reasons.push({ code: "unverified_status", label: `Verification status is ${verificationStatus.replaceAll("_", " ")}`, source: "msmes", severity: "watch", detectedAt: verificationDate });
       if (complianceStatus && !VERIFIED_STATUSES.has(complianceStatus)) reasons.push({ code: "compliance_not_verified", label: `Compliance profile is ${complianceStatus.replaceAll("_", " ")}`, source: sources.msme_compliance_profiles.available ? "msme_compliance_profiles" : "compliance_profiles", severity: ["rejected", "expired", "suspended", "revoked", "failed"].includes(complianceStatus) ? "elevated" : "watch", detectedAt: asString(compliance?.updated_at) || asString(legacyCompliance?.last_reviewed_at) || createdAt });
@@ -622,9 +818,35 @@ export async function loadAdminVerificationQueue(
       if (Boolean(raw.flagged)) reasons.push({ code: "flagged_msme", label: "MSME is flagged", source: "msmes", severity: "elevated", detectedAt: verificationDate });
       if (Boolean(raw.suspended)) reasons.push({ code: "suspended_msme", label: "MSME is suspended", source: "msmes", severity: "critical", detectedAt: verificationDate });
       if ((complaints?.open ?? 0) > 0 && (!VERIFIED_STATUSES.has(verificationStatus) || kyc.overall !== "verified")) reasons.push({ code: "open_complaints_weak_verification", label: `${complaints?.open} open complaint(s) with weak verification`, source: "complaints", severity: "elevated", detectedAt: complaints?.latestAt ?? createdAt });
+      if ((complaints?.highSeverityOpen ?? 0) > 0) reasons.push({ code: "high_severity_complaints", label: `${complaints?.highSeverityOpen} high-severity open complaint(s)`, source: "complaints", severity: "critical", detectedAt: complaints?.latestAt ?? createdAt });
+      if (duplicateSignals.length) reasons.push({ code: "duplicate_signals", label: duplicateSignals.slice(0, 3).join(", "), source: "verification_rules", severity: duplicateIndex.strongById.has(id) ? "critical" : "elevated", detectedAt: createdAt });
+      if ((reviews?.rejected ?? 0) >= 2) reasons.push({ code: "repeated_rejected_reviews", label: `${reviews?.rejected} rejected verification review(s)`, source: "verification_reviews", severity: "critical", detectedAt: reviews?.latestAt ?? createdAt });
+      if (queueDate && (ageDays(queueDate) ?? 0) >= 15) reasons.push({ code: "stale_pending_review", label: `Review has been queued for ${ageDays(queueDate)} days`, source: sources.verification_reviews.available ? "verification_reviews" : "msmes", severity: "elevated", detectedAt: queueDate });
       if (profileScore < 80) reasons.push({ code: "incomplete_profile", label: `Profile completeness is ${profileScore}%`, source: "msmes", severity: "watch", detectedAt: createdAt });
 
-      const oldestPendingAt = reasons.reduce<string | null>((oldest, reason) => minDate(oldest, reason.detectedAt), null);
+      const intelligence = buildVerificationIntelligence({
+        flagged: Boolean(raw.flagged),
+        suspended: Boolean(raw.suspended),
+        kycOverall: kyc.overall,
+        failedCoreChecks: coreChecks.failed,
+        pendingCoreChecks: coreChecks.pending,
+        credentialStatus: digitalCredentialStatus,
+        hasActiveCredential: digitalCredentialStatus === "active",
+        openComplaints: sources.complaints.available ? complaints?.open ?? 0 : null,
+        highSeverityComplaints: sources.complaints.available ? complaints?.highSeverityOpen ?? 0 : null,
+        duplicateSignals,
+        strongDuplicateSignals: duplicateIndex.strongById.has(id),
+        profileCompleteness: profileScore,
+        missingProfileFields: missingFields,
+        complianceStatus,
+        complianceFailedCount: sources.msme_compliance_items.available ? complianceItems?.failed ?? 0 : null,
+        compliancePendingCount: sources.msme_compliance_items.available ? complianceItems?.pending ?? 0 : null,
+        repeatedRejectedReviews: reviews?.rejected ?? 0,
+        reviewStatus,
+        queueDate,
+      });
+
+      const oldestPendingAt = queueDate ?? reasons.reduce<string | null>((oldest, reason) => minDate(oldest, reason.detectedAt), null);
       if (!reasons.length) return null;
 
       const row: AdminVerificationQueueRow = {
@@ -642,9 +864,16 @@ export async function loadAdminVerificationQueue(
         digitalCredentialId: asString(credential?.ndmii_id) || null,
         complaintCount: sources.complaints.available ? complaints?.total ?? 0 : null,
         openComplaintCount: sources.complaints.available ? complaints?.open ?? 0 : null,
-        attentionLevel: attentionFromReasons(reasons),
+        highSeverityComplaintCount: sources.complaints.available ? complaints?.highSeverityOpen ?? 0 : null,
+        attentionLevel: intelligence.attentionLevel === "normal" ? attentionFromReasons(reasons) : intelligence.attentionLevel,
+        confidenceCategory: intelligence.confidenceCategory,
+        queuePriority: intelligence.queuePriority,
+        intelligence,
         oldestPendingAt,
         oldestPendingAgeDays: ageDays(oldestPendingAt),
+        queueAgeDays: intelligence.queueAging.ageDays,
+        agingBucket: intelligence.queueAging.bucket,
+        overdue: intelligence.queueAging.overdue,
         lastUpdatedAt: lastUpdatedAt ?? createdAt,
         flagged: Boolean(raw.flagged),
         suspended: Boolean(raw.suspended),
@@ -658,19 +887,17 @@ export async function loadAdminVerificationQueue(
         complianceFailedCount: sources.msme_compliance_items.available ? complianceItems?.failed ?? 0 : null,
         compliancePendingCount: sources.msme_compliance_items.available ? complianceItems?.pending ?? 0 : null,
         reasons,
+        riskSignals: intelligence.signals.map((signal) => signal.label),
+        duplicateSignals,
         suggestedNextAction: suggestedNextAction(reasons),
         latestActivity: asString(latestActivity?.action) || null,
         latestActivityAt: asString(latestActivity?.created_at) || null,
       };
       return { row, raw };
     })
-    .filter((item): item is { row: AdminVerificationQueueRow; raw: MsmeRow } => Boolean(item))
-    .sort((a, b) => {
-      const rank = { critical: 3, elevated: 2, watch: 1 };
-      return rank[b.row.attentionLevel] - rank[a.row.attentionLevel] || (Date.parse(a.row.oldestPendingAt ?? "") || 0) - (Date.parse(b.row.oldestPendingAt ?? "") || 0);
-    });
+    .filter((item): item is { row: AdminVerificationQueueRow; raw: MsmeRow } => Boolean(item));
 
-  const filtered = applyFilters(decorated, filters);
+  const filtered = applySort(applyFilters(decorated, filters), filters.sort);
   const totalRows = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
   const page = Math.min(filters.page, totalPages);
@@ -678,6 +905,7 @@ export async function loadAdminVerificationQueue(
   const rows = filters.exportAll ? filtered.map(({ row }) => row) : filtered.slice(start, start + filters.pageSize).map(({ row }) => row);
   const selectedRow = filters.selectedId ? decorated.find(({ row }) => row.id === filters.selectedId)?.row ?? null : rows[0] ?? null;
   const allQueueRows = decorated.map(({ row }) => row);
+  const reviewerWorkload = buildReviewerWorkload(reviewsResult.rows, sources.verification_reviews.available, currentUserId);
 
   return {
     rows,
@@ -695,7 +923,18 @@ export async function loadAdminVerificationQueue(
       kycStatuses: uniqueSorted(allQueueRows.map((row) => row.kyc.overall)),
       digitalIdStatuses: uniqueSorted(allQueueRows.map((row) => row.digitalCredentialStatus)),
       attentionLevels: uniqueSorted(allQueueRows.map((row) => row.attentionLevel)),
+      confidenceCategories: uniqueSorted(allQueueRows.map((row) => row.confidenceCategory)),
+      priorities: uniqueSorted(allQueueRows.map((row) => row.queuePriority)),
+      sortOptions: [
+        { value: "newest", label: "Newest" },
+        { value: "oldest", label: "Oldest" },
+        { value: "highest_priority", label: "Highest priority" },
+        { value: "attention_level", label: "Attention level" },
+        { value: "most_complaints", label: "Most complaints" },
+        { value: "missing_credential_first", label: "Missing credential first" },
+      ],
     },
+    reviewerWorkload,
     sources,
     diagnostics: {
       operation: "load_admin_verification_queue",
@@ -724,8 +963,13 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
     "Digital Credential Status",
     "Complaint Count",
     "Open Complaints",
+    "High Severity Open Complaints",
+    "Confidence Category",
     "Attention Level",
-    "Oldest Pending Age Days",
+    "Queue Priority",
+    "Queue Age Days",
+    "Aging Bucket",
+    "Overdue",
     "Last Updated",
     "Flagged",
     "Suspended",
@@ -733,6 +977,8 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
     "Masked TIN",
     "Masked Phone",
     "Masked Email",
+    "Risk Signals",
+    "Duplicate Signals",
     "Queue Reasons",
     "Suggested Next Action",
   ];
@@ -755,8 +1001,13 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
       row.digitalCredentialStatus,
       row.complaintCount ?? "Unavailable",
       row.openComplaintCount ?? "Unavailable",
+      row.highSeverityComplaintCount ?? "Unavailable",
+      row.confidenceCategory,
       row.attentionLevel,
-      row.oldestPendingAgeDays ?? "Unavailable",
+      row.queuePriority,
+      row.queueAgeDays ?? "Unavailable",
+      row.agingBucket,
+      row.overdue ? "Yes" : "No",
       row.lastUpdatedAt,
       row.flagged ? "Yes" : "No",
       row.suspended ? "Yes" : "No",
@@ -764,6 +1015,8 @@ export function buildAdminVerificationQueueCsv(rows: AdminVerificationQueueRow[]
       row.tinMasked ?? "",
       row.phoneMasked ?? "",
       row.emailMasked ?? "",
+      row.riskSignals.join("; "),
+      row.duplicateSignals.join("; "),
       row.reasons.map((reason) => reason.label).join("; "),
       row.suggestedNextAction,
     ].map(csvValue).join(",")),

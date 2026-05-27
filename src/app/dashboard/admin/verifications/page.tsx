@@ -7,6 +7,7 @@ import {
   Download,
   Filter,
   Flag,
+  Gauge,
   KeyRound,
   Search,
   ShieldAlert,
@@ -51,6 +52,13 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Ad
     state: firstParam(params.state),
     sector: firstParam(params.sector),
     attentionLevel: firstParam(params.attentionLevel),
+    confidenceCategory: firstParam(params.confidenceCategory),
+    priority: firstParam(params.priority),
+    complaintLinked: firstParam(params.complaintLinked),
+    duplicateSignal: firstParam(params.duplicateSignal),
+    missingCredential: firstParam(params.missingCredential),
+    staleReview: firstParam(params.staleReview),
+    sort: firstParam(params.sort),
     flagged: firstParam(params.flagged),
     suspended: firstParam(params.suspended),
     updatedFrom: firstParam(params.updatedFrom),
@@ -93,9 +101,9 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["verified", "approved", "active", "passed", "low"].includes(normalized)) return "emerald";
-  if (["pending", "pending_review", "submitted", "changes_requested", "incomplete", "watch", "missing"].includes(normalized)) return "amber";
-  if (["failed", "rejected", "suspended", "revoked", "critical", "elevated", "expired"].includes(normalized)) return "rose";
+  if (["verified", "approved", "active", "passed", "low", "strong", "normal"].includes(normalized)) return "emerald";
+  if (["pending", "pending_review", "submitted", "changes_requested", "incomplete", "watch", "missing", "moderate", "medium"].includes(normalized)) return "amber";
+  if (["failed", "rejected", "suspended", "revoked", "critical", "elevated", "expired", "critical review needed", "urgent", "high", "weak"].includes(normalized)) return "rose";
   if (["unavailable", "not_started"].includes(normalized)) return "slate";
   return "blue";
 }
@@ -175,6 +183,17 @@ function PreviewSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
+function SignalChips({ signals, emptyText = "No critical signals detected" }: { signals: string[]; emptyText?: string }) {
+  if (!signals.length) return <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.emerald}`}>{emptyText}</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {signals.slice(0, 3).map((signal) => (
+        <span key={signal} className={`inline-flex max-w-[220px] rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses.amber}`}>{signal}</span>
+      ))}
+    </div>
+  );
+}
+
 function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null }) {
   if (!row) {
     return (
@@ -194,8 +213,20 @@ function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null })
         </div>
         <StatusPill value={row.attentionLevel} />
       </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <StatusPill value={row.confidenceCategory} />
+        <StatusPill value={row.queuePriority} />
+        <StatusPill value={row.intelligence.queueAging.label} />
+      </div>
 
       <div className="mt-5 space-y-3">
+        <PreviewSection title="Verification intelligence">
+          <p className="text-sm font-black text-slate-950">{row.confidenceCategory}</p>
+          <ul className="mt-2 space-y-1 text-sm font-semibold text-slate-700">
+            {row.intelligence.confidenceReasons.map((reason) => <li key={reason}>- {reason}</li>)}
+          </ul>
+        </PreviewSection>
+
         <PreviewSection title="Profile summary">
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-xs font-bold text-slate-500">Owner</dt><dd className="font-semibold text-slate-900">{row.ownerName}</dd></div>
@@ -222,7 +253,11 @@ function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null })
 
         <PreviewSection title="Complaints">
           <p className="text-sm font-black text-slate-950">{row.complaintCount ?? "Unavailable"} total</p>
-          <p className="text-xs font-semibold text-slate-500">Open: {row.openComplaintCount ?? "Unavailable"}</p>
+          <p className="text-xs font-semibold text-slate-500">Open: {row.openComplaintCount ?? "Unavailable"} · High severity: {row.highSeverityComplaintCount ?? "Unavailable"}</p>
+        </PreviewSection>
+
+        <PreviewSection title="Signals detected">
+          <SignalChips signals={row.riskSignals} />
         </PreviewSection>
 
         <PreviewSection title="Why this is queued">
@@ -248,14 +283,14 @@ function VerificationPreview({ row }: { row: AdminVerificationQueueRow | null })
 }
 
 export default async function AdminVerificationsPage({ searchParams }: PageProps) {
-  await requireRole(["admin", "reviewer"]);
+  const ctx = await requireRole(["admin", "reviewer"]);
   const params = await searchParams;
   const filters = parseFilters(params);
 
   let queue;
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    queue = await loadAdminVerificationQueue(supabase, filters);
+    queue = await loadAdminVerificationQueue(supabase, filters, ctx.appUserId);
   } catch (error) {
     console.info("[admin-verifications]", {
       operation: "load_admin_verification_queue",
@@ -303,6 +338,16 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
         <KpiCard icon={Flag} label="Flagged/Suspended" value={queue.kpis.flaggedOrSuspended.toLocaleString()} tone="rose" />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <KpiCard icon={Gauge} label="Assigned To Me" value={queue.reviewerWorkload.assignedToMe === null ? "N/A" : queue.reviewerWorkload.assignedToMe.toLocaleString()} tone="blue" />
+        <KpiCard icon={CalendarClock} label="Unassigned" value={queue.reviewerWorkload.unassigned === null ? "N/A" : queue.reviewerWorkload.unassigned.toLocaleString()} tone="amber" />
+        <KpiCard icon={ShieldAlert} label="Under Review" value={queue.reviewerWorkload.underReview === null ? "N/A" : queue.reviewerWorkload.underReview.toLocaleString()} tone="violet" />
+        <KpiCard icon={KeyRound} label="Awaiting Docs" value={queue.reviewerWorkload.awaitingDocuments === null ? "N/A" : queue.reviewerWorkload.awaitingDocuments.toLocaleString()} tone="amber" />
+        <KpiCard icon={AlertTriangle} label="Escalated" value={queue.reviewerWorkload.escalated === null ? "N/A" : queue.reviewerWorkload.escalated.toLocaleString()} tone="rose" />
+        <KpiCard icon={CalendarClock} label="Avg Review Age" value={queue.reviewerWorkload.averageReviewAgeDays === null ? "N/A" : `${queue.reviewerWorkload.averageReviewAgeDays}d`} tone="slate" />
+      </section>
+      {queue.reviewerWorkload.message ? <p className="text-xs font-bold text-slate-500">{queue.reviewerWorkload.message}</p> : null}
+
       <form className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="flex items-center gap-2 text-sm font-black text-slate-950">
           <Filter className="h-4 w-4 text-emerald-700" aria-hidden="true" />
@@ -323,6 +368,13 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
           <SelectFilter name="state" label="State" value={filters.state} options={queue.options.states} />
           <SelectFilter name="sector" label="Sector" value={filters.sector} options={queue.options.sectors} />
           <SelectFilter name="attentionLevel" label="Attention" value={filters.attentionLevel} options={queue.options.attentionLevels} />
+          <SelectFilter name="confidenceCategory" label="Confidence" value={filters.confidenceCategory} options={queue.options.confidenceCategories} />
+          <SelectFilter name="priority" label="Priority" value={filters.priority} options={queue.options.priorities} />
+          <SelectFilter name="complaintLinked" label="Complaint linked" value={filters.complaintLinked} options={[{ value: "true", label: "Complaint linked" }, { value: "false", label: "No complaints" }]} />
+          <SelectFilter name="duplicateSignal" label="Duplicate signal" value={filters.duplicateSignal} options={[{ value: "true", label: "Duplicate signal" }, { value: "false", label: "No duplicate" }]} />
+          <SelectFilter name="missingCredential" label="Credential" value={filters.missingCredential} options={[{ value: "true", label: "Missing credential" }, { value: "false", label: "Credential present" }]} />
+          <SelectFilter name="staleReview" label="Stale review" value={filters.staleReview} options={[{ value: "true", label: "Stale review" }, { value: "false", label: "Not stale" }]} />
+          <SelectFilter name="sort" label="Sort" value={filters.sort ?? "highest_priority"} options={queue.options.sortOptions} />
           <SelectFilter name="flagged" label="Flagged" value={filters.flagged} options={[{ value: "true", label: "Flagged" }, { value: "false", label: "Not flagged" }]} />
           <SelectFilter name="suspended" label="Suspended" value={filters.suspended} options={[{ value: "true", label: "Suspended" }, { value: "false", label: "Not suspended" }]} />
           <label className="space-y-1">
@@ -349,7 +401,7 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
             <p className="text-xs font-bold text-slate-500">Page {queue.page} of {queue.totalPages}</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-[1420px] w-full text-left text-sm">
+            <table className="min-w-[1680px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Business</th>
@@ -361,8 +413,10 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
                   <th className="px-4 py-3">KYC Checks</th>
                   <th className="px-4 py-3">Digital ID</th>
                   <th className="px-4 py-3">Complaints</th>
+                  <th className="px-4 py-3">Intelligence</th>
                   <th className="px-4 py-3">Attention</th>
-                  <th className="px-4 py-3">Oldest Age</th>
+                  <th className="px-4 py-3">Queue Age</th>
+                  <th className="px-4 py-3">Top Signals</th>
                   <th className="px-4 py-3">Last Updated</th>
                   <th className="px-4 py-3">Flags</th>
                 </tr>
@@ -370,7 +424,7 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
               <tbody>
                 {queue.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center">
+                    <td colSpan={15} className="px-4 py-12 text-center">
                       <CheckCircle2 className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
                       <p className="mt-3 text-sm font-black text-slate-600">No verification queue items match the current filters.</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">Clear filters to review all available operational signals.</p>
@@ -407,8 +461,18 @@ export default async function AdminVerificationsPage({ searchParams }: PageProps
                         {row.complaintCount ?? "Unavailable"}
                         <p className="text-xs font-semibold text-slate-500">Open: {row.openComplaintCount ?? "Unavailable"}</p>
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <StatusPill value={row.confidenceCategory} />
+                          <StatusPill value={row.queuePriority} />
+                        </div>
+                      </td>
                       <td className="px-4 py-3"><StatusPill value={row.attentionLevel} /></td>
-                      <td className="px-4 py-3 font-semibold text-slate-700">{row.oldestPendingAgeDays === null ? "Unavailable" : `${row.oldestPendingAgeDays}d`}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">
+                        {row.queueAgeDays === null ? "No queue date available" : `${row.queueAgeDays}d`}
+                        <p className="text-xs font-semibold text-slate-500">{row.agingBucket}{row.overdue ? " · Overdue" : ""}</p>
+                      </td>
+                      <td className="px-4 py-3"><SignalChips signals={row.riskSignals} /></td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatDate(row.lastUpdatedAt)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">

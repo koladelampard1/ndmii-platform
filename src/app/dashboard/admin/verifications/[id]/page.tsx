@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { ArrowLeft, BadgeCheck, Building2, ClipboardCheck, Copy, FileClock, FileText, Gauge, IdCard, ListChecks, MessageSquareWarning, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Building2, ClipboardCheck, Copy, FileClock, FileText, Gauge, IdCard, ListChecks, MessageSquareWarning, ShieldAlert, ShieldCheck, type LucideIcon } from "lucide-react";
 import { ReviewerDecisionPanel } from "@/components/admin/verification/reviewer-decision-panel";
 import { requireRole } from "@/lib/data/authorization-scope";
 import { getAdminVerificationWorkspace, type AdminVerificationWorkspace, type VerificationSourceState, type VerificationTimelineItem } from "@/lib/data/admin-verification-workspace";
@@ -30,9 +30,9 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["verified", "approved", "active", "passed", "provided", "clear", "normal"].includes(normalized)) return "emerald";
-  if (["pending", "pending_review", "under_review", "awaiting_documents", "submitted", "incomplete", "watch", "missing", "pending_items"].includes(normalized)) return "amber";
-  if (["failed", "rejected", "suspended", "revoked", "critical", "elevated", "expired", "attention_required"].includes(normalized)) return "rose";
+  if (["verified", "approved", "active", "passed", "provided", "clear", "normal", "strong", "low"].includes(normalized)) return "emerald";
+  if (["pending", "pending_review", "under_review", "awaiting_documents", "submitted", "incomplete", "watch", "missing", "pending_items", "moderate", "medium"].includes(normalized)) return "amber";
+  if (["failed", "rejected", "suspended", "revoked", "critical", "elevated", "expired", "attention_required", "critical review needed", "weak", "high", "urgent"].includes(normalized)) return "rose";
   if (["unavailable", "not_started", "missing"].includes(normalized)) return "slate";
   return "blue";
 }
@@ -132,6 +132,83 @@ function TimelineList({ items, emptyText }: { items: VerificationTimelineItem[];
   );
 }
 
+function TextList({ items, emptyText }: { items: string[]; emptyText: string }) {
+  if (!items.length) return <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">{emptyText}</p>;
+  return (
+    <ul className="space-y-2">
+      {items.map((item) => (
+        <li key={item} className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function IntelligencePanel({ workspace }: { workspace: AdminVerificationWorkspace }) {
+  const intelligence = workspace.intelligence;
+  return (
+    <SectionCard title="Verification Intelligence" icon={ShieldAlert}>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Confidence</p>
+          <p className={`mt-2 inline-flex rounded-full border px-3 py-1 text-sm font-black ${toneClasses[statusTone(intelligence.confidenceCategory)]}`}>{intelligence.confidenceCategory}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Attention</p>
+          <StatusPill value={intelligence.attentionLevel} />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Priority</p>
+          <StatusPill value={intelligence.queuePriority} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Why this needs review</h3>
+          <TextList items={intelligence.confidenceReasons} emptyText="No critical signals detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Recommended reviewer focus</h3>
+          <TextList items={intelligence.recommendedFocusAreas} emptyText="Standard reviewer checks." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Signals detected</h3>
+          <TextList items={intelligence.signals.map((signal) => signal.label)} emptyText="No critical signals detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Queue aging</h3>
+          <TextList items={[intelligence.queueAging.label + (intelligence.queueAging.overdue ? " - overdue" : "")]} emptyText="No queue date available." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Duplicate signals</h3>
+          <TextList items={intelligence.duplicateSignals} emptyText="No duplicate signals detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Complaint linkage</h3>
+          <TextList items={intelligence.complaintLinked ? [`${workspace.complaints.openCount ?? "Unavailable"} open complaint(s) linked`] : []} emptyText="No open complaint linkage detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Credential weakness</h3>
+          <TextList items={intelligence.credentialWeakness} emptyText="No credential weakness detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Compliance weakness</h3>
+          <TextList items={intelligence.complianceWeakness} emptyText="No compliance weakness detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Profile completeness gaps</h3>
+          <TextList items={intelligence.profileCompletenessGaps} emptyText="No profile completeness gaps detected." />
+        </div>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-500">Repeated review history</h3>
+          <TextList items={intelligence.repeatedReviewHistory} emptyText="No repeated rejection history detected." />
+        </div>
+      </div>
+      <p className="mt-4 text-xs font-bold text-slate-500">Rule-based decision support only. This panel does not approve, reject, enforce, call external registries, perform OCR, or expose raw NIN/BVN values.</p>
+    </SectionCard>
+  );
+}
+
 function Header({ workspace }: { workspace: AdminVerificationWorkspace }) {
   const { msme, review } = workspace;
   return (
@@ -173,6 +250,8 @@ export default async function AdminVerificationWorkspacePage({ params }: PagePro
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
+          <IntelligencePanel workspace={workspace} />
+
           <SectionCard title="MSME summary" icon={Building2}>
             <DataGrid rows={[
               { label: "Business name", value: workspace.msme.businessName },

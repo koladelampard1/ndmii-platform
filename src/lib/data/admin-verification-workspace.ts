@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  buildVerificationIntelligence,
+  type VerificationIntelligence,
+} from "@/lib/data/admin-verification-intelligence";
 
 export type VerificationReviewStatus = "pending_review" | "under_review" | "awaiting_documents" | "escalated" | "verified" | "rejected";
 
@@ -115,6 +119,7 @@ export type AdminVerificationWorkspace = {
     timeline: VerificationTimelineItem[];
   };
   duplicateSignals: Array<{ id: string; businessName: string; msmeId: string; signals: string[]; confidence: "high" | "medium" | "low" }>;
+  intelligence: VerificationIntelligence;
   documents: VerificationDocument[];
   review: VerificationReview;
   reviewers: Array<{ id: string; label: string }>;
@@ -294,6 +299,52 @@ function summarizeKyc(validation: Record<string, unknown> | undefined, legacyCom
   return { ninStatus, bvnStatus, cacStatus, tinStatus, addressStatus, contactStatus, overallStatus };
 }
 
+function profileCompletenessScore(msme: MsmeRow) {
+  const fields = [
+    msme.business_name,
+    msme.owner_name,
+    msme.contact_email,
+    msme.contact_phone,
+    msme.state,
+    msme.lga,
+    msme.sector,
+    msme.business_type,
+    msme.address,
+    msme.cac_number,
+    msme.tin,
+  ];
+  return Math.round((fields.filter((value) => Boolean(asString(value))).length / fields.length) * 100);
+}
+
+function missingProfileFields(msme: MsmeRow): string[] {
+  return [
+    ["Business name", msme.business_name],
+    ["Owner name", msme.owner_name],
+    ["Email", msme.contact_email],
+    ["Phone", msme.contact_phone],
+    ["State", msme.state],
+    ["LGA", msme.lga],
+    ["Sector", msme.sector],
+    ["Business type", msme.business_type],
+    ["Address", msme.address],
+    ["CAC", msme.cac_number],
+    ["TIN", msme.tin],
+  ].filter(([, value]) => !asString(value)).map(([label]) => String(label));
+}
+
+function coreCheckBreakdown(kyc: AdminVerificationWorkspace["kyc"]) {
+  const entries = [
+    ["NIN", kyc.ninStatus],
+    ["BVN", kyc.bvnStatus],
+    ["CAC", kyc.cacStatus],
+    ["TIN", kyc.tinStatus],
+  ] as const;
+  return {
+    failed: entries.filter(([, status]) => FAILED_STATUSES.has(normalizeStatus(status, ""))).map(([label]) => label),
+    pending: entries.filter(([, status]) => PENDING_STATUSES.has(normalizeStatus(status, ""))).map(([label]) => label),
+  };
+}
+
 function normalizedComparable(value: string | null | undefined) {
   return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -455,12 +506,41 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
   const failedCount = sources.msme_compliance_items.available ? complianceItems.filter((row) => ["rejected", "expired", "suspended", "revoked", "failed"].includes(normalizeStatus(row.status, ""))).length : null;
   const pendingCount = sources.msme_compliance_items.available ? complianceItems.filter((row) => ["pending", "not_started", "under_review", "submitted", "changes_requested", "expiring_soon"].includes(normalizeStatus(row.status, ""))).length : null;
   const openComplaints = sources.complaints.available ? complaints.filter((row) => !CLOSED_COMPLAINT_STATUSES.has(normalizeStatus(row.status, "submitted"))).length : null;
+  const highSeverityOpenComplaints = sources.complaints.available ? complaints.filter((row) => !CLOSED_COMPLAINT_STATUSES.has(normalizeStatus(row.status, "submitted")) && ["high", "critical", "urgent"].includes(normalizeStatus(row.severity ?? row.priority, ""))).length : null;
   const highestSeverity = complaints.map((row) => normalizeStatus(row.severity ?? row.priority, "")).sort((a, b) => severityRank(b) - severityRank(a))[0] || null;
   const duplicateSignals = buildDuplicateSignals(msme, msmesResult.rows);
+  const flattenedDuplicateSignals = duplicateSignals.flatMap((signal) => signal.signals);
+  const strongDuplicateSignals = duplicateSignals.some((signal) => signal.confidence === "high");
   const missingRequiredItems = complianceItems
     .filter((row) => ["pending", "not_started", "rejected", "changes_requested", "expired"].includes(normalizeStatus(row.status, "")))
     .map((row) => asString(row.requirement_code) || `Compliance item ${asString(row.id).slice(0, 8)}`)
     .slice(0, 8);
+  const coreChecks = coreCheckBreakdown(kyc);
+  const credentialStatus = sources.digital_identity_credentials.available ? normalizeStatus(credential?.status, "missing") : null;
+  const repeatedRejectedReviews = reviewRows.filter((row) => normalizeVerificationReviewStatus(row.status) === "rejected").length;
+  const queueDate = asString(reviewRow?.created_at) || (["pending_review", "under_review", "awaiting_documents", "escalated", "submitted", "changes_requested"].includes(canonicalReviewStatus) ? asString(msme.created_at) || null : null);
+  const compliancePosture = normalizeStatus(complianceProfile?.overall_status ?? legacyCompliance?.overall_status, "") || null;
+  const intelligence = buildVerificationIntelligence({
+    flagged: Boolean(msme.flagged),
+    suspended: Boolean(msme.suspended),
+    kycOverall: kyc.overallStatus,
+    failedCoreChecks: coreChecks.failed,
+    pendingCoreChecks: coreChecks.pending,
+    credentialStatus,
+    hasActiveCredential: credentialStatus === "active",
+    openComplaints,
+    highSeverityComplaints: highSeverityOpenComplaints,
+    duplicateSignals: flattenedDuplicateSignals,
+    strongDuplicateSignals,
+    profileCompleteness: profileCompletenessScore(msme),
+    missingProfileFields: missingProfileFields(msme),
+    complianceStatus: compliancePosture,
+    complianceFailedCount: failedCount,
+    compliancePendingCount: pendingCount,
+    repeatedRejectedReviews,
+    reviewStatus: canonicalReviewStatus,
+    queueDate,
+  });
 
   return {
     msme: {
@@ -485,13 +565,13 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
     },
     kyc,
     credential: {
-      status: sources.digital_identity_credentials.available ? normalizeStatus(credential?.status, "missing") : null,
+      status: credentialStatus,
       ndmiiId: asString(credential?.ndmii_id) || null,
       issuedAt: asString(credential?.issued_at ?? credential?.approved_at) || null,
       lastEvent: sortTimeline(credentialEvents.map((row) => timelineItem("credential_events", row, asString(row.action) || "credential_event", `Credential ${asString(row.action) || "event"}`)), 1)[0] ?? null,
     },
     compliance: {
-      posture: normalizeStatus(complianceProfile?.overall_status ?? legacyCompliance?.overall_status, "") || null,
+      posture: compliancePosture,
       riskLevel: asString(complianceProfile?.risk_level ?? legacyCompliance?.risk_level) || null,
       score: Number.isFinite(Number(complianceProfile?.compliance_score ?? legacyCompliance?.score)) ? Number(complianceProfile?.compliance_score ?? legacyCompliance?.score) : null,
       failedCount,
@@ -510,6 +590,7 @@ export async function getAdminVerificationWorkspace(supabase: SupabaseClient<any
       ], 5),
     },
     duplicateSignals,
+    intelligence,
     documents: documents.map((document) => ({
       id: asString(document.id),
       documentType: asString(document.document_type) || "verification_file",
