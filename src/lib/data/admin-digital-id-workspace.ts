@@ -6,7 +6,13 @@ import {
   type AdminDigitalIdQueueRow,
   type AdminDigitalIdSourceState,
 } from "@/lib/data/admin-digital-ids";
-import type { AdminDigitalIdAction, DigitalIdLifecycleStatus } from "@/lib/data/admin-digital-id-actions";
+import {
+  ADMIN_DIGITAL_ID_LIFECYCLE_TRANSITIONS,
+  getAdminDigitalIdAllowedLifecycleActions,
+  normalizeDigitalIdLifecycleStatus,
+  type AdminDigitalIdAction,
+  type DigitalIdLifecycleStatus,
+} from "@/lib/data/admin-digital-id-actions";
 
 type Row = Record<string, unknown>;
 
@@ -30,7 +36,7 @@ export type AdminDigitalIdWorkspace = {
   lifecycle: {
     status: DigitalIdLifecycleStatus;
     allowedActions: AdminDigitalIdAction[];
-    matrix: Array<{ from: DigitalIdLifecycleStatus; to: DigitalIdLifecycleStatus[] }>;
+    matrix: Array<{ from: DigitalIdLifecycleStatus; actions: AdminDigitalIdAction[] }>;
   };
   issuanceHistory: AdminDigitalIdEvent[];
   regenerationHistory: AdminDigitalIdEvent[];
@@ -49,33 +55,8 @@ export type AdminDigitalIdWorkspace = {
   sources: Record<AdminDigitalIdWorkspaceSourceName, AdminDigitalIdSourceState>;
 };
 
-const MATRIX: Array<{ from: DigitalIdLifecycleStatus; to: DigitalIdLifecycleStatus[] }> = [
-  { from: "pending", to: ["active"] },
-  { from: "active", to: ["suspended", "revoked", "expired", "renewal_pending"] },
-  { from: "renewal_pending", to: ["active"] },
-  { from: "suspended", to: ["active", "revoked"] },
-  { from: "expired", to: ["renewal_pending"] },
-  { from: "revoked", to: [] },
-];
-
-const STATUS_ACTIONS: Record<DigitalIdLifecycleStatus, AdminDigitalIdAction[]> = {
-  pending: ["activate", "save_note", "assign"],
-  active: ["suspend", "revoke", "start_renewal", "regenerate_token", "save_note", "assign"],
-  renewal_pending: ["approve_renewal", "save_note", "assign"],
-  suspended: ["reinstate", "revoke", "regenerate_token", "save_note", "assign"],
-  expired: ["start_renewal", "save_note", "assign"],
-  revoked: ["save_note", "assign"],
-};
-
 function asString(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function normalizeStatus(value: unknown): DigitalIdLifecycleStatus {
-  const normalized = asString(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  if (["pending", "active", "suspended", "revoked", "expired", "renewal_pending"].includes(normalized)) return normalized as DigitalIdLifecycleStatus;
-  if (normalized === "active_expired") return "expired";
-  return "pending";
 }
 
 function metadataObject(value: unknown) {
@@ -199,7 +180,7 @@ export async function getAdminDigitalIdWorkspace(
     .sort((a, b) => (Date.parse(b.createdAt ?? "") || 0) - (Date.parse(a.createdAt ?? "") || 0));
   const regenerationHistory = timeline.filter((event) => event.action.includes("reissue") || event.action.includes("regenerate"));
   const issuanceHistory = timeline.filter((event) => ["issued", "approved", "active", "activate", "approve_renewal", "reinstate"].some((token) => event.action.includes(token)));
-  const status = normalizeStatus(row.lifecycleState);
+  const status = normalizeDigitalIdLifecycleStatus(row.credentialStatus);
   const assignedReviewerId = asString(meta.assigned_reviewer_id) || null;
   const assignedAdminId = asString(meta.assigned_admin_id) || null;
 
@@ -217,8 +198,8 @@ export async function getAdminDigitalIdWorkspace(
     },
     lifecycle: {
       status,
-      allowedActions: STATUS_ACTIONS[status],
-      matrix: MATRIX,
+      allowedActions: getAdminDigitalIdAllowedLifecycleActions(status),
+      matrix: ADMIN_DIGITAL_ID_LIFECYCLE_TRANSITIONS,
     },
     issuanceHistory,
     regenerationHistory,

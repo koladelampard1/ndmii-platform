@@ -54,19 +54,19 @@ export async function submitAdminDigitalIdAction(_state: AdminDigitalIdActionSta
     revalidatePath(`/dashboard/admin/digital-ids/${credentialId}`);
     revalidatePath("/dashboard/admin/digital-ids");
     revalidatePath(`/dashboard/admin/msmes/${result.credential.msme_id}`);
-    const baseMessage = action === "regenerate_token"
+    const baseMessage = result.noOp && result.message
+      ? result.message
+      : action === "regenerate_token"
       ? `Verification route regenerated: ${result.publicRoute ?? "route unavailable"}`
       : ACTION_MESSAGES[action] ?? "Action completed.";
     return { ok: true, message: baseMessage };
   } catch (error) {
     console.info("[admin-digital-id-actions]", {
-      operation: "submit_admin_digital_id_action",
-      actorRole: ctx.role,
       credentialId,
-      action,
-      success: false,
-      supabaseErrorCode: error instanceof Error ? error.name : "unknown",
-      supabaseErrorMessage: error instanceof Error ? error.message : "Action failed",
+      currentStatus: null,
+      requestedAction: action,
+      normalizedStatus: null,
+      actorRole: ctx.role,
     });
     return { ok: false, message: friendlyErrorMessage(error) };
   }

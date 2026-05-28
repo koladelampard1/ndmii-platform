@@ -236,7 +236,7 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
               {workspace.lifecycle.matrix.map((item) => (
                 <div key={item.from} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-black uppercase tracking-wide text-slate-500">{humanize(item.from)}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{item.to.length ? item.to.map((value) => humanize(value)).join(", ") : "Terminal state"}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">{item.actions.length ? item.actions.map((value) => humanize(value)).join(", ") : "No lifecycle actions"}</p>
                 </div>
               ))}
             </div>

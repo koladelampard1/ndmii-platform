@@ -8,22 +8,28 @@ import {
   nextCredentialExpiry,
   signCredentialTokenHash,
 } from "@/lib/data/credential-trust";
+import {
+  ADMIN_DIGITAL_ID_ACTION_TARGET_STATUS,
+  ADMIN_DIGITAL_ID_LIFECYCLE_ACTIONS,
+  ADMIN_DIGITAL_ID_LIFECYCLE_MATRIX,
+  adminDigitalIdActionAlreadyAppliedMessage,
+  canRoleRunAdminDigitalIdAction,
+  normalizeDigitalIdLifecycleStatus,
+  type AdminDigitalIdAction,
+  type DigitalIdLifecycleStatus,
+} from "@/lib/data/admin-digital-id-lifecycle";
 import type { UserRole } from "@/types/roles";
 
-export const ADMIN_DIGITAL_ID_ACTIONS = [
-  "activate",
-  "suspend",
-  "revoke",
-  "start_renewal",
-  "approve_renewal",
-  "reinstate",
-  "regenerate_token",
-  "save_note",
-  "assign",
-] as const;
-
-export type AdminDigitalIdAction = (typeof ADMIN_DIGITAL_ID_ACTIONS)[number];
-export type DigitalIdLifecycleStatus = "pending" | "active" | "suspended" | "revoked" | "expired" | "renewal_pending";
+export {
+  ADMIN_DIGITAL_ID_ACTIONS,
+  ADMIN_DIGITAL_ID_LIFECYCLE_MATRIX,
+  ADMIN_DIGITAL_ID_LIFECYCLE_TRANSITIONS,
+  canRoleRunAdminDigitalIdAction,
+  getAdminDigitalIdAllowedLifecycleActions,
+  normalizeDigitalIdLifecycleStatus,
+  type AdminDigitalIdAction,
+  type DigitalIdLifecycleStatus,
+} from "@/lib/data/admin-digital-id-lifecycle";
 
 type CredentialRow = {
   id: string;
@@ -49,32 +55,10 @@ type MsmeRow = {
 };
 
 const SOURCE_WORKSPACE = "admin_digital_id_lifecycle_workspace";
-const CANONICAL_STATUSES: DigitalIdLifecycleStatus[] = ["pending", "active", "suspended", "revoked", "expired", "renewal_pending"];
-const TRANSITIONS: Record<DigitalIdLifecycleStatus, DigitalIdLifecycleStatus[]> = {
-  pending: ["active", "revoked"],
-  active: ["suspended", "revoked", "expired", "renewal_pending"],
-  renewal_pending: ["active"],
-  suspended: ["active", "revoked"],
-  expired: ["renewal_pending"],
-  revoked: [],
-};
-const ACTION_TARGET_STATUS: Partial<Record<AdminDigitalIdAction, DigitalIdLifecycleStatus>> = {
-  activate: "active",
-  suspend: "suspended",
-  revoke: "revoked",
-  start_renewal: "renewal_pending",
-  approve_renewal: "active",
-  reinstate: "active",
-};
 const REASON_REQUIRED = new Set<AdminDigitalIdAction>(["suspend", "revoke", "regenerate_token", "reinstate"]);
 
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function normalizeStatus(value: unknown): DigitalIdLifecycleStatus {
-  const normalized = cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return (CANONICAL_STATUSES as string[]).includes(normalized) ? normalized as DigitalIdLifecycleStatus : "pending";
 }
 
 function nowIso() {
@@ -82,10 +66,7 @@ function nowIso() {
 }
 
 export function canRunAdminDigitalIdAction(role: UserRole, action: AdminDigitalIdAction) {
-  if (role === "super_admin") return true;
-  if (role === "admin") return true;
-  if (role === "reviewer") return ["activate", "start_renewal", "save_note"].includes(action);
-  return false;
+  return canRoleRunAdminDigitalIdAction(role, action);
 }
 
 export function adminDigitalIdActionRequiresReason(action: AdminDigitalIdAction) {
@@ -104,9 +85,9 @@ function assertReason(action: AdminDigitalIdAction, reason: string, override: bo
   if (override && !reason) throw new Error("override_reason_required");
 }
 
-function assertTransitionAllowed(from: DigitalIdLifecycleStatus, to: DigitalIdLifecycleStatus, reason: string) {
+function assertTransitionAllowed(from: DigitalIdLifecycleStatus, action: AdminDigitalIdAction, to: DigitalIdLifecycleStatus, reason: string) {
   if (from === "pending" && to === "revoked" && !reason) throw new Error("pending_revocation_requires_review_reason");
-  if (!TRANSITIONS[from]?.includes(to)) throw new Error(`invalid_credential_transition_${from}_to_${to}`);
+  if (!ADMIN_DIGITAL_ID_LIFECYCLE_MATRIX[from]?.includes(action)) throw new Error(`action_${action}_not_available_for_${from}`);
 }
 
 async function loadCredential(supabase: SupabaseClient<any>, credentialId: string) {
@@ -369,20 +350,27 @@ export async function runAdminDigitalIdAction(
   const note = cleanText(params.note);
   const override = Boolean(params.override);
   assertRole(params.ctx, params.action);
-  assertReason(params.action, reason, override);
 
   const timestamp = nowIso();
   const credential = await loadCredential(supabase, params.credentialId);
   const msme = await loadMsme(supabase, credential.msme_id);
-  const from = normalizeStatus(credential.status);
-  let to = ACTION_TARGET_STATUS[params.action] ?? from;
+  const from = normalizeDigitalIdLifecycleStatus(credential.status);
+  let to = ADMIN_DIGITAL_ID_ACTION_TARGET_STATUS[params.action] ?? from;
   let publicRoute: string | null = null;
 
-  if (params.action === "activate" && from !== "pending") throw new Error(`action_activate_not_available_for_${from}`);
-  if (params.action === "approve_renewal" && from !== "renewal_pending") throw new Error("approve_renewal_requires_renewal_pending");
-  if (params.action === "reinstate" && from !== "suspended") throw new Error("reinstate_requires_suspended_credential");
-  if (params.action === "regenerate_token" && from === "revoked") throw new Error("regeneration_blocked_for_revoked_credential");
-  if (params.action === "regenerate_token" && from === "suspended" && !override) throw new Error("suspended_regeneration_requires_admin_override");
+  console.info("[admin-digital-id-lifecycle]", {
+    credentialId: credential.id,
+    currentStatus: credential.status ?? null,
+    requestedAction: params.action,
+    normalizedStatus: from,
+    actorRole: params.ctx.role,
+  });
+
+  if (to === from && ADMIN_DIGITAL_ID_LIFECYCLE_ACTIONS.has(params.action)) {
+    return { credential, publicRoute: null, noOp: true, message: adminDigitalIdActionAlreadyAppliedMessage(from) };
+  }
+
+  assertReason(params.action, reason, override);
 
   const lifecycleVersion = Number(credential.lifecycle_version ?? 0) + 1;
   let patch: Record<string, unknown> = { updated_at: timestamp, lifecycle_version: lifecycleVersion, lifecycle_reason: reason || null, lifecycle_source: SOURCE_WORKSPACE };
@@ -394,6 +382,7 @@ export async function runAdminDigitalIdAction(
     patch.assigned_reviewer_id = cleanText(params.assignedReviewerId) || null;
     patch.assigned_admin_id = cleanText(params.assignedAdminId) || null;
   } else if (params.action === "regenerate_token") {
+    assertTransitionAllowed(from, params.action, from, reason);
     const count = Number(credential.regeneration_count ?? 0);
     const lastTime = Date.parse(credential.last_regenerated_at ?? "");
     if (count >= 3 && Number.isFinite(lastTime) && Date.now() - lastTime < 86_400_000) throw new Error("excessive_regeneration_blocked");
@@ -414,13 +403,13 @@ export async function runAdminDigitalIdAction(
     };
   } else {
     if (!to) throw new Error("missing_target_status");
-    assertTransitionAllowed(from, to, reason);
+    assertTransitionAllowed(from, params.action, to, reason);
     if (to === "active") await ensureNoOtherActiveCredential(supabase, credential);
     patch = buildStatusPatch({ action: params.action, from, to, actor: params.ctx, reason, timestamp, lifecycleVersion });
   }
 
   const updated = await updateCredential(supabase, credential.id, patch);
-  to = normalizeStatus(updated.status);
+  to = normalizeDigitalIdLifecycleStatus(updated.status);
 
   if (!["save_note", "assign", "regenerate_token"].includes(params.action)) {
     await synchronizeOperationalState(supabase, { credential: updated, msme, status: to, reason: reason || null, actor: params.ctx, timestamp });
@@ -449,5 +438,5 @@ export async function runAdminDigitalIdAction(
     lifecycleVersion,
   });
 
-  return { credential: updated, publicRoute };
+  return { credential: updated, publicRoute, noOp: false, message: null };
 }
