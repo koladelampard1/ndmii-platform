@@ -1,191 +1,214 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getAdminAssociationMembersWorkspace } from "@/lib/data/admin-associations";
+import {
+  ASSOCIATION_MEMBER_STATUSES,
+  getAdminAssociationMembersWorkspace,
+  type AdminAssociationMemberFilters,
+} from "@/lib/data/admin-association-members";
 import { getCurrentUserContext } from "@/lib/auth/session";
+
+type SearchParams = AdminAssociationMemberFilters;
+
+export const dynamic = "force-dynamic";
 
 function metricValue(value: number | null | undefined) {
   return value == null ? "Unavailable" : value.toLocaleString();
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "Unavailable";
-  return new Intl.DateTimeFormat("en-NG", { dateStyle: "medium" }).format(new Date(value));
+function buildHref(params: SearchParams, page: number) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (!value) continue;
+    query.set(key, String(value));
+  }
+  query.set("page", String(page));
+  return `/dashboard/admin/association-members?${query.toString()}`;
+}
+
+function exportHref(params: SearchParams) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (!value || key === "page" || key === "pageSize") continue;
+    query.set(key, String(value));
+  }
+  return `/api/admin/associations/members/export?${query.toString()}`;
 }
 
 export default async function AdminAssociationMembersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ association?: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "admin") redirect("/access-denied");
 
-  const workspace = await getAdminAssociationMembersWorkspace(params.association ?? null);
+  const workspace = await getAdminAssociationMembersWorkspace(params);
+  const hasPrevious = workspace.pagination.page > 1;
+  const hasNext =
+    workspace.pagination.totalPages == null || workspace.pagination.page < workspace.pagination.totalPages;
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Association Member Data Snapshot</h1>
+          <h1 className="text-2xl font-semibold">Association Member Operations</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Phase 1 read-only view. This page shows currently available member linkage and pending request data;
-            approvals, transfers, activation management, and member remediation are not operational here yet.
+            Operational member records created from association uploads. Members still require activation/onboarding;
+            duplicate signals are review cues only and credentials are never issued automatically here.
           </p>
         </div>
-        <Link href="/dashboard/admin/associations" className="rounded border px-3 py-2 text-sm">Back to associations</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={exportHref(params)} className="rounded border px-3 py-2 text-sm">Export CSV</Link>
+          <Link href="/dashboard/admin/association-upload" className="rounded bg-slate-900 px-3 py-2 text-sm text-white">
+            Upload members
+          </Link>
+        </div>
       </div>
 
-      {!params.association && (
-        <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Select an association from the admin association directory to view a scoped snapshot.
-        </p>
-      )}
-
-      {params.association && !workspace.association && (
-        <p className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          Association not found or association source unavailable.
-        </p>
-      )}
-
-      {workspace.association && (
-        <article className="rounded-xl border bg-white p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">{workspace.association.name}</h2>
-              <p className="text-sm text-slate-600">
-                {workspace.association.sector ?? "Sector unavailable"} • {workspace.association.state ?? "State unavailable"} • {workspace.association.status ?? "Status unavailable"}
-              </p>
-              <p className="text-xs text-slate-500">
-                Officer: {workspace.association.officerName ?? "Officer not assigned"} • Created: {formatDate(workspace.association.createdAt)}
-              </p>
-            </div>
-            <Link href={`/dashboard/admin/association-upload`} className="rounded bg-slate-900 px-3 py-2 text-sm text-white">
-              Record/import-validate upload
-            </Link>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <article className="rounded border p-3"><p className="text-xs uppercase text-slate-500">Operational members</p><p className="text-xl font-semibold">{metricValue(workspace.association.linkedMembersCount)}</p></article>
-            <article className="rounded border p-3"><p className="text-xs uppercase text-slate-500">Pending requests</p><p className="text-xl font-semibold">{metricValue(workspace.association.pendingMembershipCount)}</p></article>
-            <article className="rounded border p-3"><p className="text-xs uppercase text-slate-500">Linked MSMEs</p><p className="text-xl font-semibold">{metricValue(workspace.association.msmesLinkedCount)}</p></article>
-            <article className="rounded border p-3"><p className="text-xs uppercase text-slate-500">Import jobs</p><p className="text-xl font-semibold">{metricValue(workspace.association.importJobsCount)}</p></article>
-          </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <article className="rounded-lg border bg-white p-4">
+          <p className="text-xs uppercase text-slate-500">Operational records</p>
+          <p className="text-2xl font-semibold">{metricValue(workspace.counts.total)}</p>
         </article>
-      )}
+        <article className="rounded-lg border bg-white p-4">
+          <p className="text-xs uppercase text-slate-500">Pending activation</p>
+          <p className="text-2xl font-semibold">{metricValue(workspace.counts.pendingActivation)}</p>
+        </article>
+        <article className="rounded-lg border bg-white p-4">
+          <p className="text-xs uppercase text-slate-500">Duplicate signals</p>
+          <p className="text-2xl font-semibold">{metricValue(workspace.counts.duplicateReview)}</p>
+        </article>
+        <article className="rounded-lg border bg-white p-4">
+          <p className="text-xs uppercase text-slate-500">Active</p>
+          <p className="text-2xl font-semibold">{metricValue(workspace.counts.active)}</p>
+        </article>
+      </div>
 
-      <details className="rounded-xl border bg-white p-4 text-sm text-slate-700" open>
-        <summary className="cursor-pointer font-semibold">What this page can and cannot do</summary>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          {workspace.canonicalStrategy.map((item) => <li key={item}>{item}</li>)}
-          <li>Member approvals, duplicate resolution, association transfer handling, and activation operations are pending future phases.</li>
-        </ul>
-      </details>
+      <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-6">
+        <select name="association" defaultValue={workspace.filters.association} className="rounded border px-2 py-2 text-sm">
+          <option value="">All associations</option>
+          {workspace.associations.map((association) => (
+            <option key={association.id} value={association.id}>
+              {association.name}
+            </option>
+          ))}
+        </select>
+        <select name="status" defaultValue={workspace.filters.status} className="rounded border px-2 py-2 text-sm">
+          <option value="">All statuses</option>
+          {ASSOCIATION_MEMBER_STATUSES.map((status) => (
+            <option key={status} value={status}>{status}</option>
+          ))}
+        </select>
+        <select name="duplicate" defaultValue={workspace.filters.duplicate} className="rounded border px-2 py-2 text-sm">
+          <option value="">Duplicate signal: all</option>
+          <option value="yes">Duplicates only</option>
+          <option value="no">No duplicate signal</option>
+        </select>
+        <input
+          name="q"
+          defaultValue={workspace.filters.q}
+          placeholder="Search member, business, phone, email, LGA"
+          className="rounded border px-2 py-2 text-sm md:col-span-2"
+        />
+        <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white">Apply</button>
+      </form>
 
-      <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">Operational member preview</h2>
-        <p className="text-xs text-slate-600">Source: association_members. Limited to 25 rows. Contact values are masked.</p>
-        <div className="mt-2 overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-left text-slate-600">
-              <tr>
-                <th className="px-3 py-2">Business</th>
-                <th className="px-3 py-2">MSME ID</th>
-                <th className="px-3 py-2">Member status</th>
-                <th className="px-3 py-2">Invite status</th>
-                <th className="px-3 py-2">Contact</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workspace.memberPreview.map((member) => (
-                <tr key={member.id} className="border-t">
-                  <td className="px-3 py-2">{member.businessName ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{member.msmeId ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{member.status ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{member.inviteStatus ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">
-                    <p>{member.email ?? "Email unavailable"}</p>
-                    <p className="text-xs text-slate-500">{member.phone ?? "Phone unavailable"}</p>
-                  </td>
-                </tr>
-              ))}
-              {workspace.memberPreview.length === 0 && (
-                <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={5}>No operational member records available for this selection.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <article className="rounded-xl border bg-amber-50 p-3 text-sm text-amber-900">
+        Uploads record members for onboarding workflow only. Human review is required for duplicate signals, activation,
+        rejection, and any future credential issuance.
       </article>
 
-      <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">Pending membership request preview</h2>
-        <p className="text-xs text-slate-600">Source: association_memberships. This is an onboarding/join-request source, not the operational member table.</p>
-        <div className="mt-2 overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-left text-slate-600">
-              <tr>
-                <th className="px-3 py-2">Business</th>
-                <th className="px-3 py-2">MSME ID</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Created</th>
+      <div className="overflow-x-auto rounded-xl border bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-100 text-left text-xs uppercase text-slate-600">
+            <tr>
+              <th className="px-3 py-2">Member</th>
+              <th className="px-3 py-2">Business</th>
+              <th className="px-3 py-2">Contact</th>
+              <th className="px-3 py-2">Association</th>
+              <th className="px-3 py-2">Import source</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Activation</th>
+              <th className="px-3 py-2">Linked MSME</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workspace.rows.map((member) => (
+              <tr key={member.id} className="border-t align-top">
+                <td className="px-3 py-3">
+                  <p className="font-medium">{member.fullName ?? "Unavailable"}</p>
+                  <p className="text-xs text-slate-500">LGA: {member.lga ?? "Unavailable"}</p>
+                </td>
+                <td className="px-3 py-3">
+                  <p>{member.businessName ?? "Unavailable"}</p>
+                  <p className="text-xs text-slate-500">{member.tradeType ?? "Trade unavailable"}</p>
+                </td>
+                <td className="px-3 py-3">
+                  <p>{member.phone ?? "Phone unavailable"}</p>
+                  <p className="text-xs text-slate-500">{member.email ?? "Email unavailable"}</p>
+                </td>
+                <td className="px-3 py-3">{member.associationName ?? "Unavailable"}</td>
+                <td className="px-3 py-3">{member.importSource ?? "Manual/legacy"}</td>
+                <td className="px-3 py-3">
+                  <p>{member.status ?? "Unavailable"}</p>
+                  {member.duplicateSignal && (
+                    <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                      Duplicate: {member.duplicateReasons.join(", ") || "signal"}
+                    </p>
+                  )}
+                </td>
+                <td className="px-3 py-3">
+                  <p>{member.activationState ?? "Unavailable"}</p>
+                  <p className="text-xs text-slate-500">Invite flow pending</p>
+                </td>
+                <td className="px-3 py-3">{member.linkedMsme ?? "Not linked"}</td>
               </tr>
-            </thead>
-            <tbody>
-              {workspace.pendingMembershipPreview.map((membership) => (
-                <tr key={membership.id} className="border-t">
-                  <td className="px-3 py-2">{membership.businessName ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{membership.msmeId ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{membership.membershipType ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{membership.approvalStatus ?? "Unavailable"}</td>
-                  <td className="px-3 py-2">{formatDate(membership.createdAt)}</td>
-                </tr>
-              ))}
-              {workspace.pendingMembershipPreview.length === 0 && (
-                <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={5}>No pending membership request records available for this selection.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </article>
+            ))}
+            {workspace.rows.length === 0 && (
+              <tr>
+                <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>
+                  No operational member records found for the current filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">Import history for selection</h2>
-        <div className="mt-2 overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-left text-slate-600">
-              <tr>
-                <th className="px-3 py-2">File</th>
-                <th className="px-3 py-2">Rows</th>
-                <th className="px-3 py-2">Valid</th>
-                <th className="px-3 py-2">Failed</th>
-                <th className="px-3 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workspace.imports.map((item) => (
-                <tr key={item.id} className="border-t">
-                  <td className="px-3 py-2">{item.fileName ?? item.id}</td>
-                  <td className="px-3 py-2">{metricValue(item.totalRows)}</td>
-                  <td className="px-3 py-2">{metricValue(item.successRows)}</td>
-                  <td className="px-3 py-2">{metricValue(item.failedRows)}</td>
-                  <td className="px-3 py-2">{item.status ?? "Unavailable"}</td>
-                </tr>
-              ))}
-              {workspace.imports.length === 0 && (
-                <tr><td className="px-3 py-8 text-center text-slate-500" colSpan={5}>No import records available for this selection.</td></tr>
-              )}
-            </tbody>
-          </table>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <p className="text-slate-600">
+          Page {workspace.pagination.page} of {workspace.pagination.totalPages ?? "Unavailable"} •{" "}
+          {workspace.pagination.total == null ? "Unavailable total" : `${workspace.pagination.total.toLocaleString()} total`}
+        </p>
+        <div className="flex gap-2">
+          <Link
+            aria-disabled={!hasPrevious}
+            className={`rounded border px-3 py-1 ${hasPrevious ? "" : "pointer-events-none opacity-50"}`}
+            href={buildHref(params, Math.max(1, workspace.filters.page - 1))}
+          >
+            Previous
+          </Link>
+          <Link
+            aria-disabled={!hasNext}
+            className={`rounded border px-3 py-1 ${hasNext ? "" : "pointer-events-none opacity-50"}`}
+            href={buildHref(params, workspace.filters.page + 1)}
+          >
+            Next
+          </Link>
         </div>
-      </article>
+      </div>
 
       <details className="rounded-xl border bg-white p-4 text-xs text-slate-600">
         <summary className="cursor-pointer font-semibold text-slate-700">Source availability</summary>
         <div className="mt-2 grid gap-2 md:grid-cols-2">
           {Object.entries(workspace.sources).map(([source, state]) => (
             <p key={source}>
-              <span className={state.available ? "text-emerald-700" : "text-rose-700"}>{state.available ? "Available" : "Unavailable"}</span>
-              {" "}{source}{state.message ? `: ${state.message}` : ""}
+              <span className={state.available ? "text-emerald-700" : "text-rose-700"}>
+                {state.available ? "Available" : "Unavailable"}
+              </span>{" "}
+              {source}
+              {state.message ? `: ${state.message}` : ""}
             </p>
           ))}
         </div>

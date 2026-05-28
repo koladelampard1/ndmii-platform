@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export type SourceState = {
   available: boolean;
@@ -83,6 +83,8 @@ export type AdminAssociationImportRowDetail = {
   sector: string | null;
   status: string | null;
   errorMessage: string | null;
+  duplicateSignal: boolean;
+  duplicateReasons: string[];
 };
 
 export type AdminAssociationUploadWorkspace = {
@@ -117,17 +119,17 @@ export type AdminAssociationMembersWorkspace = {
   canonicalStrategy: string[];
 };
 
-type SupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+type SupabaseClient = Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>;
 type AnyRow = Record<string, unknown>;
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
 export const ADMIN_ASSOCIATION_CANONICAL_STRATEGY = [
-  "association_members is the Phase 1 operational member table for linked-member counts.",
+  "association_members is the operational linked-member table and Phase 2 member-management workflow source.",
   "association_memberships is treated as the onboarding/join-request table for pending membership requests.",
   "msmes.association_id is a linkage fallback and rollout-planning signal, not the primary member-management table.",
-  "Phase 1 does not migrate, delete, auto-approve, or auto-create MSME records from association imports.",
+  "Association imports create pending operational member records only; they do not auto-approve, auto-create verified MSMEs, or issue credentials.",
 ];
 
 function toString(value: unknown) {
@@ -346,7 +348,7 @@ async function countsForAssociation(supabase: SupabaseClient, associationId: str
 }
 
 export async function getAdminAssociationsDirectory(filtersInput: AdminAssociationFilters): Promise<AdminAssociationsDirectory> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const filters = parseAssociationDirectoryFilters(filtersInput);
 
   const [associationRows, totalAssociations, activeAssociations, totalLinkedMembers, pendingMemberships, linkedMsmes, importJobs] =
@@ -456,7 +458,7 @@ function mapImport(row: AnyRow, associationNameById: Map<string, string>): Admin
 }
 
 export async function getAdminAssociationUploadWorkspace(selectedImportId?: string | null): Promise<AdminAssociationUploadWorkspace> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [associationsResult, importsResult] = await Promise.all([
     safeSelect<AnyRow>(supabase, "associations", "id,name,state,sector", (query: any) => query.order("name", { ascending: true }).limit(500)),
     safeSelect<AnyRow>(
@@ -473,7 +475,7 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
     importRowsResult = await safeSelect<AnyRow>(
       supabase,
       "association_member_import_rows",
-      "id,row_number,member_name,email,phone,business_name,state,sector,status,error_message",
+      "id,row_number,member_name,full_name,email,phone,phone_number,business_name,state,sector,trade_type,status,error_message,duplicate_signal,duplicate_reasons",
       (query: any) => query.eq("import_id", selectedImportId).order("row_number", { ascending: true }).limit(50),
     );
   }
@@ -490,13 +492,17 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
       id: toString(row.id),
       rowNumber: toNumber(row.row_number),
       businessName: nullableString(row.business_name),
-      memberName: nullableString(row.member_name),
+      memberName: nullableString(row.full_name) ?? nullableString(row.member_name),
       email: maskEmail(nullableString(row.email)),
-      phone: maskPhone(nullableString(row.phone)),
+      phone: maskPhone(nullableString(row.phone_number) ?? nullableString(row.phone)),
       state: nullableString(row.state),
-      sector: nullableString(row.sector),
+      sector: nullableString(row.trade_type) ?? nullableString(row.sector),
       status: nullableString(row.status),
       errorMessage: nullableString(row.error_message),
+      duplicateSignal: Boolean(row.duplicate_signal),
+      duplicateReasons: Array.isArray(row.duplicate_reasons)
+        ? row.duplicate_reasons.map((item) => toString(item)).filter(Boolean)
+        : [],
     })),
     sources: {
       associations: associationsResult.source,
@@ -507,7 +513,7 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
 }
 
 export async function getAdminAssociationMembersWorkspace(associationId?: string | null): Promise<AdminAssociationMembersWorkspace> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const associationResult = associationId ? await getAssociationById(supabase, associationId) : { association: null, source: sourceAvailable() };
 
   const [membersResult, pendingResult, importsWorkspace] = await Promise.all([

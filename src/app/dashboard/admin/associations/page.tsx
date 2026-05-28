@@ -6,7 +6,7 @@ import {
   writeAssociationActivityLog,
 } from "@/lib/data/admin-associations";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 type SearchParams = {
   q?: string;
@@ -59,7 +59,7 @@ function buildPageHref(params: SearchParams, page: number) {
 }
 
 async function generateUniqueAssociationSlug(
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  supabase: Awaited<ReturnType<typeof createServiceRoleSupabaseClient>>,
   name: string,
 ) {
   const baseSlug = normalizeSlug(name);
@@ -90,7 +90,7 @@ async function associationAction(formData: FormData) {
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "admin") redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const kind = String(formData.get("kind"));
   const associationId = String(formData.get("association_id") ?? "");
 
@@ -250,12 +250,12 @@ export default async function AssociationsPage({
         <div>
           <h1 className="text-2xl font-semibold">Admin Association Management</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Phase 1 foundation view. Bulk uploads are recorded and row-validated only; they do not create MSMEs,
-            activate members, or approve association membership.
+            Association directory with operational member counts. Bulk uploads create pending member records for
+            onboarding review only; they do not create verified MSMEs, approve members, or issue credentials.
           </p>
         </div>
         <Link href="/dashboard/admin/association-upload" className="rounded bg-slate-900 px-3 py-2 text-sm text-white">
-          Record/import-validate upload
+          Upload members
         </Link>
       </div>
 
@@ -280,7 +280,7 @@ export default async function AssociationsPage({
       </div>
 
       <details className="rounded-xl border bg-white p-4 text-sm text-slate-700">
-        <summary className="cursor-pointer font-semibold">Phase 1 canonical read strategy</summary>
+        <summary className="cursor-pointer font-semibold">Canonical member workflow</summary>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {directory.canonicalStrategy.map((item) => <li key={item}>{item}</li>)}
         </ul>
@@ -363,7 +363,7 @@ export default async function AssociationsPage({
                 <td className="px-3 py-3">{formatDate(association.createdAt)}</td>
                 <td className="px-3 py-3">
                   <Link href={`/dashboard/admin/association-members?association=${association.id}`} className="rounded border px-3 py-1 text-xs">
-                    View data snapshot
+                    Manage members
                   </Link>
                 </td>
               </tr>
