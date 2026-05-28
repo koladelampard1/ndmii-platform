@@ -11,9 +11,11 @@ import {
   KeyRound,
   Link2,
   QrCode,
+  RefreshCcw,
   Search,
   ShieldAlert,
   TimerReset,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { requireRole } from "@/lib/data/authorization-scope";
@@ -58,6 +60,8 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Ad
     expiryState: firstParam(params.expiryState),
     attentionLevel: firstParam(params.attentionLevel),
     operationalFilter: firstParam(params.operationalFilter),
+    assignmentFilter: firstParam(params.assignmentFilter),
+    slaState: firstParam(params.slaState),
     publicVerificationPosture: firstParam(params.publicVerificationPosture),
     trustPosture: firstParam(params.trustPosture),
     state: firstParam(params.state),
@@ -103,10 +107,10 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "absolute", "healthy", "trusted"].includes(normalized)) return "emerald";
-  if (["pending", "watch", "relative", "expiring_soon", "expiring_7_days", "expiring_30_days", "warning"].includes(normalized)) return "amber";
-  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "critical", "elevated", "active_expired", "invalid", "publicly_disabled", "restricted", "revoked_trust", "overdue_renewal", "expired_active"].includes(normalized)) return "rose";
-  if (["unavailable"].includes(normalized)) return "slate";
+  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "absolute", "healthy", "trusted", "on track"].includes(normalized)) return "emerald";
+  if (["pending", "watch", "relative", "expiring_soon", "expiring_7_days", "expiring_30_days", "warning", "approaching sla", "unassigned"].includes(normalized)) return "amber";
+  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "critical", "elevated", "active_expired", "invalid", "publicly_disabled", "restricted", "revoked_trust", "overdue_renewal", "expired_active", "breached"].includes(normalized)) return "rose";
+  if (["unavailable", "paused"].includes(normalized)) return "slate";
   return "blue";
 }
 
@@ -318,14 +322,14 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
 }
 
 export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
-  await requireRole(["admin", "super_admin", "reviewer", "fccpc_officer", "firs_officer"]);
+  const ctx = await requireRole(["admin", "super_admin", "reviewer", "fccpc_officer", "firs_officer"]);
   const params = await searchParams;
   const filters = parseFilters(params);
 
   let queue;
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    queue = await loadAdminDigitalIdQueue(supabase, filters);
+    queue = await loadAdminDigitalIdQueue(supabase, filters, { currentUserId: ctx.appUserId ?? null });
   } catch (error) {
     console.info("[admin-digital-ids]", {
       operation: "load_admin_digital_id_queue",
@@ -371,20 +375,72 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
         <KpiCard icon={CheckCircle2} label="Active" value={queue.kpis.activeCredentials.toLocaleString()} tone="emerald" />
         <KpiCard icon={ShieldAlert} label="Suspended" value={queue.kpis.suspendedCredentials.toLocaleString()} tone="rose" />
         <KpiCard icon={AlertTriangle} label="Revoked" value={queue.kpis.revokedCredentials.toLocaleString()} tone="rose" />
-        <KpiCard icon={TimerReset} label="Expired" value={queue.kpis.expiredCredentials.toLocaleString()} tone="amber" />
-        <KpiCard icon={KeyRound} label="Token/Signature Gaps" value={queue.kpis.missingValidSignatureOrTokenHash.toLocaleString()} tone="rose" />
+        <KpiCard icon={TimerReset} label="SLA Breaches" value={queue.kpis.slaBreaches.toLocaleString()} tone="rose" />
+        <KpiCard icon={UserCog} label="Unassigned" value={queue.kpis.unassignedCredentials.toLocaleString()} tone="amber" />
         <KpiCard icon={Link2} label="Public Link Issues" value={queue.kpis.publicVerificationIssues.toLocaleString()} tone="rose" />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+        <KpiCard icon={RefreshCcw} label="Renewal Pending" value={queue.kpis.renewalPending.toLocaleString()} tone="amber" />
+        <KpiCard icon={CalendarClock} label="Overdue Renewals" value={queue.kpis.overdueRenewals.toLocaleString()} tone="rose" />
+        <KpiCard icon={TimerReset} label="Expiring 7 Days" value={queue.kpis.expiringIn7Days.toLocaleString()} tone="amber" />
+        <KpiCard icon={TimerReset} label="Expiring 30 Days" value={queue.kpis.expiringIn30Days.toLocaleString()} tone="blue" />
+        <KpiCard icon={KeyRound} label="Regeneration Spikes" value={queue.kpis.regenerationSpikes.toLocaleString()} tone="rose" />
+        <KpiCard icon={KeyRound} label="Token/Signature Gaps" value={queue.kpis.missingValidSignatureOrTokenHash.toLocaleString()} tone="rose" />
+      </section>
+
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <p className="text-sm font-black text-slate-950">Lifecycle summary</p>
+        <p className="text-sm font-black text-slate-950">Operational summaries</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {queue.lifecycleSummary.length ? queue.lifecycleSummary.map((item) => (
+          {queue.lifecycleSummary.map((item) => (
             <span key={item.label} className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black ${toneClasses[statusTone(item.label)]}`}>
               {humanize(item.label)}
               <span>{item.value.toLocaleString()}</span>
             </span>
-          )) : <span className="text-sm font-semibold text-slate-500">No lifecycle data available.</span>}
+          ))}
+          {queue.slaSummary.map((item) => (
+            <span key={item.label} className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black ${toneClasses[statusTone(item.label)]}`}>
+              {item.label}
+              <span>{item.value.toLocaleString()}</span>
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+          <p className="text-sm font-black text-slate-950">Queue insights</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {queue.queueInsights.map((insight) => (
+              <div key={insight.label} className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{insight.label}</p>
+                <p className="mt-1 text-sm font-black text-slate-950">{insight.value}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-600">{insight.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+          <p className="text-sm font-black text-slate-950">Reviewer productivity insights</p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-[720px] w-full text-left text-xs">
+              <thead className="text-slate-500"><tr><th className="py-2">Reviewer</th><th>Workload</th><th>Completed</th><th>Avg resolution</th><th>SLA breaches</th><th>Under review</th></tr></thead>
+              <tbody>
+                {queue.reviewerAnalytics.length ? queue.reviewerAnalytics.slice(0, 6).map((reviewer) => (
+                  <tr key={reviewer.reviewerId} className="border-t border-slate-100">
+                    <td className="py-2 font-black text-slate-800">{reviewer.reviewerName}<span className="ml-2 font-semibold text-slate-500">{humanize(reviewer.role)}</span></td>
+                    <td className="font-semibold text-slate-700">{reviewer.assignedWorkload}</td>
+                    <td className="font-semibold text-slate-700">{reviewer.completedActions}</td>
+                    <td className="font-semibold text-slate-700">{reviewer.averageResolutionHours === null ? "Unavailable" : `${reviewer.averageResolutionHours}h`}</td>
+                    <td className="font-semibold text-slate-700">{reviewer.slaBreachCount}</td>
+                    <td className="font-semibold text-slate-700">{reviewer.credentialsUnderReview}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={6} className="py-6 text-center font-semibold text-slate-500">No reviewer activity available.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -410,6 +466,8 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
           <SelectFilter name="qrReadiness" label="QR readiness" value={filters.qrReadiness} options={queue.options.qrReadiness} />
           <SelectFilter name="expiryState" label="Expiry state" value={filters.expiryState} options={queue.options.expiryStates} />
           <SelectFilter name="attentionLevel" label="Attention" value={filters.attentionLevel} options={queue.options.attentionLevels} />
+          <SelectFilter name="slaState" label="SLA state" value={filters.slaState} options={queue.options.slaStates} />
+          <SelectFilter name="assignmentFilter" label="Assignment" value={filters.assignmentFilter} options={queue.options.assignmentFilters} />
           <SelectFilter name="operationalFilter" label="Operational issue" value={filters.operationalFilter} options={queue.options.operationalFilters} />
           <SelectFilter name="publicVerificationPosture" label="Public posture" value={filters.publicVerificationPosture} options={queue.options.publicVerificationPostures} />
           <SelectFilter name="trustPosture" label="Trust posture" value={filters.trustPosture} options={queue.options.trustPostures} />
@@ -449,6 +507,8 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                   <th className="px-4 py-3">MSME review</th>
                   <th className="px-4 py-3">Verification review</th>
                   <th className="px-4 py-3">Lifecycle</th>
+                  <th className="px-4 py-3">SLA</th>
+                  <th className="px-4 py-3">Assignment</th>
                   <th className="px-4 py-3">Issued</th>
                   <th className="px-4 py-3">Approved</th>
                   <th className="px-4 py-3">Expiry</th>
@@ -465,7 +525,7 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
               <tbody>
                 {queue.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={17} className="px-4 py-12 text-center">
+                    <td colSpan={19} className="px-4 py-12 text-center">
                       <QrCode className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
                       <p className="mt-3 text-sm font-black text-slate-600">No digital ID credentials match the current filters.</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">Clear filters to review all available credential records.</p>
@@ -493,6 +553,14 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                       <td className="px-4 py-3"><StatusPill value={row.msmeReviewStatus} /></td>
                       <td className="px-4 py-3"><StatusPill value={row.verificationReviewStatus} /></td>
                       <td className="px-4 py-3"><StatusPill value={row.lifecycleState} /></td>
+                      <td className="px-4 py-3">
+                        <StatusPill value={row.sla.state} />
+                        <p className="mt-1 max-w-[240px] text-xs font-semibold text-slate-500">{humanize(row.sla.category)}: {row.sla.elapsedHours ?? "Unavailable"}h elapsed</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-black text-slate-800">{row.assignment.assignedReviewerName ?? row.assignment.assignedAdminName ?? "Unassigned"}</p>
+                        <p className="text-xs font-semibold text-slate-500">{row.assignment.inactivityHours === null ? "Activity unavailable" : `${row.assignment.inactivityHours}h inactive`}</p>
+                      </td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatDate(row.issuedAt)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatDate(row.approvedAt)}</td>
                       <td className="px-4 py-3">

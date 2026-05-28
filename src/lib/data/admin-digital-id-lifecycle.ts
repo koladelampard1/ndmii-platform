@@ -76,7 +76,7 @@ export function getAdminDigitalIdAllowedLifecycleActions(status: unknown) {
 
 export function canRoleRunAdminDigitalIdAction(role: UserRole, action: AdminDigitalIdAction) {
   if (role === "super_admin" || role === "admin") return true;
-  if (role === "reviewer") return ["activate", "start_renewal", "save_note"].includes(action);
+  if (role === "reviewer") return ["activate", "start_renewal", "save_note", "assign"].includes(action);
   return false;
 }
 

@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   Store,
   UserRound,
+  UserCog,
 } from "lucide-react";
 import { LifecycleDecisionPanel } from "@/components/admin/digital-ids/lifecycle-decision-panel";
 import { requireRole } from "@/lib/data/authorization-scope";
@@ -45,10 +46,10 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "healthy", "trusted", "absolute"].includes(normalized)) return "emerald";
-  if (["pending", "watch", "warning", "expiring_soon", "expiring_7_days", "expiring_30_days", "renewal_pending", "relative"].includes(normalized)) return "amber";
-  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "invalid", "publicly_disabled", "critical", "elevated", "restricted", "revoked_trust", "overdue_renewal", "expired_active"].includes(normalized)) return "rose";
-  if (["unavailable", "missing"].includes(normalized)) return "slate";
+  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "healthy", "trusted", "absolute", "on track"].includes(normalized)) return "emerald";
+  if (["pending", "watch", "warning", "expiring_soon", "expiring_7_days", "expiring_30_days", "renewal_pending", "relative", "approaching sla", "unassigned"].includes(normalized)) return "amber";
+  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "invalid", "publicly_disabled", "critical", "elevated", "restricted", "revoked_trust", "overdue_renewal", "expired_active", "breached"].includes(normalized)) return "rose";
+  if (["unavailable", "missing", "paused"].includes(normalized)) return "slate";
   return "blue";
 }
 
@@ -146,13 +147,14 @@ function Header({ workspace }: { workspace: AdminDigitalIdWorkspace }) {
           <StatusPill value={credential.attentionLevel} />
           <StatusPill value={workspace.readiness.publicVerificationPosture} />
           <StatusPill value={workspace.trust.posture} />
+          <StatusPill value={credential.sla.state} />
         </div>
       </div>
     </header>
   );
 }
 
-function OperationalSidePanel({ workspace, role }: { workspace: AdminDigitalIdWorkspace; role: Awaited<ReturnType<typeof requireRole>>["role"] }) {
+function OperationalSidePanel({ workspace, role, currentUserId }: { workspace: AdminDigitalIdWorkspace; role: Awaited<ReturnType<typeof requireRole>>["role"]; currentUserId: string }) {
   const { credential } = workspace;
   return (
     <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
@@ -167,6 +169,8 @@ function OperationalSidePanel({ workspace, role }: { workspace: AdminDigitalIdWo
         <dl className="mt-4 grid gap-3">
           <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned reviewer</dt><dd className="mt-1 text-sm font-black text-slate-950">{credential.assignedReviewerName ?? "Unassigned"}</dd></div>
           <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned admin</dt><dd className="mt-1 text-sm font-black text-slate-950">{credential.assignedAdminName ?? "Unassigned"}</dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">SLA posture</dt><dd className="mt-1"><StatusPill value={credential.sla.state} /></dd><dd className="mt-1 text-xs font-semibold text-slate-600">{credential.sla.explanation}</dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Assignment inactivity</dt><dd className="mt-1 text-sm font-black text-slate-950">{credential.assignment.inactivityHours === null ? "Unavailable" : `${credential.assignment.inactivityHours} hour(s)`}</dd></div>
           <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Attention level</dt><dd className="mt-1"><StatusPill value={credential.attentionLevel} /></dd></div>
           <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Credential health</dt><dd className="mt-1 flex flex-wrap gap-2"><StatusPill value={workspace.readiness.publicVerificationPosture} /><StatusPill value={workspace.expiry.posture} /><StatusPill value={workspace.trust.posture} /></dd></div>
           <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Regenerations</dt><dd className="mt-1 text-sm font-black text-slate-950">{workspace.regeneration.total.toLocaleString()}</dd></div>
@@ -177,6 +181,7 @@ function OperationalSidePanel({ workspace, role }: { workspace: AdminDigitalIdWo
       <LifecycleDecisionPanel
         credentialId={credential.credentialId}
         role={role}
+        currentUserId={currentUserId}
         status={workspace.lifecycle.status}
         allowedActions={workspace.lifecycle.allowedActions}
         internalNotes={credential.internalNotes}
@@ -213,11 +218,37 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
               { label: "BIN / MSME ID", value: credential.msmeId },
               { label: "Credential status", value: <StatusPill value={credential.credentialStatus} /> },
               { label: "Lifecycle version", value: credential.lifecycleVersion.toLocaleString() },
+              { label: "Time in current lifecycle", value: credential.currentLifecycleAgeHours === null ? "Unavailable" : `${credential.currentLifecycleAgeHours} hour(s)` },
+              { label: "Current lifecycle started", value: formatDateTime(credential.currentLifecycleStartedAt) },
               { label: "Issued", value: formatDateTime(credential.issuedAt) },
               { label: "Approved", value: formatDateTime(credential.approvedAt) },
               { label: "Suspended", value: formatDateTime(credential.suspendedAt) },
               { label: "Revoked", value: formatDateTime(credential.revokedAt) },
             ]} />
+          </SectionCard>
+
+          <SectionCard title="SLA and assignment governance" icon={UserCog}>
+            <DataGrid rows={[
+              { label: "SLA category", value: humanize(credential.sla.category) },
+              { label: "SLA state", value: <StatusPill value={credential.sla.state} /> },
+              { label: "SLA started", value: formatDateTime(credential.sla.startedAt) },
+              { label: "SLA due", value: formatDateTime(credential.sla.dueAt) },
+              { label: "Elapsed", value: credential.sla.elapsedHours === null ? "Unavailable" : `${credential.sla.elapsedHours} hour(s)` },
+              { label: "Remaining", value: credential.sla.remainingHours === null ? "Unavailable" : `${credential.sla.remainingHours} hour(s)` },
+              { label: "Assigned at", value: formatDateTime(credential.assignedAt) },
+              { label: "Assigned by", value: credential.assignedByName ?? "Unavailable" },
+              { label: "Reassignments", value: credential.reassignedCount.toLocaleString() },
+              { label: "Last reassignment", value: formatDateTime(credential.lastReassignmentAt) },
+            ]} />
+            <p className="mt-3 text-xs font-bold text-slate-500">{credential.sla.explanation}</p>
+          </SectionCard>
+
+          <SectionCard title="Reviewer handoff history" icon={History}>
+            <Timeline items={workspace.handoffHistory} emptyText="No assignment handoff history is available." />
+          </SectionCard>
+
+          <SectionCard title="Assignment history" icon={UserCog}>
+            <Timeline items={workspace.assignmentHistory} emptyText="No assignment mutations have been recorded." />
           </SectionCard>
 
           <SectionCard title="MSME summary" icon={UserRound}>
@@ -292,6 +323,40 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
             </div>
           </SectionCard>
 
+          <SectionCard title="Anomaly signals" icon={ShieldAlert}>
+            {credential.anomalySignals.length ? (
+              <div className="space-y-2">
+                {credential.anomalySignals.map((signal) => (
+                  <div key={signal.code} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <StatusPill value={signal.severity} />
+                    <p className="mt-2 text-sm font-black text-slate-900">{signal.label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-700">{signal.explanation}</p>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No anomaly signals detected.</p>}
+          </SectionCard>
+
+          <SectionCard title="Lifecycle frequency and stability" icon={Gauge}>
+            <div className="grid gap-3 md:grid-cols-2">
+              {workspace.lifecycleFrequencySummary.length ? workspace.lifecycleFrequencySummary.map((item) => (
+                <div key={item.label} className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{humanize(item.label)}</p>
+                  <p className="mt-1 text-sm font-black text-slate-950">{item.value.toLocaleString()}</p>
+                </div>
+              )) : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No lifecycle frequency data available.</p>}
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {workspace.stabilityIndicators.map((item) => (
+                <div key={item.label} className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-sm font-black text-slate-950">{item.value}</p>
+                  <div className="mt-2"><StatusPill value={item.posture} /></div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+
           <SectionCard title="Compliance and verification posture" icon={Gauge}>
             <DataGrid rows={[
               { label: "Verification review", value: <StatusPill value={credential.verificationReviewStatus} /> },
@@ -345,7 +410,7 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
           </SectionCard>
         </div>
 
-        <OperationalSidePanel workspace={workspace} role={ctx.role} />
+        <OperationalSidePanel workspace={workspace} role={ctx.role} currentUserId={ctx.appUserId ?? ""} />
       </div>
     </section>
   );

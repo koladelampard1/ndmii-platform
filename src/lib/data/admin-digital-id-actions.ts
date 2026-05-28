@@ -43,6 +43,12 @@ type CredentialRow = {
   regeneration_count?: number | null;
   last_regenerated_at?: string | null;
   lifecycle_version?: number | null;
+  assigned_reviewer_id?: string | null;
+  assigned_admin_id?: string | null;
+  assigned_at?: string | null;
+  assigned_by?: string | null;
+  reassigned_count?: number | null;
+  last_reassignment_at?: string | null;
 };
 
 type MsmeRow = {
@@ -76,7 +82,7 @@ export function adminDigitalIdActionRequiresReason(action: AdminDigitalIdAction)
 function assertRole(ctx: UserContext, action: AdminDigitalIdAction) {
   if (!canRunAdminDigitalIdAction(ctx.role, action)) throw new Error("action_not_allowed_for_role");
   if (action === "revoke" && !["admin", "super_admin"].includes(ctx.role)) throw new Error("revoke_requires_admin");
-  if (action === "assign" && !["admin", "super_admin"].includes(ctx.role)) throw new Error("assign_requires_admin");
+  if (action === "assign" && !["admin", "super_admin", "reviewer"].includes(ctx.role)) throw new Error("assign_requires_admin_or_reviewer_self_assign");
   if (action === "regenerate_token" && !["admin", "super_admin"].includes(ctx.role)) throw new Error("regeneration_requires_admin");
 }
 
@@ -93,7 +99,7 @@ function assertTransitionAllowed(from: DigitalIdLifecycleStatus, action: AdminDi
 async function loadCredential(supabase: SupabaseClient<any>, credentialId: string) {
   const { data, error } = await supabase
     .from("digital_identity_credentials")
-    .select("id,msme_id,ndmii_id,status,approved_at,revoked_at,suspended_at,token_expires_at,regeneration_count,last_regenerated_at,lifecycle_version")
+    .select("id,msme_id,ndmii_id,status,approved_at,revoked_at,suspended_at,token_expires_at,regeneration_count,last_regenerated_at,lifecycle_version,assigned_reviewer_id,assigned_admin_id,assigned_at,assigned_by,reassigned_count,last_reassignment_at")
     .eq("id", credentialId)
     .maybeSingle<CredentialRow>();
   if (!error) {
@@ -139,13 +145,13 @@ async function updateCredential(supabase: SupabaseClient<any>, credentialId: str
     .from("digital_identity_credentials")
     .update(patch)
     .eq("id", credentialId)
-    .select("id,msme_id,ndmii_id,status,approved_at,revoked_at,suspended_at,token_expires_at,regeneration_count,last_regenerated_at,lifecycle_version")
+    .select("id,msme_id,ndmii_id,status,approved_at,revoked_at,suspended_at,token_expires_at,regeneration_count,last_regenerated_at,lifecycle_version,assigned_reviewer_id,assigned_admin_id,assigned_at,assigned_by,reassigned_count,last_reassignment_at")
     .single<CredentialRow>();
   if (!error) return data;
 
   if (!["42703", "PGRST204"].includes(error.code ?? "")) throw error;
   const fallbackPatch = Object.fromEntries(
-    Object.entries(patch).filter(([key]) => !["lifecycle_version", "lifecycle_reason", "lifecycle_source", "assigned_reviewer_id", "assigned_admin_id", "internal_notes", "renewal_requested_at", "renewal_requested_by", "last_regenerated_at", "regeneration_count", "token_invalidated_at"].includes(key)),
+    Object.entries(patch).filter(([key]) => !["lifecycle_version", "lifecycle_reason", "lifecycle_source", "assigned_reviewer_id", "assigned_admin_id", "assigned_at", "assigned_by", "reassigned_count", "last_reassignment_at", "internal_notes", "renewal_requested_at", "renewal_requested_by", "last_regenerated_at", "regeneration_count", "token_invalidated_at"].includes(key)),
   );
   const fallback = await supabase
     .from("digital_identity_credentials")
@@ -169,6 +175,8 @@ async function recordCredentialEvent(
     reason: string | null;
     lifecycleVersion: number;
     assignedUserId?: string | null;
+    previousAssigneeId?: string | null;
+    newAssigneeId?: string | null;
     publicRouteExposed?: boolean;
   },
 ) {
@@ -201,6 +209,8 @@ async function recordCredentialEvent(
       business_id: params.msme.msme_id,
       lifecycle_version: params.lifecycleVersion,
       assigned_user_id: params.assignedUserId ?? null,
+      previous_assignee: params.previousAssigneeId ?? null,
+      new_assignee: params.newAssigneeId ?? params.assignedUserId ?? null,
       public_verification_route_exposed_once: Boolean(params.publicRouteExposed),
     },
   });
@@ -218,6 +228,8 @@ async function recordActivityLog(
     newStatus: DigitalIdLifecycleStatus;
     reason: string | null;
     lifecycleVersion: number;
+    previousAssigneeId?: string | null;
+    newAssigneeId?: string | null;
   },
 ) {
   const { error } = await supabase.from("activity_logs").insert({
@@ -236,6 +248,8 @@ async function recordActivityLog(
       msme_id: params.msme.id,
       business_id: params.msme.msme_id,
       lifecycle_version: params.lifecycleVersion,
+      previous_assignee: params.previousAssigneeId ?? null,
+      new_assignee: params.newAssigneeId ?? null,
     },
   });
   if (error) throw error;
@@ -350,6 +364,7 @@ export async function runAdminDigitalIdAction(
   const note = cleanText(params.note);
   const override = Boolean(params.override);
   assertRole(params.ctx, params.action);
+  if (params.action === "assign" && !params.ctx.appUserId) throw new Error("authenticated_actor_required_for_assignment");
 
   const timestamp = nowIso();
   const credential = await loadCredential(supabase, params.credentialId);
@@ -379,8 +394,22 @@ export async function runAdminDigitalIdAction(
     if (!note) throw new Error("note_required");
     patch.internal_notes = note;
   } else if (params.action === "assign") {
-    patch.assigned_reviewer_id = cleanText(params.assignedReviewerId) || null;
-    patch.assigned_admin_id = cleanText(params.assignedAdminId) || null;
+    const previousAssignee = credential.assigned_reviewer_id || credential.assigned_admin_id || null;
+    const requestedReviewerId = cleanText(params.assignedReviewerId);
+    const requestedAdminId = cleanText(params.assignedAdminId);
+    if (params.ctx.role === "reviewer") {
+      if ((requestedReviewerId && requestedReviewerId !== params.ctx.appUserId) || requestedAdminId) throw new Error("reviewer_self_assign_only");
+      patch.assigned_reviewer_id = requestedReviewerId || params.ctx.appUserId;
+      patch.assigned_admin_id = credential.assigned_admin_id ?? null;
+    } else {
+      patch.assigned_reviewer_id = requestedReviewerId || null;
+      patch.assigned_admin_id = requestedAdminId || null;
+    }
+    const newAssignee = String(patch.assigned_reviewer_id ?? patch.assigned_admin_id ?? "") || null;
+    patch.assigned_at = newAssignee ? timestamp : null;
+    patch.assigned_by = newAssignee ? params.ctx.appUserId : null;
+    patch.last_reassignment_at = previousAssignee !== newAssignee ? timestamp : credential.last_reassignment_at ?? null;
+    patch.reassigned_count = previousAssignee !== newAssignee ? Number(credential.reassigned_count ?? 0) + 1 : Number(credential.reassigned_count ?? 0);
   } else if (params.action === "regenerate_token") {
     assertTransitionAllowed(from, params.action, from, reason);
     const count = Number(credential.regeneration_count ?? 0);
@@ -425,6 +454,8 @@ export async function runAdminDigitalIdAction(
     reason: reason || (params.action === "save_note" ? note : null),
     lifecycleVersion,
     assignedUserId: cleanText(params.assignedReviewerId) || cleanText(params.assignedAdminId) || null,
+    previousAssigneeId: params.action === "assign" ? credential.assigned_reviewer_id || credential.assigned_admin_id || null : null,
+    newAssigneeId: params.action === "assign" ? updated.assigned_reviewer_id || updated.assigned_admin_id || null : null,
     publicRouteExposed: Boolean(publicRoute),
   });
   await recordActivityLog(supabase, {
@@ -436,6 +467,8 @@ export async function runAdminDigitalIdAction(
     newStatus: to,
     reason: reason || (params.action === "save_note" ? note : null),
     lifecycleVersion,
+    previousAssigneeId: params.action === "assign" ? credential.assigned_reviewer_id || credential.assigned_admin_id || null : null,
+    newAssigneeId: params.action === "assign" ? updated.assigned_reviewer_id || updated.assigned_admin_id || null : null,
   });
 
   return { credential: updated, publicRoute, noOp: false, message: null };

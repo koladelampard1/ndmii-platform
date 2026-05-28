@@ -23,6 +23,8 @@ function filterFromUrl(url: URL): AdminDigitalIdFilters {
     expiryState: url.searchParams.get("expiryState") ?? undefined,
     attentionLevel: url.searchParams.get("attentionLevel") ?? undefined,
     operationalFilter: url.searchParams.get("operationalFilter") ?? undefined,
+    assignmentFilter: url.searchParams.get("assignmentFilter") ?? undefined,
+    slaState: url.searchParams.get("slaState") ?? undefined,
     publicVerificationPosture: url.searchParams.get("publicVerificationPosture") ?? undefined,
     trustPosture: url.searchParams.get("trustPosture") ?? undefined,
     state: url.searchParams.get("state") ?? undefined,
@@ -42,7 +44,7 @@ function exportFileName(date = new Date()) {
 
 export async function GET(request: Request) {
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin" && ctx.role !== "reviewer") {
+  if (!["admin", "super_admin", "reviewer"].includes(ctx.role)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -57,7 +59,7 @@ export async function GET(request: Request) {
 
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    const queue = await loadAdminDigitalIdQueue(supabase, filters);
+    const queue = await loadAdminDigitalIdQueue(supabase, filters, { currentUserId: ctx.appUserId ?? null });
     const rows = selectedIds.size ? queue.rows.filter((row) => selectedIds.has(row.id)) : queue.rows;
 
     console.info("[admin-digital-ids-export]", {

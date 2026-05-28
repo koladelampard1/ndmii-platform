@@ -36,6 +36,10 @@ export type AdminDigitalIdWorkspace = {
     assignedAdminId: string | null;
     assignedReviewerName: string | null;
     assignedAdminName: string | null;
+    assignedAt: string | null;
+    assignedByName: string | null;
+    reassignedCount: number;
+    lastReassignmentAt: string | null;
     internalNotes: string | null;
     renewalRequestedAt: string | null;
     lastRegeneratedAt: string | null;
@@ -49,6 +53,10 @@ export type AdminDigitalIdWorkspace = {
   regenerationHistory: AdminDigitalIdEvent[];
   timeline: AdminDigitalIdEvent[];
   notes: Array<{ id: string; note: string; actorRole: string | null; createdAt: string | null }>;
+  assignmentHistory: AdminDigitalIdEvent[];
+  handoffHistory: AdminDigitalIdEvent[];
+  lifecycleFrequencySummary: Array<{ label: string; value: number }>;
+  stabilityIndicators: Array<{ label: string; value: string; posture: "normal" | "watch" | "critical" }>;
   readiness: {
     publicVerification: AdminDigitalIdQueueRow["publicVerificationReadiness"];
     publicVerificationPosture: AdminDigitalIdQueueRow["publicVerificationPosture"];
@@ -101,7 +109,7 @@ async function readCredentialMeta(supabase: SupabaseClient<any>, credentialId: s
   const full = await maybeSingle<Row>(
     supabase
       .from("digital_identity_credentials")
-      .select("id,lifecycle_version,assigned_reviewer_id,assigned_admin_id,internal_notes,renewal_requested_at,last_regenerated_at")
+      .select("id,lifecycle_version,assigned_reviewer_id,assigned_admin_id,assigned_at,assigned_by,reassigned_count,last_reassignment_at,internal_notes,renewal_requested_at,last_regenerated_at")
       .eq("id", credentialId)
       .maybeSingle<Row>(),
   );
@@ -222,10 +230,16 @@ export async function getAdminDigitalIdWorkspace(
 
   const meta = metaResult.data ?? {};
   const users = usersResult.rows;
+  const maskEmail = (value: unknown) => {
+    const normalized = asString(value);
+    if (!normalized || !normalized.includes("@")) return "";
+    const [local, domain] = normalized.split("@");
+    return `${local.slice(0, 1)}***@${domain}`;
+  };
   const userName = (id: string | null) => {
     if (!id) return null;
     const match = users.find((user) => asString(user.id) === id);
-    return asString(match?.full_name) || asString(match?.email) || null;
+    return asString(match?.full_name) || maskEmail(match?.email) || null;
   };
   const timeline = [...eventResult.rows.map(toEvent), ...activityResult.rows.map(toEvent), ...reviewEventsResult.rows.map(toEvent)]
     .sort((a, b) => (Date.parse(b.createdAt ?? "") || 0) - (Date.parse(a.createdAt ?? "") || 0));
@@ -235,6 +249,18 @@ export async function getAdminDigitalIdWorkspace(
   const status = normalizeDigitalIdLifecycleStatus(row.credentialStatus);
   const assignedReviewerId = asString(meta.assigned_reviewer_id) || null;
   const assignedAdminId = asString(meta.assigned_admin_id) || null;
+  const assignmentHistory = timeline.filter((event) => event.action.includes("assign"));
+  const handoffHistory = assignmentHistory.filter((event) => event.summary.includes("previous") || event.action.includes("assigned"));
+  const lifecycleActions = ["approved", "suspended", "revoked", "expired", "renewal_requested", "reissued", "note_saved", "assigned"];
+  const lifecycleFrequencySummary = lifecycleActions
+    .map((label) => ({ label, value: timeline.filter((event) => event.action === label || event.action.includes(label)).length }))
+    .filter((item) => item.value > 0);
+  const stabilityIndicators = [
+    { label: "Lifecycle changes", value: row.lifecycleChangeCount.toLocaleString(), posture: row.lifecycleChangeCount >= 4 ? "watch" as const : "normal" as const },
+    { label: "Regeneration frequency", value: row.regenerationCount.toLocaleString(), posture: row.regenerationCount >= 3 ? "critical" as const : row.regenerationCount >= 2 ? "watch" as const : "normal" as const },
+    { label: "Assignment changes", value: row.assignment.reassignedCount.toLocaleString(), posture: row.assignment.reassignedCount >= 3 ? "watch" as const : "normal" as const },
+    { label: "Public verification", value: row.publicVerificationReadiness.replaceAll("_", " "), posture: row.publicVerificationReadiness === "likely_invalid" ? "critical" as const : "normal" as const },
+  ];
 
   return {
     credential: {
@@ -244,6 +270,10 @@ export async function getAdminDigitalIdWorkspace(
       assignedAdminId,
       assignedReviewerName: userName(assignedReviewerId),
       assignedAdminName: userName(assignedAdminId),
+      assignedAt: asString(meta.assigned_at) || row.assignment.assignedAt,
+      assignedByName: userName(asString(meta.assigned_by) || row.assignment.assignedBy),
+      reassignedCount: Number(meta.reassigned_count ?? row.assignment.reassignedCount),
+      lastReassignmentAt: asString(meta.last_reassignment_at) || row.assignment.lastReassignmentAt,
       internalNotes: asString(meta.internal_notes) || null,
       renewalRequestedAt: asString(meta.renewal_requested_at) || null,
       lastRegeneratedAt: asString(meta.last_regenerated_at) || null,
@@ -257,6 +287,10 @@ export async function getAdminDigitalIdWorkspace(
     regenerationHistory,
     timeline,
     notes: buildNotes(eventResult.rows, activityResult.rows),
+    assignmentHistory,
+    handoffHistory,
+    lifecycleFrequencySummary,
+    stabilityIndicators,
     readiness: {
       publicVerification: row.publicVerificationReadiness,
       publicVerificationPosture: row.publicVerificationPosture,
@@ -286,7 +320,7 @@ export async function getAdminDigitalIdWorkspace(
     attentionSignals: row.attentionSignals,
     reviewers: users.map((user) => ({
       id: asString(user.id),
-      label: asString(user.full_name) || asString(user.email) || "Unnamed user",
+      label: asString(user.full_name) || maskEmail(user.email) || "Unnamed user",
       role: asString(user.role) || "reviewer",
     })).filter((user) => user.id),
     sources: {

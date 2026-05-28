@@ -26,6 +26,7 @@ import type { UserRole } from "@/types/roles";
 type Props = {
   credentialId: string;
   role: UserRole;
+  currentUserId: string;
   status: DigitalIdLifecycleStatus;
   allowedActions: AdminDigitalIdAction[];
   internalNotes: string | null;
@@ -71,6 +72,7 @@ function formatDateTime(value: string | null | undefined) {
 export function LifecycleDecisionPanel({
   credentialId,
   role,
+  currentUserId,
   status,
   allowedActions,
   internalNotes,
@@ -89,6 +91,7 @@ export function LifecycleDecisionPanel({
   const allowed = useMemo(() => new Set(allowedActions), [allowedActions]);
   const canWrite = role === "admin" || role === "super_admin" || role === "reviewer";
   const canAssign = role === "admin" || role === "super_admin";
+  const canSelfAssign = role === "reviewer" && assignedReviewerId !== currentUserId;
   const visibleActions = ACTIONS.filter((action) => allowed.has(action.action));
   const activeSelection = selected && allowed.has(selected.action) ? selected : null;
   const adminUsers = reviewers.filter((reviewer) => reviewer.role === "admin" || reviewer.role === "super_admin");
@@ -134,6 +137,24 @@ export function LifecycleDecisionPanel({
               </select>
               <button disabled={pending} className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700" type="submit">
                 <UserCog className="h-3.5 w-3.5" />Save Assignment
+              </button>
+            </form>
+          ) : canSelfAssign ? (
+            <form
+              action={(formData) => {
+                startTransition(async () => {
+                  const result = await submitAdminDigitalIdAction({ ok: false, message: "" }, formData);
+                  setToast(result.message);
+                  if (result.ok) router.refresh();
+                });
+              }}
+              className="mt-3"
+            >
+              <input type="hidden" name="credential_id" value={credentialId} />
+              <input type="hidden" name="action" value="assign" />
+              <input type="hidden" name="assigned_reviewer_id" value={currentUserId} />
+              <button disabled={pending} className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-800" type="submit">
+                <UserCog className="h-3.5 w-3.5" />Self-assign
               </button>
             </form>
           ) : null}
