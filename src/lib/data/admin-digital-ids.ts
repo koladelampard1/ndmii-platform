@@ -13,6 +13,9 @@ export type AdminDigitalIdFilters = {
   qrReadiness?: string;
   expiryState?: string;
   attentionLevel?: string;
+  operationalFilter?: string;
+  publicVerificationPosture?: string;
+  trustPosture?: string;
   state?: string;
   sector?: string;
   createdFrom?: string;
@@ -80,10 +83,14 @@ export type AdminDigitalIdQueueRow = {
   signatureReadiness: "ready" | "missing" | "unavailable";
   qrReadiness: "absolute" | "relative" | "missing" | "unavailable";
   publicVerificationReadiness: "likely_valid" | "likely_invalid" | "unavailable";
+  publicVerificationPosture: "healthy" | "warning" | "invalid" | "publicly_disabled";
   publicVerificationReason: string;
-  publicVerificationRoute: string | null;
-  safeTestHref: string | null;
+  publicRouteAvailable: boolean;
+  routeDuplicateCount: number;
   expiryState: "valid" | "expiring_soon" | "expired" | "missing" | "unavailable";
+  expiryPosture: "valid" | "expiring_7_days" | "expiring_30_days" | "expired" | "overdue_renewal" | "expired_active" | "missing" | "unavailable";
+  daysUntilExpiry: number | null;
+  renewalPendingDays: number | null;
   latestCredentialEvent: string | null;
   latestCredentialEventAt: string | null;
   eventPreview: AdminDigitalIdEvent[];
@@ -98,6 +105,12 @@ export type AdminDigitalIdQueueRow = {
   tinMasked: string | null;
   recommendedFocus: string;
   regenerationCount: number;
+  lastRegeneratedAt: string | null;
+  tokenInvalidatedAt: string | null;
+  lifecycleVersion: number;
+  trustPosture: "trusted" | "watch" | "restricted" | "revoked_trust";
+  trustReasons: string[];
+  qrRouteSignals: AdminDigitalIdAttentionSignal[];
 };
 
 export type AdminDigitalIdKpis = {
@@ -130,6 +143,9 @@ export type AdminDigitalIdQueueResult = {
     qrReadiness: string[];
     expiryStates: string[];
     attentionLevels: string[];
+    operationalFilters: Array<{ value: string; label: string }>;
+    publicVerificationPostures: string[];
+    trustPostures: string[];
     states: string[];
     sectors: string[];
     sortOptions: Array<{ value: string; label: string }>;
@@ -172,6 +188,7 @@ const TABLE_COLUMNS: Record<AdminDigitalIdSourceName, string[]> = {
     "renewal_requested_at",
     "regeneration_count",
     "last_regenerated_at",
+    "token_invalidated_at",
     "created_at",
     "updated_at",
   ],
@@ -421,16 +438,32 @@ function expiryState(row: Row | undefined): AdminDigitalIdQueueRow["expiryState"
   return "valid";
 }
 
-function lifecycleState(credential: Row): string {
-  return normalizeDigitalIdLifecycleStatus(credential.status);
+function daysUntil(value: string | null) {
+  const time = Date.parse(value ?? "");
+  if (!Number.isFinite(time)) return null;
+  return Math.ceil((time - Date.now()) / 86_400_000);
 }
 
-function safeHref(qrRef: string | null) {
-  const value = asString(qrRef);
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/verify/c/")) return value;
-  return null;
+function expiryPosture(params: {
+  expiry: AdminDigitalIdQueueRow["expiryState"];
+  expiryAt: string | null;
+  credentialStatus: string;
+  renewalRequestedAt: string | null;
+}): AdminDigitalIdQueueRow["expiryPosture"] {
+  if (params.expiry === "unavailable") return "unavailable";
+  if (params.expiry === "missing") return "missing";
+  const days = daysUntil(params.expiryAt);
+  const renewalDays = ageDays(params.renewalRequestedAt);
+  if (params.credentialStatus === "active" && params.expiry === "expired") return "expired_active";
+  if (params.credentialStatus === "renewal_pending" && renewalDays !== null && renewalDays > 30) return "overdue_renewal";
+  if (params.expiry === "expired") return "expired";
+  if (days !== null && days <= 7) return "expiring_7_days";
+  if (days !== null && days <= 30) return "expiring_30_days";
+  return "valid";
+}
+
+function lifecycleState(credential: Row): string {
+  return normalizeDigitalIdLifecycleStatus(credential.status);
 }
 
 function publicReadiness(params: {
@@ -440,6 +473,7 @@ function publicReadiness(params: {
   signatureReadiness: AdminDigitalIdQueueRow["signatureReadiness"];
   qrState: AdminDigitalIdQueueRow["qrReadiness"];
   expiry: AdminDigitalIdQueueRow["expiryState"];
+  duplicateRoutes: number;
 }) {
   const status = normalizeDigitalIdLifecycleStatus(params.credential.status);
   const msmeReviewStatus = normalizeStatus(params.msme?.review_status, "unavailable");
@@ -449,6 +483,8 @@ function publicReadiness(params: {
   if (params.tokenReadiness !== "ready") failures.push("token hash missing or unavailable");
   if (params.signatureReadiness !== "ready") failures.push("signature missing or unavailable");
   if (params.qrState === "missing" || params.qrState === "unavailable") failures.push("QR reference missing or unavailable");
+  if (params.qrState === "relative") failures.push("QR reference is relative-only");
+  if (params.duplicateRoutes > 1) failures.push("duplicate public route binding detected");
   if (params.expiry !== "valid" && params.expiry !== "expiring_soon") failures.push(`expiry state is ${params.expiry.replaceAll("_", " ")}`);
   if (status !== "active") failures.push(`credential is ${status}`);
   if (asString(params.credential.revoked_at)) failures.push("credential has revoked timestamp");
@@ -460,6 +496,47 @@ function publicReadiness(params: {
     readiness: failures.length ? "likely_invalid" : "likely_valid",
     reason: failures.length ? failures.join("; ") : "Token hash, signature, active status, QR reference, expiry, and MSME approval are aligned.",
   } as const;
+}
+
+function publicVerificationPosture(params: {
+  credentialStatus: string;
+  tokenState: AdminDigitalIdQueueRow["tokenReadiness"];
+  signatureState: AdminDigitalIdQueueRow["signatureReadiness"];
+  qrState: AdminDigitalIdQueueRow["qrReadiness"];
+  expiry: AdminDigitalIdQueueRow["expiryState"];
+  duplicateRoutes: number;
+}): AdminDigitalIdQueueRow["publicVerificationPosture"] {
+  if (["revoked", "suspended"].includes(params.credentialStatus)) return "publicly_disabled";
+  if (params.tokenState === "missing" || params.signatureState === "missing" || params.qrState === "missing" || params.expiry === "expired") return "invalid";
+  if (params.tokenState === "unavailable" || params.signatureState === "unavailable" || params.qrState === "unavailable") return "warning";
+  if (params.qrState === "relative" || params.expiry === "expiring_soon" || params.duplicateRoutes > 1) return "warning";
+  return "healthy";
+}
+
+function trustPosture(params: {
+  credentialStatus: string;
+  verificationReviewStatus: string;
+  complianceStatus: string | null;
+  complaintCount: number | null;
+  openComplaintCount: number | null;
+  expiry: AdminDigitalIdQueueRow["expiryState"];
+  regenerationCount: number;
+  msmeSuspended: boolean;
+}): Pick<AdminDigitalIdQueueRow, "trustPosture" | "trustReasons"> {
+  const reasons: string[] = [];
+  if (params.credentialStatus === "revoked") reasons.push("Credential is revoked.");
+  if (params.credentialStatus === "suspended" || params.msmeSuspended) reasons.push("Credential or MSME is suspended.");
+  if (params.expiry === "expired") reasons.push("Credential verification window has expired.");
+  if (params.verificationReviewStatus !== "approved") reasons.push(`Verification review is ${params.verificationReviewStatus}.`);
+  if (params.complianceStatus && !["verified", "approved", "compliant", "active"].includes(params.complianceStatus)) reasons.push(`Compliance posture is ${params.complianceStatus.replaceAll("_", " ")}.`);
+  if ((params.openComplaintCount ?? 0) > 0) reasons.push(`${params.openComplaintCount} open complaint(s) present.`);
+  if ((params.complaintCount ?? 0) > 0 && (params.openComplaintCount ?? 0) === 0) reasons.push("Complaint history exists.");
+  if (params.regenerationCount >= 2) reasons.push("Repeated credential regeneration observed.");
+
+  if (params.credentialStatus === "revoked") return { trustPosture: "revoked_trust", trustReasons: reasons };
+  if (params.credentialStatus === "suspended" || params.msmeSuspended || params.expiry === "expired") return { trustPosture: "restricted", trustReasons: reasons };
+  if (reasons.length) return { trustPosture: "watch", trustReasons: reasons };
+  return { trustPosture: "trusted", trustReasons: ["Active credential, approved verification, no open complaints, and current validity window are aligned."] };
 }
 
 function attentionRank(value: AdminDigitalIdQueueRow["attentionLevel"]) {
@@ -531,6 +608,16 @@ function applyFilters(rows: Array<{ row: AdminDigitalIdQueueRow; msme?: Row }>, 
     if (filters.qrReadiness && row.qrReadiness !== filters.qrReadiness) return false;
     if (filters.expiryState && row.expiryState !== filters.expiryState) return false;
     if (filters.attentionLevel && row.attentionLevel !== filters.attentionLevel) return false;
+    if (filters.publicVerificationPosture && row.publicVerificationPosture !== filters.publicVerificationPosture) return false;
+    if (filters.trustPosture && row.trustPosture !== filters.trustPosture) return false;
+    if (filters.operationalFilter === "expiring_soon" && !["expiring_7_days", "expiring_30_days"].includes(row.expiryPosture)) return false;
+    if (filters.operationalFilter === "revoked" && row.credentialStatus !== "revoked") return false;
+    if (filters.operationalFilter === "suspended" && row.credentialStatus !== "suspended") return false;
+    if (filters.operationalFilter === "renewal_pending" && row.credentialStatus !== "renewal_pending") return false;
+    if (filters.operationalFilter === "public_verification_issue" && !["warning", "invalid"].includes(row.publicVerificationPosture)) return false;
+    if (filters.operationalFilter === "missing_qr" && row.qrReadiness !== "missing") return false;
+    if (filters.operationalFilter === "repeated_regeneration" && row.regenerationCount < 2) return false;
+    if (filters.operationalFilter === "overdue_renewal" && row.expiryPosture !== "overdue_renewal") return false;
     if (filters.state && row.state !== filters.state) return false;
     if (filters.sector && row.sector !== filters.sector) return false;
     if (!dateInRange(row.createdAt, filters.createdFrom, filters.createdTo)) return false;
@@ -573,6 +660,9 @@ export function adminDigitalIdFiltersForDiagnostics(filters: AdminDigitalIdFilte
     qrReadiness: filters.qrReadiness ?? null,
     expiryState: filters.expiryState ?? null,
     attentionLevel: filters.attentionLevel ?? null,
+    operationalFilter: filters.operationalFilter ?? null,
+    publicVerificationPosture: filters.publicVerificationPosture ?? null,
+    trustPosture: filters.trustPosture ?? null,
     state: filters.state ?? null,
     sector: filters.sector ?? null,
     createdFrom: filters.createdFrom ?? null,
@@ -633,6 +723,12 @@ export async function loadAdminDigitalIdQueue(
   const complaintCounts = buildComplaintCounts(complaintsResult.rows);
   const eventsByCredential = buildEventsByCredential(eventsResult.rows);
   const activityByCredential = buildActivitySignalsByCredential(activityLogsResult.rows);
+  const publicRouteCounts = new Map<string, number>();
+  for (const credential of credentialsResult.rows) {
+    const route = asString(credential.qr_code_ref);
+    if (!route) continue;
+    publicRouteCounts.set(route, (publicRouteCounts.get(route) ?? 0) + 1);
+  }
 
   const decorated = credentialsResult.rows
     .filter((credential) => asString(credential.id))
@@ -653,17 +749,21 @@ export async function loadAdminDigitalIdQueue(
       const signatureState = boolAvailability(credential, "public_signature");
       const qrState = qrReadiness(credential);
       const expiry = expiryState(credential);
-      const publicStatus = publicReadiness({ credential, msme, tokenReadiness: tokenState, signatureReadiness: signatureState, qrState, expiry });
-      const regenerationCount = Math.max(Number(credential.regeneration_count ?? 0), events.filter((event) => event.action === "reissued").length, activity?.regenerationCount ?? 0);
-      const msmeReviewStatus = normalizeStatus(msme?.review_status, sources.msmes.available ? "pending" : "unavailable");
-      const msmeVerificationStatus = normalizeStatus(msme?.verification_status, sources.msmes.available ? "pending" : "unavailable");
-      const verificationReviewStatus = sources.verification_reviews.available ? normalizeStatus(review?.status, "missing") : "unavailable";
       const issuedAt = asString(credential.issued_at) || null;
       const createdAt = asString(credential.created_at) || issuedAt;
       const approvedAt = asString(credential.approved_at) || null;
       const expiryAt = asString(credential.token_expires_at) || null;
       const qrRef = asString(credential.qr_code_ref) || null;
+      const duplicateRoutes = qrRef ? publicRouteCounts.get(qrRef) ?? 0 : 0;
+      const publicStatus = publicReadiness({ credential, msme, tokenReadiness: tokenState, signatureReadiness: signatureState, qrState, expiry, duplicateRoutes });
+      const regenerationCount = Math.max(Number(credential.regeneration_count ?? 0), events.filter((event) => event.action === "reissued").length, activity?.regenerationCount ?? 0);
+      const msmeReviewStatus = normalizeStatus(msme?.review_status, sources.msmes.available ? "pending" : "unavailable");
+      const msmeVerificationStatus = normalizeStatus(msme?.verification_status, sources.msmes.available ? "pending" : "unavailable");
+      const verificationReviewStatus = sources.verification_reviews.available ? normalizeStatus(review?.status, "missing") : "unavailable";
+      const renewalRequestedAt = asString(credential.renewal_requested_at) || null;
+      const expiryPostureValue = expiryPosture({ expiry, expiryAt, credentialStatus, renewalRequestedAt });
       const signals: AdminDigitalIdAttentionSignal[] = [];
+      const qrRouteSignals: AdminDigitalIdAttentionSignal[] = [];
 
       if (tokenState === "missing") signals.push({ code: "missing_token_hash", label: "Missing token hash", severity: "critical" });
       if (signatureState === "missing") signals.push({ code: "missing_signature", label: "Missing public signature", severity: "critical" });
@@ -674,13 +774,31 @@ export async function loadAdminDigitalIdQueue(
       if (Boolean(msme?.suspended) && credentialStatus === "active") signals.push({ code: "suspended_msme_active_credential", label: "Suspended MSME has active credential", severity: "critical" });
       if (credentialStatus === "active" && msmeReviewStatus !== "approved") signals.push({ code: "active_msme_not_approved", label: "Active credential but MSME not approved", severity: "critical" });
       if (credentialStatus === "pending" && (ageDays(createdAt) ?? 0) >= PENDING_AGE_THRESHOLD_DAYS) signals.push({ code: "stale_pending_credential", label: `Pending credential older than ${PENDING_AGE_THRESHOLD_DAYS} days`, severity: "elevated" });
-      if (qrState === "missing") signals.push({ code: "missing_public_route", label: "Public verification URL missing", severity: "elevated" });
-      if (qrState === "relative") signals.push({ code: "relative_public_route", label: "Public verification URL is relative-only", severity: "watch" });
+      if (qrState === "missing") qrRouteSignals.push({ code: "qr_missing", label: "QR missing", severity: "elevated" });
+      if (qrState === "relative") qrRouteSignals.push({ code: "relative_public_route", label: "Relative-only route", severity: "watch" });
+      if (duplicateRoutes > 1) qrRouteSignals.push({ code: "duplicate_public_route", label: "Duplicate public route", severity: "critical" });
+      if (["revoked", "suspended"].includes(credentialStatus) && qrState !== "missing" && qrState !== "unavailable") qrRouteSignals.push({ code: `${credentialStatus}_publicly_reachable`, label: `${credentialStatus.replaceAll("_", " ")} but route present`, severity: "critical" });
+      if (credentialStatus === "active" && expiry === "expired" && qrState !== "missing") qrRouteSignals.push({ code: "expired_reachable", label: "Expired credential still reachable", severity: "critical" });
+      if (regenerationCount >= 2) qrRouteSignals.push({ code: "frequent_regeneration", label: "Regenerated frequently", severity: "elevated" });
+      signals.push(...qrRouteSignals);
       if (!events.length && sources.credential_events.available) signals.push({ code: "no_event_history", label: "Credential has no event history", severity: "watch" });
       if (regenerationCount >= 2) signals.push({ code: "repeated_token_regeneration", label: `${regenerationCount} token reissue events`, severity: "elevated" });
       if (publicStatus.readiness === "likely_invalid") signals.push({ code: "public_verification_issue", label: "Public verification likely invalid", severity: "elevated" });
 
       const attention = attentionLevel(signals);
+      const complianceStatus = normalizeStatus(compliance?.overall_status ?? legacyCompliance?.overall_status, "") || null;
+      const complaintCount = sources.complaints.available ? complaints?.total ?? 0 : null;
+      const openComplaintCount = sources.complaints.available ? complaints?.open ?? 0 : null;
+      const trust = trustPosture({
+        credentialStatus,
+        verificationReviewStatus,
+        complianceStatus,
+        complaintCount,
+        openComplaintCount,
+        expiry,
+        regenerationCount,
+        msmeSuspended: Boolean(msme?.suspended),
+      });
       const partialRow = {
         attentionSignals: signals,
         publicVerificationReadiness: publicStatus.readiness,
@@ -713,24 +831,34 @@ export async function loadAdminDigitalIdQueue(
         signatureReadiness: signatureState,
         qrReadiness: qrState,
         publicVerificationReadiness: publicStatus.readiness,
+        publicVerificationPosture: publicVerificationPosture({ credentialStatus, tokenState, signatureState, qrState, expiry, duplicateRoutes }),
         publicVerificationReason: publicStatus.reason,
-        publicVerificationRoute: qrRef,
-        safeTestHref: safeHref(qrRef),
+        publicRouteAvailable: Boolean(qrRef),
+        routeDuplicateCount: duplicateRoutes,
         expiryState: expiry,
+        expiryPosture: expiryPostureValue,
+        daysUntilExpiry: daysUntil(expiryAt),
+        renewalPendingDays: ageDays(renewalRequestedAt),
         latestCredentialEvent: events[0]?.action ?? null,
         latestCredentialEventAt: events[0]?.createdAt ?? null,
         eventPreview: events.slice(0, 5),
         eventTimeline: events.slice(0, 20),
         attentionLevel: attention,
         attentionSignals: signals,
-        complianceStatus: normalizeStatus(compliance?.overall_status ?? legacyCompliance?.overall_status, "") || null,
+        complianceStatus,
         complianceScore: Number.isFinite(Number(compliance?.compliance_score ?? legacyCompliance?.score)) ? Number(compliance?.compliance_score ?? legacyCompliance?.score) : null,
-        complaintCount: sources.complaints.available ? complaints?.total ?? 0 : null,
-        openComplaintCount: sources.complaints.available ? complaints?.open ?? 0 : null,
+        complaintCount,
+        openComplaintCount,
         cacMasked: maskTrailing(msme?.cac_number ?? validation?.cac_number),
         tinMasked: maskTrailing(msme?.tin ?? validation?.tin),
         recommendedFocus: recommendedFocus(partialRow),
         regenerationCount,
+        lastRegeneratedAt: asString(credential.last_regenerated_at) || null,
+        tokenInvalidatedAt: asString(credential.token_invalidated_at) || null,
+        lifecycleVersion: Number(credential.lifecycle_version ?? 0),
+        trustPosture: trust.trustPosture,
+        trustReasons: trust.trustReasons,
+        qrRouteSignals,
       };
       return { row, msme };
     });
@@ -767,6 +895,18 @@ export async function loadAdminDigitalIdQueue(
       qrReadiness: uniqueSorted(allRows.map((row) => row.qrReadiness)),
       expiryStates: uniqueSorted(allRows.map((row) => row.expiryState)),
       attentionLevels: uniqueSorted(allRows.map((row) => row.attentionLevel)),
+      operationalFilters: [
+        { value: "expiring_soon", label: "Expiring soon" },
+        { value: "revoked", label: "Revoked" },
+        { value: "suspended", label: "Suspended" },
+        { value: "renewal_pending", label: "Renewal pending" },
+        { value: "public_verification_issue", label: "Public verification issue" },
+        { value: "missing_qr", label: "Missing QR" },
+        { value: "repeated_regeneration", label: "Repeated regeneration" },
+        { value: "overdue_renewal", label: "Overdue renewal" },
+      ],
+      publicVerificationPostures: uniqueSorted(allRows.map((row) => row.publicVerificationPosture)),
+      trustPostures: uniqueSorted(allRows.map((row) => row.trustPosture)),
       states: uniqueSorted(allRows.map((row) => row.state)),
       sectors: uniqueSorted(allRows.map((row) => row.sector)),
       sortOptions: [
@@ -797,11 +937,16 @@ export function buildAdminDigitalIdQueueCsv(rows: AdminDigitalIdQueueRow[]) {
     "Approved Date",
     "Expiry Date",
     "Expiry State",
+    "Expiry Posture",
     "Token Hash Readiness",
     "Signature Readiness",
     "QR Readiness",
     "Public Verification Readiness",
+    "Public Verification Posture",
     "Public Verification Reason",
+    "Trust Posture",
+    "Trust Reasons",
+    "Regeneration Count",
     "Latest Credential Event",
     "Latest Credential Event Date",
     "Attention Level",
@@ -832,11 +977,16 @@ export function buildAdminDigitalIdQueueCsv(rows: AdminDigitalIdQueueRow[]) {
       row.approvedAt,
       row.expiryAt,
       row.expiryState,
+      row.expiryPosture,
       row.tokenReadiness,
       row.signatureReadiness,
       row.qrReadiness,
       row.publicVerificationReadiness,
+      row.publicVerificationPosture,
       row.publicVerificationReason,
+      row.trustPosture,
+      row.trustReasons.join("; "),
+      row.regenerationCount,
       row.latestCredentialEvent,
       row.latestCredentialEventAt,
       row.attentionLevel,

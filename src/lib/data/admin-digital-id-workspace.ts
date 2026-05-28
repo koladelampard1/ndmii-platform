@@ -19,6 +19,13 @@ type Row = Record<string, unknown>;
 export type AdminDigitalIdWorkspaceSourceName =
   | "digital_identity_credentials"
   | "credential_events"
+  | "msmes"
+  | "verification_reviews"
+  | "verification_review_events"
+  | "validation_results"
+  | "complaints"
+  | "compliance_profiles"
+  | "msme_compliance_profiles"
   | "activity_logs"
   | "users";
 
@@ -44,12 +51,33 @@ export type AdminDigitalIdWorkspace = {
   notes: Array<{ id: string; note: string; actorRole: string | null; createdAt: string | null }>;
   readiness: {
     publicVerification: AdminDigitalIdQueueRow["publicVerificationReadiness"];
+    publicVerificationPosture: AdminDigitalIdQueueRow["publicVerificationPosture"];
     publicReason: string;
     qr: AdminDigitalIdQueueRow["qrReadiness"];
     tokenHash: AdminDigitalIdQueueRow["tokenReadiness"];
     signature: AdminDigitalIdQueueRow["signatureReadiness"];
-    safeTestHref: string | null;
+    routeAvailable: boolean;
+    routeDuplicateCount: number;
   };
+  expiry: {
+    posture: AdminDigitalIdQueueRow["expiryPosture"];
+    daysUntilExpiry: number | null;
+    renewalPendingDays: number | null;
+    expiresAt: string | null;
+  };
+  regeneration: {
+    total: number;
+    recent: AdminDigitalIdEvent[];
+    suspiciousBurst: boolean;
+    repeatedRevocationReissue: boolean;
+    routeInvalidatedAt: string | null;
+    lastRegeneratedAt: string | null;
+  };
+  trust: {
+    posture: AdminDigitalIdQueueRow["trustPosture"];
+    reasons: string[];
+  };
+  qrRouteSignals: AdminDigitalIdAttentionSignal[];
   attentionSignals: AdminDigitalIdAttentionSignal[];
   reviewers: Array<{ id: string; label: string; role: string }>;
   sources: Record<AdminDigitalIdWorkspaceSourceName, AdminDigitalIdSourceState>;
@@ -110,6 +138,26 @@ async function readActivity(supabase: SupabaseClient<any>, credentialId: string)
   return { rows: (data ?? []) as Row[], source: { available: true, message: null } };
 }
 
+async function readVerificationReviewEvents(supabase: SupabaseClient<any>, msmeId: string) {
+  const { data: reviews, error: reviewError } = await supabase
+    .from("verification_reviews")
+    .select("id")
+    .eq("msme_id", msmeId)
+    .limit(10);
+  if (reviewError) return { rows: [], source: { available: false, message: reviewError.message } };
+  const reviewIds = (reviews ?? []).map((row: Row) => asString(row.id)).filter(Boolean);
+  if (!reviewIds.length) return { rows: [], source: { available: true, message: null } };
+
+  const { data, error } = await supabase
+    .from("verification_review_events")
+    .select("id,verification_review_id,event_type,actor_role,previous_status,new_status,metadata,created_at")
+    .in("verification_review_id", reviewIds)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) return { rows: [], source: { available: false, message: error.message } };
+  return { rows: (data ?? []) as Row[], source: { available: true, message: null } };
+}
+
 async function readUsers(supabase: SupabaseClient<any>) {
   const { data, error } = await supabase
     .from("users")
@@ -125,7 +173,9 @@ function toEvent(row: Row): AdminDigitalIdEvent {
   const previous = asString(metadata.previous_status);
   const next = asString(metadata.new_status);
   const reason = asString(metadata.reason);
-  const action = asString(row.action) || "event";
+  const action = asString(row.action) || asString(row.event_type) || "event";
+  const previousStatus = previous || asString(row.previous_status);
+  const nextStatus = next || asString(row.new_status);
   return {
     id: asString(row.id) || `${action}-${asString(row.created_at)}`,
     action,
@@ -133,7 +183,7 @@ function toEvent(row: Row): AdminDigitalIdEvent {
     createdAt: asString(row.created_at) || null,
     summary: [
       action.replaceAll("_", " "),
-      previous && next ? `${previous} to ${next}` : "",
+      previousStatus && nextStatus ? `${previousStatus} to ${nextStatus}` : "",
       reason ? `Reason: ${reason}` : "",
     ].filter(Boolean).join(" - "),
   };
@@ -168,6 +218,7 @@ export async function getAdminDigitalIdWorkspace(
     readActivity(supabase, credentialId),
     readUsers(supabase),
   ]);
+  const reviewEventsResult = await readVerificationReviewEvents(supabase, row.msmeRowId ?? "");
 
   const meta = metaResult.data ?? {};
   const users = usersResult.rows;
@@ -176,9 +227,10 @@ export async function getAdminDigitalIdWorkspace(
     const match = users.find((user) => asString(user.id) === id);
     return asString(match?.full_name) || asString(match?.email) || null;
   };
-  const timeline = [...eventResult.rows.map(toEvent), ...activityResult.rows.map(toEvent)]
+  const timeline = [...eventResult.rows.map(toEvent), ...activityResult.rows.map(toEvent), ...reviewEventsResult.rows.map(toEvent)]
     .sort((a, b) => (Date.parse(b.createdAt ?? "") || 0) - (Date.parse(a.createdAt ?? "") || 0));
   const regenerationHistory = timeline.filter((event) => event.action.includes("reissue") || event.action.includes("regenerate"));
+  const revocationCount = timeline.filter((event) => event.action.includes("revoke") || event.action.includes("revoked")).length;
   const issuanceHistory = timeline.filter((event) => ["issued", "approved", "active", "activate", "approve_renewal", "reinstate"].some((token) => event.action.includes(token)));
   const status = normalizeDigitalIdLifecycleStatus(row.credentialStatus);
   const assignedReviewerId = asString(meta.assigned_reviewer_id) || null;
@@ -207,12 +259,30 @@ export async function getAdminDigitalIdWorkspace(
     notes: buildNotes(eventResult.rows, activityResult.rows),
     readiness: {
       publicVerification: row.publicVerificationReadiness,
+      publicVerificationPosture: row.publicVerificationPosture,
       publicReason: row.publicVerificationReason,
       qr: row.qrReadiness,
       tokenHash: row.tokenReadiness,
       signature: row.signatureReadiness,
-      safeTestHref: row.safeTestHref,
+      routeAvailable: row.publicRouteAvailable,
+      routeDuplicateCount: row.routeDuplicateCount,
     },
+    expiry: {
+      posture: row.expiryPosture,
+      daysUntilExpiry: row.daysUntilExpiry,
+      renewalPendingDays: row.renewalPendingDays,
+      expiresAt: row.expiryAt,
+    },
+    regeneration: {
+      total: row.regenerationCount,
+      recent: regenerationHistory.filter((event) => (Date.now() - (Date.parse(event.createdAt ?? "") || 0)) <= 30 * 86_400_000).slice(0, 10),
+      suspiciousBurst: regenerationHistory.filter((event) => (Date.now() - (Date.parse(event.createdAt ?? "") || 0)) <= 7 * 86_400_000).length >= 2,
+      repeatedRevocationReissue: revocationCount >= 2 && row.regenerationCount >= 2,
+      routeInvalidatedAt: row.tokenInvalidatedAt,
+      lastRegeneratedAt: row.lastRegeneratedAt,
+    },
+    trust: { posture: row.trustPosture, reasons: row.trustReasons },
+    qrRouteSignals: row.qrRouteSignals,
     attentionSignals: row.attentionSignals,
     reviewers: users.map((user) => ({
       id: asString(user.id),
@@ -221,8 +291,15 @@ export async function getAdminDigitalIdWorkspace(
     })).filter((user) => user.id),
     sources: {
       digital_identity_credentials: metaResult.source,
-      credential_events: eventResult.source,
-      activity_logs: activityResult.source,
+      credential_events: queue.sources.credential_events.available ? queue.sources.credential_events : eventResult.source,
+      msmes: queue.sources.msmes,
+      verification_reviews: queue.sources.verification_reviews,
+      verification_review_events: reviewEventsResult.source,
+      validation_results: queue.sources.validation_results,
+      complaints: queue.sources.complaints,
+      compliance_profiles: queue.sources.compliance_profiles,
+      msme_compliance_profiles: queue.sources.msme_compliance_profiles,
+      activity_logs: queue.sources.activity_logs.available ? queue.sources.activity_logs : activityResult.source,
       users: usersResult.source,
     },
   };

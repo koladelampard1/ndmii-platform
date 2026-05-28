@@ -57,7 +57,7 @@ export async function submitAdminDigitalIdAction(_state: AdminDigitalIdActionSta
     const baseMessage = result.noOp && result.message
       ? result.message
       : action === "regenerate_token"
-      ? `Verification route regenerated: ${result.publicRoute ?? "route unavailable"}`
+      ? "Verification route regenerated. Public URL and token material are hidden in the admin workspace."
       : ACTION_MESSAGES[action] ?? "Action completed.";
     return { ok: true, message: baseMessage };
   } catch (error) {

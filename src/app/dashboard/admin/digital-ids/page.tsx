@@ -57,6 +57,9 @@ function parseFilters(params: Record<string, string | string[] | undefined>): Ad
     qrReadiness: firstParam(params.qrReadiness),
     expiryState: firstParam(params.expiryState),
     attentionLevel: firstParam(params.attentionLevel),
+    operationalFilter: firstParam(params.operationalFilter),
+    publicVerificationPosture: firstParam(params.publicVerificationPosture),
+    trustPosture: firstParam(params.trustPosture),
     state: firstParam(params.state),
     sector: firstParam(params.sector),
     createdFrom: firstParam(params.createdFrom),
@@ -100,9 +103,9 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "absolute"].includes(normalized)) return "emerald";
-  if (["pending", "watch", "relative", "expiring_soon"].includes(normalized)) return "amber";
-  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "critical", "elevated", "active_expired"].includes(normalized)) return "rose";
+  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "absolute", "healthy", "trusted"].includes(normalized)) return "emerald";
+  if (["pending", "watch", "relative", "expiring_soon", "expiring_7_days", "expiring_30_days", "warning"].includes(normalized)) return "amber";
+  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "critical", "elevated", "active_expired", "invalid", "publicly_disabled", "restricted", "revoked_trust", "overdue_renewal", "expired_active"].includes(normalized)) return "rose";
   if (["unavailable"].includes(normalized)) return "slate";
   return "blue";
 }
@@ -272,15 +275,9 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
             <StatusPill value={row.qrReadiness} fallback="QR" />
             <StatusPill value={row.publicVerificationReadiness} />
           </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">{row.publicVerificationRoute ? "Public verification route is present. Raw token is hidden." : "No QR/public verification route available."}</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">{row.publicRouteAvailable ? "Public verification route binding is present. URL and token material are hidden." : "No QR/public verification route binding available."}</p>
           <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{row.publicVerificationReason}</p>
-          {row.safeTestHref ? (
-            <Link href={row.safeTestHref} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              Test public link
-            </Link>
-          ) : null}
-          <Link href={`/dashboard/admin/digital-ids/${encodeURIComponent(row.credentialId)}`} className="mt-3 ml-2 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">
+          <Link href={`/dashboard/admin/digital-ids/${encodeURIComponent(row.credentialId)}`} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             Open lifecycle workspace
           </Link>
@@ -307,6 +304,13 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
 
         <PreviewSection title="Recommended next operational focus">
           <p className="text-sm font-semibold leading-6 text-slate-800">{row.recommendedFocus}</p>
+        </PreviewSection>
+
+        <PreviewSection title="Trust posture">
+          <StatusPill value={row.trustPosture} />
+          <div className="mt-2 space-y-1">
+            {row.trustReasons.slice(0, 3).map((reason) => <p key={reason} className="text-xs font-semibold leading-5 text-slate-600">{reason}</p>)}
+          </div>
         </PreviewSection>
       </div>
     </aside>
@@ -406,6 +410,9 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
           <SelectFilter name="qrReadiness" label="QR readiness" value={filters.qrReadiness} options={queue.options.qrReadiness} />
           <SelectFilter name="expiryState" label="Expiry state" value={filters.expiryState} options={queue.options.expiryStates} />
           <SelectFilter name="attentionLevel" label="Attention" value={filters.attentionLevel} options={queue.options.attentionLevels} />
+          <SelectFilter name="operationalFilter" label="Operational issue" value={filters.operationalFilter} options={queue.options.operationalFilters} />
+          <SelectFilter name="publicVerificationPosture" label="Public posture" value={filters.publicVerificationPosture} options={queue.options.publicVerificationPostures} />
+          <SelectFilter name="trustPosture" label="Trust posture" value={filters.trustPosture} options={queue.options.trustPostures} />
           <SelectFilter name="state" label="State" value={filters.state} options={queue.options.states} />
           <SelectFilter name="sector" label="Sector" value={filters.sector} options={queue.options.sectors} />
           <label className="space-y-1">
@@ -433,7 +440,7 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
             <p className="text-xs font-bold text-slate-500">Page {queue.page} of {queue.totalPages}</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-[2200px] w-full text-left text-sm">
+            <table className="min-w-[2600px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Business</th>
@@ -448,6 +455,8 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                   <th className="px-4 py-3">Token/signature</th>
                   <th className="px-4 py-3">QR readiness</th>
                   <th className="px-4 py-3">Public verification</th>
+                  <th className="px-4 py-3">Trust posture</th>
+                  <th className="px-4 py-3">Regeneration</th>
                   <th className="px-4 py-3">Latest event</th>
                   <th className="px-4 py-3">Attention</th>
                   <th className="px-4 py-3">Event preview</th>
@@ -456,7 +465,7 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
               <tbody>
                 {queue.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-4 py-12 text-center">
+                    <td colSpan={17} className="px-4 py-12 text-center">
                       <QrCode className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
                       <p className="mt-3 text-sm font-black text-slate-600">No digital ID credentials match the current filters.</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">Clear filters to review all available credential records.</p>
@@ -488,7 +497,7 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                       <td className="px-4 py-3 font-semibold text-slate-700">{formatDate(row.approvedAt)}</td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-slate-700">{formatDate(row.expiryAt)}</p>
-                        <StatusPill value={row.expiryState} />
+                        <StatusPill value={row.expiryPosture} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
@@ -498,8 +507,16 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                       </td>
                       <td className="px-4 py-3"><StatusPill value={row.qrReadiness} /></td>
                       <td className="px-4 py-3">
-                        <StatusPill value={row.publicVerificationReadiness} />
+                        <StatusPill value={row.publicVerificationPosture} />
                         <p className="mt-1 max-w-[260px] text-xs font-semibold text-slate-500">{row.publicVerificationReason}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill value={row.trustPosture} />
+                        <p className="mt-1 max-w-[240px] text-xs font-semibold text-slate-500">{row.trustReasons[0] ?? "No trust exceptions detected."}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-black text-slate-800">{row.regenerationCount.toLocaleString()}</p>
+                        <p className="text-xs font-semibold text-slate-500">{formatDate(row.lastRegeneratedAt)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-black text-slate-800">{humanize(row.latestCredentialEvent, "No event")}</p>

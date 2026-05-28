@@ -5,14 +5,16 @@ import {
   ArrowLeft,
   BadgeCheck,
   CalendarClock,
+  Gauge,
   FileClock,
   History,
   IdCard,
   KeyRound,
-  Link2,
   MessageSquareText,
   QrCode,
+  ShieldCheck,
   ShieldAlert,
+  Store,
   UserRound,
 } from "lucide-react";
 import { LifecycleDecisionPanel } from "@/components/admin/digital-ids/lifecycle-decision-panel";
@@ -43,10 +45,10 @@ function humanize(value: string | null | undefined, fallback = "Unavailable") {
 
 function statusTone(value: string | null | undefined): Tone {
   const normalized = String(value ?? "").toLowerCase();
-  if (["active", "approved", "ready", "valid", "likely_valid", "normal"].includes(normalized)) return "emerald";
-  if (["pending", "watch", "expiring_soon", "renewal_pending"].includes(normalized)) return "amber";
-  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "critical", "elevated"].includes(normalized)) return "rose";
-  if (["unavailable"].includes(normalized)) return "slate";
+  if (["active", "approved", "ready", "valid", "likely_valid", "normal", "healthy", "trusted", "absolute"].includes(normalized)) return "emerald";
+  if (["pending", "watch", "warning", "expiring_soon", "expiring_7_days", "expiring_30_days", "renewal_pending", "relative"].includes(normalized)) return "amber";
+  if (["suspended", "revoked", "expired", "missing", "likely_invalid", "invalid", "publicly_disabled", "critical", "elevated", "restricted", "revoked_trust", "overdue_renewal", "expired_active"].includes(normalized)) return "rose";
+  if (["unavailable", "missing"].includes(normalized)) return "slate";
   return "blue";
 }
 
@@ -70,6 +72,17 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
       </div>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+function SignalList({ signals, emptyText = "No signals detected." }: { signals: Array<{ code: string; label: string; severity: "watch" | "elevated" | "critical" }>; emptyText?: string }) {
+  if (!signals.length) return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">{emptyText}</p>;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {signals.map((signal) => (
+        <span key={signal.code} className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${toneClasses[statusTone(signal.severity)]}`}>{signal.label}</span>
+      ))}
+    </div>
   );
 }
 
@@ -124,17 +137,58 @@ function Header({ workspace }: { workspace: AdminDigitalIdWorkspace }) {
       </Link>
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Credential lifecycle workspace</p>
+          <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Credential intelligence workspace</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{credential.businessName}</h1>
           <p className="mt-2 break-all text-sm font-bold text-slate-500">{credential.ndmiiId}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusPill value={credential.lifecycleState} />
           <StatusPill value={credential.attentionLevel} />
-          <StatusPill value={credential.publicVerificationReadiness} />
+          <StatusPill value={workspace.readiness.publicVerificationPosture} />
+          <StatusPill value={workspace.trust.posture} />
         </div>
       </div>
     </header>
+  );
+}
+
+function OperationalSidePanel({ workspace, role }: { workspace: AdminDigitalIdWorkspace; role: Awaited<ReturnType<typeof requireRole>>["role"] }) {
+  const { credential } = workspace;
+  return (
+    <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Operational posture</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">{humanize(credential.lifecycleState)}</h2>
+          </div>
+          <StatusPill value={role} />
+        </div>
+        <dl className="mt-4 grid gap-3">
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned reviewer</dt><dd className="mt-1 text-sm font-black text-slate-950">{credential.assignedReviewerName ?? "Unassigned"}</dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned admin</dt><dd className="mt-1 text-sm font-black text-slate-950">{credential.assignedAdminName ?? "Unassigned"}</dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Attention level</dt><dd className="mt-1"><StatusPill value={credential.attentionLevel} /></dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Credential health</dt><dd className="mt-1 flex flex-wrap gap-2"><StatusPill value={workspace.readiness.publicVerificationPosture} /><StatusPill value={workspace.expiry.posture} /><StatusPill value={workspace.trust.posture} /></dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Regenerations</dt><dd className="mt-1 text-sm font-black text-slate-950">{workspace.regeneration.total.toLocaleString()}</dd></div>
+          <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Last activity</dt><dd className="mt-1 text-sm font-black text-slate-950">{formatDateTime(workspace.timeline[0]?.createdAt ?? credential.updatedAt)}</dd></div>
+        </dl>
+      </section>
+
+      <LifecycleDecisionPanel
+        credentialId={credential.credentialId}
+        role={role}
+        status={workspace.lifecycle.status}
+        allowedActions={workspace.lifecycle.allowedActions}
+        internalNotes={credential.internalNotes}
+        assignedReviewerId={credential.assignedReviewerId}
+        assignedReviewerName={credential.assignedReviewerName}
+        assignedAdminId={credential.assignedAdminId}
+        assignedAdminName={credential.assignedAdminName}
+        reviewers={workspace.reviewers}
+        regenerationCount={credential.regenerationCount}
+        lastRegeneratedAt={credential.lastRegeneratedAt}
+      />
+    </aside>
   );
 }
 
@@ -182,40 +236,84 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
               <StatusPill value={workspace.readiness.tokenHash} fallback="Token hash" />
               <StatusPill value={workspace.readiness.signature} fallback="Signature" />
               <StatusPill value={workspace.readiness.qr} fallback="QR" />
-              <StatusPill value={workspace.readiness.publicVerification} />
+              <StatusPill value={workspace.readiness.publicVerificationPosture} />
             </div>
             <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">{workspace.readiness.publicReason}</p>
-            <p className="mt-2 text-xs font-bold text-slate-500">{credential.publicVerificationRoute ? "Public verification route is present. Raw token is hidden in this workspace." : "No public verification route available."}</p>
-            {workspace.readiness.safeTestHref ? (
-              <Link href={workspace.readiness.safeTestHref} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
-                <Link2 className="h-3.5 w-3.5" />Test public link
-              </Link>
-            ) : null}
+            <DataGrid rows={[
+              { label: "Public route binding", value: workspace.readiness.routeAvailable ? "Present" : "Missing" },
+              { label: "QR generation readiness", value: <StatusPill value={workspace.readiness.qr} /> },
+              { label: "Public disabled state", value: ["revoked", "suspended"].includes(credential.credentialStatus) ? "Disabled by lifecycle" : "Not disabled" },
+              { label: "Duplicate route bindings", value: workspace.readiness.routeDuplicateCount > 1 ? `${workspace.readiness.routeDuplicateCount} credentials` : "None detected" },
+            ]} />
+            <p className="mt-3 text-xs font-bold text-slate-500">Operational signal only. Verification URLs, raw tokens, token hashes, signatures, and internal route IDs are not displayed.</p>
+          </SectionCard>
+
+          <SectionCard title="Public verification intelligence" icon={ShieldCheck}>
+            <DataGrid rows={[
+              { label: "Token hash", value: <StatusPill value={workspace.readiness.tokenHash} /> },
+              { label: "Signature", value: <StatusPill value={workspace.readiness.signature} /> },
+              { label: "Route available", value: workspace.readiness.routeAvailable ? "Yes" : "No" },
+              { label: "Validity window", value: `${formatDateTime(credential.approvedAt)} to ${formatDateTime(workspace.expiry.expiresAt)}` },
+              { label: "Expiry posture", value: <StatusPill value={workspace.expiry.posture} /> },
+              { label: "Verification URL health", value: <StatusPill value={workspace.readiness.publicVerificationPosture} /> },
+            ]} />
+          </SectionCard>
+
+          <SectionCard title="QR / route health" icon={QrCode}>
+            <SignalList signals={workspace.qrRouteSignals} emptyText="QR route binding has no detected mismatch, duplicate, disabled-route, or expiry reachability signals." />
+            <DataGrid rows={[
+              { label: "Last regeneration", value: formatDateTime(workspace.regeneration.lastRegeneratedAt) },
+              { label: "Regeneration count", value: workspace.regeneration.total.toLocaleString() },
+              { label: "Invalidation timestamp", value: formatDateTime(workspace.regeneration.routeInvalidatedAt) },
+              { label: "Lifecycle version", value: credential.lifecycleVersion.toLocaleString() },
+            ]} />
           </SectionCard>
 
           <SectionCard title="Expiry and renewal" icon={CalendarClock}>
             <DataGrid rows={[
               { label: "Expires", value: formatDateTime(credential.expiryAt) },
-              { label: "Expiry state", value: <StatusPill value={credential.expiryState} /> },
+              { label: "Expiry posture", value: <StatusPill value={workspace.expiry.posture} /> },
+              { label: "Expiry countdown", value: workspace.expiry.daysUntilExpiry === null ? "Unavailable" : `${workspace.expiry.daysUntilExpiry} day(s)` },
               { label: "Renewal requested", value: formatDateTime(credential.renewalRequestedAt) },
+              { label: "Renewal pending duration", value: workspace.expiry.renewalPendingDays === null ? "Not pending" : `${workspace.expiry.renewalPendingDays} day(s)` },
               { label: "Lifecycle state", value: <StatusPill value={credential.lifecycleState} /> },
             ]} />
           </SectionCard>
 
-          <SectionCard title="Issuance history" icon={BadgeCheck}>
-            <Timeline items={workspace.issuanceHistory} emptyText="No issuance or activation history is available." />
-          </SectionCard>
-
-          <SectionCard title="Regeneration history" icon={KeyRound}>
-            <Timeline items={workspace.regenerationHistory} emptyText="No token regeneration history is available." />
-          </SectionCard>
-
-          <SectionCard title="Attention signals" icon={ShieldAlert}>
-            <div className="flex flex-wrap gap-2">
-              {workspace.attentionSignals.length ? workspace.attentionSignals.map((signal) => (
-                <span key={signal.code} className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${toneClasses[statusTone(signal.severity)]}`}>{signal.label}</span>
-              )) : <StatusPill value="normal" fallback="No attention signals" />}
+          <SectionCard title="Regeneration intelligence" icon={KeyRound}>
+            <DataGrid rows={[
+              { label: "Total regenerations", value: workspace.regeneration.total.toLocaleString() },
+              { label: "Recent regenerations", value: workspace.regeneration.recent.length.toLocaleString() },
+              { label: "Suspicious burst", value: workspace.regeneration.suspiciousBurst ? <StatusPill value="warning" /> : "No" },
+              { label: "Revocation / reissue cycle", value: workspace.regeneration.repeatedRevocationReissue ? <StatusPill value="warning" /> : "No" },
+            ]} />
+            <div className="mt-4">
+              <Timeline items={workspace.regeneration.recent} emptyText="No recent regeneration activity is available." />
             </div>
+          </SectionCard>
+
+          <SectionCard title="Compliance and verification posture" icon={Gauge}>
+            <DataGrid rows={[
+              { label: "Verification review", value: <StatusPill value={credential.verificationReviewStatus} /> },
+              { label: "MSME verification", value: <StatusPill value={credential.msmeVerificationStatus} /> },
+              { label: "Compliance", value: <StatusPill value={credential.complianceStatus} /> },
+              { label: "Compliance score", value: credential.complianceScore ?? "Unavailable" },
+            ]} />
+          </SectionCard>
+
+          <SectionCard title="Marketplace / trust signals" icon={Store}>
+            <div className="flex flex-wrap gap-2"><StatusPill value={workspace.trust.posture} /></div>
+            <ul className="mt-3 space-y-2">
+              {workspace.trust.reasons.map((reason) => <li key={reason} className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-700">{reason}</li>)}
+            </ul>
+          </SectionCard>
+
+          <SectionCard title="Risk indicators" icon={ShieldAlert}>
+            <SignalList signals={workspace.attentionSignals} emptyText="No attention-level risk indicators detected." />
+          </SectionCard>
+
+          <SectionCard title="Lifecycle timeline" icon={FileClock}>
+            <Timeline items={workspace.timeline} emptyText="No lifecycle events recorded yet." />
           </SectionCard>
 
           <SectionCard title="Internal notes" icon={MessageSquareText}>
@@ -242,25 +340,12 @@ export default async function AdminDigitalIdWorkspacePage({ params }: PageProps)
             </div>
           </SectionCard>
 
-          <SectionCard title="Lifecycle timeline" icon={FileClock}>
-            <Timeline items={workspace.timeline} emptyText="No lifecycle events recorded yet." />
+          <SectionCard title="Issuance history" icon={BadgeCheck}>
+            <Timeline items={workspace.issuanceHistory} emptyText="No issuance or activation history is available." />
           </SectionCard>
         </div>
 
-        <LifecycleDecisionPanel
-          credentialId={credential.credentialId}
-          role={ctx.role}
-          status={workspace.lifecycle.status}
-          allowedActions={workspace.lifecycle.allowedActions}
-          internalNotes={credential.internalNotes}
-          assignedReviewerId={credential.assignedReviewerId}
-          assignedReviewerName={credential.assignedReviewerName}
-          assignedAdminId={credential.assignedAdminId}
-          assignedAdminName={credential.assignedAdminName}
-          reviewers={workspace.reviewers}
-          regenerationCount={credential.regenerationCount}
-          lastRegeneratedAt={credential.lastRegeneratedAt}
-        />
+        <OperationalSidePanel workspace={workspace} role={ctx.role} />
       </div>
     </section>
   );
