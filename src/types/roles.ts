@@ -11,4 +11,5 @@ export type UserRole =
   | "fccpc_officer"
   | "nrs_officer"
   | "firs_officer"
-  | "admin";
+  | "admin"
+  | "super_admin";

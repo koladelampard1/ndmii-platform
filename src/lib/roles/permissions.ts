@@ -15,6 +15,7 @@ export const roleRouteMap: Record<UserRole, string[]> = {
   nrs_officer: ROLE_ROUTE_PREFIXES.nrs_officer,
   firs_officer: ROLE_ROUTE_PREFIXES.firs_officer,
   admin: ["/dashboard"],
+  super_admin: ["/dashboard"],
 };
 
 function routeMatchesPrefix(pathname: string, route: string) {
@@ -24,6 +25,6 @@ function routeMatchesPrefix(pathname: string, route: string) {
 export function isRouteAllowed(role: UserRole, pathname: string) {
   if (isPublicPath(pathname)) return true;
   if (role === "public") return false;
-  if (role === "admin") return routeMatchesPrefix(pathname, "/dashboard");
+  if (role === "admin" || role === "super_admin") return routeMatchesPrefix(pathname, "/dashboard");
   return roleRouteMap[role].some((route) => routeMatchesPrefix(pathname, route));
 }

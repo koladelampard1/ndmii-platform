@@ -6,6 +6,7 @@ import type { UserRole } from "@/types/roles";
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
   admin: "Administrator",
+  super_admin: "Super Administrator",
   boi_executive: "BOI Executive",
   programme_officer: "Programme Officer",
   assessment_officer: "Assessment Officer",
@@ -22,8 +23,8 @@ const ROLE_LABEL: Record<UserRole, string> = {
 export async function Sidebar() {
   const { role } = await getCurrentUserContext();
   const navGroups: NavigationGroup[] =
-    role === "admin"
-      ? ROLE_NAV_GROUPS.admin ?? [{ label: "Admin", items: ROLE_NAV_ITEMS.admin }]
+    role === "admin" || role === "super_admin"
+      ? ROLE_NAV_GROUPS[role] ?? [{ label: "Admin", items: ROLE_NAV_ITEMS[role] }]
       : role === "public"
         ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
         : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];

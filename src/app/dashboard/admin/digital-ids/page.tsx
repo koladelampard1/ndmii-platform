@@ -228,7 +228,7 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
     <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 xl:sticky xl:top-24">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Read-only credential detail</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Credential lifecycle preview</p>
           <h2 className="mt-1 text-lg font-black leading-snug text-slate-950">{row.businessName}</h2>
           <p className="mt-1 break-all text-xs font-bold text-slate-500">{row.ndmiiId}</p>
         </div>
@@ -272,7 +272,7 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
             <StatusPill value={row.qrReadiness} fallback="QR" />
             <StatusPill value={row.publicVerificationReadiness} />
           </div>
-          <p className="mt-2 break-all text-xs font-semibold text-slate-500">{row.publicVerificationRoute ?? "No QR/public verification route available."}</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">{row.publicVerificationRoute ? "Public verification route is present. Raw token is hidden." : "No QR/public verification route available."}</p>
           <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{row.publicVerificationReason}</p>
           {row.safeTestHref ? (
             <Link href={row.safeTestHref} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
@@ -280,6 +280,10 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
               Test public link
             </Link>
           ) : null}
+          <Link href={`/dashboard/admin/digital-ids/${encodeURIComponent(row.credentialId)}`} className="mt-3 ml-2 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            Open lifecycle workspace
+          </Link>
         </PreviewSection>
 
         <PreviewSection title="Latest credential events">
@@ -310,7 +314,7 @@ function DetailPanel({ row }: { row: AdminDigitalIdQueueRow | null }) {
 }
 
 export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
-  await requireRole(["admin", "reviewer"]);
+  await requireRole(["admin", "super_admin", "reviewer", "fccpc_officer", "firs_officer"]);
   const params = await searchParams;
   const filters = parseFilters(params);
 
@@ -347,7 +351,7 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
         <div>
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Admin console</p>
           <h1 className="mt-1 text-3xl font-semibold text-slate-950">Digital ID Credential Queue</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Read-first operational view for credential lifecycle, public verification readiness, QR health, and attention signals. No credential lifecycle mutations run from this page.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Governed operational queue for credential lifecycle, public verification readiness, QR health, expiry posture, and attention signals. Lifecycle mutations run from each credential workspace.</p>
         </div>
         <Link href={exportHref(filters)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-3 text-sm font-black text-white shadow-sm hover:bg-emerald-900">
           <Download className="h-4 w-4" aria-hidden="true" />
@@ -466,6 +470,10 @@ export default async function AdminDigitalIdsPage({ searchParams }: PageProps) {
                         <Link href={buildHref(filters, { selectedId: row.id })} className="block focus-visible:outline-none">
                           <span className="block font-black text-slate-950">{row.businessName}</span>
                           <span className="mt-1 block break-all text-xs font-bold text-slate-500">{row.ndmiiId}</span>
+                        </Link>
+                        <Link href={`/dashboard/admin/digital-ids/${encodeURIComponent(row.credentialId)}`} className="mt-2 inline-flex items-center gap-1 text-xs font-black text-emerald-800 hover:text-emerald-950">
+                          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                          Lifecycle workspace
                         </Link>
                       </td>
                       <td className="px-4 py-3">

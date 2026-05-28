@@ -165,6 +165,12 @@ const TABLE_COLUMNS: Record<AdminDigitalIdSourceName, string[]> = {
     "public_token_hash",
     "public_signature",
     "signature_version",
+    "lifecycle_version",
+    "assigned_reviewer_id",
+    "assigned_admin_id",
+    "renewal_requested_at",
+    "regeneration_count",
+    "last_regenerated_at",
     "created_at",
     "updated_at",
   ],
@@ -417,9 +423,11 @@ function expiryState(row: Row | undefined): AdminDigitalIdQueueRow["expiryState"
 function lifecycleState(credential: Row): string {
   const status = normalizeStatus(credential.status, "pending");
   const expiry = expiryState(credential);
-  if (status === "active" && expiry === "expired") return "active_expired";
+  if (status === "active" && expiry === "expired") return "expired";
   if (status === "revoked" || asString(credential.revoked_at)) return "revoked";
   if (status === "suspended" || asString(credential.suspended_at)) return "suspended";
+  if (status === "expired") return "expired";
+  if (status === "renewal_pending") return "renewal_pending";
   if (status === "active") return "active";
   return status;
 }
@@ -554,7 +562,7 @@ function buildKpis(rows: AdminDigitalIdQueueRow[]): AdminDigitalIdKpis {
     activeCredentials: rows.filter((row) => row.credentialStatus === "active").length,
     suspendedCredentials: rows.filter((row) => row.credentialStatus === "suspended").length,
     revokedCredentials: rows.filter((row) => row.credentialStatus === "revoked").length,
-    expiredCredentials: rows.filter((row) => row.expiryState === "expired").length,
+    expiredCredentials: rows.filter((row) => row.expiryState === "expired" || row.lifecycleState === "expired" || row.credentialStatus === "expired").length,
     missingValidSignatureOrTokenHash: rows.filter((row) => row.tokenReadiness !== "ready" || row.signatureReadiness !== "ready").length,
     publicVerificationIssues: rows.filter((row) => row.publicVerificationReadiness === "likely_invalid" || row.qrReadiness === "missing").length,
   };
@@ -653,7 +661,7 @@ export async function loadAdminDigitalIdQueue(
       const qrState = qrReadiness(credential);
       const expiry = expiryState(credential);
       const publicStatus = publicReadiness({ credential, msme, tokenReadiness: tokenState, signatureReadiness: signatureState, qrState, expiry });
-      const regenerationCount = Math.max(events.filter((event) => event.action === "reissued").length, activity?.regenerationCount ?? 0);
+      const regenerationCount = Math.max(Number(credential.regeneration_count ?? 0), events.filter((event) => event.action === "reissued").length, activity?.regenerationCount ?? 0);
       const msmeReviewStatus = normalizeStatus(msme?.review_status, sources.msmes.available ? "pending" : "unavailable");
       const msmeVerificationStatus = normalizeStatus(msme?.verification_status, sources.msmes.available ? "pending" : "unavailable");
       const verificationReviewStatus = sources.verification_reviews.available ? normalizeStatus(review?.status, "missing") : "unavailable";
@@ -666,7 +674,9 @@ export async function loadAdminDigitalIdQueue(
 
       if (tokenState === "missing") signals.push({ code: "missing_token_hash", label: "Missing token hash", severity: "critical" });
       if (signatureState === "missing") signals.push({ code: "missing_signature", label: "Missing public signature", severity: "critical" });
-      if (credentialStatus === "active" && expiry === "expired") signals.push({ code: "expired_active", label: "Expired but still active", severity: "critical" });
+      if (credentialStatus === "active" && expiry === "expired") signals.push({ code: "expired_active", label: "Expired credential requires renewal state", severity: "critical" });
+      if (credentialStatus === "renewal_pending") signals.push({ code: "renewal_pending", label: "Renewal pending", severity: "watch" });
+      if (credentialStatus === "expired" || lifecycle === "expired") signals.push({ code: "expired_credential", label: "Expired credential", severity: "elevated" });
       if (credentialStatus === "revoked" && qrState !== "missing" && qrState !== "unavailable") signals.push({ code: "revoked_qr_present", label: "Revoked but QR reference still present", severity: "elevated" });
       if (Boolean(msme?.suspended) && credentialStatus === "active") signals.push({ code: "suspended_msme_active_credential", label: "Suspended MSME has active credential", severity: "critical" });
       if (credentialStatus === "active" && msmeReviewStatus !== "approved") signals.push({ code: "active_msme_not_approved", label: "Active credential but MSME not approved", severity: "critical" });

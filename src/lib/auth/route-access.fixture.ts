@@ -16,6 +16,21 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     ],
     denied: [],
   },
+  super_admin: {
+    allowed: [
+      "/dashboard",
+      "/dashboard/admin",
+      "/dashboard/admin/msmes",
+      "/dashboard/admin/verifications",
+      "/dashboard/admin/digital-ids",
+      "/dashboard/admin/associations",
+      "/dashboard/admin/association-members",
+      "/dashboard/admin/association-upload",
+      "/dashboard/admin/complaints",
+      "/dashboard/admin/public-verification",
+    ],
+    denied: [],
+  },
   reviewer: {
     allowed: ["/dashboard/reviews", "/dashboard/compliance"],
     denied: ["/dashboard/nrs", "/dashboard/associations"],

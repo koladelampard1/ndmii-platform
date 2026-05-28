@@ -25,6 +25,7 @@ const KNOWN_ROLES: UserRole[] = [
   "nrs_officer",
   "firs_officer",
   "admin",
+  "super_admin",
 ];
 
 const ROLE_ALIASES: Record<string, UserRole> = {
@@ -51,11 +52,13 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   firs_officer: "firs_officer",
   msme: "msme",
   admin: "admin",
+  super_admin: "super_admin",
   public: "public",
 };
 
 const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   admin: "/dashboard/admin",
+  super_admin: "/dashboard/admin",
   boi_executive: "/dashboard/impact-intelligence",
   programme_officer: "/dashboard/impact-intelligence",
   assessment_officer: "/dashboard/impact-intelligence",
@@ -71,6 +74,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
 
 export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> = {
   admin: ["/dashboard", "/admin"],
+  super_admin: ["/dashboard", "/admin"],
   boi_executive: ["/dashboard/impact-intelligence"],
   programme_officer: ["/dashboard/impact-intelligence"],
   assessment_officer: ["/dashboard/impact-intelligence"],
@@ -158,7 +162,7 @@ function routeMatchesPrefix(path: string, prefix: string): boolean {
 export function canAccessRoute(role: UserRole, path: string): boolean {
   if (isPublicPath(path)) return true;
   if (role === "public") return false;
-  if (role === "admin") return routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
+  if (role === "admin" || role === "super_admin") return routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   if (path === "/dashboard") return true;
   return ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
 }
@@ -171,7 +175,7 @@ export type MsmeLikeRecord = {
 };
 
 export function canViewMsme(role: UserRole, userContext: UserContext, msmeRecord: MsmeLikeRecord): boolean {
-  if (role === "admin") return true;
+  if (role === "admin" || role === "super_admin") return true;
 
   if (role === "msme") {
     return Boolean(userContext.linkedMsmeId && msmeRecord.id === userContext.linkedMsmeId);
@@ -193,7 +197,7 @@ export function canViewMsme(role: UserRole, userContext: UserContext, msmeRecord
 }
 
 export function canActOnMsme(role: UserRole, action: string, userContext: UserContext, msmeRecord: MsmeLikeRecord): boolean {
-  if (role === "admin") return true;
+  if (role === "admin" || role === "super_admin") return true;
 
   if (role === "msme") {
     if (!["edit_onboarding", "view_id_card", "simulate_payment"].includes(action)) return false;
@@ -226,6 +230,18 @@ export type NavigationGroup = { label: string; items: NavigationItem[] };
 
 export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[]> = {
   admin: [
+    { href: "/dashboard/admin", label: "Admin Dashboard" },
+    { href: "/dashboard/admin/msmes", label: "MSME Registry" },
+    { href: "/dashboard/admin/verifications", label: "Verifications" },
+    { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
+    { href: "/dashboard/admin/associations", label: "Associations" },
+    { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
+    { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
+    { href: "/dashboard/admin/complaints", label: "Complaints" },
+    { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/admin/public-verification", label: "Public Verification" },
+  ],
+  super_admin: [
     { href: "/dashboard/admin", label: "Admin Dashboard" },
     { href: "/dashboard/admin/msmes", label: "MSME Registry" },
     { href: "/dashboard/admin/verifications", label: "Verifications" },
@@ -359,6 +375,36 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
   field_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.field_officer }],
   auditor: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.auditor }],
   admin: [
+    {
+      label: "Overview",
+      items: [{ href: "/dashboard/admin", label: "Admin Dashboard" }],
+    },
+    {
+      label: "MSME Management",
+      items: [
+        { href: "/dashboard/admin/msmes", label: "MSME Registry" },
+        { href: "/dashboard/admin/verifications", label: "Verifications" },
+        { href: "/dashboard/admin/digital-ids", label: "Digital IDs" },
+      ],
+    },
+    {
+      label: "Association Management",
+      items: [
+        { href: "/dashboard/admin/associations", label: "Associations" },
+        { href: "/dashboard/admin/association-members", label: "Association Members / Approvals" },
+        { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { href: "/dashboard/admin/complaints", label: "Complaints" },
+        { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+        { href: "/dashboard/admin/public-verification", label: "Public Verification" },
+      ],
+    },
+  ],
+  super_admin: [
     {
       label: "Overview",
       items: [{ href: "/dashboard/admin", label: "Admin Dashboard" }],
