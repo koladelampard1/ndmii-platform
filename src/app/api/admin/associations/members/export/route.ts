@@ -7,6 +7,7 @@ import {
   type AdminAssociationMemberFilters,
 } from "@/lib/data/admin-association-members";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { generateAssociationMemberInvite } from "@/lib/data/admin-association-member-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ function filtersFromUrl(url: URL): AdminAssociationMemberFilters {
     association: url.searchParams.get("association") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
     activation: url.searchParams.get("activation") ?? undefined,
+    invite: url.searchParams.get("invite") ?? undefined,
     duplicate: url.searchParams.get("duplicate") ?? undefined,
     lga: url.searchParams.get("lga") ?? undefined,
     tradeType: url.searchParams.get("tradeType") ?? undefined,
@@ -81,6 +83,17 @@ export async function GET(request: Request) {
   const filters = filtersFromUrl(url);
 
   try {
+    if (url.searchParams.get("mode") === "generated_links") {
+      const memberIds = (filters.ids ?? "").split(",").map((value) => value.trim()).filter(Boolean).slice(0, 200);
+      if (!memberIds.length) return NextResponse.json({ ok: false, error: "Select at least one member." }, { status: 400 });
+      const supabase = await createServiceRoleSupabaseClient();
+      const generated = [];
+      for (const memberId of memberIds) {
+        generated.push(await generateAssociationMemberInvite(supabase, { ctx, memberId, regenerate: true }));
+      }
+      const csv = ["member_id,invite_link,expires_at", ...generated.map((row) => `"${row.memberId}","${row.inviteUrl}","${row.expiresAt}"`)].join("\r\n");
+      return new NextResponse(`${csv}\r\n`, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="association-member-one-time-invite-links.csv"`, "Cache-Control": "no-store" } });
+    }
     const rows = await getAssociationMemberExportRows(filters);
     await recordExportAudit({ actorUserId: ctx.appUserId, filters, rowCount: rows.length });
 

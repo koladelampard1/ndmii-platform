@@ -16,6 +16,7 @@ export const ASSOCIATION_MEMBER_STATUSES = [
 export const ASSOCIATION_MEMBER_ACTIVATION_STATES = [
   "imported",
   "invited",
+  "invite_opened",
   "account_created",
   "onboarding_started",
   "onboarding_completed",
@@ -29,6 +30,7 @@ export type AdminAssociationMemberFilters = {
   association?: string;
   status?: string;
   activation?: string;
+  invite?: string;
   duplicate?: string;
   lga?: string;
   tradeType?: string;
@@ -59,6 +61,9 @@ export type AdminAssociationMemberRow = {
   duplicateSignal: boolean;
   duplicateReasons: string[];
   activationState: string | null;
+  inviteStatus: string | null;
+  inviteLastDate: string | null;
+  inviteExpiry: string | null;
   readiness: AssociationMemberReadiness;
   assignedReviewerId: string | null;
   assignedReviewerName: string | null;
@@ -77,6 +82,7 @@ export type AdminAssociationMembersWorkspace = {
     association: string;
     status: string;
     activation: string;
+    invite: string;
     duplicate: string;
     lga: string;
     tradeType: string;
@@ -747,6 +753,7 @@ export function parseAssociationMemberFilters(filters: AdminAssociationMemberFil
     association: toString(filters.association).trim(),
     status: toString(filters.status).trim(),
     activation: toString(filters.activation).trim(),
+    invite: toString(filters.invite).trim(),
     duplicate: toString(filters.duplicate).trim(),
     lga: toString(filters.lga).trim(),
     tradeType: toString(filters.tradeType).trim(),
@@ -891,6 +898,9 @@ function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
     duplicateSignal: Boolean(row.duplicate_signal),
     duplicateReasons,
     activationState: nullableString(row.activation_state),
+    inviteStatus: nullableString(row.latest_invite_status) ?? nullableString(row.invite_status),
+    inviteLastDate: nullableString(row.latest_invite_created_at),
+    inviteExpiry: nullableString(row.latest_invite_expires_at),
     readiness: computeAssociationMemberReadiness(row),
     assignedReviewerId: nullableString(row.assigned_reviewer_id),
     assignedReviewerName: nullableString(reviewer?.full_name) ?? nullableString(reviewer?.email),
@@ -898,6 +908,34 @@ function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
     linkedMsme: nullableString(msme?.msme_id),
     createdAt: nullableString(row.created_at),
   };
+}
+
+async function loadLatestInvitations(supabase: SupabaseClient, memberIds: string[]) {
+  if (!memberIds.length) return new Map<string, AnyRow>();
+  const { data, error } = await supabase
+    .from("association_member_invitations")
+    .select("association_member_id,status,token_expires_at,created_at")
+    .in("association_member_id", memberIds)
+    .order("created_at", { ascending: false });
+  if (error) return new Map<string, AnyRow>();
+  const latest = new Map<string, AnyRow>();
+  for (const row of (data ?? []) as AnyRow[]) {
+    const memberId = nullableString(row.association_member_id);
+    if (memberId && !latest.has(memberId)) latest.set(memberId, row);
+  }
+  return latest;
+}
+
+function mergeLatestInvitations(rows: AnyRow[], invitations: Map<string, AnyRow>) {
+  return rows.map((row) => {
+    const invite = invitations.get(toString(row.id));
+    return {
+      ...row,
+      latest_invite_status: invite?.status ?? null,
+      latest_invite_created_at: invite?.created_at ?? null,
+      latest_invite_expires_at: invite?.token_expires_at ?? null,
+    };
+  });
 }
 
 export async function getAdminAssociationMembersWorkspace(
@@ -946,7 +984,11 @@ export async function getAdminAssociationMembersWorkspace(
   }
   const rawRows = membersResult.error ? [] : (membersResult.data ?? []) as unknown as AnyRow[];
   const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_queue_import_sources");
-  const rows = mergeImportFileNames(rawRows, importSourcesResult.fileNames).map(mapMemberRow);
+  const invitations = await loadLatestInvitations(supabase, rawRows.map((row) => toString(row.id)));
+  let rows = mergeLatestInvitations(mergeImportFileNames(rawRows, importSourcesResult.fileNames), invitations).map(mapMemberRow);
+  if (filters.invite === "none") rows = rows.filter((row) => !row.inviteLastDate);
+  else if (filters.invite === "expired") rows = rows.filter((row) => row.inviteStatus === "expired" || Boolean(row.inviteExpiry && new Date(row.inviteExpiry).getTime() <= Date.now()));
+  else if (filters.invite) rows = rows.filter((row) => row.inviteStatus === filters.invite);
   const total = membersResult.error ? null : membersResult.count ?? 0;
 
   return {
@@ -1007,11 +1049,12 @@ export type AdminAssociationMemberDetail = {
   reviewers: Array<{ id: string; label: string }>;
   validationResults: string[];
   events: Array<{ id: string; eventType: string; actorRole: string | null; reason: string | null; createdAt: string | null }>;
+  invitation: { status: string | null; lastInvite: string | null; expiry: string | null; sentChannel: string | null; sentToMasked: string | null } | null;
 };
 
 export async function getAdminAssociationMemberDetail(memberId: string): Promise<AdminAssociationMemberDetail | null> {
   const supabase = await createServiceRoleSupabaseClient();
-  const [memberResult, reviewersResult, eventsResult] = await Promise.all([
+  const [memberResult, reviewersResult, eventsResult, invitationResult] = await Promise.all([
     supabase
       .from("association_members")
       .select("*,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)")
@@ -1019,6 +1062,7 @@ export async function getAdminAssociationMemberDetail(memberId: string): Promise
       .maybeSingle(),
     supabase.from("users").select("id,full_name,email").in("role", ["admin", "reviewer"]).order("full_name").limit(500),
     supabase.from("association_member_events").select("id,event_type,actor_role,metadata,created_at").eq("association_member_id", memberId).order("created_at", { ascending: false }).limit(100),
+    supabase.from("association_member_invitations").select("status,token_expires_at,sent_channel,sent_to_masked,created_at").eq("association_member_id", memberId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (memberResult.error) throw new Error(memberResult.error.message);
   if (!memberResult.data) return null;
@@ -1052,6 +1096,13 @@ export async function getAdminAssociationMemberDetail(memberId: string): Promise
       const metadata = (row.metadata ?? {}) as AnyRow;
       return { id: toString(row.id), eventType: toString(row.event_type), actorRole: nullableString(row.actor_role), reason: nullableString(metadata.reason), createdAt: nullableString(row.created_at) };
     }),
+    invitation: invitationResult.data ? {
+      status: nullableString(invitationResult.data.status),
+      lastInvite: nullableString(invitationResult.data.created_at),
+      expiry: nullableString(invitationResult.data.token_expires_at),
+      sentChannel: nullableString(invitationResult.data.sent_channel),
+      sentToMasked: nullableString(invitationResult.data.sent_to_masked),
+    } : null,
   };
 }
 
@@ -1073,7 +1124,8 @@ export async function getAssociationMemberExportRows(filtersInput: AdminAssociat
   if (error) throw new Error(error.message);
   const rawRows = (data ?? []) as unknown as AnyRow[];
   const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_export_import_sources");
-  return mergeImportFileNames(rawRows, importSourcesResult.fileNames).map(mapMemberRow);
+  const invitations = await loadLatestInvitations(supabase, rawRows.map((row) => toString(row.id)));
+  return mergeLatestInvitations(mergeImportFileNames(rawRows, importSourcesResult.fileNames), invitations).map(mapMemberRow);
 }
 
 function csvEscape(value: string | null | boolean | string[]) {
@@ -1098,6 +1150,10 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
     "duplicate_signal",
     "duplicate_reasons",
     "activation_state",
+    "invite_status",
+    "last_invite_date",
+    "invite_expiry",
+    "onboarding_status",
     "reviewer",
     "approval_date",
     "linked_msme",
@@ -1123,6 +1179,10 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
         row.duplicateSignal,
         row.duplicateReasons,
         row.activationState,
+        row.inviteStatus,
+        row.inviteLastDate,
+        row.inviteExpiry,
+        row.activationState,
         row.assignedReviewerName,
         row.approvedAt,
         row.linkedMsme,
@@ -1140,6 +1200,7 @@ export function associationMemberFiltersForDiagnostics(filters: AdminAssociation
     associationId: parsed.association || null,
     status: parsed.status || null,
     activation: parsed.activation || null,
+    invite: parsed.invite || null,
     duplicate: parsed.duplicate || null,
     lga: parsed.lga || null,
     tradeType: parsed.tradeType || null,
