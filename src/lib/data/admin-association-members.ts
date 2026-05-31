@@ -146,7 +146,10 @@ type ProcessedMemberRow = {
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
-const EXPORT_LIMIT = 1000;
+const EXPORT_LIMIT = 5000;
+export const ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT = 500;
+export const ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT = 5000;
+export const ASSOCIATION_MEMBER_BULK_CHUNK_SIZE = 250;
 const REQUIRED_HEADERS = ["full_name", "phone_number", "business_name", "trade_type", "lga"];
 const OPTIONAL_HEADERS = [
   "whatsapp_number",
@@ -767,11 +770,13 @@ export function parseAssociationMemberFilters(filters: AdminAssociationMemberFil
   };
 }
 
-function applyMemberFilters(query: any, filters: ReturnType<typeof parseAssociationMemberFilters>) {
+export function applyAssociationMemberFilters(query: any, filters: ReturnType<typeof parseAssociationMemberFilters>) {
   let next = query;
   if (filters.association) next = next.eq("association_id", filters.association);
   if (filters.status) next = next.eq("member_status", filters.status);
   if (filters.activation) next = next.eq("activation_state", filters.activation);
+  if (filters.invite === "none") next = next.eq("invite_status", "PENDING");
+  else if (filters.invite) next = next.eq("invite_status", filters.invite.toUpperCase());
   if (filters.duplicate === "yes") next = next.eq("duplicate_signal", true);
   if (filters.duplicate === "no") next = next.eq("duplicate_signal", false);
   if (filters.lga) next = next.eq("lga", filters.lga);
@@ -780,13 +785,53 @@ function applyMemberFilters(query: any, filters: ReturnType<typeof parseAssociat
   else if (filters.reviewer) next = next.eq("assigned_reviewer_id", filters.reviewer);
   if (filters.importedFrom) next = next.gte("created_at", `${filters.importedFrom}T00:00:00.000Z`);
   if (filters.importedTo) next = next.lte("created_at", `${filters.importedTo}T23:59:59.999Z`);
-  if (filters.ids) next = next.in("id", filters.ids.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 200));
+  if (filters.ids) next = next.in("id", filters.ids.split(",").map((value) => value.trim()).filter(Boolean).slice(0, ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT));
   if (filters.q) {
     next = next.or(
       `full_name.ilike.%${filters.q}%,business_name.ilike.%${filters.q}%,phone_normalized.ilike.%${filters.q}%,email.ilike.%${filters.q}%,association_membership_number.ilike.%${filters.q}%`,
     );
   }
   return next;
+}
+
+export function associationMemberFilterSnapshot(filters: AdminAssociationMemberFilters) {
+  const parsed = parseAssociationMemberFilters(filters);
+  return {
+    association: parsed.association,
+    status: parsed.status,
+    activation: parsed.activation,
+    invite: parsed.invite,
+    duplicate: parsed.duplicate,
+    lga: parsed.lga,
+    tradeType: parsed.tradeType,
+    reviewer: parsed.reviewer,
+    importedFrom: parsed.importedFrom,
+    importedTo: parsed.importedTo,
+    q: parsed.q,
+  };
+}
+
+export async function resolveAssociationMemberBulkTargetIds(
+  supabase: SupabaseClient,
+  filtersInput: AdminAssociationMemberFilters,
+  limit = ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT,
+) {
+  const filters = parseAssociationMemberFilters({ ...filtersInput, ids: "", page: 1, pageSize: MAX_PAGE_SIZE });
+  const ids: string[] = [];
+  for (let from = 0; from <= limit; from += ASSOCIATION_MEMBER_BULK_CHUNK_SIZE) {
+    const { data, error } = await applyAssociationMemberFilters(
+      supabase.from("association_members").select("id"),
+      filters,
+    )
+      .order("id", { ascending: true })
+      .range(from, Math.min(from + ASSOCIATION_MEMBER_BULK_CHUNK_SIZE - 1, limit));
+    if (error) throw error;
+    const pageIds = ((data ?? []) as AnyRow[]).map((row) => toString(row.id)).filter(Boolean);
+    ids.push(...pageIds);
+    if (pageIds.length < ASSOCIATION_MEMBER_BULK_CHUNK_SIZE || ids.length > limit) break;
+  }
+  if (ids.length > limit) throw new Error(`Filtered bulk operations are limited to ${limit.toLocaleString()} members.`);
+  return ids;
 }
 
 export function computeAssociationMemberReadiness(row: AnyRow): AssociationMemberReadiness {
@@ -951,7 +996,7 @@ export async function getAdminAssociationMembersWorkspace(
     supabase.from("associations").select("id,name,state,sector").order("name", { ascending: true }).limit(500),
     supabase.from("users").select("id,full_name,email").in("role", ["admin", "reviewer"]).order("full_name").limit(500),
     supabase.from("association_members").select("lga,trade_type").limit(2000),
-    applyMemberFilters(
+    applyAssociationMemberFilters(
       supabase
         .from("association_members")
         .select(
@@ -985,10 +1030,7 @@ export async function getAdminAssociationMembersWorkspace(
   const rawRows = membersResult.error ? [] : (membersResult.data ?? []) as unknown as AnyRow[];
   const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_queue_import_sources");
   const invitations = await loadLatestInvitations(supabase, rawRows.map((row) => toString(row.id)));
-  let rows = mergeLatestInvitations(mergeImportFileNames(rawRows, importSourcesResult.fileNames), invitations).map(mapMemberRow);
-  if (filters.invite === "none") rows = rows.filter((row) => !row.inviteLastDate);
-  else if (filters.invite === "expired") rows = rows.filter((row) => row.inviteStatus === "expired" || Boolean(row.inviteExpiry && new Date(row.inviteExpiry).getTime() <= Date.now()));
-  else if (filters.invite) rows = rows.filter((row) => row.inviteStatus === filters.invite);
+  const rows = mergeLatestInvitations(mergeImportFileNames(rawRows, importSourcesResult.fileNames), invitations).map(mapMemberRow);
   const total = membersResult.error ? null : membersResult.count ?? 0;
 
   return {
@@ -1109,20 +1151,24 @@ export async function getAdminAssociationMemberDetail(memberId: string): Promise
 export async function getAssociationMemberExportRows(filtersInput: AdminAssociationMemberFilters) {
   const supabase = await createServiceRoleSupabaseClient();
   const filters = parseAssociationMemberFilters({ ...filtersInput, page: 1, pageSize: EXPORT_LIMIT });
-  const query = applyMemberFilters(
-    supabase
-      .from("association_members")
-      .select(
-        "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
-      ),
-    filters,
-  )
-    .order("created_at", { ascending: false })
-    .limit(EXPORT_LIMIT);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  const rawRows = (data ?? []) as unknown as AnyRow[];
+  const rawRows: AnyRow[] = [];
+  for (let from = 0; from < EXPORT_LIMIT; from += ASSOCIATION_MEMBER_BULK_CHUNK_SIZE) {
+    const { data, error } = await applyAssociationMemberFilters(
+      supabase
+        .from("association_members")
+        .select(
+          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
+        ),
+      filters,
+    )
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + ASSOCIATION_MEMBER_BULK_CHUNK_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const pageRows = (data ?? []) as unknown as AnyRow[];
+    rawRows.push(...pageRows);
+    if (pageRows.length < ASSOCIATION_MEMBER_BULK_CHUNK_SIZE) break;
+  }
   const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_export_import_sources");
   const invitations = await loadLatestInvitations(supabase, rawRows.map((row) => toString(row.id)));
   return mergeLatestInvitations(mergeImportFileNames(rawRows, importSourcesResult.fileNames), invitations).map(mapMemberRow);

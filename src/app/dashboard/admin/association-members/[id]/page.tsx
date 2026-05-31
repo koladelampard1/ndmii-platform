@@ -41,7 +41,7 @@ export default async function AssociationMemberDetailPage({ params, searchParams
         {!canReview && <p className="rounded bg-slate-100 p-3 text-sm font-bold text-slate-600">This role has read-only access.</p>}
         {canReview && member.status === "imported" && action("start_review", "Move to Pending Review")}
         {canReview && member.status === "correction_requested" && action("start_review", "Return to Pending Review")}
-        {canReview && ["pending_review", "duplicate_review"].includes(member.status ?? "") && action("approve", "Approve Member")}
+        {canReview && member.status === "pending_review" && !member.duplicateSignal && action("approve", "Approve Member")}
         {canReview && ["pending_review", "duplicate_review"].includes(member.status ?? "") && action("reject", "Reject Member", true)}
         {canReview && member.status === "pending_review" && action("request_correction", "Request Correction", true)}
         {admin && member.status === "pending_review" && action("mark_duplicate", "Mark Duplicate", true)}

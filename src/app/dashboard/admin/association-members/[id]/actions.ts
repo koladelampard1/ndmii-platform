@@ -3,10 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { generateAssociationMemberInvite, runAssociationMemberAction, runAssociationMemberInvitationAction, runBulkAssociationMemberAction, type AssociationMemberAction } from "@/lib/data/admin-association-member-actions";
+import {
+  ASSOCIATION_MEMBER_BULK_ACTIONS,
+  generateAssociationMemberInvite,
+  runAssociationMemberAction,
+  runAssociationMemberInvitationAction,
+  runBulkAssociationMemberAction,
+  type AssociationMemberAction,
+  type AssociationMemberBulkResult,
+} from "@/lib/data/admin-association-member-actions";
+import type { AdminAssociationMemberFilters } from "@/lib/data/admin-association-members";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export type AssociationMemberActionState = { ok: boolean; message: string };
+export type BulkAssociationMemberActionState = {
+  ok: boolean;
+  message: string;
+  result?: AssociationMemberBulkResult;
+};
 
 function refresh(memberId?: string) {
   revalidatePath("/dashboard/admin/association-members");
@@ -42,25 +56,41 @@ export async function submitAssociationMemberAction(formData: FormData) {
   redirect(`/dashboard/admin/association-members/${memberId}?success=Action%20recorded`);
 }
 
-export async function submitBulkAssociationMemberAction(formData: FormData) {
+export async function submitBulkAssociationMemberAction(
+  _state: BulkAssociationMemberActionState,
+  formData: FormData,
+): Promise<BulkAssociationMemberActionState> {
   const ctx = await getCurrentUserContext();
   if (!["admin", "reviewer"].includes(ctx.role)) redirect("/access-denied");
-  const memberIds = formData.getAll("member_id").map(String);
-  const action = String(formData.get("action") ?? "").trim();
-  if (action === "export") redirect(`/api/admin/associations/members/export?ids=${encodeURIComponent(memberIds.join(","))}`);
-  if (action === "export_invite_links") redirect(`/api/admin/associations/members/export?mode=generated_links&ids=${encodeURIComponent(memberIds.join(","))}`);
+  const memberIds = formData.getAll("member_ids").map(String);
+  const action = String(formData.get("bulk_action") ?? "").trim();
+  const targetMode = String(formData.get("target_mode") ?? "selected") === "filtered" ? "filtered" : "selected";
+  if (!(ASSOCIATION_MEMBER_BULK_ACTIONS as readonly string[]).includes(action)) return { ok: false, message: "Unsupported bulk action." };
+  let filters: AdminAssociationMemberFilters = {};
+  try {
+    filters = JSON.parse(String(formData.get("filter_snapshot") ?? "{}")) as AdminAssociationMemberFilters;
+  } catch {
+    return { ok: false, message: "The filter snapshot is invalid. Refresh the page and try again." };
+  }
   try {
     const supabase = await createServiceRoleSupabaseClient();
-    await runBulkAssociationMemberAction(supabase, {
+    const result = await runBulkAssociationMemberAction(supabase, {
       ctx,
       memberIds,
-      action: action as "approve" | "reject" | "assign_reviewer" | "generate_invite" | "mark_invite_sent",
+      filters,
+      targetMode,
+      confirmed: formData.get("confirmed") === "yes",
+      action: action as (typeof ASSOCIATION_MEMBER_BULK_ACTIONS)[number],
       reason: String(formData.get("reason") ?? "").trim(),
       assignedReviewerId: String(formData.get("assigned_reviewer_id") ?? "").trim(),
     });
     refresh();
+    return {
+      ok: true,
+      message: `Bulk operation completed. ${result.successful} succeeded, ${result.skipped} skipped, ${result.failed} failed.`,
+      result,
+    };
   } catch (error) {
-    redirect(`/dashboard/admin/association-members?error=${encodeURIComponent(error instanceof Error ? error.message : "Unable to complete bulk action.")}`);
+    return { ok: false, message: error instanceof Error ? error.message : "Unable to complete bulk action." };
   }
-  redirect("/dashboard/admin/association-members?success=Bulk%20action%20recorded");
 }

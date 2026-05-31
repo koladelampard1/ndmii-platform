@@ -1,7 +1,16 @@
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserContext } from "@/lib/auth/authorization";
-import { maskEmail, maskPhone } from "@/lib/data/admin-association-members";
+import {
+  ASSOCIATION_MEMBER_BULK_CHUNK_SIZE,
+  ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT,
+  ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT,
+  associationMemberFiltersForDiagnostics,
+  maskEmail,
+  maskPhone,
+  resolveAssociationMemberBulkTargetIds,
+  type AdminAssociationMemberFilters,
+} from "@/lib/data/admin-association-members";
 
 export const ASSOCIATION_MEMBER_ACTIONS = [
   "start_review",
@@ -68,6 +77,12 @@ function clean(value: unknown) {
   return String(value ?? "").trim();
 }
 
+class AssociationMemberSkipError extends Error {}
+
+function skip(message: string): never {
+  throw new AssociationMemberSkipError(message);
+}
+
 function assertRole(ctx: UserContext, action: AssociationMemberAction) {
   if (!["admin", "reviewer"].includes(ctx.role)) throw new Error("This role has read-only access.");
   if (["mark_duplicate", "remove_duplicate_flag", "assign_reviewer", "prepare_activation", "generate_invite", "regenerate_invite", "mark_invite_sent", "resend_invite", "expire_invite", "mark_onboarding_started", "mark_onboarding_completed"].includes(action) && ctx.role !== "admin") {
@@ -76,7 +91,7 @@ function assertRole(ctx: UserContext, action: AssociationMemberAction) {
 }
 
 function assertTransition(from: MemberStatus, to: MemberStatus) {
-  if (!ALLOWED_TRANSITIONS[from]?.includes(to)) throw new Error(`Invalid association member transition from ${from} to ${to}.`);
+  if (!ALLOWED_TRANSITIONS[from]?.includes(to)) skip(`Invalid lifecycle transition from ${from} to ${to}.`);
 }
 
 async function loadMember(supabase: SupabaseClient<any>, memberId: string) {
@@ -114,9 +129,9 @@ async function loadLatestInvite(supabase: SupabaseClient<any>, memberId: string)
   return data as Record<string, any> | null;
 }
 
-async function writeInvitationAudit(supabase: SupabaseClient<any>, params: { ctx: UserContext | null; member: MemberRow; eventType: string; invitationId: string; metadata?: Record<string, unknown> }) {
+async function writeInvitationAudit(supabase: SupabaseClient<any>, params: { ctx: UserContext | null; member: MemberRow; eventType: string; invitationId: string; bulkOperationId?: string; metadata?: Record<string, unknown> }) {
   const timestamp = new Date().toISOString();
-  const metadata = { invitation_id: params.invitationId, association_id: params.member.association_id, member_id: params.member.id, ...(params.metadata ?? {}), raw_token_stored: false };
+  const metadata = { invitation_id: params.invitationId, association_id: params.member.association_id, member_id: params.member.id, bulk_operation_id: params.bulkOperationId ?? null, ...(params.metadata ?? {}), raw_token_stored: false };
   const eventPayload = { association_id: params.member.association_id, association_member_id: params.member.id, member_id: params.member.id, actor_id: params.ctx?.appUserId ?? null, actor_user_id: params.ctx?.appUserId ?? null, actor_role: params.ctx?.role ?? "public", event_type: params.eventType, metadata, created_at: timestamp };
   const { error: eventError } = await supabase.from("association_member_events").insert(eventPayload);
   if (eventError) throw eventError;
@@ -124,47 +139,52 @@ async function writeInvitationAudit(supabase: SupabaseClient<any>, params: { ctx
   if (activityError) throw activityError;
 }
 
-export async function generateAssociationMemberInvite(supabase: SupabaseClient<any>, params: { ctx: UserContext; memberId: string; regenerate?: boolean }) {
+export async function generateAssociationMemberInvite(supabase: SupabaseClient<any>, params: { ctx: UserContext; memberId: string; regenerate?: boolean; bulkOperationId?: string }) {
   assertRole(params.ctx, params.regenerate ? "regenerate_invite" : "generate_invite");
   const member = await loadMember(supabase, params.memberId);
-  if (member.member_status !== "pending_activation") throw new Error("Invites can only be generated for members pending activation.");
+  if (member.member_status !== "pending_activation") skip("Member is not pending activation.");
+  if (member.duplicate_signal) skip("Duplicate signal must be resolved before invitation.");
+  if (["onboarding_completed", "credential_issued"].includes(member.activation_state ?? "")) skip("Onboarding or credential lifecycle has already progressed.");
   const latest = await loadLatestInvite(supabase, member.id);
   const now = new Date();
   if (latest && latest.status !== "expired" && new Date(String(latest.token_expires_at)).getTime() > now.getTime()) {
-    if (!params.regenerate) throw new Error("An active invite already exists. Regenerate it to replace the current link.");
+    if (!params.regenerate) skip("An active invite already exists.");
     await supabase.from("association_member_invitations").update({ status: "expired", expired_at: now.toISOString(), updated_at: now.toISOString() }).eq("id", latest.id);
-    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: "invite_expired", metadata: { reason: "regenerated" } });
+    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: "invite_expired", bulkOperationId: params.bulkOperationId, metadata: { reason: "regenerated" } });
   }
   const token = createRawToken();
   const expiresAt = new Date(now.getTime() + INVITE_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase.from("association_member_invitations").insert({ association_member_id: member.id, association_id: member.association_id, token_hash: tokenHash(token), token_expires_at: expiresAt, status: "generated", sent_channel: "manual", sent_to_masked: maskedDestination(member), created_by: params.ctx.appUserId, metadata: { raw_token_stored: false } }).select("id").single();
   if (error) throw error;
   await supabase.from("association_members").update({ activation_state: "invited", invite_status: "GENERATED", updated_at: now.toISOString() }).eq("id", member.id);
-  await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: data.id, eventType: "invite_generated", metadata: { regenerated: Boolean(params.regenerate), expires_at: expiresAt } });
+  await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: data.id, eventType: "invite_generated", bulkOperationId: params.bulkOperationId, metadata: { regenerated: Boolean(params.regenerate), expires_at: expiresAt } });
   return { memberId: member.id, invitationId: data.id as string, inviteUrl: inviteUrl(token), expiresAt };
 }
 
-export async function runAssociationMemberInvitationAction(supabase: SupabaseClient<any>, params: { ctx: UserContext; memberId: string; action: Extract<AssociationMemberAction, "mark_invite_sent" | "resend_invite" | "expire_invite" | "mark_onboarding_started" | "mark_onboarding_completed"> }) {
+export async function runAssociationMemberInvitationAction(supabase: SupabaseClient<any>, params: { ctx: UserContext; memberId: string; action: Extract<AssociationMemberAction, "mark_invite_sent" | "resend_invite" | "expire_invite" | "mark_onboarding_started" | "mark_onboarding_completed">; bulkOperationId?: string }) {
   assertRole(params.ctx, params.action);
   const member = await loadMember(supabase, params.memberId);
   const latest = await loadLatestInvite(supabase, member.id);
-  if (!latest) throw new Error("Generate an invitation first.");
+  if (!latest) skip("Generate an invitation first.");
   const now = new Date().toISOString();
   if (params.action === "mark_invite_sent" || params.action === "resend_invite") {
-    if (latest.status === "expired" || new Date(String(latest.token_expires_at)).getTime() <= Date.now()) throw new Error("This invitation has expired. Regenerate it first.");
+    if (member.activation_state !== "invited") skip("Only invited members can be marked as sent.");
+    if (latest.status === "expired" || new Date(String(latest.token_expires_at)).getTime() <= Date.now()) skip("This invitation has expired. Regenerate it first.");
     await supabase.from("association_member_invitations").update({ status: "sent", sent_channel: "manual", sent_to_masked: maskedDestination(member), updated_at: now, metadata: { ...(latest.metadata ?? {}), last_sent_at: now } }).eq("id", latest.id);
     await supabase.from("association_members").update({ invite_status: "SENT", updated_at: now }).eq("id", member.id);
-    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: params.action === "resend_invite" ? "invite_resent" : "invite_sent" });
+    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: params.action === "resend_invite" ? "invite_resent" : "invite_sent", bulkOperationId: params.bulkOperationId });
   } else if (params.action === "expire_invite") {
     await supabase.from("association_member_invitations").update({ status: "expired", expired_at: now, updated_at: now }).eq("id", latest.id);
     await supabase.from("association_members").update({ invite_status: "EXPIRED", updated_at: now }).eq("id", member.id);
-    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: "invite_expired" });
+    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: "invite_expired", bulkOperationId: params.bulkOperationId });
   } else {
     const completed = params.action === "mark_onboarding_completed";
+    if (completed && member.activation_state !== "onboarding_started") skip("Onboarding must be started before it can be completed.");
+    if (!completed && !["invited", "invite_opened"].includes(member.activation_state ?? "")) skip("Only invited members can start onboarding.");
     await supabase.from("association_member_invitations").update({ status: completed ? "accepted" : latest.status, accepted_at: completed ? now : latest.accepted_at, updated_at: now }).eq("id", latest.id);
     await supabase.from("association_members").update({ activation_state: completed ? "onboarding_completed" : "onboarding_started", member_status: completed ? "active" : member.member_status, status_changed_at: completed ? now : undefined, updated_at: now }).eq("id", member.id);
-    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: completed ? "onboarding_completed" : "onboarding_started" });
-    if (completed) await writeInvitationAudit(supabase, { ctx: params.ctx, member: { ...member, member_status: "active" }, invitationId: latest.id, eventType: "member_activated" });
+    await writeInvitationAudit(supabase, { ctx: params.ctx, member, invitationId: latest.id, eventType: completed ? "onboarding_completed" : "onboarding_started", bulkOperationId: params.bulkOperationId });
+    if (completed) await writeInvitationAudit(supabase, { ctx: params.ctx, member: { ...member, member_status: "active" }, invitationId: latest.id, eventType: "member_activated", bulkOperationId: params.bulkOperationId });
   }
 }
 
@@ -197,7 +217,7 @@ function nullable(value: unknown) {
 
 async function writeAudit(
   supabase: SupabaseClient<any>,
-  params: { ctx: UserContext; member: MemberRow; action: AssociationMemberAction; previousStatus: MemberStatus; newStatus: MemberStatus; reason: string; timestamp: string },
+  params: { ctx: UserContext; member: MemberRow; action: AssociationMemberAction; previousStatus: MemberStatus; newStatus: MemberStatus; reason: string; timestamp: string; bulkOperationId?: string },
 ) {
   const metadata = {
     actor_id: params.ctx.appUserId,
@@ -209,6 +229,7 @@ async function writeAudit(
     reason: params.reason || null,
     source_workspace: "admin_association_member_workspace",
     timestamp: params.timestamp,
+    bulk_operation_id: params.bulkOperationId ?? null,
   };
   const { error: eventError } = await supabase.from("association_member_events").insert({
     association_id: params.member.association_id,
@@ -235,7 +256,7 @@ async function writeAudit(
 
 export async function runAssociationMemberAction(
   supabase: SupabaseClient<any>,
-  params: { ctx: UserContext; memberId: string; action: AssociationMemberAction; reason?: string | null; notes?: string | null; assignedReviewerId?: string | null },
+  params: { ctx: UserContext; memberId: string; action: AssociationMemberAction; reason?: string | null; notes?: string | null; assignedReviewerId?: string | null; bulkOperationId?: string },
 ) {
   const reason = clean(params.reason);
   const notes = clean(params.notes);
@@ -244,6 +265,10 @@ export async function runAssociationMemberAction(
   assertRole(params.ctx, params.action);
   if (REASON_REQUIRED.has(params.action) && !reason) throw new Error("A reason is required for this action.");
   const member = await loadMember(supabase, params.memberId);
+  if (params.action === "approve" && (member.duplicate_signal || member.member_status === "duplicate_review")) {
+    skip("Duplicate review must be resolved before approval.");
+  }
+  if (params.action === "prepare_activation" && member.duplicate_signal) skip("Duplicate signal must be resolved before activation preparation.");
   const nextStatus = ACTION_TARGET[params.action] ?? member.member_status;
   if (ACTION_TARGET[params.action]) assertTransition(member.member_status, nextStatus);
   const timestamp = new Date().toISOString();
@@ -281,21 +306,134 @@ export async function runAssociationMemberAction(
   if (params.action === "save_notes") patch.internal_notes = notes;
   const { error } = await supabase.from("association_members").update(patch).eq("id", member.id);
   if (error) throw error;
-  await writeAudit(supabase, { ctx: params.ctx, member, action: params.action, previousStatus: member.member_status, newStatus: nextStatus, reason: reason || notes, timestamp });
+  await writeAudit(supabase, { ctx: params.ctx, member, action: params.action, previousStatus: member.member_status, newStatus: nextStatus, reason: reason || notes, timestamp, bulkOperationId: params.bulkOperationId });
   return { memberId: member.id, previousStatus: member.member_status, newStatus: nextStatus };
+}
+
+export const ASSOCIATION_MEMBER_BULK_ACTIONS = [
+  "start_review",
+  "approve",
+  "prepare_activation",
+  "generate_invite",
+  "regenerate_invite",
+  "mark_invite_sent",
+  "mark_onboarding_started",
+  "mark_onboarding_completed",
+  "assign_reviewer",
+  "reject",
+  "request_correction",
+] as const;
+
+export type AssociationMemberBulkAction = (typeof ASSOCIATION_MEMBER_BULK_ACTIONS)[number];
+export type AssociationMemberBulkResult = {
+  operationId: string;
+  action: AssociationMemberBulkAction;
+  targetMode: "selected" | "filtered";
+  totalTargeted: number;
+  successful: number;
+  skipped: number;
+  failed: number;
+  reasons: Record<string, number>;
+  report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }>;
+};
+
+function assertBulkEligibility(member: MemberRow, action: AssociationMemberBulkAction) {
+  if (action === "start_review" && member.member_status !== "imported") skip("Only imported members can start review in bulk.");
+  if (action === "approve" && member.member_status !== "pending_review") skip("Only pending review members can be approved in bulk.");
+  if (action === "prepare_activation" && member.member_status !== "approved") skip("Only approved members can be prepared for activation.");
+  if (action === "reject" && !["pending_review", "duplicate_review"].includes(member.member_status)) skip("Only review queue members can be rejected.");
+  if (action === "request_correction" && member.member_status !== "pending_review") skip("Only pending review members can receive correction requests.");
+}
+
+function addReason(reasons: Record<string, number>, reason: string) {
+  reasons[reason] = (reasons[reason] ?? 0) + 1;
+}
+
+async function createBulkOperation(
+  supabase: SupabaseClient<any>,
+  params: { ctx: UserContext; action: AssociationMemberBulkAction; targetMode: "selected" | "filtered"; filterSnapshot: Record<string, unknown>; totalTargeted: number },
+) {
+  const { data, error } = await supabase.from("association_member_bulk_operations").insert({
+    action: params.action,
+    requested_by: params.ctx.appUserId,
+    target_mode: params.targetMode,
+    filter_snapshot: params.filterSnapshot,
+    total_targeted: params.totalTargeted,
+    status: "processing",
+    metadata: { actor_role: params.ctx.role, chunk_size: ASSOCIATION_MEMBER_BULK_CHUNK_SIZE },
+  }).select("id").single();
+  if (error) throw error;
+  return String(data.id);
 }
 
 export async function runBulkAssociationMemberAction(
   supabase: SupabaseClient<any>,
-  params: { ctx: UserContext; memberIds: string[]; action: "approve" | "reject" | "assign_reviewer" | "generate_invite" | "mark_invite_sent"; reason?: string | null; assignedReviewerId?: string | null },
-) {
-  const uniqueIds = [...new Set(params.memberIds.map(clean).filter(Boolean))].slice(0, 200);
+  params: {
+    ctx: UserContext;
+    memberIds?: string[];
+    filters?: AdminAssociationMemberFilters;
+    targetMode: "selected" | "filtered";
+    confirmed?: boolean;
+    action: AssociationMemberBulkAction;
+    reason?: string | null;
+    assignedReviewerId?: string | null;
+  },
+): Promise<AssociationMemberBulkResult> {
+  if (!(ASSOCIATION_MEMBER_BULK_ACTIONS as readonly string[]).includes(params.action)) throw new Error("Unsupported bulk action.");
+  if (!["admin", "reviewer"].includes(params.ctx.role)) throw new Error("This role has read-only access.");
+  if (params.targetMode === "filtered" && params.ctx.role !== "admin") throw new Error("Filtered bulk operations are available to administrators only.");
+  if (params.ctx.role === "reviewer" && !["approve", "reject"].includes(params.action)) throw new Error("Reviewers can only bulk approve or reject selected members.");
+  const uniqueIds = params.targetMode === "filtered"
+    ? await resolveAssociationMemberBulkTargetIds(supabase, params.filters ?? {}, ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT)
+    : [...new Set((params.memberIds ?? []).map(clean).filter(Boolean))];
+  const limit = params.targetMode === "filtered" ? ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT : ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT;
   if (!uniqueIds.length) throw new Error("Select at least one member.");
-  const results = [];
-  for (const memberId of uniqueIds) {
-    if (params.action === "generate_invite") results.push(await generateAssociationMemberInvite(supabase, { ctx: params.ctx, memberId }));
-    else if (params.action === "mark_invite_sent") results.push(await runAssociationMemberInvitationAction(supabase, { ctx: params.ctx, memberId, action: "mark_invite_sent" }));
-    else results.push(await runAssociationMemberAction(supabase, { ...params, memberId }));
+  if (uniqueIds.length > limit) throw new Error(`${params.targetMode === "filtered" ? "Filtered" : "Selected-row"} bulk operations are limited to ${limit.toLocaleString()} members.`);
+  if (uniqueIds.length > 100 && !params.confirmed) throw new Error("Confirmation is required for bulk operations targeting more than 100 members.");
+
+  const reason = clean(params.reason);
+  const assignedReviewerId = clean(params.assignedReviewerId) || null;
+  if (REASON_REQUIRED.has(params.action) && !reason) throw new Error("A reason is required for this action.");
+  if (params.action === "assign_reviewer" && !assignedReviewerId) throw new Error("Select a reviewer before assigning members.");
+  const filterSnapshot = params.targetMode === "filtered"
+    ? associationMemberFiltersForDiagnostics(params.filters ?? {})
+    : { selected_count: uniqueIds.length };
+  const operationId = await createBulkOperation(supabase, { ctx: params.ctx, action: params.action, targetMode: params.targetMode, filterSnapshot, totalTargeted: uniqueIds.length });
+  const result: AssociationMemberBulkResult = { operationId, action: params.action, targetMode: params.targetMode, totalTargeted: uniqueIds.length, successful: 0, skipped: 0, failed: 0, reasons: {}, report: [] };
+
+  for (let offset = 0; offset < uniqueIds.length; offset += ASSOCIATION_MEMBER_BULK_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(offset, offset + ASSOCIATION_MEMBER_BULK_CHUNK_SIZE);
+    for (const memberId of chunk) {
+      try {
+        const member = await loadMember(supabase, memberId);
+        assertBulkEligibility(member, params.action);
+        if (params.action === "generate_invite" || params.action === "regenerate_invite") {
+          await generateAssociationMemberInvite(supabase, { ctx: params.ctx, memberId, regenerate: params.action === "regenerate_invite", bulkOperationId: operationId });
+        } else if (["mark_invite_sent", "mark_onboarding_started", "mark_onboarding_completed"].includes(params.action)) {
+          await runAssociationMemberInvitationAction(supabase, { ctx: params.ctx, memberId, action: params.action as "mark_invite_sent" | "mark_onboarding_started" | "mark_onboarding_completed", bulkOperationId: operationId });
+        } else {
+          await runAssociationMemberAction(supabase, { ctx: params.ctx, memberId, action: params.action, reason, assignedReviewerId, bulkOperationId: operationId });
+        }
+        result.successful += 1;
+      } catch (error) {
+        const reasonText = error instanceof Error ? error.message : "Unable to process member.";
+        const outcome = error instanceof AssociationMemberSkipError ? "skipped" : "failed";
+        result[outcome] += 1;
+        addReason(result.reasons, reasonText);
+        result.report.push({ memberId, outcome, reason: reasonText });
+      }
+    }
   }
-  return results;
+
+  const completedAt = new Date().toISOString();
+  const { error: updateError } = await supabase.from("association_member_bulk_operations").update({
+    success_count: result.successful,
+    skipped_count: result.skipped,
+    failed_count: result.failed,
+    status: result.failed ? "completed_with_errors" : "completed",
+    completed_at: completedAt,
+    metadata: { actor_role: params.ctx.role, chunk_size: ASSOCIATION_MEMBER_BULK_CHUNK_SIZE, reasons: result.reasons },
+  }).eq("id", operationId);
+  if (updateError) throw updateError;
+  return result;
 }
