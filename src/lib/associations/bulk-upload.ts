@@ -1,3 +1,5 @@
+import { isValidEmailAddress, normalizeEmail } from "@/lib/auth/email-validation";
+
 export const BULK_UPLOAD_COLUMNS = [
   "business_name",
   "owner_full_name",
@@ -81,10 +83,6 @@ function normalizePhone(phone: string) {
   return phone.replace(/\s+/g, "").replace(/[^+\d]/g, "");
 }
 
-function isEmailValid(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 function isPhoneValid(phone: string) {
   const normalized = normalizePhone(phone);
   return /^(\+?\d{10,15})$/.test(normalized);
@@ -117,12 +115,12 @@ export function validateUploadRows({
       }
     }
 
-    const email = String(values.email ?? "").trim().toLowerCase();
+    const email = normalizeEmail(String(values.email ?? ""));
     const phone = normalizePhone(String(values.phone ?? ""));
     const category = String(values.category ?? "").trim().toLowerCase();
     const location = String(values.location ?? "").trim().toLowerCase();
 
-    if (email && !isEmailValid(email)) {
+    if (email && !isValidEmailAddress(email)) {
       errors.push("email format is invalid");
     }
 

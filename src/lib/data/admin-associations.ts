@@ -67,6 +67,9 @@ export type AdminAssociationImportRow = {
   totalRows: number | null;
   successRows: number | null;
   failedRows: number | null;
+  duplicateRows: number | null;
+  createdRows: number | null;
+  metadata: Record<string, unknown>;
   status: string | null;
   notes: string | null;
   createdAt: string | null;
@@ -91,6 +94,7 @@ export type AdminAssociationUploadWorkspace = {
   associations: Array<{ id: string; name: string; state: string | null; sector: string | null }>;
   imports: AdminAssociationImportRow[];
   selectedImportRows: AdminAssociationImportRowDetail[];
+  selectedImport: (AdminAssociationImportRow & { delimiterLabel: string; headers: string[] }) | null;
   sources: Record<string, SourceState>;
 };
 
@@ -451,6 +455,9 @@ function mapImport(row: AnyRow, associationNameById: Map<string, string>): Admin
     totalRows: toNumber(row.total_rows),
     successRows: toNumber(row.success_rows),
     failedRows: toNumber(row.failed_rows),
+    duplicateRows: toNumber(row.duplicate_rows),
+    createdRows: toNumber(row.created_rows),
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {},
     status: nullableString(row.status),
     notes: nullableString(row.notes),
     createdAt: nullableString(row.created_at),
@@ -464,7 +471,7 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
     safeSelect<AnyRow>(
       supabase,
       "association_member_imports",
-      "id,association_id,file_name,total_rows,success_rows,failed_rows,status,notes,created_at",
+      "id,association_id,file_name,total_rows,success_rows,failed_rows,duplicate_rows,created_rows,status,notes,metadata,created_at",
       (query: any) => query.order("created_at", { ascending: false }).limit(25),
     ),
   ]);
@@ -480,6 +487,13 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
     );
   }
 
+  const imports = importsResult.rows.map((row) => mapImport(row, associationNameById));
+  const selectedImport = imports.find((row) => row.id === selectedImportId) ?? null;
+  const delimiter = typeof selectedImport?.metadata.detected_delimiter === "string" ? selectedImport.metadata.detected_delimiter : null;
+  const headers = Array.isArray(selectedImport?.metadata.detected_headers)
+    ? selectedImport.metadata.detected_headers.map((header) => toString(header)).filter(Boolean)
+    : [];
+
   return {
     associations: associationsResult.rows.map((row) => ({
       id: toString(row.id),
@@ -487,7 +501,12 @@ export async function getAdminAssociationUploadWorkspace(selectedImportId?: stri
       state: nullableString(row.state),
       sector: nullableString(row.sector),
     })),
-    imports: importsResult.rows.map((row) => mapImport(row, associationNameById)),
+    imports,
+    selectedImport: selectedImport ? {
+      ...selectedImport,
+      delimiterLabel: delimiter === "\t" ? "Tab" : delimiter === ";" ? "Semicolon (;)" : delimiter === "," ? "Comma (,)" : "Unavailable",
+      headers,
+    } : null,
     selectedImportRows: importRowsResult.rows.map((row) => ({
       id: toString(row.id),
       rowNumber: toNumber(row.row_number),

@@ -145,6 +145,10 @@ alter table if exists public.association_members
   add column if not exists tin_number text,
   add column if not exists workshop_address text,
   add column if not exists years_of_experience integer,
+  add column if not exists is_verified boolean default false,
+  add column if not exists invite_status text default 'PENDING',
+  add column if not exists created_by_admin_id uuid,
+  add column if not exists role text default 'member',
   add column if not exists source_import_id uuid,
   add column if not exists source_import_row_id uuid,
   add column if not exists source_row_number integer,
@@ -153,6 +157,58 @@ alter table if exists public.association_members
   add column if not exists activation_state text default 'imported',
   add column if not exists status_changed_at timestamptz,
   add column if not exists updated_at timestamptz default now();
+
+do $$
+declare
+  missing_columns text[];
+begin
+  select array_agg(required_column order by required_column)
+  into missing_columns
+  from unnest(array[
+    'association_id',
+    'msme_id',
+    'full_name',
+    'phone_number',
+    'phone_normalized',
+    'whatsapp_number',
+    'email',
+    'business_name',
+    'trade_type',
+    'lga',
+    'association_membership_number',
+    'position_in_association',
+    'cac_registered',
+    'cac_number',
+    'tin_registered',
+    'tin_number',
+    'workshop_address',
+    'years_of_experience',
+    'source_import_id',
+    'source_import_row_id',
+    'source_row_number',
+    'member_status',
+    'is_verified',
+    'invite_status',
+    'duplicate_signal',
+    'duplicate_reasons',
+    'activation_state',
+    'status_changed_at',
+    'updated_at',
+    'created_by_admin_id',
+    'role'
+  ]) as required(required_column)
+  where not exists (
+    select 1
+    from information_schema.columns existing
+    where existing.table_schema = 'public'
+      and existing.table_name = 'association_members'
+      and existing.column_name = required.required_column
+  );
+
+  if missing_columns is not null then
+    raise exception 'association_members is missing required operational columns: %', array_to_string(missing_columns, ', ');
+  end if;
+end $$;
 
 do $$
 begin

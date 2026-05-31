@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "validate:association-upload": "node scripts/validate-association-member-upload.cjs",
     "smoke:dbin": "node scripts/smoke-dbin.mjs",
     "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs"
   },

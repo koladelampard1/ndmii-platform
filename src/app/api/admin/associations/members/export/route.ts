@@ -14,8 +14,15 @@ function filtersFromUrl(url: URL): AdminAssociationMemberFilters {
   return {
     association: url.searchParams.get("association") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
+    activation: url.searchParams.get("activation") ?? undefined,
     duplicate: url.searchParams.get("duplicate") ?? undefined,
+    lga: url.searchParams.get("lga") ?? undefined,
+    tradeType: url.searchParams.get("tradeType") ?? undefined,
+    reviewer: url.searchParams.get("reviewer") ?? undefined,
+    importedFrom: url.searchParams.get("importedFrom") ?? undefined,
+    importedTo: url.searchParams.get("importedTo") ?? undefined,
     q: url.searchParams.get("q") ?? undefined,
+    ids: url.searchParams.get("ids") ?? undefined,
     page: 1,
     pageSize: 1000,
   };
@@ -40,6 +47,7 @@ async function recordExportAudit(params: {
         filters: associationMemberFiltersForDiagnostics(params.filters),
         row_count: params.rowCount,
         masked_export: true,
+        excluded_fields: ["nin", "bvn"],
       },
     });
 

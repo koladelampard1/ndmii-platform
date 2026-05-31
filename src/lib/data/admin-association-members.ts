@@ -1,12 +1,15 @@
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { isValidEmailAddress, normalizeEmail } from "@/lib/auth/email-validation";
 
 export const ASSOCIATION_MEMBER_STATUSES = [
   "imported",
   "pending_review",
+  "approved",
+  "rejected",
+  "correction_requested",
+  "duplicate_review",
   "pending_activation",
   "active",
-  "rejected",
-  "duplicate_review",
   "orphaned",
 ] as const;
 
@@ -25,7 +28,14 @@ type AnyRow = Record<string, unknown>;
 export type AdminAssociationMemberFilters = {
   association?: string;
   status?: string;
+  activation?: string;
   duplicate?: string;
+  lga?: string;
+  tradeType?: string;
+  reviewer?: string;
+  importedFrom?: string;
+  importedTo?: string;
+  ids?: string;
   q?: string;
   page?: string | number;
   pageSize?: string | number;
@@ -38,25 +48,41 @@ export type AdminAssociationMemberRow = {
   tradeType: string | null;
   phone: string | null;
   email: string | null;
+  cac: string | null;
+  tin: string | null;
   lga: string | null;
   associationId: string | null;
   associationName: string | null;
+  membershipNumber: string | null;
   importSource: string | null;
   status: string | null;
   duplicateSignal: boolean;
   duplicateReasons: string[];
   activationState: string | null;
+  readiness: AssociationMemberReadiness;
+  assignedReviewerId: string | null;
+  assignedReviewerName: string | null;
+  approvedAt: string | null;
   linkedMsme: string | null;
   createdAt: string | null;
 };
 
 export type AdminAssociationMembersWorkspace = {
   associations: Array<{ id: string; name: string; state: string | null; sector: string | null }>;
+  reviewers: Array<{ id: string; label: string }>;
+  lgas: string[];
+  tradeTypes: string[];
   rows: AdminAssociationMemberRow[];
   filters: {
     association: string;
     status: string;
+    activation: string;
     duplicate: string;
+    lga: string;
+    tradeType: string;
+    reviewer: string;
+    importedFrom: string;
+    importedTo: string;
     q: string;
     page: number;
     pageSize: number;
@@ -69,11 +95,22 @@ export type AdminAssociationMembersWorkspace = {
   };
   counts: {
     total: number | null;
+    imported: number | null;
+    pendingReview: number | null;
+    approved: number | null;
     duplicateReview: number | null;
+    correctionRequested: number | null;
     pendingActivation: number | null;
-    active: number | null;
+    assignedToMe: number | null;
+    unassigned: number | null;
   };
   sources: Record<string, { available: boolean; message?: string }>;
+};
+
+export type AssociationMemberReadiness = {
+  label: "Ready" | "Needs Attention" | "Blocked";
+  blockers: string[];
+  attention: string[];
 };
 
 type ProcessedMemberRow = {
@@ -104,7 +141,6 @@ type ProcessedMemberRow = {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 const EXPORT_LIMIT = 1000;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REQUIRED_HEADERS = ["full_name", "phone_number", "business_name", "trade_type", "lga"];
 const OPTIONAL_HEADERS = [
   "whatsapp_number",
@@ -178,15 +214,59 @@ function parsePositiveInteger(value: string | null) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function parseCsvRows(csv: string) {
+const SUPPORTED_CSV_DELIMITERS = [",", "\t", ";"] as const;
+const INVISIBLE_CSV_FORMAT_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/gu;
+
+function countDelimiter(line: string, delimiter: string) {
+  let count = 0;
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) count += 1;
+  }
+
+  return count;
+}
+
+export function detectCsvDelimiter(csv: string) {
+  const firstLine = csv.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "";
+  const separatorDirective = firstLine.match(/^sep=(.)$/i);
+  if (separatorDirective && SUPPORTED_CSV_DELIMITERS.includes(separatorDirective[1] as (typeof SUPPORTED_CSV_DELIMITERS)[number])) {
+    return separatorDirective[1];
+  }
+
+  return SUPPORTED_CSV_DELIMITERS.reduce(
+    (best, delimiter) => {
+      const count = countDelimiter(firstLine, delimiter);
+      return count > best.count ? { delimiter, count } : best;
+    },
+    { delimiter: ",", count: 0 },
+  ).delimiter;
+}
+
+export function parseCsvRows(csv: string, delimiter = detectCsvDelimiter(csv)) {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
   let inQuotes = false;
+  const content = csv.replace(INVISIBLE_CSV_FORMAT_CHARACTERS, "").replace(/^sep=.\r?\n/i, "");
 
-  for (let index = 0; index < csv.length; index += 1) {
-    const char = csv[index];
-    const next = csv[index + 1];
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
 
     if (char === '"' && inQuotes && next === '"') {
       cell += '"';
@@ -199,7 +279,7 @@ export function parseCsvRows(csv: string) {
       continue;
     }
 
-    if (char === "," && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       row.push(cell.trim());
       cell = "";
       continue;
@@ -223,10 +303,10 @@ export function parseCsvRows(csv: string) {
 }
 
 function normalizeHeader(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, "_");
+  return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-function rowsFromCsv(csv: string) {
+export function parseAssociationMemberUploadRows(csv: string) {
   const rows = parseCsvRows(csv);
   const header = rows[0]?.map(normalizeHeader) ?? [];
   const hasCanonicalHeader = REQUIRED_HEADERS.some((field) => header.includes(field));
@@ -244,14 +324,25 @@ function rowsFromCsv(csv: string) {
   });
 }
 
-function validateRow(rowNumber: number, raw: Record<string, string>): Omit<ProcessedMemberRow, "duplicateReasons"> {
+export function inspectAssociationMemberUpload(csv: string) {
+  const delimiter = detectCsvDelimiter(csv);
+  const rows = parseCsvRows(csv, delimiter);
+  const headers = rows[0]?.map(normalizeHeader) ?? [];
+  return { delimiter, headers };
+}
+
+export function validateAssociationMemberUploadRow(
+  rowNumber: number,
+  raw: Record<string, string>,
+  detectedHeaders = Object.keys(raw),
+): Omit<ProcessedMemberRow, "duplicateReasons"> {
   const fullName = nullableString(raw.full_name);
   const phoneNumber = nullableString(raw.phone_number);
   const phoneNormalized = normalizePhone(phoneNumber);
   const businessName = nullableString(raw.business_name);
   const tradeType = nullableString(raw.trade_type);
   const lga = nullableString(raw.lga);
-  const email = nullableString(raw.email)?.toLowerCase() ?? null;
+  const email = nullableString(normalizeEmail(toString(raw.email)));
   const cacRegistered = toBooleanYes(nullableString(raw.cac_registered));
   const tinRegistered = toBooleanYes(nullableString(raw.tin_registered));
   const cacNumber = nullableString(raw.cac_number)?.toUpperCase() ?? null;
@@ -264,7 +355,15 @@ function validateRow(rowNumber: number, raw: Record<string, string>): Omit<Proce
   if (!businessName) errors.push("business_name is required.");
   if (!tradeType) errors.push("trade_type is required.");
   if (!lga) errors.push("lga is required.");
-  if (email && !EMAIL_PATTERN.test(email)) errors.push("email format is invalid.");
+  const emailIsValid = !email || isValidEmailAddress(email);
+  console.info("[admin-association-members:email-validation]", {
+    rowNumber,
+    detectedHeaders,
+    normalizedEmailLength: email?.length ?? 0,
+    containsAt: email?.includes("@") ?? false,
+    validationResult: emailIsValid,
+  });
+  if (!emailIsValid) errors.push(`email is malformed for row ${rowNumber} (${maskEmail(email) ?? "empty email"}).`);
   if (cacRegistered && !cacNumber) errors.push("cac_number is required when cac_registered is yes.");
   if (tinRegistered && !tinNumber) errors.push("tin_number is required when tin_registered is yes.");
 
@@ -375,7 +474,8 @@ export async function processAssociationMemberUpload(params: {
   csvContent: string;
 }) {
   const supabase = await createServiceRoleSupabaseClient();
-  const parsedRows = rowsFromCsv(params.csvContent);
+  const parsedRows = parseAssociationMemberUploadRows(params.csvContent);
+  const inspection = inspectAssociationMemberUpload(params.csvContent);
 
   const { data: association, error: associationError } = await supabase
     .from("associations")
@@ -403,7 +503,11 @@ export async function processAssociationMemberUpload(params: {
       total_rows: parsedRows.length,
       status: "processing",
       notes: "Phase 2 operational upload. Creates pending member records only; no MSMEs or credentials are issued.",
-      metadata: { operation: "association_member_operations" },
+      metadata: {
+        operation: "association_member_operations",
+        detected_delimiter: inspection.delimiter,
+        detected_headers: inspection.headers,
+      },
     })
     .select("id")
     .maybeSingle();
@@ -433,7 +537,7 @@ export async function processAssociationMemberUpload(params: {
   const updatedCount = 0;
 
   for (const parsedRow of parsedRows) {
-    const validated = validateRow(parsedRow.rowNumber, parsedRow.raw);
+    const validated = validateAssociationMemberUploadRow(parsedRow.rowNumber, parsedRow.raw, inspection.headers);
     const duplicateReasons = validated.errors.length ? [] : await duplicateReasonsForRow(supabase, validated);
     const processed: ProcessedMemberRow = { ...validated, duplicateReasons };
     const duplicateSignal = processed.duplicateReasons.length > 0;
@@ -507,7 +611,7 @@ export async function processAssociationMemberUpload(params: {
 
     if (processed.errors.length) continue;
 
-    const memberStatus = duplicateSignal ? "duplicate_review" : "pending_activation";
+    const memberStatus = "imported";
     const memberPayload = {
       association_id: params.associationId,
       msme_id: null,
@@ -599,6 +703,16 @@ export async function processAssociationMemberUpload(params: {
       updated_rows: updatedCount,
       status: "completed",
       notes: `Operational records created: ${createdCount}. Duplicates flagged: ${duplicateCount}. Errors: ${errorCount}. No MSMEs or credentials were issued.`,
+      metadata: {
+        operation: "association_member_operations",
+        detected_delimiter: inspection.delimiter,
+        detected_headers: inspection.headers,
+        row_count: parsedRows.length,
+        valid_count: Math.max(0, parsedRows.length - errorCount),
+        failed_count: errorCount,
+        duplicate_count: duplicateCount,
+        operational_records_created: createdCount,
+      },
     })
     .eq("id", importRecord.id);
 
@@ -632,7 +746,14 @@ export function parseAssociationMemberFilters(filters: AdminAssociationMemberFil
   return {
     association: toString(filters.association).trim(),
     status: toString(filters.status).trim(),
+    activation: toString(filters.activation).trim(),
     duplicate: toString(filters.duplicate).trim(),
+    lga: toString(filters.lga).trim(),
+    tradeType: toString(filters.tradeType).trim(),
+    reviewer: toString(filters.reviewer).trim(),
+    importedFrom: toString(filters.importedFrom).trim(),
+    importedTo: toString(filters.importedTo).trim(),
+    ids: toString(filters.ids).trim(),
     q: toString(filters.q).trim(),
     page,
     pageSize: Math.min(MAX_PAGE_SIZE, Math.max(5, requestedPageSize)),
@@ -643,14 +764,35 @@ function applyMemberFilters(query: any, filters: ReturnType<typeof parseAssociat
   let next = query;
   if (filters.association) next = next.eq("association_id", filters.association);
   if (filters.status) next = next.eq("member_status", filters.status);
+  if (filters.activation) next = next.eq("activation_state", filters.activation);
   if (filters.duplicate === "yes") next = next.eq("duplicate_signal", true);
   if (filters.duplicate === "no") next = next.eq("duplicate_signal", false);
+  if (filters.lga) next = next.eq("lga", filters.lga);
+  if (filters.tradeType) next = next.eq("trade_type", filters.tradeType);
+  if (filters.reviewer === "unassigned") next = next.is("assigned_reviewer_id", null);
+  else if (filters.reviewer) next = next.eq("assigned_reviewer_id", filters.reviewer);
+  if (filters.importedFrom) next = next.gte("created_at", `${filters.importedFrom}T00:00:00.000Z`);
+  if (filters.importedTo) next = next.lte("created_at", `${filters.importedTo}T23:59:59.999Z`);
+  if (filters.ids) next = next.in("id", filters.ids.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 200));
   if (filters.q) {
     next = next.or(
-      `full_name.ilike.%${filters.q}%,business_name.ilike.%${filters.q}%,trade_type.ilike.%${filters.q}%,lga.ilike.%${filters.q}%,phone_normalized.ilike.%${filters.q}%,email.ilike.%${filters.q}%`,
+      `full_name.ilike.%${filters.q}%,business_name.ilike.%${filters.q}%,phone_normalized.ilike.%${filters.q}%,email.ilike.%${filters.q}%,association_membership_number.ilike.%${filters.q}%`,
     );
   }
   return next;
+}
+
+export function computeAssociationMemberReadiness(row: AnyRow): AssociationMemberReadiness {
+  const blockers: string[] = [];
+  const attention: string[] = [];
+  if (!nullableString(row.association_id)) blockers.push("Association is not assigned.");
+  if (Boolean(row.duplicate_signal) || nullableString(row.member_status) === "duplicate_review") blockers.push("Duplicate review is unresolved.");
+  if (["rejected", "correction_requested"].includes(nullableString(row.member_status) ?? "")) blockers.push(`Member is ${toString(row.member_status).replaceAll("_", " ")}.`);
+  if (!nullableString(row.phone_number)) attention.push("Phone is unavailable.");
+  if (!nullableString(row.email)) attention.push("Email is unavailable.");
+  if (!nullableString(row.business_name)) attention.push("Business name is unavailable.");
+  if (!nullableString(row.trade_type)) attention.push("Trade type is unavailable.");
+  return { label: blockers.length ? "Blocked" : attention.length ? "Needs Attention" : "Ready", blockers, attention };
 }
 
 async function safeCount(supabase: SupabaseClient, apply?: (query: any) => any) {
@@ -665,10 +807,68 @@ async function safeCount(supabase: SupabaseClient, apply?: (query: any) => any) 
   }
 }
 
+function logAssociationMemberQueryFailure(params: {
+  operation: string;
+  rowCount: number;
+  importIdCount: number;
+  error: unknown;
+}) {
+  const error = params.error as { code?: string; message?: string } | null;
+  console.info("[admin-association-members:query-failed]", {
+    operation: params.operation,
+    rowCount: params.rowCount,
+    importIdCount: params.importIdCount,
+    code: error?.code ?? (params.error instanceof Error ? params.error.name : "unknown"),
+    message: error?.message ?? (params.error instanceof Error ? params.error.message : "Source unavailable."),
+  });
+}
+
+async function loadImportFileNames(
+  supabase: SupabaseClient,
+  rows: AnyRow[],
+  operation: string,
+) {
+  const importIds = [...new Set(rows.map((row) => nullableString(row.source_import_id)).filter((value): value is string => Boolean(value)))];
+  if (!importIds.length) return { fileNames: new Map<string, string>(), source: sourceAvailable() };
+
+  try {
+    const { data, error } = await supabase
+      .from("association_member_imports")
+      .select("id,file_name")
+      .in("id", importIds);
+    if (error) {
+      logAssociationMemberQueryFailure({ operation, rowCount: rows.length, importIdCount: importIds.length, error });
+      return { fileNames: null, source: sourceUnavailable(new Error(error.message)) };
+    }
+
+    return {
+      fileNames: new Map(
+        ((data ?? []) as AnyRow[])
+          .map((row) => [nullableString(row.id), nullableString(row.file_name)] as const)
+          .filter((entry): entry is readonly [string, string] => Boolean(entry[0] && entry[1])),
+      ),
+      source: sourceAvailable(),
+    };
+  } catch (error) {
+    logAssociationMemberQueryFailure({ operation, rowCount: rows.length, importIdCount: importIds.length, error });
+    return { fileNames: null, source: sourceUnavailable(error) };
+  }
+}
+
+function mergeImportFileNames(rows: AnyRow[], fileNames: Map<string, string> | null): AnyRow[] {
+  return rows.map((row) => {
+    const importId = nullableString(row.source_import_id);
+    return {
+      ...row,
+      import_file_name: importId ? fileNames?.get(importId) ?? "Import source unavailable" : null,
+    };
+  });
+}
+
 function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
   const association = row.associations as AnyRow | null | undefined;
   const msme = row.msmes as AnyRow | null | undefined;
-  const importRow = row.association_member_imports as AnyRow | null | undefined;
+  const reviewer = row.users as AnyRow | null | undefined;
   const duplicateReasons = Array.isArray(row.duplicate_reasons)
     ? row.duplicate_reasons.map((item) => toString(item)).filter(Boolean)
     : [];
@@ -680,14 +880,21 @@ function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
     tradeType: nullableString(row.trade_type),
     phone: maskPhone(nullableString(row.phone_number)),
     email: maskEmail(nullableString(row.email)),
+    cac: maskIdentifier(nullableString(row.cac_number)),
+    tin: maskIdentifier(nullableString(row.tin_number)),
     lga: nullableString(row.lga),
     associationId: nullableString(row.association_id),
     associationName: nullableString(association?.name),
-    importSource: nullableString(importRow?.file_name) ?? nullableString(row.source_import_id),
+    membershipNumber: nullableString(row.association_membership_number),
+    importSource: nullableString(row.import_file_name),
     status: nullableString(row.member_status),
     duplicateSignal: Boolean(row.duplicate_signal),
     duplicateReasons,
     activationState: nullableString(row.activation_state),
+    readiness: computeAssociationMemberReadiness(row),
+    assignedReviewerId: nullableString(row.assigned_reviewer_id),
+    assignedReviewerName: nullableString(reviewer?.full_name) ?? nullableString(reviewer?.email),
+    approvedAt: nullableString(row.approved_at),
     linkedMsme: nullableString(msme?.msme_id),
     createdAt: nullableString(row.created_at),
   };
@@ -695,19 +902,22 @@ function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
 
 export async function getAdminAssociationMembersWorkspace(
   filtersInput: AdminAssociationMemberFilters,
+  currentUserId?: string | null,
 ): Promise<AdminAssociationMembersWorkspace> {
   const supabase = await createServiceRoleSupabaseClient();
   const filters = parseAssociationMemberFilters(filtersInput);
   const from = (filters.page - 1) * filters.pageSize;
   const to = from + filters.pageSize - 1;
 
-  const [associationsResult, membersResult, totalCount, duplicateCount, pendingCount, activeCount] = await Promise.all([
+  const [associationsResult, reviewersResult, facetsResult, membersResult, totalCount, importedCount, pendingReviewCount, approvedCount, duplicateCount, correctionCount, pendingCount, assignedToMeCount, unassignedCount] = await Promise.all([
     supabase.from("associations").select("id,name,state,sector").order("name", { ascending: true }).limit(500),
+    supabase.from("users").select("id,full_name,email").in("role", ["admin", "reviewer"]).order("full_name").limit(500),
+    supabase.from("association_members").select("lga,trade_type").limit(2000),
     applyMemberFilters(
       supabase
         .from("association_members")
         .select(
-          "id,association_id,msme_id,full_name,phone_number,email,business_name,trade_type,lga,member_status,duplicate_signal,duplicate_reasons,activation_state,source_import_id,created_at,associations(name),msmes(msme_id,business_name),association_member_imports:source_import_id(file_name)",
+          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
           { count: "exact" },
         ),
       filters,
@@ -715,9 +925,14 @@ export async function getAdminAssociationMembersWorkspace(
       .order("created_at", { ascending: false })
       .range(from, to),
     safeCount(supabase),
+    safeCount(supabase, (query) => query.eq("member_status", "imported")),
+    safeCount(supabase, (query) => query.eq("member_status", "pending_review")),
+    safeCount(supabase, (query) => query.eq("member_status", "approved")),
     safeCount(supabase, (query) => query.eq("duplicate_signal", true)),
+    safeCount(supabase, (query) => query.eq("member_status", "correction_requested")),
     safeCount(supabase, (query) => query.eq("member_status", "pending_activation")),
-    safeCount(supabase, (query) => query.eq("member_status", "active")),
+    currentUserId ? safeCount(supabase, (query) => query.eq("assigned_reviewer_id", currentUserId)) : Promise.resolve({ count: 0, source: sourceAvailable() }),
+    safeCount(supabase, (query) => query.is("assigned_reviewer_id", null)),
   ]);
 
   const associationsSource = associationsResult.error
@@ -726,7 +941,12 @@ export async function getAdminAssociationMembersWorkspace(
   const membersSource = membersResult.error
     ? sourceUnavailable(new Error(membersResult.error.message))
     : sourceAvailable();
-  const rows = membersResult.error ? [] : ((membersResult.data ?? []) as unknown as AnyRow[]).map(mapMemberRow);
+  if (membersResult.error) {
+    logAssociationMemberQueryFailure({ operation: "load_member_queue", rowCount: 0, importIdCount: 0, error: membersResult.error });
+  }
+  const rawRows = membersResult.error ? [] : (membersResult.data ?? []) as unknown as AnyRow[];
+  const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_queue_import_sources");
+  const rows = mergeImportFileNames(rawRows, importSourcesResult.fileNames).map(mapMemberRow);
   const total = membersResult.error ? null : membersResult.count ?? 0;
 
   return {
@@ -736,6 +956,9 @@ export async function getAdminAssociationMembersWorkspace(
       state: nullableString(row.state),
       sector: nullableString(row.sector),
     })),
+    reviewers: ((reviewersResult.data ?? []) as AnyRow[]).map((row) => ({ id: toString(row.id), label: nullableString(row.full_name) ?? nullableString(row.email) ?? "Unnamed reviewer" })),
+    lgas: [...new Set(((facetsResult.data ?? []) as AnyRow[]).map((row) => nullableString(row.lga)).filter((value): value is string => Boolean(value)))].sort(),
+    tradeTypes: [...new Set(((facetsResult.data ?? []) as AnyRow[]).map((row) => nullableString(row.trade_type)).filter((value): value is string => Boolean(value)))].sort(),
     rows,
     filters,
     pagination: {
@@ -746,18 +969,89 @@ export async function getAdminAssociationMembersWorkspace(
     },
     counts: {
       total: totalCount.count,
+      imported: importedCount.count,
+      pendingReview: pendingReviewCount.count,
+      approved: approvedCount.count,
       duplicateReview: duplicateCount.count,
+      correctionRequested: correctionCount.count,
       pendingActivation: pendingCount.count,
-      active: activeCount.count,
+      assignedToMe: assignedToMeCount.count,
+      unassigned: unassignedCount.count,
     },
     sources: {
       associations: associationsSource,
       association_members: membersSource,
+      association_member_imports: importSourcesResult.source,
       total_count: totalCount.source,
       duplicate_count: duplicateCount.source,
       pending_activation_count: pendingCount.source,
-      active_count: activeCount.source,
+      assigned_to_me_count: assignedToMeCount.source,
+      unassigned_count: unassignedCount.source,
     },
+  };
+}
+
+export type AdminAssociationMemberDetail = {
+  member: AdminAssociationMemberRow & {
+    phone: string | null;
+    email: string | null;
+    whatsapp: string | null;
+    position: string | null;
+    cac: string | null;
+    tin: string | null;
+    workshopAddress: string | null;
+    yearsOfExperience: number | null;
+    internalNotes: string | null;
+    latestReviewReason: string | null;
+  };
+  reviewers: Array<{ id: string; label: string }>;
+  validationResults: string[];
+  events: Array<{ id: string; eventType: string; actorRole: string | null; reason: string | null; createdAt: string | null }>;
+};
+
+export async function getAdminAssociationMemberDetail(memberId: string): Promise<AdminAssociationMemberDetail | null> {
+  const supabase = await createServiceRoleSupabaseClient();
+  const [memberResult, reviewersResult, eventsResult] = await Promise.all([
+    supabase
+      .from("association_members")
+      .select("*,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)")
+      .eq("id", memberId)
+      .maybeSingle(),
+    supabase.from("users").select("id,full_name,email").in("role", ["admin", "reviewer"]).order("full_name").limit(500),
+    supabase.from("association_member_events").select("id,event_type,actor_role,metadata,created_at").eq("association_member_id", memberId).order("created_at", { ascending: false }).limit(100),
+  ]);
+  if (memberResult.error) throw new Error(memberResult.error.message);
+  if (!memberResult.data) return null;
+  const importSourcesResult = await loadImportFileNames(supabase, [memberResult.data as AnyRow], "load_member_detail_import_source");
+  const [raw] = mergeImportFileNames([memberResult.data as AnyRow], importSourcesResult.fileNames);
+  const mapped = mapMemberRow(raw);
+  const validationResults = [
+    nullableString(raw.phone_number) ? "Phone available" : "Phone unavailable",
+    nullableString(raw.email) ? "Email available" : "Email unavailable",
+    nullableString(raw.business_name) ? "Business name available" : "Business name unavailable",
+    nullableString(raw.trade_type) ? "Trade type available" : "Trade type unavailable",
+    nullableString(raw.association_id) ? "Association assigned" : "Association unavailable",
+  ];
+  return {
+    member: {
+      ...mapped,
+      phone: maskPhone(nullableString(raw.phone_number)),
+      email: maskEmail(nullableString(raw.email)),
+      whatsapp: maskPhone(nullableString(raw.whatsapp_number)),
+      position: nullableString(raw.position_in_association),
+      cac: maskIdentifier(nullableString(raw.cac_number)),
+      tin: maskIdentifier(nullableString(raw.tin_number)),
+      workshopAddress: nullableString(raw.workshop_address),
+      yearsOfExperience: typeof raw.years_of_experience === "number" ? raw.years_of_experience : null,
+      internalNotes: nullableString(raw.internal_notes),
+      latestReviewReason: nullableString(raw.latest_review_reason),
+    },
+    reviewers: ((reviewersResult.data ?? []) as AnyRow[]).map((row) => ({ id: toString(row.id), label: nullableString(row.full_name) ?? nullableString(row.email) ?? "Unnamed reviewer" })),
+    validationResults,
+    events: ((eventsResult.data ?? []) as AnyRow[]).map((row) => {
+      const metadata = (row.metadata ?? {}) as AnyRow;
+      return { id: toString(row.id), eventType: toString(row.event_type), actorRole: nullableString(row.actor_role), reason: nullableString(metadata.reason), createdAt: nullableString(row.created_at) };
+    }),
   };
 }
 
@@ -768,7 +1062,7 @@ export async function getAssociationMemberExportRows(filtersInput: AdminAssociat
     supabase
       .from("association_members")
       .select(
-        "id,association_id,msme_id,full_name,phone_number,email,business_name,trade_type,lga,member_status,duplicate_signal,duplicate_reasons,activation_state,source_import_id,created_at,associations(name),msmes(msme_id,business_name),association_member_imports:source_import_id(file_name)",
+        "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
       ),
     filters,
   )
@@ -777,7 +1071,9 @@ export async function getAssociationMemberExportRows(filtersInput: AdminAssociat
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return ((data ?? []) as unknown as AnyRow[]).map(mapMemberRow);
+  const rawRows = (data ?? []) as unknown as AnyRow[];
+  const importSourcesResult = await loadImportFileNames(supabase, rawRows, "load_member_export_import_sources");
+  return mergeImportFileNames(rawRows, importSourcesResult.fileNames).map(mapMemberRow);
 }
 
 function csvEscape(value: string | null | boolean | string[]) {
@@ -792,13 +1088,18 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
     "trade_type",
     "phone_masked",
     "email_masked",
+    "cac_masked",
+    "tin_masked",
     "lga",
     "association",
     "import_source",
     "status",
+    "activation_readiness",
     "duplicate_signal",
     "duplicate_reasons",
     "activation_state",
+    "reviewer",
+    "approval_date",
     "linked_msme",
     "created_at",
   ];
@@ -812,13 +1113,18 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
         row.tradeType,
         row.phone,
         row.email,
+        row.cac,
+        row.tin,
         row.lga,
         row.associationName,
         row.importSource,
         row.status,
+        row.readiness.label,
         row.duplicateSignal,
         row.duplicateReasons,
         row.activationState,
+        row.assignedReviewerName,
+        row.approvedAt,
         row.linkedMsme,
         row.createdAt,
       ]
@@ -833,7 +1139,14 @@ export function associationMemberFiltersForDiagnostics(filters: AdminAssociation
   return {
     associationId: parsed.association || null,
     status: parsed.status || null,
+    activation: parsed.activation || null,
     duplicate: parsed.duplicate || null,
+    lga: parsed.lga || null,
+    tradeType: parsed.tradeType || null,
+    reviewer: parsed.reviewer || null,
+    importedFrom: parsed.importedFrom || null,
+    importedTo: parsed.importedTo || null,
+    selectedIds: parsed.ids ? parsed.ids.split(",").filter(Boolean).length : 0,
     hasSearch: Boolean(parsed.q),
     page: parsed.page,
     pageSize: parsed.pageSize,

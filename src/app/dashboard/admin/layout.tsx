@@ -21,7 +21,8 @@ async function currentPathname() {
 export default async function AdminWorkspaceLayout({ children }: { children: ReactNode }) {
   const pathname = await currentPathname();
   const ctx = await requireWorkspaceRole(["admin", "reviewer", "fccpc_officer", "firs_officer"], pathname);
-  if (ctx.role !== "admin" && pathname !== "/dashboard/admin/msmes" && !pathname.startsWith("/dashboard/admin/msmes/")) {
+  const sharedWorkspace = pathname === "/dashboard/admin/msmes" || pathname.startsWith("/dashboard/admin/msmes/") || pathname === "/dashboard/admin/association-members" || pathname.startsWith("/dashboard/admin/association-members/");
+  if (ctx.role !== "admin" && !sharedWorkspace) {
     redirect("/access-denied");
   }
 

@@ -1,0 +1,6 @@
+full_name,phone_number,business_name,trade_type,lga,email,whatsapp_number,association_membership_number,position_in_association,cac_registered,cac_number,tin_registered,tin_number,workshop_address,years_of_experience
+Adewale Musa,08030001111,Ade Auto Repairs,Mechanic,Ikeja,adewale@example.com,08030001111,ASM-001,Member,no,,no,,"12 Obafemi Awolowo Way, Ikeja",8
+Ngozi Okafor,08030002222,Ngozi Fashion House,Tailoring,Surulere,ngozi@example.com,08030002222,ASM-002,Member,no,,no,,"18 Adeniran Ogunsanya Street, Surulere",6
+Ibrahim Bello,08030003333,Bello Metal Works,Metal Fabrication,Kaduna North,ibrahim@example.com,08030003333,ASM-003,Member,yes,BN-2345678,no,,"4 Ahmadu Bello Way, Kaduna",11
+Blessing Ekanem,08030004444,Blessing Foods,Catering,Uyo,blessing@example.com,08030004444,ASM-004,Treasurer,no,,yes,TIN-100004,"7 Oron Road, Uyo",5
+Chinedu Nwosu,08030005555,Nwosu Electrical Services,Electrical Installation,Enugu North,chinedu@example.com,08030005555,ASM-005,Member,yes,BN-3456789,yes,TIN-100005,"25 Ogui Road, Enugu",9
