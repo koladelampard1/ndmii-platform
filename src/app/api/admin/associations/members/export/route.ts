@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
+  ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT,
+  ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT,
   associationMemberFiltersForDiagnostics,
   buildAssociationMembersCsv,
   getAssociationMemberExportRows,
+  resolveAssociationMemberBulkTargetIds,
   type AdminAssociationMemberFilters,
 } from "@/lib/data/admin-association-members";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -80,9 +83,24 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const filters = filtersFromUrl(url);
+  const targetMode = url.searchParams.get("target_mode") === "selected" ? "selected" : "filtered";
+  const requestedFilters = filtersFromUrl(url);
+  const selectedIds = [...new Set((requestedFilters.ids ?? "").split(",").map((id) => id.trim()).filter(Boolean))];
+  if (targetMode === "selected" && !selectedIds.length) {
+    return NextResponse.json({ ok: false, error: "Select at least one member." }, { status: 400 });
+  }
+  if (targetMode === "selected" && selectedIds.length > ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT) {
+    return NextResponse.json({ ok: false, error: `Selected-row exports are limited to ${ASSOCIATION_MEMBER_SELECTED_BULK_LIMIT.toLocaleString()} members.` }, { status: 400 });
+  }
+  const filters = targetMode === "selected"
+    ? { ...requestedFilters, ids: selectedIds.join(",") }
+    : { ...requestedFilters, ids: undefined };
 
   try {
+    if (targetMode === "filtered") {
+      const supabase = await createServiceRoleSupabaseClient();
+      await resolveAssociationMemberBulkTargetIds(supabase, filters, ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT);
+    }
     const rows = await getAssociationMemberExportRows(filters);
     await recordExportAudit({ actorUserId: ctx.appUserId, filters, rowCount: rows.length });
 

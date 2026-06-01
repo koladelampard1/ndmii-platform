@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
@@ -74,12 +74,22 @@ export function AssociationMemberBulkActions({
   const [reason, setReason] = useState("");
   const [reviewerId, setReviewerId] = useState("");
   const [toast, setToast] = useState("");
-  const [result, setResult] = useState<{ successful: number; skipped: number; failed: number; report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }>; accessDetails?: Array<{ memberName: string; phone: string; email: string; businessName: string; temporaryPin: string; expiresAt: string }> } | null>(null);
+  const [result, setResult] = useState<{ totalTargeted: number; successful: number; skipped: number; failed: number; report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }>; accessDetails?: Array<{ memberName: string; phone: string; email: string; businessName: string; temporaryPin: string; expiresAt: string }> } | null>(null);
   const [pending, startTransition] = useTransition();
+  const setVisibleSelection = useCallback((checked: boolean) => {
+    const boxes = Array.from(document.querySelectorAll<HTMLInputElement>("[data-association-member-bulk-checkbox]"));
+    boxes.forEach((box) => { box.checked = checked; });
+    setSelected(checked ? visibleIds : []);
+    setTargetMode("selected");
+  }, [visibleIds]);
 
   useEffect(() => {
     function onChange(event: Event) {
       const target = event.target as HTMLInputElement | null;
+      if (target?.matches("[data-association-member-bulk-visible-toggle]")) {
+        setVisibleSelection(target.checked);
+        return;
+      }
       if (!target?.matches("[data-association-member-bulk-checkbox]")) return;
       const boxes = Array.from(document.querySelectorAll<HTMLInputElement>("[data-association-member-bulk-checkbox]:checked"));
       setSelected(boxes.map((box) => box.value));
@@ -87,21 +97,32 @@ export function AssociationMemberBulkActions({
     }
     document.addEventListener("change", onChange);
     return () => document.removeEventListener("change", onChange);
-  }, []);
+  }, [setVisibleSelection]);
+
+  useEffect(() => {
+    const toggle = document.querySelector<HTMLInputElement>("[data-association-member-bulk-visible-toggle]");
+    if (!toggle) return;
+    const selectedVisibleCount = visibleIds.filter((id) => selected.includes(id)).length;
+    toggle.checked = targetMode === "selected" && visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+    toggle.indeterminate = targetMode === "selected" && selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+  }, [selected, targetMode, visibleIds]);
 
   const targetCount = targetMode === "filtered" ? filteredCount ?? 0 : selected.length;
+  const overLimit = targetMode === "filtered" ? targetCount > 5000 : targetCount > 500;
   const selectedAction = actions.find((item) => item.value === action);
+  const allVisibleSelected = targetMode === "selected" && visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
   const exportUrl = useMemo(() => {
-    if (targetMode === "filtered") return exportHref;
+    const modeSeparator = exportHref.includes("?") ? "&" : "?";
+    if (targetMode === "filtered") return `${exportHref}${modeSeparator}target_mode=filtered`;
     const separator = exportHref.includes("?") ? "&" : "?";
-    return `${exportHref}${separator}ids=${encodeURIComponent(selected.join(","))}`;
+    return `${exportHref}${separator}target_mode=selected&ids=${encodeURIComponent(selected.join(","))}`;
   }, [exportHref, selected, targetMode]);
 
-  function setVisibleSelection(checked: boolean) {
+  function selectAllFiltered() {
     const boxes = Array.from(document.querySelectorAll<HTMLInputElement>("[data-association-member-bulk-checkbox]"));
-    boxes.forEach((box) => { box.checked = checked; });
-    setSelected(checked ? visibleIds : []);
-    setTargetMode("selected");
+    boxes.forEach((box) => { box.checked = false; });
+    setSelected([]);
+    setTargetMode("filtered");
   }
 
   function clearSelection() {
@@ -110,11 +131,7 @@ export function AssociationMemberBulkActions({
   }
 
   function begin() {
-    if (!action || targetCount === 0) return;
-    if (action === "export") {
-      window.location.assign(exportUrl);
-      return;
-    }
+    if (!action || targetCount === 0 || overLimit) return;
     setConfirming(true);
   }
 
@@ -144,10 +161,17 @@ export function AssociationMemberBulkActions({
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <strong>Bulk operations</strong>
         <button type="button" onClick={() => setVisibleSelection(true)} className="rounded border px-3 py-2 font-bold">Select visible</button>
-        {role === "admin" ? <button type="button" onClick={() => setTargetMode("filtered")} disabled={!filteredCount} className="rounded border px-3 py-2 font-bold disabled:opacity-40">Select all filtered</button> : null}
+        {role === "admin" ? <button type="button" onClick={selectAllFiltered} disabled={!filteredCount} className="rounded border px-3 py-2 font-bold disabled:opacity-40">Select all filtered</button> : null}
         <button type="button" onClick={clearSelection} className="rounded border px-3 py-2 font-bold">Clear selection</button>
         <span className="rounded bg-slate-100 px-3 py-2 font-bold">{targetMode === "filtered" ? `${filteredCount ?? 0} filtered` : `${selected.length} selected`}</span>
       </div>
+      {targetMode === "filtered" ? <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
+        All {(filteredCount ?? 0).toLocaleString()} members matching current filters selected. This will apply to all members matching the current filters, not only the current page.
+      </div> : allVisibleSelected ? <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900">
+        <span>All {visibleIds.length.toLocaleString()} visible members selected.</span>
+        {role === "admin" && (filteredCount ?? 0) > visibleIds.length ? <button type="button" onClick={selectAllFiltered} className="underline">Select all {(filteredCount ?? 0).toLocaleString()} members matching current filters.</button> : null}
+      </div> : selected.length ? <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">{selected.length.toLocaleString()} visible member{selected.length === 1 ? "" : "s"} selected.</p> : null}
+      {overLimit ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">{targetMode === "filtered" ? "All-filtered" : "Selected-row"} bulk operations are limited to {(targetMode === "filtered" ? 5000 : 500).toLocaleString()} members. Narrow the current filters before continuing.</p> : null}
       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">Bulk operations apply lifecycle rules. Invalid members will be skipped and reported.</p>
       <div className="grid gap-2 md:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(220px,2fr)_auto]">
         <select value={action} onChange={(event) => setAction(event.target.value as BulkAction)} className="rounded border px-3 py-2 text-sm">
@@ -159,12 +183,17 @@ export function AssociationMemberBulkActions({
           {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.label}</option>)}
         </select>
         <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason required for rejection, correction, or reassignment" className="rounded border px-3 py-2 text-sm" />
-        <button type="button" onClick={begin} disabled={!action || targetCount === 0} className="rounded bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-40">{action === "export" ? "Download" : "Continue"}</button>
+        <button type="button" onClick={begin} disabled={!action || targetCount === 0 || overLimit} className="rounded bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-40">Continue</button>
       </div>
-      {result ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"><span>Success: {result.successful}</span><span>Skipped: {result.skipped}</span><span>Failed: {result.failed}</span>{result.accessDetails?.length ? <button type="button" onClick={downloadAccessDetails} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download one-time PIN export</button> : null}{result.report.length ? <button type="button" onClick={downloadReport} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download exceptions</button> : null}</div> : null}
+      {result ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"><span>Targeted: {result.totalTargeted}</span><span>Success: {result.successful}</span><span>Skipped: {result.skipped}</span><span>Failed: {result.failed}</span>{result.accessDetails?.length ? <button type="button" onClick={downloadAccessDetails} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download one-time PIN export</button> : null}{result.report.length ? <button type="button" onClick={downloadReport} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download exceptions</button> : null}</div> : null}
 
       {confirming && selectedAction ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true">
         <form action={(formData) => {
+          if (action === "export") {
+            window.location.assign(exportUrl);
+            setConfirming(false);
+            return;
+          }
           startTransition(async () => {
             const response = await submitBulkAssociationMemberAction({ ok: false, message: "" }, formData);
             setToast(response.message);
@@ -185,11 +214,12 @@ export function AssociationMemberBulkActions({
           {selected.map((id) => <input key={id} type="hidden" name="member_ids" value={id} />)}
           <h3 className="text-base font-black">Confirm {selectedAction.label}</h3>
           <p className="mt-2 text-sm text-slate-600">This operation targets {targetCount.toLocaleString()} member{targetCount === 1 ? "" : "s"}. Records that fail lifecycle validation will be skipped and reported.</p>
+          {targetMode === "filtered" ? <p className="mt-3 rounded bg-amber-50 p-3 text-sm font-bold text-amber-900">This will apply to all members matching the current filters, not only the current page.</p> : null}
           {targetCount > 100 ? <p className="mt-3 rounded bg-amber-50 p-3 text-sm font-bold text-amber-900">This operation affects more than 100 records. Confirm the filter and action before continuing.</p> : null}
           {selectedAction.reason && !reason.trim() ? <p className="mt-3 text-sm font-bold text-rose-700">Enter a reason before confirming.</p> : null}
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={() => setConfirming(false)} className="rounded border px-4 py-2 text-sm font-black">Cancel</button>
-            <button type="submit" disabled={pending || Boolean(selectedAction.reason && !reason.trim()) || Boolean(action === "assign_reviewer" && !reviewerId)} className="rounded bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-40">{pending ? "Processing..." : "Confirm operation"}</button>
+            <button type="submit" disabled={pending || Boolean(selectedAction.reason && !reason.trim()) || Boolean(action === "assign_reviewer" && !reviewerId)} className="rounded bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-40">{pending ? "Processing..." : action === "export" ? "Confirm download" : "Confirm operation"}</button>
           </div>
         </form>
       </div> : null}
