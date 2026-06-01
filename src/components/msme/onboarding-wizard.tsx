@@ -97,7 +97,7 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
       <input type="hidden" name="passport_photo_path" value={passportPhotoPath} />
 
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">MSME onboarding wizard</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Complete your MSME profile</p>
         <h2 className="text-2xl font-bold text-slate-900">{steps[step]}</h2>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
           <div className="h-full bg-emerald-600 transition-all" style={{ width: `${progress}%` }} />

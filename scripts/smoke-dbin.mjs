@@ -140,8 +140,9 @@ check("association temporary access provisions an idempotent draft MSME workspac
       associationAccess.includes('review_status: "draft"') &&
       associationAccess.includes('msme_workspace_provisioned') &&
       associationWorkspaceMigration.includes("add column if not exists source_association_member_id uuid") &&
-      loginPage.includes('"/dashboard/msme/onboarding"'),
-    "Expected temporary PIN setup to reuse or create a draft MSME workspace and route fast-track accounts into onboarding.",
+      associationAccess.includes('redirectTo: "/dashboard/msme"') &&
+      !loginPage.includes('"/dashboard/msme/onboarding"'),
+    "Expected temporary PIN setup to reuse or create a draft MSME workspace and allow fast-track accounts into the dashboard.",
   );
 });
 
@@ -151,8 +152,8 @@ check("MSME onboarding save uses an ownership-gated server write", () => {
       msmeOnboardingPage.includes('.eq("id", existing.id)') &&
       msmeOnboardingPage.includes('.eq("created_by", appUserId)') &&
       msmeOnboardingPage.includes(".maybeSingle()") &&
-      msmeOnboardingPage.includes("Unable to save onboarding details. Please refresh and try again."),
-    "Expected MSME onboarding writes to use a server-side client only with an explicit owner constraint and zero-row handling.",
+      msmeOnboardingPage.includes("Unable to save profile details. Please refresh and try again."),
+    "Expected MSME profile completion writes to use a server-side client only with an explicit owner constraint and zero-row handling.",
   );
 });
 

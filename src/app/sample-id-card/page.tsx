@@ -49,7 +49,7 @@ export default function SampleIdCardPage() {
             <li>3. Verification confirms business identity, status, and trust indicators.</li>
           </ol>
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            Need a live credential? Complete MSME onboarding and publish your public profile.
+            Need a live credential? Complete your MSME profile and publish your public profile.
           </div>
           <Link href="/for-msmes" className="mt-4 inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800">
             Read MSME onboarding guide

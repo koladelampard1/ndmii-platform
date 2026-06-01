@@ -9,6 +9,8 @@ import { OwnerPhotoUploadCard } from "@/app/dashboard/msme/settings/owner-photo-
 import { ProfileCompletenessCard, type ProfileCompletenessSignals } from "@/app/dashboard/msme/settings/profile-completeness-card";
 import { SettingsSubmitButton } from "@/app/dashboard/msme/settings/settings-submit-button";
 import { getBusinessIdentityCredentialPassportPhotoUrl } from "@/lib/data/business-identity-credential";
+import { trackProfileCompletionAnalytics } from "@/lib/data/msme-profile-completion";
+import { calculateProfileCompletion } from "@/lib/profile-completion";
 import {
   BANKING_FIELD_ERROR_MESSAGES,
   bankingProfileConfigured,
@@ -553,6 +555,19 @@ export default async function MsmeSettingsPage({ searchParams }: { searchParams:
   }
 
   const bankingProfile = await loadMsmeBankingProfile(supabase, workspace.msme.id);
+  const progressiveCompletion = calculateProfileCompletion({
+    businessName: msmeSettings.business_name,
+    ownerName: msmeSettings.owner_name,
+    phone: msmeSettings.contact_phone,
+    email: msmeSettings.contact_email,
+    businessAddress: msmeSettings.address,
+    tradeSector: msmeSettings.sector,
+    cacNumber: msmeSettings.cac_number,
+    tin: msmeSettings.tin,
+    passportPhoto: msmeSettings.passport_photo_path ?? msmeSettings.passport_photo_url,
+    bankDetailsPresent: bankingProfileConfigured(bankingProfile),
+  });
+  await trackProfileCompletionAnalytics(supabase, { appUserId: workspace.appUserId, msmeId: workspace.msme.id, percentage: progressiveCompletion.percentage, source: "settings" });
   const completenessSignals = deriveProfileCompletenessSignals({
     msme: msmeSettings,
     provider: { id: workspace.provider.id, description: workspace.provider.description, logo_url: workspace.provider.logo_url },

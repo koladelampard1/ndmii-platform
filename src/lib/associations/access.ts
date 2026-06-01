@@ -325,7 +325,7 @@ export async function completeAssociationTemporaryAccess(supabase: SupabaseClien
       await writePublicAudit(supabase, credential, "password_changed", { actorUserId: appUserId, msmeId });
       await writePublicAudit(supabase, credential, "msme_workspace_provisioned", { actorUserId: appUserId, msmeId });
     }
-    return { ok: true as const, loginEmailAvailable: Boolean(email), redirectTo: "/dashboard/msme/onboarding" };
+    return { ok: true as const, loginEmailAvailable: Boolean(email), redirectTo: "/dashboard/msme" };
   } catch (setupError) {
     console.warn("[association-fast-track-setup]", {
       credentialId: credential.id,

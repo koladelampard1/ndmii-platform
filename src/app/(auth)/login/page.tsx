@@ -80,9 +80,7 @@ function LoginPageContent() {
 
     console.info("[auth-login:session-sync-success]", { role, sessionDebug });
 
-    const targetRoute = signInData.user.user_metadata?.onboarding_source === "association_fast_track"
-      ? "/dashboard/msme/onboarding"
-      : getDefaultDashboardRoute(role);
+    const targetRoute = getDefaultDashboardRoute(role);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,
@@ -237,7 +235,7 @@ function LoginPageContent() {
             <p className="mt-6 text-center text-sm text-slate-600">
               New to DBIN?
               {" "}
-              <Link href="/register" className="font-semibold text-emerald-700 hover:underline">Start onboarding your business</Link>
+              <Link href="/register" className="font-semibold text-emerald-700 hover:underline">Create your business profile</Link>
             </p>
           </div>
         </div>

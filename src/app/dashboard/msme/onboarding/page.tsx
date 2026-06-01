@@ -5,7 +5,7 @@ import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
-const ONBOARDING_SAVE_ERROR = "Unable to save onboarding details. Please refresh and try again.";
+const ONBOARDING_SAVE_ERROR = "Unable to save profile details. Please refresh and try again.";
 const MSME_EDITABLE_SELECT = "id,msme_id,business_name,owner_name,state,sector,contact_email,contact_phone,lga,address,business_type,nin,bvn,cac_number,tin,passport_photo_url,passport_photo_path,association_id,created_by,source_association_member_id,verification_status,review_status";
 
 function calculateConfidence(statuses: string[]) {
@@ -268,7 +268,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   return (
     <section className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-        New MSMEs should start from <strong>Register MSME</strong>. Automated CAC, NIN, and BVN validation runs during every onboarding save.
+        Complete your profile at your own pace. Automated CAC, NIN, and BVN validation runs during every profile save.
       </div>
       {params.success && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">

@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { DigitalIdWorkspace } from "@/components/msme/digital-id-workspace";
+import { ProfileFeatureGateNotice } from "@/components/msme/profile-feature-gate";
 import { credentialVerifyUrl, publicAppUrl } from "@/lib/data/credential-trust";
+import { calculateProfileCompletion, getProfileFeatureGate } from "@/lib/profile-completion";
 import { classifyPassportPhotoValue, logPassportPhotoDiagnostic } from "@/lib/msme/passport-photo-diagnostics";
 import {
   BUSINESS_IDENTITY_CREDENTIAL_MSME_SELECT,
@@ -37,6 +39,17 @@ export default async function IdCardPage() {
   if (!profile) {
     redirect("/access-denied");
   }
+  const gate = getProfileFeatureGate("digitalIdentity", calculateProfileCompletion({
+    businessName: profile.business_name,
+    ownerName: profile.owner_name,
+    phone: profile.contact_phone,
+    email: profile.contact_email,
+    businessAddress: profile.address,
+    tradeSector: profile.sector,
+    cacNumber: profile.cac_number,
+    passportPhoto: profile.passport_photo_path ?? profile.passport_photo_url,
+  }));
+  if (!gate.unlocked) return <ProfileFeatureGateNotice gate={gate} />;
 
   const [{ data: compliance }, { data: digitalId }, { data: association }, businessLogoUrl, passportPhotoUrl] = await Promise.all([
     supabase

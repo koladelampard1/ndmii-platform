@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Clock3, FileText, History, Lock, ShieldCheck, UploadCloud } from "lucide-react";
 import { ComplianceNotifications, type ComplianceNotification } from "@/components/compliance/compliance-notifications";
 import { ComplianceToastBridge } from "@/components/compliance/compliance-toast-bridge";
+import { ProfileFeatureGateNotice } from "@/components/msme/profile-feature-gate";
 import { SubmitButton } from "@/components/compliance/submit-button";
+import { bankingProfileConfigured, loadMsmeBankingProfile } from "@/lib/data/msme-banking";
+import { calculateProfileCompletion, getProfileFeatureGate } from "@/lib/profile-completion";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { ensureBaselineComplianceItemsForMsme } from "@/lib/data/msme-compliance-baseline";
@@ -259,13 +262,34 @@ export default async function MsmeCompliancePage() {
       <section className="space-y-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Compliance</h1>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-          Complete MSME onboarding before compliance requirements can be generated for your business.
+          Your business workspace is still being prepared. Complete your profile before compliance requirements are generated.
         </div>
       </section>
     );
   }
 
   const serviceSupabase = await createServiceRoleSupabaseClient();
+  const [{ data: msmeProfile }, bankingProfile] = await Promise.all([
+    serviceSupabase
+      .from("msmes")
+      .select("business_name,owner_name,contact_phone,contact_email,address,sector,cac_number,tin,passport_photo_path,passport_photo_url")
+      .eq("id", ctx.linkedMsmeId)
+      .maybeSingle(),
+    loadMsmeBankingProfile(serviceSupabase, ctx.linkedMsmeId),
+  ]);
+  const gate = getProfileFeatureGate("verification", calculateProfileCompletion({
+    businessName: msmeProfile?.business_name,
+    ownerName: msmeProfile?.owner_name,
+    phone: msmeProfile?.contact_phone,
+    email: msmeProfile?.contact_email,
+    businessAddress: msmeProfile?.address,
+    tradeSector: msmeProfile?.sector,
+    cacNumber: msmeProfile?.cac_number,
+    tin: msmeProfile?.tin,
+    passportPhoto: msmeProfile?.passport_photo_path ?? msmeProfile?.passport_photo_url,
+    bankDetailsPresent: bankingProfileConfigured(bankingProfile),
+  }));
+  if (!gate.unlocked) return <ProfileFeatureGateNotice gate={gate} />;
   let baselineGenerationFailed = false;
 
   let [{ data: profile }, { data: itemRows }, { data: eventRows }, { data: documentRows }, { data: commentRows }, { data: reminderRows }] = await Promise.all([

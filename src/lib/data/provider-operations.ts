@@ -15,6 +15,10 @@ export type ProviderWorkspaceContext = {
     sector: string;
     verification_status: string;
     contact_email: string | null;
+    contact_phone: string | null;
+    address: string | null;
+    cac_number: string | null;
+    tin: string | null;
     passport_photo_url: string | null;
     passport_photo_path?: string | null;
   };
@@ -142,6 +146,10 @@ type OwnedMsmeRow = {
   sector: string;
   verification_status: string;
   contact_email: string | null;
+  contact_phone: string | null;
+  address: string | null;
+  cac_number: string | null;
+  tin: string | null;
   passport_photo_url: string | null;
   passport_photo_path?: string | null;
   created_by: string | null;
@@ -273,7 +281,7 @@ export async function getProviderWorkspaceContext(): Promise<ProviderWorkspaceCo
   }
 
   let msme: OwnedMsmeRow | null = null;
-  const msmeSelect = "id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,passport_photo_url,passport_photo_path,created_by";
+  const msmeSelect = "id,msme_id,business_name,owner_name,state,lga,sector,verification_status,contact_email,contact_phone,address,cac_number,tin,passport_photo_url,passport_photo_path,created_by";
 
   if (resolvedAppUserId) {
     const { data: byOwner, error: byOwnerError } = await supabase

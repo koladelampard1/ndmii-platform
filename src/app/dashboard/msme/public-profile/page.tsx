@@ -2,11 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { readProviderGalleryItems } from "@/lib/data/provider-gallery";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
+import { getWorkspaceProfileCompletion } from "@/lib/data/msme-profile-completion";
+import { getProfileFeatureGate } from "@/lib/profile-completion";
+import { ProfileFeatureGateNotice } from "@/components/msme/profile-feature-gate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MsmePublicProfilePreviewPage() {
   const workspace = await getProviderWorkspaceContext();
   const supabase = await createServerSupabaseClient();
+  const gate = getProfileFeatureGate("marketplace", await getWorkspaceProfileCompletion(supabase, workspace));
+  if (!gate.unlocked) return <ProfileFeatureGateNotice gate={gate} />;
   const [{ data: services }, gallerySnapshot] = await Promise.all([
     supabase
       .from("provider_services")

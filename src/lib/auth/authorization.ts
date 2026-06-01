@@ -325,7 +325,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/msme/bookkeeping", label: "Bookkeeping" },
     { href: "/dashboard/msme/revenue", label: "Revenue" },
     { href: "/dashboard/msme/settings", label: "Provider Settings" },
-    { href: "/dashboard/msme/onboarding", label: "My Onboarding" },
+    { href: "/dashboard/msme/onboarding", label: "Complete Profile Wizard" },
     { href: "/dashboard/msme/id-card", label: "My Business Identity Credential" },
     { href: "/dashboard/msme/compliance", label: "My KYC Status" },
     { href: "/dashboard/msme/payments", label: "My Tax / VAT" },
