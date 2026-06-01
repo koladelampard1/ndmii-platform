@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserContext } from "@/lib/auth/authorization";
+import { generateTemporaryPin, hashTemporaryPin } from "@/lib/associations/access";
 import {
   ASSOCIATION_MEMBER_BULK_CHUNK_SIZE,
   ASSOCIATION_MEMBER_FILTERED_BULK_LIMIT,
@@ -8,6 +9,7 @@ import {
   associationMemberFiltersForDiagnostics,
   maskEmail,
   maskPhone,
+  normalizePhone,
   resolveAssociationMemberBulkTargetIds,
   type AdminAssociationMemberFilters,
 } from "@/lib/data/admin-association-members";
@@ -42,6 +44,9 @@ type MemberRow = {
   activation_state: string | null;
   phone_number: string | null;
   email: string | null;
+  full_name: string | null;
+  business_name: string | null;
+  trade_type: string | null;
 };
 
 const ACTION_TARGET: Partial<Record<AssociationMemberAction, MemberStatus>> = {
@@ -97,7 +102,7 @@ function assertTransition(from: MemberStatus, to: MemberStatus) {
 async function loadMember(supabase: SupabaseClient<any>, memberId: string) {
   const { data, error } = await supabase
     .from("association_members")
-    .select("id,association_id,member_status,duplicate_signal,assigned_reviewer_id,activation_state,phone_number,email")
+    .select("id,association_id,member_status,duplicate_signal,assigned_reviewer_id,activation_state,phone_number,email,full_name,business_name,trade_type")
     .eq("id", memberId)
     .maybeSingle<MemberRow>();
   if (error) throw error;
@@ -263,7 +268,7 @@ export async function runAssociationMemberAction(
   const assignedReviewerId = clean(params.assignedReviewerId) || null;
   if (!(ASSOCIATION_MEMBER_ACTIONS as readonly string[]).includes(params.action)) throw new Error("Unknown association member action.");
   assertRole(params.ctx, params.action);
-  if (REASON_REQUIRED.has(params.action) && !reason) throw new Error("A reason is required for this action.");
+  if (REASON_REQUIRED.has(params.action as AssociationMemberAction) && !reason) throw new Error("A reason is required for this action.");
   const member = await loadMember(supabase, params.memberId);
   if (params.action === "approve" && (member.duplicate_signal || member.member_status === "duplicate_review")) {
     skip("Duplicate review must be resolved before approval.");
@@ -310,6 +315,91 @@ export async function runAssociationMemberAction(
   return { memberId: member.id, previousStatus: member.member_status, newStatus: nextStatus };
 }
 
+const ACCESS_PIN_EXPIRY_DAYS = Number(process.env.NDMII_ASSOCIATION_ACCESS_PIN_EXPIRY_DAYS ?? "7");
+
+export type AssociationMemberAccessDetail = {
+  memberId: string;
+  memberName: string;
+  phone: string;
+  email: string;
+  businessName: string;
+  temporaryPin: string;
+  expiresAt: string;
+};
+
+function assertFastTrackEligibility(member: MemberRow) {
+  if (!["imported", "pending_review", "approved", "pending_activation"].includes(member.member_status)) skip("Member status is not eligible for fast-track access.");
+  if (member.duplicate_signal || member.member_status === "duplicate_review") skip("Duplicate review must be resolved before fast-track access.");
+  if (!member.phone_number && !member.email) skip("Phone number or email is required.");
+  if (!member.business_name) skip("Business name is required.");
+  if (!member.full_name) skip("Full name is required.");
+  if (!member.trade_type) skip("Trade type is required.");
+  if (!member.association_id) skip("Association is required.");
+}
+
+async function writeAccessAudit(supabase: SupabaseClient<any>, params: { ctx: UserContext; member: MemberRow; credentialId: string; eventType: string; bulkOperationId?: string; metadata?: Record<string, unknown> }) {
+  const timestamp = new Date().toISOString();
+  const metadata = { association_id: params.member.association_id, member_id: params.member.id, access_credential_id: params.credentialId, bulk_operation_id: params.bulkOperationId ?? null, raw_pin_stored: false, ...(params.metadata ?? {}) };
+  const { error: eventError } = await supabase.from("association_member_events").insert({ association_id: params.member.association_id, association_member_id: params.member.id, member_id: params.member.id, actor_id: params.ctx.appUserId, actor_user_id: params.ctx.appUserId, actor_role: params.ctx.role, event_type: params.eventType, metadata, created_at: timestamp });
+  if (eventError) throw eventError;
+  const { error: activityError } = await supabase.from("activity_logs").insert({ actor_user_id: params.ctx.appUserId, action: `association_member_${params.eventType}`, entity_type: "association_member", entity_id: params.member.id, metadata, created_at: timestamp });
+  if (activityError) throw activityError;
+}
+
+async function moveMemberToPendingActivation(supabase: SupabaseClient<any>, member: MemberRow, timestamp: string) {
+  const transitions: Partial<Record<MemberStatus, MemberStatus[]>> = {
+    imported: ["pending_review", "approved", "pending_activation"],
+    pending_review: ["approved", "pending_activation"],
+    approved: ["pending_activation"],
+  };
+  for (const memberStatus of transitions[member.member_status] ?? []) {
+    const patch: Record<string, unknown> = { member_status: memberStatus, status_changed_at: timestamp, updated_at: timestamp };
+    if (memberStatus === "approved") {
+      patch.approved_at = timestamp;
+      patch.reviewed_at = timestamp;
+    }
+    const { error } = await supabase.from("association_members").update(patch).eq("id", member.id);
+    if (error) throw error;
+  }
+}
+
+export async function generateAssociationMemberTemporaryAccess(supabase: SupabaseClient<any>, params: { ctx: UserContext; memberId: string; regenerate?: boolean; bulkOperationId?: string; reservedPins?: Set<string> }) {
+  if (params.ctx.role !== "admin") throw new Error("Fast-track activation is available to administrators only.");
+  const member = await loadMember(supabase, params.memberId);
+  assertFastTrackEligibility(member);
+  const { data: current, error: loadError } = await supabase.from("association_member_access_credentials").select("id,status").eq("association_member_id", member.id).maybeSingle();
+  if (loadError) throw loadError;
+  if (current && !params.regenerate) skip("Access details have already been generated.");
+  let pin = generateTemporaryPin();
+  while (params.reservedPins?.has(pin)) pin = generateTemporaryPin();
+  params.reservedPins?.add(pin);
+  const now = new Date();
+  await moveMemberToPendingActivation(supabase, member, now.toISOString());
+  const expiresAt = new Date(now.getTime() + ACCESS_PIN_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const payload = { association_member_id: member.id, association_id: member.association_id, login_phone_normalized: normalizePhone(member.phone_number), login_email: member.email?.trim().toLowerCase() || null, temporary_pin_hash: hashTemporaryPin(pin), temporary_pin_expires_at: expiresAt, must_change_password: true, first_login_completed_at: null, status: "active", auth_user_id: null, created_by: params.ctx.appUserId, updated_at: now.toISOString(), last_used_at: null, metadata: { raw_pin_stored: false, notification_provider_configured: false } };
+  const result = current
+    ? await supabase.from("association_member_access_credentials").update(payload).eq("id", current.id).select("id").single()
+    : await supabase.from("association_member_access_credentials").insert(payload).select("id").single();
+  if (result.error) throw result.error;
+  const credentialId = String(result.data.id);
+  const notificationStatus = "pending_manual";
+  const { error: notificationError } = await supabase.from("association_member_access_notifications").insert({ association_member_access_credential_id: credentialId, association_member_id: member.id, association_id: member.association_id, channel: "printed_access_slip", status: notificationStatus, destination_masked: maskedDestination(member), created_by: params.ctx.appUserId, metadata: { raw_pin_stored: false, provider_configured: false } });
+  if (notificationError) throw notificationError;
+  const { error: memberError } = await supabase.from("association_members").update({ activation_state: "account_created", access_status: "access_ready", access_pin_expires_at: expiresAt, access_first_login_completed_at: null, access_notification_status: notificationStatus, updated_at: now.toISOString() }).eq("id", member.id);
+  if (memberError) throw memberError;
+  await writeAccessAudit(supabase, { ctx: params.ctx, member, credentialId, eventType: params.regenerate ? "temporary_pin_regenerated" : "access_generated", bulkOperationId: params.bulkOperationId, metadata: { expires_at: expiresAt, notification_status: notificationStatus } });
+  return { memberId: member.id, memberName: member.full_name ?? "", phone: member.phone_number ?? "", email: member.email ?? "", businessName: member.business_name ?? "", temporaryPin: pin, expiresAt };
+}
+
+export async function recordAssociationMemberAccessExport(supabase: SupabaseClient<any>, params: { ctx: UserContext; details: AssociationMemberAccessDetail[]; bulkOperationId?: string }) {
+  if (params.ctx.role !== "admin") throw new Error("Temporary PIN export is available to administrators only.");
+  for (const detail of params.details) {
+    const member = await loadMember(supabase, detail.memberId);
+    const { data } = await supabase.from("association_member_access_credentials").select("id").eq("association_member_id", member.id).maybeSingle();
+    if (data?.id) await writeAccessAudit(supabase, { ctx: params.ctx, member, credentialId: String(data.id), eventType: "access_exported", bulkOperationId: params.bulkOperationId });
+  }
+}
+
 export const ASSOCIATION_MEMBER_BULK_ACTIONS = [
   "start_review",
   "approve",
@@ -322,6 +412,7 @@ export const ASSOCIATION_MEMBER_BULK_ACTIONS = [
   "assign_reviewer",
   "reject",
   "request_correction",
+  "fast_track_activation",
 ] as const;
 
 export type AssociationMemberBulkAction = (typeof ASSOCIATION_MEMBER_BULK_ACTIONS)[number];
@@ -335,6 +426,7 @@ export type AssociationMemberBulkResult = {
   failed: number;
   reasons: Record<string, number>;
   report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }>;
+  accessDetails?: AssociationMemberAccessDetail[];
 };
 
 function assertBulkEligibility(member: MemberRow, action: AssociationMemberBulkAction) {
@@ -393,13 +485,14 @@ export async function runBulkAssociationMemberAction(
 
   const reason = clean(params.reason);
   const assignedReviewerId = clean(params.assignedReviewerId) || null;
-  if (REASON_REQUIRED.has(params.action) && !reason) throw new Error("A reason is required for this action.");
+  if (REASON_REQUIRED.has(params.action as AssociationMemberAction) && !reason) throw new Error("A reason is required for this action.");
   if (params.action === "assign_reviewer" && !assignedReviewerId) throw new Error("Select a reviewer before assigning members.");
   const filterSnapshot = params.targetMode === "filtered"
     ? associationMemberFiltersForDiagnostics(params.filters ?? {})
     : { selected_count: uniqueIds.length };
   const operationId = await createBulkOperation(supabase, { ctx: params.ctx, action: params.action, targetMode: params.targetMode, filterSnapshot, totalTargeted: uniqueIds.length });
-  const result: AssociationMemberBulkResult = { operationId, action: params.action, targetMode: params.targetMode, totalTargeted: uniqueIds.length, successful: 0, skipped: 0, failed: 0, reasons: {}, report: [] };
+  const result: AssociationMemberBulkResult = { operationId, action: params.action, targetMode: params.targetMode, totalTargeted: uniqueIds.length, successful: 0, skipped: 0, failed: 0, reasons: {}, report: [], accessDetails: params.action === "fast_track_activation" ? [] : undefined };
+  const reservedPins = new Set<string>();
 
   for (let offset = 0; offset < uniqueIds.length; offset += ASSOCIATION_MEMBER_BULK_CHUNK_SIZE) {
     const chunk = uniqueIds.slice(offset, offset + ASSOCIATION_MEMBER_BULK_CHUNK_SIZE);
@@ -407,7 +500,9 @@ export async function runBulkAssociationMemberAction(
       try {
         const member = await loadMember(supabase, memberId);
         assertBulkEligibility(member, params.action);
-        if (params.action === "generate_invite" || params.action === "regenerate_invite") {
+        if (params.action === "fast_track_activation") {
+          result.accessDetails?.push(await generateAssociationMemberTemporaryAccess(supabase, { ctx: params.ctx, memberId, bulkOperationId: operationId, reservedPins }));
+        } else if (params.action === "generate_invite" || params.action === "regenerate_invite") {
           await generateAssociationMemberInvite(supabase, { ctx: params.ctx, memberId, regenerate: params.action === "regenerate_invite", bulkOperationId: operationId });
         } else if (["mark_invite_sent", "mark_onboarding_started", "mark_onboarding_completed"].includes(params.action)) {
           await runAssociationMemberInvitationAction(supabase, { ctx: params.ctx, memberId, action: params.action as "mark_invite_sent" | "mark_onboarding_started" | "mark_onboarding_completed", bulkOperationId: operationId });
@@ -435,5 +530,6 @@ export async function runBulkAssociationMemberAction(
     metadata: { actor_role: params.ctx.role, chunk_size: ASSOCIATION_MEMBER_BULK_CHUNK_SIZE, reasons: result.reasons },
   }).eq("id", operationId);
   if (updateError) throw updateError;
+  if (result.accessDetails?.length) await recordAssociationMemberAccessExport(supabase, { ctx: params.ctx, details: result.accessDetails, bulkOperationId: operationId });
   return result;
 }

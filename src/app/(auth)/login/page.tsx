@@ -80,7 +80,9 @@ function LoginPageContent() {
 
     console.info("[auth-login:session-sync-success]", { role, sessionDebug });
 
-    const targetRoute = getDefaultDashboardRoute(role);
+    const targetRoute = signInData.user.user_metadata?.onboarding_source === "association_fast_track"
+      ? "/dashboard/msme/onboarding"
+      : getDefaultDashboardRoute(role);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,

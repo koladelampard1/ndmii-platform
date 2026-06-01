@@ -19,12 +19,14 @@ type BulkAction =
   | "assign_reviewer"
   | "reject"
   | "request_correction"
+  | "fast_track_activation"
   | "export";
 
 const ADMIN_ACTIONS: Array<{ value: BulkAction; label: string; reason?: boolean }> = [
   { value: "start_review", label: "Start Review" },
   { value: "approve", label: "Approve" },
   { value: "prepare_activation", label: "Prepare Activation" },
+  { value: "fast_track_activation", label: "Fast-Track Activation" },
   { value: "generate_invite", label: "Generate Invites" },
   { value: "regenerate_invite", label: "Regenerate Invites" },
   { value: "mark_invite_sent", label: "Mark Invite Sent" },
@@ -41,6 +43,11 @@ const REVIEWER_ACTIONS = ADMIN_ACTIONS.filter(({ value }) => ["approve", "reject
 function reportCsv(report: Array<{ memberId: string; outcome: string; reason: string }>) {
   const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
   return ["member_id,outcome,reason", ...report.map((row) => [row.memberId, row.outcome, row.reason].map(escape).join(","))].join("\r\n");
+}
+
+function accessCsv(rows: Array<{ memberName: string; phone: string; email: string; businessName: string; temporaryPin: string; expiresAt: string }>) {
+  const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
+  return ["member_name,phone,email,business_name,temporary_pin,expiry_date", ...rows.map((row) => [row.memberName, row.phone, row.email, row.businessName, row.temporaryPin, row.expiresAt].map(escape).join(","))].join("\r\n");
 }
 
 export function AssociationMemberBulkActions({
@@ -67,7 +74,7 @@ export function AssociationMemberBulkActions({
   const [reason, setReason] = useState("");
   const [reviewerId, setReviewerId] = useState("");
   const [toast, setToast] = useState("");
-  const [result, setResult] = useState<{ successful: number; skipped: number; failed: number; report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }> } | null>(null);
+  const [result, setResult] = useState<{ successful: number; skipped: number; failed: number; report: Array<{ memberId: string; outcome: "skipped" | "failed"; reason: string }>; accessDetails?: Array<{ memberName: string; phone: string; email: string; businessName: string; temporaryPin: string; expiresAt: string }> } | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -121,6 +128,16 @@ export function AssociationMemberBulkActions({
     URL.revokeObjectURL(url);
   }
 
+  function downloadAccessDetails() {
+    if (!result?.accessDetails?.length) return;
+    const url = URL.createObjectURL(new Blob([accessCsv(result.accessDetails)], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "association-member-one-time-access-details.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
       <Toast open={Boolean(toast)} message={toast} onClose={() => setToast("")} durationMs={5000} />
@@ -144,7 +161,7 @@ export function AssociationMemberBulkActions({
         <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason required for rejection, correction, or reassignment" className="rounded border px-3 py-2 text-sm" />
         <button type="button" onClick={begin} disabled={!action || targetCount === 0} className="rounded bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:opacity-40">{action === "export" ? "Download" : "Continue"}</button>
       </div>
-      {result ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"><span>Success: {result.successful}</span><span>Skipped: {result.skipped}</span><span>Failed: {result.failed}</span>{result.report.length ? <button type="button" onClick={downloadReport} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download exceptions</button> : null}</div> : null}
+      {result ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"><span>Success: {result.successful}</span><span>Skipped: {result.skipped}</span><span>Failed: {result.failed}</span>{result.accessDetails?.length ? <button type="button" onClick={downloadAccessDetails} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download one-time PIN export</button> : null}{result.report.length ? <button type="button" onClick={downloadReport} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-1"><Download className="h-3.5 w-3.5" /> Download exceptions</button> : null}</div> : null}
 
       {confirming && selectedAction ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true">
         <form action={(formData) => {

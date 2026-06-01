@@ -16,6 +16,7 @@ function filtersFromUrl(url: URL): AdminAssociationMemberFilters {
     status: url.searchParams.get("status") ?? undefined,
     activation: url.searchParams.get("activation") ?? undefined,
     invite: url.searchParams.get("invite") ?? undefined,
+    access: url.searchParams.get("access") ?? undefined,
     duplicate: url.searchParams.get("duplicate") ?? undefined,
     lga: url.searchParams.get("lga") ?? undefined,
     tradeType: url.searchParams.get("tradeType") ?? undefined,

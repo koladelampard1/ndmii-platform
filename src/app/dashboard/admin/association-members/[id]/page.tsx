@@ -4,6 +4,7 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import { getAdminAssociationMemberDetail } from "@/lib/data/admin-association-members";
 import { submitAssociationMemberAction } from "./actions";
 import { CopyInviteLink } from "./copy-invite-link";
+import { TemporaryAccessActions } from "./temporary-access-actions";
 
 export const dynamic = "force-dynamic";
 function humanize(value: string | null) { return String(value ?? "Unavailable").replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
@@ -33,6 +34,7 @@ export default async function AssociationMemberDetailPage({ params, searchParams
         <Card title="Duplicate signals"><Row label="Flagged" value={member.duplicateSignal ? "Yes" : "No"} /><Row label="Signals" value={member.duplicateReasons.join(", ") || "No duplicate signals"} /></Card>
         <Card title="Activation readiness"><Row label="Readiness" value={member.readiness.label} />{[...member.readiness.blockers, ...member.readiness.attention].map((item) => <p key={item} className="rounded bg-amber-50 px-3 py-2 font-bold text-amber-800">{item}</p>)}</Card>
         <Card title="Invitation status"><Row label="Status" value={humanize(workspace.invitation?.status ?? null)} /><Row label="Last invite" value={when(workspace.invitation?.lastInvite ?? null)} /><Row label="Expiry" value={when(workspace.invitation?.expiry ?? null)} /><Row label="Channel" value={humanize(workspace.invitation?.sentChannel ?? null)} /><Row label="Masked destination" value={workspace.invitation?.sentToMasked ?? "Unavailable"} /></Card>
+        <Card title="Fast-track access"><Row label="Access status" value={humanize(workspace.access?.status ?? null)} /><Row label="PIN expiry" value={when(workspace.access?.pinExpiry ?? null)} /><Row label="First login" value={workspace.access?.firstLoginCompletedAt ? when(workspace.access.firstLoginCompletedAt) : "Password change pending"} /><Row label="Notification" value={humanize(workspace.access?.notificationStatus ?? null)} />{admin && workspace.access && <TemporaryAccessActions memberId={member.id} />}</Card>
         <Card title="Internal notes"><p className="whitespace-pre-wrap">{member.internalNotes ?? "No internal notes recorded."}</p>{canReview && <form action={submitAssociationMemberAction}><input type="hidden" name="member_id" value={member.id} /><input type="hidden" name="action" value="save_notes" /><textarea name="notes" defaultValue={member.internalNotes ?? ""} rows={4} className="w-full rounded border px-2 py-2" /><button className="mt-2 rounded border px-3 py-2 font-bold">Save notes</button></form>}</Card>
         <Card title="Review history">{workspace.events.length ? workspace.events.map((event) => <div key={event.id} className="border-b pb-2"><p className="font-black">{humanize(event.eventType)}</p><p className="text-xs text-slate-500">{humanize(event.actorRole)} · {when(event.createdAt)}</p>{event.reason && <p className="mt-1">{event.reason}</p>}</div>) : <p>No review history is available.</p>}</Card>
       </div>

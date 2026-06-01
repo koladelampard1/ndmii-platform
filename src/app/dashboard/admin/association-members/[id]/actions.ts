@@ -6,6 +6,8 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   ASSOCIATION_MEMBER_BULK_ACTIONS,
   generateAssociationMemberInvite,
+  generateAssociationMemberTemporaryAccess,
+  recordAssociationMemberAccessExport,
   runAssociationMemberAction,
   runAssociationMemberInvitationAction,
   runBulkAssociationMemberAction,
@@ -21,6 +23,7 @@ export type BulkAssociationMemberActionState = {
   message: string;
   result?: AssociationMemberBulkResult;
 };
+export type TemporaryAccessActionState = { ok: boolean; message: string; accessDetails?: AssociationMemberBulkResult["accessDetails"] };
 
 function refresh(memberId?: string) {
   revalidatePath("/dashboard/admin/association-members");
@@ -92,5 +95,23 @@ export async function submitBulkAssociationMemberAction(
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Unable to complete bulk action." };
+  }
+}
+
+export async function regenerateAssociationMemberTemporaryPin(
+  _state: TemporaryAccessActionState,
+  formData: FormData,
+): Promise<TemporaryAccessActionState> {
+  const ctx = await getCurrentUserContext();
+  if (ctx.role !== "admin") redirect("/access-denied");
+  const memberId = String(formData.get("member_id") ?? "").trim();
+  try {
+    const supabase = await createServiceRoleSupabaseClient();
+    const detail = await generateAssociationMemberTemporaryAccess(supabase, { ctx, memberId, regenerate: true });
+    await recordAssociationMemberAccessExport(supabase, { ctx, details: [detail] });
+    refresh(memberId);
+    return { ok: true, message: "A new temporary PIN was generated. Download it now; it cannot be recovered later.", accessDetails: [detail] };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Unable to regenerate temporary PIN." };
   }
 }

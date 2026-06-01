@@ -31,6 +31,7 @@ export type AdminAssociationMemberFilters = {
   status?: string;
   activation?: string;
   invite?: string;
+  access?: string;
   duplicate?: string;
   lga?: string;
   tradeType?: string;
@@ -64,6 +65,10 @@ export type AdminAssociationMemberRow = {
   inviteStatus: string | null;
   inviteLastDate: string | null;
   inviteExpiry: string | null;
+  accessStatus: string | null;
+  accessPinExpiry: string | null;
+  accessFirstLoginCompletedAt: string | null;
+  accessNotificationStatus: string | null;
   readiness: AssociationMemberReadiness;
   assignedReviewerId: string | null;
   assignedReviewerName: string | null;
@@ -83,6 +88,7 @@ export type AdminAssociationMembersWorkspace = {
     status: string;
     activation: string;
     invite: string;
+    access: string;
     duplicate: string;
     lga: string;
     tradeType: string;
@@ -757,6 +763,7 @@ export function parseAssociationMemberFilters(filters: AdminAssociationMemberFil
     status: toString(filters.status).trim(),
     activation: toString(filters.activation).trim(),
     invite: toString(filters.invite).trim(),
+    access: toString(filters.access).trim(),
     duplicate: toString(filters.duplicate).trim(),
     lga: toString(filters.lga).trim(),
     tradeType: toString(filters.tradeType).trim(),
@@ -777,6 +784,11 @@ export function applyAssociationMemberFilters(query: any, filters: ReturnType<ty
   if (filters.activation) next = next.eq("activation_state", filters.activation);
   if (filters.invite === "none") next = next.eq("invite_status", "PENDING");
   else if (filters.invite) next = next.eq("invite_status", filters.invite.toUpperCase());
+  if (filters.access === "not_generated") next = next.is("access_status", null);
+  else if (filters.access === "ready") next = next.eq("access_status", "access_ready").gt("access_pin_expires_at", new Date().toISOString());
+  else if (filters.access === "expired") next = next.lt("access_pin_expires_at", new Date().toISOString()).is("access_first_login_completed_at", null);
+  else if (filters.access === "completed") next = next.not("access_first_login_completed_at", "is", null);
+  else if (filters.access === "password_pending") next = next.eq("access_status", "access_ready").is("access_first_login_completed_at", null);
   if (filters.duplicate === "yes") next = next.eq("duplicate_signal", true);
   if (filters.duplicate === "no") next = next.eq("duplicate_signal", false);
   if (filters.lga) next = next.eq("lga", filters.lga);
@@ -801,6 +813,7 @@ export function associationMemberFilterSnapshot(filters: AdminAssociationMemberF
     status: parsed.status,
     activation: parsed.activation,
     invite: parsed.invite,
+    access: parsed.access,
     duplicate: parsed.duplicate,
     lga: parsed.lga,
     tradeType: parsed.tradeType,
@@ -946,6 +959,10 @@ function mapMemberRow(row: AnyRow): AdminAssociationMemberRow {
     inviteStatus: nullableString(row.latest_invite_status) ?? nullableString(row.invite_status),
     inviteLastDate: nullableString(row.latest_invite_created_at),
     inviteExpiry: nullableString(row.latest_invite_expires_at),
+    accessStatus: nullableString(row.access_status),
+    accessPinExpiry: nullableString(row.access_pin_expires_at),
+    accessFirstLoginCompletedAt: nullableString(row.access_first_login_completed_at),
+    accessNotificationStatus: nullableString(row.access_notification_status),
     readiness: computeAssociationMemberReadiness(row),
     assignedReviewerId: nullableString(row.assigned_reviewer_id),
     assignedReviewerName: nullableString(reviewer?.full_name) ?? nullableString(reviewer?.email),
@@ -1000,7 +1017,7 @@ export async function getAdminAssociationMembersWorkspace(
       supabase
         .from("association_members")
         .select(
-          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
+          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,access_status,access_pin_expires_at,access_first_login_completed_at,access_notification_status,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
           { count: "exact" },
         ),
       filters,
@@ -1092,6 +1109,7 @@ export type AdminAssociationMemberDetail = {
   validationResults: string[];
   events: Array<{ id: string; eventType: string; actorRole: string | null; reason: string | null; createdAt: string | null }>;
   invitation: { status: string | null; lastInvite: string | null; expiry: string | null; sentChannel: string | null; sentToMasked: string | null } | null;
+  access: { status: string | null; pinExpiry: string | null; firstLoginCompletedAt: string | null; notificationStatus: string | null } | null;
 };
 
 export async function getAdminAssociationMemberDetail(memberId: string): Promise<AdminAssociationMemberDetail | null> {
@@ -1145,6 +1163,7 @@ export async function getAdminAssociationMemberDetail(memberId: string): Promise
       sentChannel: nullableString(invitationResult.data.sent_channel),
       sentToMasked: nullableString(invitationResult.data.sent_to_masked),
     } : null,
+    access: mapped.accessStatus ? { status: mapped.accessStatus, pinExpiry: mapped.accessPinExpiry, firstLoginCompletedAt: mapped.accessFirstLoginCompletedAt, notificationStatus: mapped.accessNotificationStatus } : null,
   };
 }
 
@@ -1157,7 +1176,7 @@ export async function getAssociationMemberExportRows(filtersInput: AdminAssociat
       supabase
         .from("association_members")
         .select(
-          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
+          "id,association_id,msme_id,full_name,phone_number,email,cac_number,tin_number,business_name,trade_type,lga,association_membership_number,member_status,duplicate_signal,duplicate_reasons,activation_state,access_status,access_pin_expires_at,access_first_login_completed_at,access_notification_status,assigned_reviewer_id,approved_at,source_import_id,created_at,associations(name),msmes(msme_id,business_name),users:assigned_reviewer_id(full_name,email)",
         ),
       filters,
     )
@@ -1199,6 +1218,10 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
     "invite_status",
     "last_invite_date",
     "invite_expiry",
+    "access_status",
+    "pin_expiry",
+    "first_login_completed_at",
+    "notification_status",
     "onboarding_status",
     "reviewer",
     "approval_date",
@@ -1228,6 +1251,10 @@ export function buildAssociationMembersCsv(rows: AdminAssociationMemberRow[]) {
         row.inviteStatus,
         row.inviteLastDate,
         row.inviteExpiry,
+        row.accessStatus,
+        row.accessPinExpiry,
+        row.accessFirstLoginCompletedAt,
+        row.accessNotificationStatus,
         row.activationState,
         row.assignedReviewerName,
         row.approvedAt,
@@ -1247,6 +1274,7 @@ export function associationMemberFiltersForDiagnostics(filters: AdminAssociation
     status: parsed.status || null,
     activation: parsed.activation || null,
     invite: parsed.invite || null,
+    access: parsed.access || null,
     duplicate: parsed.duplicate || null,
     lga: parsed.lga || null,
     tradeType: parsed.tradeType || null,

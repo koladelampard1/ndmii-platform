@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { OnboardingWizard } from "@/components/msme/onboarding-wizard";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
-import { ensurePendingCredential } from "@/lib/data/credential-trust";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+
+const ONBOARDING_SAVE_ERROR = "Unable to save onboarding details. Please refresh and try again.";
+const MSME_EDITABLE_SELECT = "id,msme_id,business_name,owner_name,state,sector,contact_email,contact_phone,lga,address,business_type,nin,bvn,cac_number,tin,passport_photo_url,passport_photo_path,association_id,created_by,source_association_member_id,verification_status,review_status";
 
 function calculateConfidence(statuses: string[]) {
   const points = statuses.reduce((acc, status) => {
@@ -17,73 +19,134 @@ function calculateConfidence(statuses: string[]) {
   return Math.max(0, Math.min(100, points));
 }
 
+function isMissingValidationResultsTable(error: { code?: string | null; message?: string | null } | null) {
+  return error?.code === "PGRST205"
+    || error?.code === "42P01"
+    || error?.message?.includes("validation_results") && error.message.includes("schema cache");
+}
+
+function logOnboardingSaveError(params: {
+  authUserId: string | null;
+  appUserId: string;
+  msmeId: string | null;
+  operation: string;
+  error?: { code?: string | null; message?: string | null } | null;
+}) {
+  console.error("[msme-onboarding-save]", {
+    operation: params.operation,
+    authUserId: params.authUserId,
+    appUserId: params.appUserId,
+    msmeId: params.msmeId,
+    supabaseErrorCode: params.error?.code ?? null,
+    supabaseErrorMessage: params.error?.message ?? null,
+  });
+}
+
 async function saveOnboarding(formData: FormData) {
   "use server";
 
   const context = await getCurrentUserContext();
-  const { email, fullName, appUserId, role } = context;
+  const { authUserId, email, fullName, appUserId, role } = context;
   if (!email || !appUserId || !["msme", "admin"].includes(role)) {
     redirect("/login?message=Please sign in first");
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const intent = String(formData.get("intent") ?? "draft");
-  const state = String(formData.get("state") ?? "Lagos");
-  const businessName = String(formData.get("business_name") ?? "Untitled MSME");
-  const ownerName = String(formData.get("owner_name") ?? fullName ?? "Unknown Owner");
-  const sector = String(formData.get("sector") ?? "Services");
+  let existing: any = null;
+
+  if (context.linkedMsmeId) {
+    const { data, error } = await supabase
+      .from("msmes")
+      .select(MSME_EDITABLE_SELECT)
+      .eq("id", context.linkedMsmeId)
+      .eq("created_by", appUserId)
+      .maybeSingle();
+    if (error) {
+      logOnboardingSaveError({ authUserId, appUserId, msmeId: context.linkedMsmeId, operation: "lookup_linked_owned_msme", error });
+      redirect(`/dashboard/msme/onboarding?error=${encodeURIComponent(ONBOARDING_SAVE_ERROR)}`);
+    }
+    existing = data;
+  }
+
+  if (!existing) {
+    const { data, error } = await supabase
+      .from("msmes")
+      .select(MSME_EDITABLE_SELECT)
+      .eq("created_by", appUserId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      logOnboardingSaveError({ authUserId, appUserId, msmeId: context.linkedMsmeId, operation: "lookup_latest_owned_msme", error });
+      redirect(`/dashboard/msme/onboarding?error=${encodeURIComponent(ONBOARDING_SAVE_ERROR)}`);
+    }
+    existing = data;
+  }
+
+  const fieldValue = (name: string, fallback: string | null = null) => (
+    formData.has(name) ? String(formData.get(name) ?? "") : fallback ?? ""
+  );
+  const state = fieldValue("state", existing?.state ?? "Lagos");
+  const businessName = fieldValue("business_name", existing?.business_name ?? "Untitled MSME");
+  const ownerName = fieldValue("owner_name", existing?.owner_name ?? fullName ?? "Unknown Owner");
+  const sector = fieldValue("sector", existing?.sector ?? "Services");
 
   const kycPayload = {
-    NIN: String(formData.get("nin") ?? ""),
-    BVN: String(formData.get("bvn") ?? ""),
-    CAC: String(formData.get("cac_number") ?? ""),
-    TIN: String(formData.get("tin") ?? ""),
+    NIN: fieldValue("nin", existing?.nin),
+    BVN: fieldValue("bvn", existing?.bvn),
+    CAC: fieldValue("cac_number", existing?.cac_number),
+    TIN: fieldValue("tin", existing?.tin),
   } as const;
 
   const { checks, overallStatus } = await runKycSimulation(kycPayload);
   const byProvider = new Map(checks.map((check) => [check.provider, check]));
-
-  const { data: existing } = await supabase
-    .from("msmes")
-    .select("id,msme_id,passport_photo_url,passport_photo_path")
-    .eq("created_by", appUserId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const submittedPassportPhotoPath = fieldValue("passport_photo_path");
+  const terminalStatus = ["verified", "approved", "active"].includes(String(existing?.verification_status ?? "").toLowerCase())
+    || ["verified", "approved", "active"].includes(String(existing?.review_status ?? "").toLowerCase());
 
   const basePayload = {
     business_name: businessName,
     owner_name: ownerName,
     state,
     sector,
-    contact_email: String(formData.get("contact_email") ?? email ?? ""),
-    contact_phone: String(formData.get("contact_phone") ?? ""),
-    lga: String(formData.get("lga") ?? ""),
-    address: String(formData.get("address") ?? ""),
-    business_type: String(formData.get("business_type") ?? ""),
+    contact_email: fieldValue("contact_email", existing?.contact_email ?? email),
+    contact_phone: fieldValue("contact_phone", existing?.contact_phone),
+    lga: fieldValue("lga", existing?.lga),
+    address: fieldValue("address", existing?.address),
+    business_type: fieldValue("business_type", existing?.business_type),
     nin: kycPayload.NIN,
     bvn: kycPayload.BVN,
     cac_number: kycPayload.CAC,
     tin: kycPayload.TIN,
-    passport_photo_path: String(formData.get("passport_photo_path") ?? "") || existing?.passport_photo_path || null,
-    passport_photo_url: null,
-    association_id: String(formData.get("association_id") || "") || null,
-    verification_status: intent === "submit" ? "pending_review" : "draft",
-    review_status: intent === "submit" ? "pending_review" : "draft",
+    passport_photo_path: submittedPassportPhotoPath || existing?.passport_photo_path || null,
+    passport_photo_url: submittedPassportPhotoPath ? null : existing?.passport_photo_url ?? null,
+    association_id: fieldValue("association_id", existing?.association_id) || null,
+    ...(!terminalStatus ? {
+      verification_status: intent === "submit" ? "pending_review" : "draft",
+      review_status: intent === "submit" ? "pending_review" : "draft",
+    } : {}),
     created_by: appUserId,
   };
 
   const generatedMsmeId = existing?.msme_id ?? generateMsmeId(state);
   const { data, error } = existing?.id
-    ? await supabase.from("msmes").update(basePayload).eq("id", existing.id).select("id,msme_id,passport_photo_url,passport_photo_path").single()
+    ? await supabase
+        .from("msmes")
+        .update(basePayload)
+        .eq("id", existing.id)
+        .eq("created_by", appUserId)
+        .select("id,msme_id,passport_photo_url,passport_photo_path")
+        .maybeSingle()
     : await supabase
         .from("msmes")
         .insert({ msme_id: generatedMsmeId, ...basePayload })
         .select("id,msme_id,passport_photo_url,passport_photo_path")
-        .single();
+        .maybeSingle();
 
   if (error || !data) {
-    redirect(`/dashboard/msme/onboarding?error=${encodeURIComponent(error?.message ?? "Unable to save onboarding form")}`);
+    logOnboardingSaveError({ authUserId, appUserId, msmeId: existing?.id ?? null, operation: existing?.id ? "update_owned_msme" : "insert_owned_msme", error });
+    redirect(`/dashboard/msme/onboarding?error=${encodeURIComponent(ONBOARDING_SAVE_ERROR)}`);
   }
 
   await ensureWorkflowRecords(supabase, {
@@ -124,7 +187,7 @@ async function saveOnboarding(formData: FormData) {
     { onConflict: "msme_id" }
   );
 
-  await supabase.from("validation_results").upsert(
+  const { error: validationResultError } = await supabase.from("validation_results").upsert(
     {
       msme_id: data.id,
       nin_status: ninStatus,
@@ -139,25 +202,15 @@ async function saveOnboarding(formData: FormData) {
     { onConflict: "msme_id" }
   );
 
-  if (intent === "submit") {
-    const existingId = data.msme_id ?? "";
-    const ndmiiId = existingId.startsWith("BIN-") || existingId.startsWith("NDMII-")
-      ? existingId.replace(/^NDMII-/, "BIN-")
-      : generatedMsmeId;
-    await ensurePendingCredential(supabase, {
+  if (validationResultError) {
+    console.warn("[msme-onboarding-validation-results]", {
+      operation: isMissingValidationResultsTable(validationResultError) ? "skip_missing_table" : "upsert_failed",
+      authUserId,
+      appUserId,
       msmeId: data.id,
-      ndmiiId,
-      actor: context,
-      validationSnapshot: {
-        overall_status: overallStatus,
-        nin_status: ninStatus,
-        bvn_status: bvnStatus,
-        cac_status: cacStatus,
-        tin_status: tinStatus,
-        validated_at: nowIso,
-      },
+      supabaseErrorCode: validationResultError.code ?? null,
+      supabaseErrorMessage: validationResultError.message,
     });
-    await supabase.from("msmes").update({ issued_at: nowIso }).eq("id", data.id);
   }
 
   await supabase.from("activity_logs").insert({
@@ -199,7 +252,16 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
       .limit(1);
 
     const scoped = ctx.role === "msme" ? query.eq("msme_id", ctx.linkedMsmeId ?? "") : query;
-    const { data } = await scoped.maybeSingle();
+    const { data, error } = await scoped.maybeSingle();
+    if (error && !isMissingValidationResultsTable(error)) {
+      console.warn("[msme-onboarding-validation-results]", {
+        operation: "page_load_failed",
+        appUserId: ctx.appUserId,
+        msmeId: ctx.linkedMsmeId,
+        supabaseErrorCode: error.code ?? null,
+        supabaseErrorMessage: error.message,
+      });
+    }
     latestValidation = data;
   }
 

@@ -28,6 +28,13 @@ const complaintsRoute = read("src/app/api/public-complaints/route.ts");
 const financeRoute = read("src/app/api/msme/finance-readiness/assessments/route.ts");
 const logoRoute = read("src/app/api/msme/provider-logo/route.ts");
 const authSessionRoute = read("src/app/api/auth/session/route.ts");
+const associationAccess = read("src/lib/associations/access.ts");
+const associationMemberActions = read("src/lib/data/admin-association-member-actions.ts");
+const associationAccessMigration = read("supabase/migrations/20260531170000_association_member_fast_track_access.sql");
+const associationWorkspaceMigration = read("supabase/migrations/20260531190000_association_member_fast_track_workspace.sql");
+const onboardingSaveHardeningMigration = read("supabase/migrations/20260601100000_msme_onboarding_save_hardening.sql");
+const loginPage = read("src/app/(auth)/login/page.tsx");
+const msmeOnboardingPage = read("src/app/dashboard/msme/onboarding/page.tsx");
 
 check("public raw ID verification is blocked", () => {
   assert(
@@ -100,6 +107,77 @@ check("auth session derives helper metadata server-side", () => {
       authSessionRoute.includes("role: metadata.role") &&
       authSessionRoute.includes('response.cookies.set("ndmii_role", metadata.role'),
     "Expected auth session POST to derive role/app user metadata from the Supabase token and users table.",
+  );
+});
+
+check("association temporary access stores hashed PINs only", () => {
+  assert(
+    associationAccessMigration.includes("temporary_pin_hash text not null") &&
+      !associationAccessMigration.includes("temporary_pin text") &&
+      associationAccess.includes("crypto.scryptSync") &&
+      associationMemberActions.includes("temporary_pin_hash: hashTemporaryPin(pin)"),
+    "Expected fast-track access to persist only scrypt-hashed temporary PINs.",
+  );
+});
+
+check("association temporary access expires PINs and forces password setup", () => {
+  assert(
+    associationAccess.includes("temporary_pin_expires_at") &&
+      associationAccess.includes("must_change_password") &&
+      associationAccess.includes('status: "expired"') &&
+      associationAccess.includes('activation_state: "account_created"'),
+    "Expected fast-track access to reject expired PINs and require first-login password setup.",
+  );
+});
+
+check("association temporary access provisions an idempotent draft MSME workspace", () => {
+  assert(
+    associationAccess.includes("ensureMsmeUserProfile") &&
+      associationAccess.includes("ensureDraftMsmeWorkspace") &&
+      associationAccess.includes('source_association_member_id') &&
+      associationAccess.includes('source: "association_fast_track"') &&
+      associationAccess.includes('verification_status: "draft"') &&
+      associationAccess.includes('review_status: "draft"') &&
+      associationAccess.includes('msme_workspace_provisioned') &&
+      associationWorkspaceMigration.includes("add column if not exists source_association_member_id uuid") &&
+      loginPage.includes('"/dashboard/msme/onboarding"'),
+    "Expected temporary PIN setup to reuse or create a draft MSME workspace and route fast-track accounts into onboarding.",
+  );
+});
+
+check("MSME onboarding save uses an ownership-gated server write", () => {
+  assert(
+    msmeOnboardingPage.includes("createServiceRoleSupabaseClient") &&
+      msmeOnboardingPage.includes('.eq("id", existing.id)') &&
+      msmeOnboardingPage.includes('.eq("created_by", appUserId)') &&
+      msmeOnboardingPage.includes(".maybeSingle()") &&
+      msmeOnboardingPage.includes("Unable to save onboarding details. Please refresh and try again."),
+    "Expected MSME onboarding writes to use a server-side client only with an explicit owner constraint and zero-row handling.",
+  );
+});
+
+check("MSME onboarding save does not issue credentials", () => {
+  assert(
+    !msmeOnboardingPage.includes("ensurePendingCredential") &&
+      !msmeOnboardingPage.includes("issued_at"),
+    "MSME onboarding save must not issue credentials or mark an identity as issued.",
+  );
+});
+
+check("MSME onboarding tolerates a missing validation results table", () => {
+  assert(
+    msmeOnboardingPage.includes("isMissingValidationResultsTable") &&
+      msmeOnboardingPage.includes('operation: isMissingValidationResultsTable(validationResultError) ? "skip_missing_table" : "upsert_failed"') &&
+      onboardingSaveHardeningMigration.includes("create table if not exists public.validation_results"),
+    "Expected onboarding to continue when validation_results is missing and the hardening migration to repair the table.",
+  );
+});
+
+check("association member MSME linkage is unique when present", () => {
+  assert(
+    onboardingSaveHardeningMigration.includes("create unique index if not exists idx_msmes_source_association_member_unique") &&
+      onboardingSaveHardeningMigration.includes("where source_association_member_id is not null"),
+    "Expected a partial unique index to prevent duplicate association member MSME workspaces.",
   );
 });
 

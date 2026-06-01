@@ -110,6 +110,7 @@ export function isPublicPath(path: string): boolean {
     path.startsWith("/register") ||
     path === "/activate-account" ||
     path.startsWith("/activate-account/") ||
+    path === "/association-access" ||
     path.startsWith("/verify") ||
     path === "/marketplace" ||
     path.startsWith("/marketplace/") ||
