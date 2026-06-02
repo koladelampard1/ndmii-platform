@@ -165,6 +165,15 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   if (role === "public") return false;
   if (role === "admin" || role === "super_admin") return routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   if (path === "/dashboard") return true;
+  if (role === "field_officer") {
+    if (path === "/dashboard/impact-intelligence") return true;
+    return [
+      "/dashboard/impact-intelligence/monitoring",
+      "/dashboard/impact-intelligence/evidence",
+      "/dashboard/impact-intelligence/intelligence",
+      "/dashboard/impact-intelligence/risk-flags",
+    ].some((prefix) => routeMatchesPrefix(path, prefix));
+  }
   return ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
 }
 
