@@ -12,6 +12,8 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
       "/dashboard/admin/association-members",
       "/dashboard/admin/association-upload",
       "/dashboard/admin/complaints",
+      "/dashboard/impact-intelligence",
+      "/dashboard/impact-intelligence/cohorts",
       "/dashboard/admin/public-verification",
     ],
     denied: [],
@@ -27,6 +29,8 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
       "/dashboard/admin/association-members",
       "/dashboard/admin/association-upload",
       "/dashboard/admin/complaints",
+      "/dashboard/impact-intelligence",
+      "/dashboard/impact-intelligence/cohorts",
       "/dashboard/admin/public-verification",
     ],
     denied: [],
@@ -44,7 +48,7 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
   assessment_officer: {
-    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes"],
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts"],
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
   field_officer: {

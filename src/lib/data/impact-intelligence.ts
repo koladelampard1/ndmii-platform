@@ -16,7 +16,7 @@ type ImpactReadArgs = {
 
 export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"];
 export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
-export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "auditor", "field_officer"];
+export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
 export const COHORT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
 export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer", "assessment_officer"];
 export const ASSESSMENT_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];

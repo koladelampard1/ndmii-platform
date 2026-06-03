@@ -21,7 +21,14 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import type { UserRole } from "@/types/roles";
 
 type LifecycleStatus = "Operational" | "Partial" | "Missing";
-type LauncherAudience = "boi_executive" | "programme_officer" | "assessment_officer" | "field_officer" | "auditor";
+type LauncherAudience =
+  | "admin"
+  | "super_admin"
+  | "boi_executive"
+  | "programme_officer"
+  | "assessment_officer"
+  | "field_officer"
+  | "auditor";
 
 type LifecycleStep = {
   label: string;
@@ -51,10 +58,10 @@ const LIFECYCLE_STEPS: LifecycleStep[] = [
   },
   {
     label: "Beneficiary Cohort",
-    status: "Partial",
-    description: "Beneficiary MSMEs are linked through programme and intervention records, but cohort management is not a dedicated workflow yet.",
-    href: "/dashboard/impact-intelligence/programmes",
-    source: "impact_programme_msmes, msmes",
+    status: "Operational",
+    description: "Cohort records, recruitment status, MSME enrolment, field-officer assignment, and beneficiary distribution dashboards are available.",
+    href: "/dashboard/impact-intelligence/cohorts",
+    source: "impact_beneficiary_cohorts, impact_cohort_members",
   },
   {
     label: "Intervention",
@@ -138,12 +145,12 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     priority: 1,
   },
   {
-    href: "/dashboard/impact-intelligence/programmes",
+    href: "/dashboard/impact-intelligence/cohorts",
     label: "Beneficiary cohorts",
-    detail: "Review MSMEs attached to programmes and interventions until a dedicated cohort workflow is added.",
+    detail: "Create cohorts, enrol MSMEs, assign field officers, and track beneficiary status before interventions.",
     icon: UsersRound,
     lifecycle: "Beneficiary Cohort",
-    audiences: ["programme_officer"],
+    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"],
     priority: 2,
   },
   {
@@ -183,6 +190,15 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     priority: 1,
   },
   {
+    href: "/dashboard/impact-intelligence/cohorts",
+    label: "Assigned beneficiaries",
+    detail: "Review only the cohort beneficiaries assigned to your field-officer account.",
+    icon: UsersRound,
+    lifecycle: "Beneficiary Cohort",
+    audiences: ["field_officer"],
+    priority: 2,
+  },
+  {
     href: "/dashboard/impact-intelligence/evidence",
     label: "Evidence",
     detail: "Register and review evidence metadata linked to visits, assessments, interventions, and MSMEs.",
@@ -212,6 +228,8 @@ const LAUNCHER_CARDS: LauncherCard[] = [
 ];
 
 const AUDIENCE_BY_ROLE: Partial<Record<UserRole, LauncherAudience>> = {
+  admin: "admin",
+  super_admin: "super_admin",
   boi_executive: "boi_executive",
   programme_officer: "programme_officer",
   assessment_officer: "assessment_officer",
