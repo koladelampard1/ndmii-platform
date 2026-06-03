@@ -7,6 +7,12 @@ type ImpactQueryOptions = {
   state?: string | null;
   sector?: string | null;
   search?: string | null;
+  programmeId?: string | null;
+  cohortId?: string | null;
+  status?: string | null;
+  stage?: string | null;
+  interventionType?: string | null;
+  assignedOfficerId?: string | null;
 };
 
 type ImpactReadArgs = {
@@ -14,7 +20,8 @@ type ImpactReadArgs = {
   options: ImpactQueryOptions;
 };
 
-export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"];
+export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
+export const IMPACT_SCOPED_READ_ROLES: UserRole[] = [...IMPACT_READ_ROLES, "field_officer"];
 export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
 export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
 export const COHORT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
@@ -95,6 +102,8 @@ export type ImpactBeneficiaryCohort = {
   active_count?: number;
   completed_count?: number;
   dropped_count?: number;
+  intervention_count?: number;
+  unanchored_intervention_count?: number;
 };
 
 export type ImpactCohortMember = {
@@ -112,11 +121,16 @@ export type ImpactCohortMember = {
   updated_at: string | null;
   metadata?: Record<string, unknown> | null;
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null; verification_status?: string | null } | null;
+  impact_beneficiary_cohorts?: Pick<ImpactBeneficiaryCohort, "id" | "name" | "programme_id"> | null;
+  intervention_count?: number;
+  interventions?: Pick<ImpactIntervention, "id" | "title" | "status">[];
 };
 
 export type ImpactIntervention = {
   id: string;
   programme_id: string | null;
+  cohort_id: string | null;
+  cohort_member_id: string | null;
   msme_id: string | null;
   intervention_type: string;
   title: string;
@@ -127,18 +141,29 @@ export type ImpactIntervention = {
   start_date: string | null;
   end_date: string | null;
   assigned_to_user_id: string | null;
+  assigned_officer_id: string | null;
+  closure_reason: string | null;
+  closure_note: string | null;
+  closed_at: string | null;
+  approved_at: string | null;
+  disbursed_at: string | null;
   created_by_user_id: string | null;
   created_at: string | null;
   updated_at: string | null;
   metadata?: Record<string, unknown> | null;
   impact_programmes?: Pick<ImpactProgramme, "id" | "name" | "programme_code"> | null;
+  impact_beneficiary_cohorts?: Pick<ImpactBeneficiaryCohort, "id" | "name" | "status" | "programme_id"> | null;
+  impact_cohort_members?: Pick<ImpactCohortMember, "id" | "member_status" | "cohort_id" | "programme_id" | "msme_id"> | null;
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null } | null;
+  assigned_officers?: { id: string; full_name: string | null; email: string | null; role: string | null } | null;
 };
 
 export type ImpactInterventionEvent = {
   id: string;
   intervention_id: string;
   programme_id: string | null;
+  cohort_id: string | null;
+  cohort_member_id: string | null;
   msme_id: string | null;
   event_type: string;
   from_status: string | null;
@@ -567,6 +592,12 @@ async function createImpactReadClient(ctx?: UserContext) {
   return createPrivilegedImpactReadClient();
 }
 
+async function createScopedImpactReadClient(ctx?: UserContext) {
+  if (!ctx) return createServerSupabaseClient();
+  requireScopedImpactRead(ctx);
+  return createPrivilegedImpactReadClient();
+}
+
 async function createReportingReadClient(ctx?: UserContext) {
   if (!ctx) return createServerSupabaseClient();
   requireReportingAccess(ctx);
@@ -580,6 +611,12 @@ async function createIntelligenceReadClient(ctx: UserContext) {
 
 function requireImpactRead(ctx: UserContext) {
   if (!IMPACT_READ_ROLES.includes(ctx.role)) {
+    throw new Error("You do not have permission to read impact intelligence records.");
+  }
+}
+
+function requireScopedImpactRead(ctx: UserContext) {
+  if (!IMPACT_SCOPED_READ_ROLES.includes(ctx.role)) {
     throw new Error("You do not have permission to read impact intelligence records.");
   }
 }
@@ -680,6 +717,41 @@ function normaliseStage(value: string | null): InterventionStage {
 
 function normaliseStatus(value: string | null): InterventionStatus {
   return INTERVENTION_STATUSES.includes(value as InterventionStatus) ? (value as InterventionStatus) : "planned";
+}
+
+const OPEN_INTERVENTION_STATUSES = ["planned", "active", "on_hold"];
+const IMPACT_INTERVENTION_SELECT =
+  "id,programme_id,cohort_id,cohort_member_id,msme_id,intervention_type,title,description,status,approved_amount,disbursed_amount,start_date,end_date,assigned_to_user_id,assigned_officer_id,closure_reason,closure_note,closed_at,approved_at,disbursed_at,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code),impact_beneficiary_cohorts(id,name,status,programme_id),impact_cohort_members(id,cohort_id,programme_id,msme_id,member_status),msmes(id,business_name,msme_id,state,sector),assigned_officers:users!impact_interventions_assigned_officer_id_fkey(id,full_name,email,role)";
+
+function isClosureStage(stage: string | null) {
+  return stage === "closure";
+}
+
+function isClosedStatus(status: string | null) {
+  return status === "completed";
+}
+
+function validateFinancials(approvedAmount: number | null, disbursedAmount: number | null) {
+  if (disbursedAmount !== null && approvedAmount === null) {
+    throw new Error("Record an approved amount before recording disbursement.");
+  }
+  if (approvedAmount !== null && disbursedAmount !== null && disbursedAmount > approvedAmount) {
+    throw new Error("Disbursed amount cannot exceed approved amount.");
+  }
+}
+
+function validateInterventionTransition(currentStage: string, nextStage: string, params: { approvedAt: string | null; closureReason: string | null; closureNote: string | null; status: string | null }) {
+  const currentIndex = INTERVENTION_STAGES.indexOf(normaliseStage(currentStage));
+  const nextIndex = INTERVENTION_STAGES.indexOf(normaliseStage(nextStage));
+  if (nextIndex > currentIndex + 1) {
+    throw new Error("Move interventions through one lifecycle stage at a time.");
+  }
+  if (nextStage === "disbursement" && !params.approvedAt) {
+    throw new Error("Record approval before moving an intervention to disbursement.");
+  }
+  if ((isClosedStatus(params.status) || isClosureStage(nextStage)) && (!params.closureReason || !params.closureNote)) {
+    throw new Error("Closure reason and closure note are required before closing an intervention.");
+  }
 }
 
 function normaliseCohortStatus(value: string | null): CohortStatus {
@@ -793,14 +865,19 @@ export function parseInterventionForm(formData: FormData) {
   const title = textValue(formData, "title");
   if (!title) throw new Error("Intervention title is required.");
 
-  const msmeId = textValue(formData, "msme_id");
-  if (!msmeId) throw new Error("Select an MSME beneficiary.");
+  const programmeId = textValue(formData, "programme_id");
+  const cohortId = textValue(formData, "cohort_id");
+  const cohortMemberId = textValue(formData, "cohort_member_id");
+  if (!programmeId) throw new Error("Select a programme.");
+  if (!cohortId) throw new Error("Select a beneficiary cohort.");
+  if (!cohortMemberId) throw new Error("Select a cohort beneficiary.");
 
   const stage = normaliseStage(textValue(formData, "stage"));
 
   return {
-    programme_id: textValue(formData, "programme_id"),
-    msme_id: msmeId,
+    programme_id: programmeId,
+    cohort_id: cohortId,
+    cohort_member_id: cohortMemberId,
     intervention_type: textValue(formData, "intervention_type") ?? "support",
     title,
     description: textValue(formData, "description"),
@@ -809,6 +886,7 @@ export function parseInterventionForm(formData: FormData) {
     disbursed_amount: numericValue(formData, "disbursed_amount"),
     start_date: textValue(formData, "start_date"),
     end_date: textValue(formData, "end_date"),
+    assigned_officer_id: textValue(formData, "assigned_officer_id"),
     metadata: { stage },
   };
 }
@@ -874,17 +952,32 @@ export async function listImpactCohorts(ctx: UserContext, options: ImpactQueryOp
     .limit(options.limit ?? 100);
 
   if (allowedCohortIds) query = query.in("id", allowedCohortIds);
+  if (options.programmeId) query = query.eq("programme_id", options.programmeId);
 
-  const [{ data, error }, { data: members }] = await Promise.all([
+  const [{ data, error }, { data: members }, { data: interventions }] = await Promise.all([
     query,
     supabase.from("impact_cohort_members").select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata"),
+    supabase.from("impact_interventions").select("id,programme_id,cohort_id,cohort_member_id,msme_id,status"),
   ]);
 
   throwImpactReadError("list_cohorts_failed", error);
   const memberSummary = summarizeCohortMembers((members ?? []) as ImpactCohortMember[]);
+  const interventionCounts = new Map<string, number>();
+  const unanchoredInterventionCounts = new Map<string, number>();
+  for (const intervention of interventions ?? []) {
+    if (intervention.cohort_id) {
+      const cohortId = String(intervention.cohort_id);
+      interventionCounts.set(cohortId, (interventionCounts.get(cohortId) ?? 0) + 1);
+    } else if (intervention.programme_id) {
+      const programmeId = String(intervention.programme_id);
+      unanchoredInterventionCounts.set(programmeId, (unanchoredInterventionCounts.get(programmeId) ?? 0) + 1);
+    }
+  }
   return ((data ?? []) as unknown as ImpactBeneficiaryCohort[]).map((cohort) => ({
     ...cohort,
     ...(memberSummary.get(cohort.id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 }),
+    intervention_count: interventionCounts.get(cohort.id) ?? 0,
+    unanchored_intervention_count: unanchoredInterventionCounts.get(cohort.programme_id) ?? 0,
   }));
 }
 
@@ -911,16 +1004,35 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
     memberQuery = memberQuery.eq("assigned_to_user_id", ctx.appUserId);
   }
 
-  const { data: members, error: memberError } = await memberQuery;
+  const [{ data: members, error: memberError }, { data: interventions }] = await Promise.all([
+    memberQuery,
+    supabase
+      .from("impact_interventions")
+      .select("id,title,status,cohort_member_id,cohort_id,programme_id,msme_id")
+      .eq("cohort_id", cohortId)
+      .order("created_at", { ascending: false }),
+  ]);
   throwImpactReadError("get_cohort_members_failed", memberError);
   const scopedMembers = (members ?? []) as unknown as ImpactCohortMember[];
   if (ctx.role === "field_officer" && scopedMembers.length === 0) {
     return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
   }
+  const interventionsByMember = new Map<string, Pick<ImpactIntervention, "id" | "title" | "status">[]>();
+  for (const intervention of interventions ?? []) {
+    if (!intervention.cohort_member_id) continue;
+    const memberId = String(intervention.cohort_member_id);
+    const rows = interventionsByMember.get(memberId) ?? [];
+    rows.push({ id: String(intervention.id), title: String(intervention.title ?? "Intervention"), status: String(intervention.status ?? "planned") });
+    interventionsByMember.set(memberId, rows);
+  }
 
   return {
     cohort: cohort as unknown as ImpactBeneficiaryCohort,
-    members: scopedMembers,
+    members: scopedMembers.map((member) => ({
+      ...member,
+      interventions: interventionsByMember.get(member.id) ?? [],
+      intervention_count: interventionsByMember.get(member.id)?.length ?? 0,
+    })),
     dashboard: buildCohortDashboardMetrics(scopedMembers),
   };
 }
@@ -1044,6 +1156,24 @@ export async function updateImpactCohortMemberStatus(ctx: UserContext, memberId:
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_cohort_member_status_updated", entityType: "impact_cohort_member", entityId: memberId, metadata: { role: ctx.role, status, cohort_id: data?.cohort_id } });
 }
 
+export async function listImpactCohortMemberOptions(ctx: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactCohortMember[]> {
+  requireCohortRead(ctx);
+  if (!options.cohortId) return [];
+  const supabase = await createPrivilegedImpactReadClient();
+  let query = supabase
+    .from("impact_cohort_members")
+    .select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,msmes(id,business_name,msme_id,state,sector,verification_status),impact_beneficiary_cohorts(id,name,programme_id)")
+    .eq("cohort_id", options.cohortId)
+    .order("enrolled_at", { ascending: false })
+    .limit(options.limit ?? 150);
+
+  if (options.programmeId) query = query.eq("programme_id", options.programmeId);
+
+  const { data, error } = await query;
+  throwImpactReadError("list_cohort_member_options_failed", error);
+  return (data ?? []) as unknown as ImpactCohortMember[];
+}
+
 export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
   requireImpactRead(ctx);
   const supabase = await createPrivilegedImpactReadClient();
@@ -1055,7 +1185,7 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
       .maybeSingle(),
     supabase
       .from("impact_interventions")
-      .select("id,programme_id,msme_id,intervention_type,title,description,status,approved_amount,disbursed_amount,start_date,end_date,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,msmes(id,business_name,msme_id,state,sector)")
+      .select(IMPACT_INTERVENTION_SELECT)
       .eq("programme_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -1076,13 +1206,22 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
 
   throwImpactReadError("get_programme_failed", error);
   const memberSummary = summarizeCohortMembers((cohortMembers ?? []) as ImpactCohortMember[]);
+  const cohortInterventionCounts = new Map<string, number>();
+  for (const intervention of interventions ?? []) {
+    if (!intervention.cohort_id) continue;
+    const cohortId = String(intervention.cohort_id);
+    cohortInterventionCounts.set(cohortId, (cohortInterventionCounts.get(cohortId) ?? 0) + 1);
+  }
+  const unanchoredInterventions = ((interventions ?? []) as unknown as ImpactIntervention[]).filter((intervention) => !intervention.cohort_id);
   return {
     programme: programme as ImpactProgramme | null,
     interventions: (interventions ?? []) as unknown as ImpactIntervention[],
+    unanchoredInterventions,
     enrolments: enrolments ?? [],
     cohorts: ((cohorts ?? []) as unknown as ImpactBeneficiaryCohort[]).map((cohort) => ({
       ...cohort,
       ...(memberSummary.get(cohort.id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 }),
+      intervention_count: cohortInterventionCounts.get(cohort.id) ?? 0,
     })),
   };
 }
@@ -1101,12 +1240,20 @@ export async function createImpactProgramme(ctx: UserContext, formData: FormData
 export async function listImpactInterventions(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactIntervention[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
   const supabase = await createImpactReadClient(ctx);
-  const { data, error } = await supabase
+  let query = supabase
     .from("impact_interventions")
-    .select("id,programme_id,msme_id,intervention_type,title,description,status,approved_amount,disbursed_amount,start_date,end_date,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code),msmes(id,business_name,msme_id,state,sector)")
+    .select(IMPACT_INTERVENTION_SELECT)
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 50);
 
+  if (options.programmeId) query = query.eq("programme_id", options.programmeId);
+  if (options.cohortId) query = query.eq("cohort_id", options.cohortId);
+  if (options.status) query = query.eq("status", options.status);
+  if (options.stage) query = query.eq("metadata->>stage", options.stage);
+  if (options.interventionType) query = query.eq("intervention_type", options.interventionType);
+  if (options.assignedOfficerId) query = query.eq("assigned_officer_id", options.assignedOfficerId);
+
+  const { data, error } = await query;
   throwImpactReadError("list_interventions_failed", error);
   return (data ?? []) as unknown as ImpactIntervention[];
 }
@@ -1116,12 +1263,12 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
   const [{ data: intervention, error }, { data: events }] = await Promise.all([
     supabase
       .from("impact_interventions")
-      .select("id,programme_id,msme_id,intervention_type,title,description,status,approved_amount,disbursed_amount,start_date,end_date,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code),msmes(id,business_name,msme_id,state,sector)")
+      .select(IMPACT_INTERVENTION_SELECT)
       .eq("id", id)
       .maybeSingle(),
     supabase
       .from("impact_intervention_events")
-      .select("id,intervention_id,programme_id,msme_id,event_type,from_status,to_status,from_stage,to_stage,title,note,actor_user_id,actor_role,created_at")
+      .select("id,intervention_id,programme_id,cohort_id,cohort_member_id,msme_id,event_type,from_status,to_status,from_stage,to_stage,title,note,actor_user_id,actor_role,created_at")
       .eq("intervention_id", id)
       .order("created_at", { ascending: false }),
   ]);
@@ -1136,29 +1283,72 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
 export async function createImpactIntervention(ctx: UserContext, formData: FormData) {
   requireImpactWrite(ctx);
   const supabase = await createPrivilegedImpactWriteClient();
-  const payload = { ...parseInterventionForm(formData), created_by_user_id: ctx.appUserId };
-  const { data, error } = await supabase.from("impact_interventions").insert(payload).select("id,programme_id,msme_id,status,metadata").single();
+  const parsed = parseInterventionForm(formData);
+  validateFinancials(parsed.approved_amount, parsed.disbursed_amount);
+  const now = new Date().toISOString();
+  const initialApprovedAt = parsed.approved_amount !== null ? now : null;
+  validateInterventionTransition("intake", String(parsed.metadata.stage), {
+    approvedAt: initialApprovedAt,
+    closureReason: null,
+    closureNote: null,
+    status: parsed.status,
+  });
+
+  const { data: member, error: memberError } = await supabase
+    .from("impact_cohort_members")
+    .select("id,cohort_id,programme_id,msme_id,member_status")
+    .eq("id", parsed.cohort_member_id)
+    .maybeSingle();
+  if (memberError) throw new Error(memberError.message);
+  if (!member) throw new Error("Selected cohort beneficiary was not found.");
+  if (member.programme_id !== parsed.programme_id) throw new Error("Selected cohort beneficiary does not belong to the selected programme.");
+  if (member.cohort_id !== parsed.cohort_id) throw new Error("Selected cohort beneficiary does not belong to the selected cohort.");
+
+  if (OPEN_INTERVENTION_STATUSES.includes(parsed.status) && textValue(formData, "allow_duplicate") !== "yes") {
+    const { data: duplicate, error: duplicateError } = await supabase
+      .from("impact_interventions")
+      .select("id,title,status")
+      .eq("programme_id", parsed.programme_id)
+      .eq("cohort_member_id", parsed.cohort_member_id)
+      .eq("intervention_type", parsed.intervention_type)
+      .in("status", OPEN_INTERVENTION_STATUSES)
+      .limit(1)
+      .maybeSingle();
+    if (duplicateError) throw new Error(duplicateError.message);
+    if (duplicate) throw new Error("An open intervention of this type already exists for this cohort beneficiary.");
+  }
+
+  const payload = {
+    ...parsed,
+    msme_id: member.msme_id,
+    approved_at: initialApprovedAt,
+    disbursed_at: parsed.disbursed_amount !== null ? now : null,
+    created_by_user_id: ctx.appUserId,
+  };
+
+  const { data, error } = await supabase.from("impact_interventions").insert(payload).select("id,programme_id,cohort_id,cohort_member_id,msme_id,status,metadata").single();
   if (error) throw new Error(error.message);
 
-  if (payload.programme_id) {
-    await supabase.from("impact_programme_msmes").upsert({
-      programme_id: payload.programme_id,
-      msme_id: payload.msme_id,
-      enrollment_status: "active",
-      created_by_user_id: ctx.appUserId,
-    }, { onConflict: "programme_id,msme_id" });
-  }
+  await supabase.from("impact_programme_msmes").upsert({
+    programme_id: payload.programme_id,
+    msme_id: payload.msme_id,
+    enrollment_status: "active",
+    created_by_user_id: ctx.appUserId,
+    metadata: { source: "cohort_anchored_intervention", cohort_id: payload.cohort_id, cohort_member_id: payload.cohort_member_id },
+  }, { onConflict: "programme_id,msme_id" });
 
   await appendImpactInterventionEvent(ctx, data.id, {
     programmeId: data.programme_id,
+    cohortId: data.cohort_id,
+    cohortMemberId: data.cohort_member_id,
     msmeId: data.msme_id,
-    eventType: "created",
+    eventType: "intervention_created",
     title: "Intervention created",
     note: `Initial status: ${data.status}`,
     toStatus: data.status,
     toStage: String((data.metadata as Record<string, unknown> | null)?.stage ?? "intake"),
   });
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_intervention_created", entityType: "impact_intervention", entityId: data.id, metadata: { role: ctx.role } });
+  await logActivity({ actorUserId: ctx.appUserId, action: "intervention_created", entityType: "impact_intervention", entityId: data.id, metadata: { role: ctx.role, programme_id: payload.programme_id, cohort_id: payload.cohort_id, cohort_member_id: payload.cohort_member_id } });
   return data.id as string;
 }
 
@@ -1182,8 +1372,10 @@ export async function updateImpactInterventionStatus(ctx: UserContext, intervent
 
   await appendImpactInterventionEvent(ctx, interventionId, {
     programmeId: intervention.programme_id,
+    cohortId: intervention.cohort_id,
+    cohortMemberId: intervention.cohort_member_id,
     msmeId: intervention.msme_id,
-    eventType: nextStatus !== intervention.status ? "status_changed" : "stage_changed",
+    eventType: nextStatus !== intervention.status ? "intervention_status_changed" : "intervention_stage_changed",
     title: "Intervention progress updated",
     note,
     fromStatus: intervention.status,
@@ -1194,8 +1386,134 @@ export async function updateImpactInterventionStatus(ctx: UserContext, intervent
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_intervention_status_updated", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, status: nextStatus, stage: nextStage } });
 }
 
+export async function updateImpactInterventionLifecycle(ctx: UserContext, interventionId: string, formData: FormData) {
+  requireImpactWrite(ctx);
+  const supabase = await createPrivilegedImpactWriteClient();
+  const { intervention } = await getImpactInterventionDetail(interventionId, ctx);
+  if (!intervention) throw new Error("Intervention not found.");
+
+  const currentMetadata = (intervention.metadata ?? {}) as Record<string, unknown>;
+  const currentStage = String(currentMetadata.stage ?? "intake");
+  const nextStatus = normaliseStatus(textValue(formData, "status"));
+  const nextStage = normaliseStage(textValue(formData, "stage"));
+  const approvedAmount = numericValue(formData, "approved_amount");
+  const disbursedAmount = numericValue(formData, "disbursed_amount");
+  const assignedOfficerId = textValue(formData, "assigned_officer_id");
+  const closureReason = textValue(formData, "closure_reason");
+  const closureNote = textValue(formData, "closure_note");
+  const note = textValue(formData, "note");
+  const now = new Date().toISOString();
+
+  validateFinancials(approvedAmount, disbursedAmount);
+  const approvedAt = approvedAmount !== null ? (intervention.approved_at ?? now) : null;
+  const disbursedAt = disbursedAmount !== null ? (intervention.disbursed_at ?? now) : null;
+  validateInterventionTransition(currentStage, nextStage, { approvedAt, closureReason, closureNote, status: nextStatus });
+
+  const patch = {
+    status: nextStatus,
+    approved_amount: approvedAmount,
+    disbursed_amount: disbursedAmount,
+    assigned_officer_id: assignedOfficerId,
+    assigned_to_user_id: assignedOfficerId,
+    start_date: textValue(formData, "start_date"),
+    end_date: textValue(formData, "end_date"),
+    closure_reason: closureReason,
+    closure_note: closureNote,
+    approved_at: approvedAt,
+    disbursed_at: disbursedAt,
+    closed_at: isClosedStatus(nextStatus) || isClosureStage(nextStage) ? (intervention.closed_at ?? now) : null,
+    metadata: { ...currentMetadata, stage: nextStage },
+  };
+
+  const { error } = await supabase.from("impact_interventions").update(patch).eq("id", interventionId);
+  if (error) throw new Error(error.message);
+
+  if (nextStage !== currentStage) {
+    await appendImpactInterventionEvent(ctx, interventionId, {
+      programmeId: intervention.programme_id,
+      cohortId: intervention.cohort_id,
+      cohortMemberId: intervention.cohort_member_id,
+      msmeId: intervention.msme_id,
+      eventType: "intervention_stage_changed",
+      title: "Intervention stage changed",
+      note,
+      fromStage: currentStage,
+      toStage: nextStage,
+      fromStatus: intervention.status,
+      toStatus: nextStatus,
+    });
+    await logActivity({ actorUserId: ctx.appUserId, action: "intervention_stage_changed", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, from_stage: currentStage, to_stage: nextStage } });
+  }
+
+  if (nextStatus !== intervention.status) {
+    await appendImpactInterventionEvent(ctx, interventionId, {
+      programmeId: intervention.programme_id,
+      cohortId: intervention.cohort_id,
+      cohortMemberId: intervention.cohort_member_id,
+      msmeId: intervention.msme_id,
+      eventType: "intervention_status_changed",
+      title: "Intervention status changed",
+      note,
+      fromStage: currentStage,
+      toStage: nextStage,
+      fromStatus: intervention.status,
+      toStatus: nextStatus,
+    });
+    await logActivity({ actorUserId: ctx.appUserId, action: "intervention_status_changed", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, from_status: intervention.status, to_status: nextStatus } });
+  }
+
+  if (approvedAmount !== intervention.approved_amount || disbursedAmount !== intervention.disbursed_amount) {
+    await appendImpactInterventionEvent(ctx, interventionId, {
+      programmeId: intervention.programme_id,
+      cohortId: intervention.cohort_id,
+      cohortMemberId: intervention.cohort_member_id,
+      msmeId: intervention.msme_id,
+      eventType: "intervention_financials_updated",
+      title: "Intervention financials updated",
+      note,
+      fromStatus: intervention.status,
+      toStatus: nextStatus,
+      fromStage: currentStage,
+      toStage: nextStage,
+    });
+    await logActivity({ actorUserId: ctx.appUserId, action: "intervention_financials_updated", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, approved_amount: approvedAmount, disbursed_amount: disbursedAmount } });
+  }
+
+  if (assignedOfficerId !== intervention.assigned_officer_id) {
+    await appendImpactInterventionEvent(ctx, interventionId, {
+      programmeId: intervention.programme_id,
+      cohortId: intervention.cohort_id,
+      cohortMemberId: intervention.cohort_member_id,
+      msmeId: intervention.msme_id,
+      eventType: "intervention_assigned",
+      title: "Intervention assignment updated",
+      note: note ?? "Assigned officer changed.",
+    });
+    await logActivity({ actorUserId: ctx.appUserId, action: "intervention_assigned", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, assigned_officer_id: assignedOfficerId } });
+  }
+
+  if ((isClosedStatus(nextStatus) || isClosureStage(nextStage)) && !intervention.closed_at) {
+    await appendImpactInterventionEvent(ctx, interventionId, {
+      programmeId: intervention.programme_id,
+      cohortId: intervention.cohort_id,
+      cohortMemberId: intervention.cohort_member_id,
+      msmeId: intervention.msme_id,
+      eventType: "intervention_closed",
+      title: "Intervention closed",
+      note: closureNote,
+      fromStatus: intervention.status,
+      toStatus: nextStatus,
+      fromStage: currentStage,
+      toStage: nextStage,
+    });
+    await logActivity({ actorUserId: ctx.appUserId, action: "intervention_closed", entityType: "impact_intervention", entityId: interventionId, metadata: { role: ctx.role, closure_reason: closureReason } });
+  }
+}
+
 export async function appendImpactInterventionEvent(ctx: UserContext, interventionId: string, params: {
   programmeId?: string | null;
+  cohortId?: string | null;
+  cohortMemberId?: string | null;
   msmeId?: string | null;
   eventType?: string;
   title: string;
@@ -1210,6 +1528,8 @@ export async function appendImpactInterventionEvent(ctx: UserContext, interventi
   const { error } = await supabase.from("impact_intervention_events").insert({
     intervention_id: interventionId,
     programme_id: params.programmeId ?? null,
+    cohort_id: params.cohortId ?? null,
+    cohort_member_id: params.cohortMemberId ?? null,
     msme_id: params.msmeId ?? null,
     event_type: params.eventType ?? "note",
     title: params.title,
@@ -1232,6 +1552,8 @@ export async function appendImpactInterventionNote(ctx: UserContext, interventio
   if (!note) throw new Error("Timeline note is required.");
   await appendImpactInterventionEvent(ctx, interventionId, {
     programmeId: intervention.programme_id,
+    cohortId: intervention.cohort_id,
+    cohortMemberId: intervention.cohort_member_id,
     msmeId: intervention.msme_id,
     eventType: "note",
     title: textValue(formData, "title") ?? "Operational note",
@@ -1791,7 +2113,7 @@ export async function assignFieldVisit(ctx: UserContext, visitId: string, assign
 }
 
 export async function listFieldVisits(ctx?: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactFieldVisit[]> {
-  const supabase = await createImpactReadClient(ctx);
+  const supabase = await createScopedImpactReadClient(ctx);
   let query = supabase
     .from("impact_field_visits")
     .select(fieldVisitSelect())
@@ -1814,7 +2136,7 @@ export async function listImpactFieldVisits(ctxOrOptions?: UserContext | ImpactQ
 }
 
 export async function getFieldVisit(ctx: UserContext, visitId: string) {
-  const supabase = await createImpactReadClient(ctx);
+  const supabase = await createScopedImpactReadClient(ctx);
   const [{ data: visit, error }, { data: assignments }, { data: checklist }, { data: notes }, { data: evidence }] = await Promise.all([
     supabase.from("impact_field_visits").select(fieldVisitSelect()).eq("id", visitId).maybeSingle(),
     supabase.from("impact_field_visit_assignments").select("id,field_visit_id,assigned_to_user_id,assigned_by_user_id,assignment_status,assigned_at,completed_at").eq("field_visit_id", visitId).order("assigned_at", { ascending: false }),
@@ -1966,7 +2288,7 @@ export async function linkEvidenceToEntity(ctx: UserContext, evidenceId: string,
 }
 
 export async function listEvidence(ctx?: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactEvidenceFile[]> {
-  const supabase = await createImpactReadClient(ctx);
+  const supabase = await createScopedImpactReadClient(ctx);
   let query = supabase
     .from("impact_evidence_files")
     .select(evidenceSelect())
@@ -1986,7 +2308,7 @@ export async function listEvidence(ctx?: UserContext, options: ImpactQueryOption
 }
 
 export async function getEvidence(ctx: UserContext, evidenceId: string) {
-  const supabase = await createImpactReadClient(ctx);
+  const supabase = await createScopedImpactReadClient(ctx);
   const [{ data: evidence, error }, { data: links }] = await Promise.all([
     supabase.from("impact_evidence_files").select(evidenceSelect()).eq("id", evidenceId).maybeSingle(),
     supabase.from("impact_evidence_links").select("id,evidence_id,programme_id,intervention_id,assessment_id,field_visit_id,msme_id,link_type,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),

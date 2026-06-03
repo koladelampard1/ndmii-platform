@@ -194,7 +194,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
+                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
               </thead>
               <tbody>
                 {members.map((member) => {
@@ -208,6 +208,17 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
                       <td className={`${tableCellClassName} text-slate-600`}>{member.msmes?.state ?? "Not set"}</td>
                       <td className={`${tableCellClassName} text-slate-600`}>{member.msmes?.sector ?? "Not set"}</td>
                       <td className={tableCellClassName}><StatusBadge value={member.msmes?.verification_status ?? "pending"} /></td>
+                      <td className={tableCellClassName}>
+                        {member.interventions && member.interventions.length > 0 ? (
+                          <div className="space-y-1">
+                            {member.interventions.map((intervention) => (
+                              <QuickLink key={intervention.id} href={`/dashboard/impact-intelligence/interventions/${intervention.id}`}>{intervention.title}</QuickLink>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">0</span>
+                        )}
+                      </td>
                       <td className={tableCellClassName}>
                         {canManage ? (
                           <form action={updateAction} className="flex min-w-[260px] gap-2">
