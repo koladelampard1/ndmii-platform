@@ -168,6 +168,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   if (role === "field_officer") {
     if (path === "/dashboard/impact-intelligence") return true;
     return [
+      "/dashboard/impact-intelligence/cohorts",
       "/dashboard/impact-intelligence/monitoring",
       "/dashboard/impact-intelligence/evidence",
       "/dashboard/impact-intelligence/intelligence",
@@ -266,6 +267,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   boi_executive: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },
     { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
     { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },
@@ -279,6 +281,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   programme_officer: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },
     { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
     { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },
@@ -292,6 +295,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   assessment_officer: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },
     { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
     { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },
@@ -303,6 +307,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
   field_officer: [
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Assigned Beneficiaries" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Assigned Monitoring" },
     { href: "/dashboard/impact-intelligence/evidence", label: "Evidence" },
     { href: "/dashboard/impact-intelligence/intelligence", label: "Assigned Alerts" },
@@ -311,6 +316,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   auditor: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },
     { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
     { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },

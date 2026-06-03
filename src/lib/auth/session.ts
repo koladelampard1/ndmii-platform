@@ -38,6 +38,7 @@ const VALID_USER_ROLES = new Set<UserRole>([
   "nrs_officer",
   "firs_officer",
   "admin",
+  "super_admin",
 ]);
 
 async function getAuthDiagnosticRequestMeta() {

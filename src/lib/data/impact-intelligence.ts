@@ -4,6 +4,9 @@ import type { UserRole } from "@/types/roles";
 
 type ImpactQueryOptions = {
   limit?: number;
+  state?: string | null;
+  sector?: string | null;
+  search?: string | null;
 };
 
 type ImpactReadArgs = {
@@ -11,14 +14,18 @@ type ImpactReadArgs = {
   options: ImpactQueryOptions;
 };
 
-export const IMPACT_READ_ROLES: UserRole[] = ["admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"];
-export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "programme_officer"];
-export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "programme_officer", "assessment_officer"];
-export const ASSESSMENT_REVIEW_ROLES: UserRole[] = ["admin", "assessment_officer"];
-export const MONITORING_MANAGE_ROLES: UserRole[] = ["admin", "programme_officer"];
-export const MONITORING_REVIEW_ROLES: UserRole[] = ["admin", "assessment_officer"];
+export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"];
+export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
+export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "auditor", "field_officer"];
+export const COHORT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
+export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer", "assessment_officer"];
+export const ASSESSMENT_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];
+export const MONITORING_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
+export const MONITORING_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];
 
 export const PROGRAMME_STATUSES = ["draft", "active", "paused", "completed", "archived"] as const;
+export const COHORT_STATUSES = ["draft", "recruiting", "active", "completed", "closed"] as const;
+export const COHORT_MEMBER_STATUSES = ["invited", "enrolled", "active", "completed", "dropped", "exited"] as const;
 export const INTERVENTION_STATUSES = ["planned", "active", "on_hold", "completed", "cancelled"] as const;
 export const INTERVENTION_STAGES = ["intake", "eligibility", "approval", "disbursement", "monitoring", "closure"] as const;
 export const ASSESSMENT_TEMPLATE_STATUSES = ["draft", "active", "archived"] as const;
@@ -34,6 +41,8 @@ export const INTELLIGENCE_CATEGORIES = ["risk", "recommendation", "anomaly", "mo
 export const INTELLIGENCE_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 export type ProgrammeStatus = (typeof PROGRAMME_STATUSES)[number];
+export type CohortStatus = (typeof COHORT_STATUSES)[number];
+export type CohortMemberStatus = (typeof COHORT_MEMBER_STATUSES)[number];
 export type InterventionStatus = (typeof INTERVENTION_STATUSES)[number];
 export type InterventionStage = (typeof INTERVENTION_STAGES)[number];
 export type AssessmentTemplateStatus = (typeof ASSESSMENT_TEMPLATE_STATUSES)[number];
@@ -60,6 +69,49 @@ export type ImpactProgramme = {
   created_by_user_id: string | null;
   created_at: string | null;
   updated_at: string | null;
+  cohort_count?: number;
+  cohort_beneficiary_count?: number;
+};
+
+export type ImpactBeneficiaryCohort = {
+  id: string;
+  programme_id: string;
+  name: string;
+  description: string | null;
+  state: string | null;
+  lga: string | null;
+  sector: string | null;
+  target_beneficiaries: number;
+  current_beneficiaries: number;
+  status: CohortStatus | string;
+  start_date: string | null;
+  end_date: string | null;
+  created_by_user_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  metadata?: Record<string, unknown> | null;
+  impact_programmes?: Pick<ImpactProgramme, "id" | "name" | "programme_code"> | null;
+  member_count?: number;
+  active_count?: number;
+  completed_count?: number;
+  dropped_count?: number;
+};
+
+export type ImpactCohortMember = {
+  id: string;
+  cohort_id: string;
+  programme_id: string;
+  msme_id: string;
+  member_status: CohortMemberStatus | string;
+  enrolled_at: string;
+  completed_at: string | null;
+  exited_at: string | null;
+  assigned_to_user_id: string | null;
+  created_by_user_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  metadata?: Record<string, unknown> | null;
+  msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null; verification_status?: string | null } | null;
 };
 
 export type ImpactIntervention = {
@@ -349,6 +401,16 @@ export type DistributionBucket = {
   value: number;
 };
 
+export type CohortDashboardMetrics = {
+  totalBeneficiaries: number;
+  activeBeneficiaries: number;
+  completedBeneficiaries: number;
+  droppedBeneficiaries: number;
+  stateDistribution: DistributionBucket[];
+  sectorDistribution: DistributionBucket[];
+  verificationCoverage: number;
+};
+
 export type ExecutiveDashboardMetrics = {
   totalMsmes: number;
   activeProgrammes: number;
@@ -470,8 +532,13 @@ export type UserPickerOption = {
 };
 
 function logImpactDataError(source: string, error: { message?: string } | null) {
-  if (process.env.NODE_ENV === "production" || !error) return;
-  console.info(`[impact-intelligence] ${source}`, { error: error.message });
+  if (!error) return;
+  console.warn(`[impact-intelligence] ${source}`, { error: error.message });
+}
+
+function throwImpactReadError(source: string, error: { message?: string } | null) {
+  logImpactDataError(source, error);
+  if (error) throw new Error(`Impact Intelligence source unavailable (${source}): ${error.message ?? "Unknown source error"}`);
 }
 
 async function createPrivilegedImpactWriteClient() {
@@ -523,6 +590,18 @@ function requireImpactWrite(ctx: UserContext) {
   }
 }
 
+function requireCohortRead(ctx: UserContext) {
+  if (!COHORT_READ_ROLES.includes(ctx.role)) {
+    throw new Error("You do not have permission to read beneficiary cohorts.");
+  }
+}
+
+function requireCohortManage(ctx: UserContext) {
+  if (!COHORT_MANAGE_ROLES.includes(ctx.role)) {
+    throw new Error("You do not have permission to manage beneficiary cohorts.");
+  }
+}
+
 function requireAssessmentManage(ctx: UserContext) {
   if (!ASSESSMENT_MANAGE_ROLES.includes(ctx.role)) {
     throw new Error("You do not have permission to manage impact assessments.");
@@ -554,25 +633,25 @@ function requireEvidenceCreate(ctx: UserContext) {
 }
 
 function requireReportingAccess(ctx: UserContext) {
-  if (!["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"].includes(ctx.role)) {
+  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"].includes(ctx.role)) {
     throw new Error("You do not have permission to access impact analytics and reports.");
   }
 }
 
 function requireReportWrite(ctx: UserContext) {
-  if (!["admin", "boi_executive", "programme_officer", "assessment_officer"].includes(ctx.role)) {
+  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"].includes(ctx.role)) {
     throw new Error("You do not have permission to create impact reports.");
   }
 }
 
 function requireIntelligenceAccess(ctx: UserContext) {
-  if (!["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"].includes(ctx.role)) {
+  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"].includes(ctx.role)) {
     throw new Error("You do not have permission to access impact intelligence.");
   }
 }
 
 function requireIntelligenceManage(ctx: UserContext) {
-  if (!["admin", "boi_executive", "programme_officer", "assessment_officer"].includes(ctx.role)) {
+  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"].includes(ctx.role)) {
     throw new Error("You do not have permission to manage impact intelligence.");
   }
 }
@@ -589,12 +668,26 @@ function numericValue(formData: FormData, key: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function integerValue(formData: FormData, key: string) {
+  const value = numericValue(formData, key);
+  if (!value || value < 0) return 0;
+  return Math.trunc(value);
+}
+
 function normaliseStage(value: string | null): InterventionStage {
   return INTERVENTION_STAGES.includes(value as InterventionStage) ? (value as InterventionStage) : "intake";
 }
 
 function normaliseStatus(value: string | null): InterventionStatus {
   return INTERVENTION_STATUSES.includes(value as InterventionStatus) ? (value as InterventionStatus) : "planned";
+}
+
+function normaliseCohortStatus(value: string | null): CohortStatus {
+  return COHORT_STATUSES.includes(value as CohortStatus) ? (value as CohortStatus) : "draft";
+}
+
+function normaliseCohortMemberStatus(value: string | null): CohortMemberStatus {
+  return COHORT_MEMBER_STATUSES.includes(value as CohortMemberStatus) ? (value as CohortMemberStatus) : "enrolled";
 }
 
 async function logActivity(params: {
@@ -633,6 +726,69 @@ export function parseProgrammeForm(formData: FormData) {
   };
 }
 
+export function parseCohortForm(formData: FormData) {
+  const programmeId = textValue(formData, "programme_id");
+  const name = textValue(formData, "name");
+  if (!programmeId) throw new Error("Select a programme for this cohort.");
+  if (!name) throw new Error("Cohort name is required.");
+
+  return {
+    programme_id: programmeId,
+    name,
+    description: textValue(formData, "description"),
+    state: textValue(formData, "state"),
+    lga: textValue(formData, "lga"),
+    sector: textValue(formData, "sector"),
+    target_beneficiaries: integerValue(formData, "target_beneficiaries"),
+    status: normaliseCohortStatus(textValue(formData, "status")),
+    start_date: textValue(formData, "start_date"),
+    end_date: textValue(formData, "end_date"),
+  };
+}
+
+function distributionFromMembers(members: ImpactCohortMember[], key: "state" | "sector"): DistributionBucket[] {
+  const counts = new Map<string, number>();
+  for (const member of members) {
+    const label = member.msmes?.[key]?.trim() || "Unspecified";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+    .slice(0, 8);
+}
+
+function buildCohortDashboardMetrics(members: ImpactCohortMember[]): CohortDashboardMetrics {
+  const activeStatuses = new Set(["enrolled", "active"]);
+  const verified = members.filter((member) => {
+    const status = member.msmes?.verification_status?.toLowerCase() ?? "";
+    return ["verified", "approved"].includes(status) || status.includes("verified");
+  }).length;
+
+  return {
+    totalBeneficiaries: members.length,
+    activeBeneficiaries: members.filter((member) => activeStatuses.has(member.member_status)).length,
+    completedBeneficiaries: members.filter((member) => member.member_status === "completed").length,
+    droppedBeneficiaries: members.filter((member) => member.member_status === "dropped").length,
+    stateDistribution: distributionFromMembers(members, "state"),
+    sectorDistribution: distributionFromMembers(members, "sector"),
+    verificationCoverage: members.length > 0 ? Math.round((verified / members.length) * 100) : 0,
+  };
+}
+
+function summarizeCohortMembers(members: ImpactCohortMember[]) {
+  const counts = new Map<string, { member_count: number; active_count: number; completed_count: number; dropped_count: number }>();
+  for (const member of members) {
+    const current = counts.get(member.cohort_id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 };
+    current.member_count += 1;
+    if (member.member_status === "active" || member.member_status === "enrolled") current.active_count += 1;
+    if (member.member_status === "completed") current.completed_count += 1;
+    if (member.member_status === "dropped") current.dropped_count += 1;
+    counts.set(member.cohort_id, current);
+  }
+  return counts;
+}
+
 export function parseInterventionForm(formData: FormData) {
   const title = textValue(formData, "title");
   if (!title) throw new Error("Intervention title is required.");
@@ -660,20 +816,238 @@ export function parseInterventionForm(formData: FormData) {
 export async function listImpactProgrammes(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactProgramme[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
   const supabase = await createImpactReadClient(ctx);
-  const { data, error } = await supabase
+  const [{ data, error }, { data: cohorts }, { data: members }] = await Promise.all([
+    supabase
     .from("impact_programmes")
     .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
     .order("created_at", { ascending: false })
-    .limit(options.limit ?? 50);
+      .limit(options.limit ?? 50),
+    supabase
+      .from("impact_beneficiary_cohorts")
+      .select("id,programme_id,current_beneficiaries"),
+    supabase
+      .from("impact_cohort_members")
+      .select("programme_id,msme_id,member_status"),
+  ]);
 
-  logImpactDataError("list_programmes_failed", error);
-  return (data ?? []) as ImpactProgramme[];
+  throwImpactReadError("list_programmes_failed", error);
+  const cohortCounts = new Map<string, number>();
+  const memberSets = new Map<string, Set<string>>();
+  for (const cohort of cohorts ?? []) {
+    const programmeId = String(cohort.programme_id);
+    cohortCounts.set(programmeId, (cohortCounts.get(programmeId) ?? 0) + 1);
+  }
+  for (const member of members ?? []) {
+    const programmeId = String(member.programme_id);
+    const msmeId = String(member.msme_id);
+    if (!memberSets.has(programmeId)) memberSets.set(programmeId, new Set());
+    memberSets.get(programmeId)?.add(msmeId);
+  }
+
+  return ((data ?? []) as ImpactProgramme[]).map((programme) => ({
+    ...programme,
+    cohort_count: cohortCounts.get(programme.id) ?? 0,
+    cohort_beneficiary_count: memberSets.get(programme.id)?.size ?? 0,
+  }));
+}
+
+export async function listImpactCohorts(ctx: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactBeneficiaryCohort[]> {
+  requireCohortRead(ctx);
+  const supabase = await createPrivilegedImpactReadClient();
+  let allowedCohortIds: string[] | null = null;
+
+  if (ctx.role === "field_officer") {
+    if (!ctx.appUserId) return [];
+    const { data: assignments, error: assignmentError } = await supabase
+      .from("impact_cohort_members")
+      .select("cohort_id")
+      .eq("assigned_to_user_id", ctx.appUserId);
+    throwImpactReadError("list_field_officer_cohort_assignments_failed", assignmentError);
+    allowedCohortIds = Array.from(new Set((assignments ?? []).map((item) => String(item.cohort_id))));
+    if (allowedCohortIds.length === 0) return [];
+  }
+
+  let query = supabase
+    .from("impact_beneficiary_cohorts")
+    .select("id,programme_id,name,description,state,lga,sector,target_beneficiaries,current_beneficiaries,status,start_date,end_date,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code)")
+    .order("created_at", { ascending: false })
+    .limit(options.limit ?? 100);
+
+  if (allowedCohortIds) query = query.in("id", allowedCohortIds);
+
+  const [{ data, error }, { data: members }] = await Promise.all([
+    query,
+    supabase.from("impact_cohort_members").select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata"),
+  ]);
+
+  throwImpactReadError("list_cohorts_failed", error);
+  const memberSummary = summarizeCohortMembers((members ?? []) as ImpactCohortMember[]);
+  return ((data ?? []) as unknown as ImpactBeneficiaryCohort[]).map((cohort) => ({
+    ...cohort,
+    ...(memberSummary.get(cohort.id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 }),
+  }));
+}
+
+export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) {
+  requireCohortRead(ctx);
+  const supabase = await createPrivilegedImpactReadClient();
+  const { data: cohort, error } = await supabase
+    .from("impact_beneficiary_cohorts")
+    .select("id,programme_id,name,description,state,lga,sector,target_beneficiaries,current_beneficiaries,status,start_date,end_date,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code)")
+    .eq("id", cohortId)
+    .maybeSingle();
+
+  throwImpactReadError("get_cohort_failed", error);
+  if (!cohort) return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
+
+  let memberQuery = supabase
+    .from("impact_cohort_members")
+    .select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata,msmes(id,business_name,msme_id,state,sector,verification_status)")
+    .eq("cohort_id", cohortId)
+    .order("enrolled_at", { ascending: false });
+
+  if (ctx.role === "field_officer") {
+    if (!ctx.appUserId) return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
+    memberQuery = memberQuery.eq("assigned_to_user_id", ctx.appUserId);
+  }
+
+  const { data: members, error: memberError } = await memberQuery;
+  throwImpactReadError("get_cohort_members_failed", memberError);
+  const scopedMembers = (members ?? []) as unknown as ImpactCohortMember[];
+  if (ctx.role === "field_officer" && scopedMembers.length === 0) {
+    return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
+  }
+
+  return {
+    cohort: cohort as unknown as ImpactBeneficiaryCohort,
+    members: scopedMembers,
+    dashboard: buildCohortDashboardMetrics(scopedMembers),
+  };
+}
+
+export async function createImpactCohort(ctx: UserContext, formData: FormData) {
+  requireCohortManage(ctx);
+  const supabase = await createPrivilegedImpactWriteClient();
+  const payload = { ...parseCohortForm(formData), created_by_user_id: ctx.appUserId };
+  const { data, error } = await supabase.from("impact_beneficiary_cohorts").insert(payload).select("id").single();
+  if (error) throw new Error(error.message);
+  if (!data?.id) throw new Error("Cohort was created but no cohort ID was returned.");
+  await logActivity({ actorUserId: ctx.appUserId, action: "impact_cohort_created", entityType: "impact_beneficiary_cohort", entityId: data.id, metadata: { role: ctx.role, programme_id: payload.programme_id } });
+  return data.id as string;
+}
+
+async function resolveCsvMsmeIds(formData: FormData) {
+  const csvFile = formData.get("csv_file");
+  if (!csvFile || typeof csvFile === "string" || csvFile.size === 0) return [];
+
+  const content = await csvFile.text();
+  return content
+    .split(/[\n,\r]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => !["msme_id", "id", "business_id"].includes(value.toLowerCase()));
+}
+
+async function resolveSelectedMsmeIds(supabase: Awaited<ReturnType<typeof createPrivilegedImpactWriteClient>>, formData: FormData) {
+  const directIds = [
+    ...formData.getAll("msme_ids"),
+    formData.get("selected_msme_id"),
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+
+  const csvValues = await resolveCsvMsmeIds(formData);
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const rawIds = new Set([...directIds, ...csvValues.filter((value) => uuidPattern.test(value))]);
+  const externalMsmeIds = csvValues.filter((value) => !uuidPattern.test(value));
+
+  if (externalMsmeIds.length > 0) {
+    const { data, error } = await supabase.from("msmes").select("id,msme_id").in("msme_id", externalMsmeIds);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) rawIds.add(String(row.id));
+  }
+
+  return Array.from(rawIds);
+}
+
+export async function enrollImpactCohortMembers(ctx: UserContext, cohortId: string, formData: FormData) {
+  requireCohortManage(ctx);
+  const supabase = await createPrivilegedImpactWriteClient();
+  const { cohort } = await getImpactCohortDetail(ctx, cohortId);
+  if (!cohort) throw new Error("Cohort not found.");
+
+  const msmeIds = await resolveSelectedMsmeIds(supabase, formData);
+  if (msmeIds.length === 0) throw new Error("Select at least one MSME or upload a CSV with MSME IDs.");
+
+  const memberStatus = normaliseCohortMemberStatus(textValue(formData, "member_status"));
+  const assignedToUserId = textValue(formData, "assigned_to_user_id");
+  const rows = msmeIds.map((msmeId) => ({
+    cohort_id: cohortId,
+    programme_id: cohort.programme_id,
+    msme_id: msmeId,
+    member_status: memberStatus,
+    assigned_to_user_id: assignedToUserId,
+    created_by_user_id: ctx.appUserId,
+    metadata: { enrolment_source: "cohort_management" },
+  }));
+
+  const { error } = await supabase.from("impact_cohort_members").upsert(rows, { onConflict: "cohort_id,msme_id" });
+  if (error) throw new Error(error.message);
+
+  const programmeRows = msmeIds.map((msmeId) => ({
+    programme_id: cohort.programme_id,
+    msme_id: msmeId,
+    enrollment_status: memberStatus === "completed" ? "completed" : "active",
+    created_by_user_id: ctx.appUserId,
+    metadata: { source: "impact_beneficiary_cohort", cohort_id: cohortId },
+  }));
+  await supabase.from("impact_programme_msmes").upsert(programmeRows, { onConflict: "programme_id,msme_id" });
+
+  await logActivity({
+    actorUserId: ctx.appUserId,
+    action: "impact_cohort_members_enrolled",
+    entityType: "impact_beneficiary_cohort",
+    entityId: cohortId,
+    metadata: { role: ctx.role, count: msmeIds.length, member_status: memberStatus, assigned_to_user_id: assignedToUserId },
+  });
+  return msmeIds.length;
+}
+
+export async function updateImpactCohortMemberStatus(ctx: UserContext, memberId: string, formData: FormData) {
+  requireCohortManage(ctx);
+  const status = normaliseCohortMemberStatus(textValue(formData, "member_status"));
+  const supabase = await createPrivilegedImpactWriteClient();
+  const timestamp = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    member_status: status,
+    assigned_to_user_id: textValue(formData, "assigned_to_user_id"),
+  };
+  if (status === "completed") patch.completed_at = timestamp;
+  if (status === "dropped" || status === "exited") patch.exited_at = timestamp;
+
+  const { data, error } = await supabase
+    .from("impact_cohort_members")
+    .update(patch)
+    .eq("id", memberId)
+    .select("id,cohort_id,programme_id,msme_id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  if (data?.programme_id && data?.msme_id) {
+    await supabase
+      .from("impact_programme_msmes")
+      .update({ enrollment_status: status === "completed" ? "completed" : status === "dropped" || status === "exited" ? "withdrawn" : "active" })
+      .eq("programme_id", data.programme_id)
+      .eq("msme_id", data.msme_id);
+  }
+
+  await logActivity({ actorUserId: ctx.appUserId, action: "impact_cohort_member_status_updated", entityType: "impact_cohort_member", entityId: memberId, metadata: { role: ctx.role, status, cohort_id: data?.cohort_id } });
 }
 
 export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
   requireImpactRead(ctx);
   const supabase = await createPrivilegedImpactReadClient();
-  const [{ data: programme, error }, { data: interventions }, { data: enrolments }] = await Promise.all([
+  const [{ data: programme, error }, { data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }] = await Promise.all([
     supabase
       .from("impact_programmes")
       .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
@@ -689,13 +1063,27 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
       .select("id,programme_id,msme_id,enrollment_status,enrolled_at,msmes(id,business_name,msme_id,state,sector)")
       .eq("programme_id", id)
       .order("enrolled_at", { ascending: false }),
+    supabase
+      .from("impact_beneficiary_cohorts")
+      .select("id,programme_id,name,description,state,lga,sector,target_beneficiaries,current_beneficiaries,status,start_date,end_date,created_by_user_id,created_at,updated_at,metadata,impact_programmes(id,name,programme_code)")
+      .eq("programme_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("impact_cohort_members")
+      .select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata")
+      .eq("programme_id", id),
   ]);
 
-  logImpactDataError("get_programme_failed", error);
+  throwImpactReadError("get_programme_failed", error);
+  const memberSummary = summarizeCohortMembers((cohortMembers ?? []) as ImpactCohortMember[]);
   return {
     programme: programme as ImpactProgramme | null,
     interventions: (interventions ?? []) as unknown as ImpactIntervention[],
     enrolments: enrolments ?? [],
+    cohorts: ((cohorts ?? []) as unknown as ImpactBeneficiaryCohort[]).map((cohort) => ({
+      ...cohort,
+      ...(memberSummary.get(cohort.id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 }),
+    })),
   };
 }
 
@@ -719,7 +1107,7 @@ export async function listImpactInterventions(ctxOrOptions?: UserContext | Impac
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 50);
 
-  logImpactDataError("list_interventions_failed", error);
+  throwImpactReadError("list_interventions_failed", error);
   return (data ?? []) as unknown as ImpactIntervention[];
 }
 
@@ -738,7 +1126,7 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
       .order("created_at", { ascending: false }),
   ]);
 
-  logImpactDataError("get_intervention_failed", error);
+  throwImpactReadError("get_intervention_failed", error);
   return {
     intervention: intervention as unknown as ImpactIntervention | null,
     events: (events ?? []) as ImpactInterventionEvent[],
@@ -854,13 +1242,22 @@ export async function appendImpactInterventionNote(ctx: UserContext, interventio
 
 export async function listMsmePickerOptions(options: ImpactQueryOptions = {}): Promise<MsmePickerOption[]> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("msmes")
     .select("id,business_name,msme_id,state,sector")
     .order("business_name", { ascending: true })
     .limit(options.limit ?? 100);
 
-  logImpactDataError("list_msme_picker_failed", error);
+  if (options.state) query = query.eq("state", options.state);
+  if (options.sector) query = query.eq("sector", options.sector);
+  if (options.search) {
+    const term = options.search.replaceAll(",", " ").trim();
+    if (term) query = query.or(`business_name.ilike.%${term}%,msme_id.ilike.%${term}%`);
+  }
+
+  const { data, error } = await query;
+
+  throwImpactReadError("list_msme_picker_failed", error);
   return (data ?? []) as MsmePickerOption[];
 }
 
@@ -869,7 +1266,7 @@ export async function listUserPickerOptions(role?: UserRole): Promise<UserPicker
   let query = supabase.from("users").select("id,full_name,email,role").order("full_name", { ascending: true }).limit(100);
   if (role) query = query.eq("role", role);
   const { data, error } = await query;
-  logImpactDataError("list_user_picker_failed", error);
+  throwImpactReadError("list_user_picker_failed", error);
   return (data ?? []) as UserPickerOption[];
 }
 
@@ -1011,7 +1408,7 @@ export async function listAssessmentTemplates(ctxOrOptions?: UserContext | Impac
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 50);
 
-  logImpactDataError("list_assessment_templates_failed", error);
+  throwImpactReadError("list_assessment_templates_failed", error);
   return (data ?? []) as ImpactAssessmentTemplate[];
 }
 
@@ -1035,7 +1432,7 @@ export async function getAssessmentTemplate(templateId: string, ctx?: UserContex
       .order("display_order", { ascending: true }),
   ]);
 
-  logImpactDataError("get_assessment_template_failed", error);
+  throwImpactReadError("get_assessment_template_failed", error);
   return {
     template: template as ImpactAssessmentTemplate | null,
     sections: (sections ?? []) as ImpactAssessmentSection[],
@@ -1083,7 +1480,7 @@ export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQ
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 25);
 
-  logImpactDataError("list_assessments_failed", error);
+  throwImpactReadError("list_assessments_failed", error);
   return (data ?? []) as unknown as ImpactAssessment[];
 }
 
@@ -1095,7 +1492,7 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
     .eq("id", assessmentId)
     .maybeSingle();
 
-  logImpactDataError("get_assessment_failed", error);
+  throwImpactReadError("get_assessment_failed", error);
   if (!assessment) return { assessment: null, template: null, sections: [], questions: [], responses: [], scores: [], reviews: [] };
 
   const templateId = (assessment as unknown as ImpactAssessment).template_id;
@@ -1407,7 +1804,7 @@ export async function listFieldVisits(ctx?: UserContext, options: ImpactQueryOpt
 
   const { data, error } = await query;
 
-  logImpactDataError("list_field_visits_failed", error);
+  throwImpactReadError("list_field_visits_failed", error);
   return (data ?? []) as unknown as ImpactFieldVisit[];
 }
 
@@ -1426,7 +1823,7 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
     supabase.from("impact_evidence_files").select(evidenceSelect()).eq("field_visit_id", visitId).order("created_at", { ascending: false }),
   ]);
 
-  logImpactDataError("get_field_visit_failed", error);
+  throwImpactReadError("get_field_visit_failed", error);
   const fieldVisit = visit as unknown as ImpactFieldVisit | null;
   if (fieldVisit && ctx.role === "field_officer" && fieldVisit.assigned_to_user_id !== ctx.appUserId) {
     throw new Error("You can only access field visits assigned to you.");
@@ -1584,7 +1981,7 @@ export async function listEvidence(ctx?: UserContext, options: ImpactQueryOption
   }
 
   const { data, error } = await query;
-  logImpactDataError("list_evidence_failed", error);
+  throwImpactReadError("list_evidence_failed", error);
   return (data ?? []) as unknown as ImpactEvidenceFile[];
 }
 
@@ -1594,7 +1991,7 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
     supabase.from("impact_evidence_files").select(evidenceSelect()).eq("id", evidenceId).maybeSingle(),
     supabase.from("impact_evidence_links").select("id,evidence_id,programme_id,intervention_id,assessment_id,field_visit_id,msme_id,link_type,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),
   ]);
-  logImpactDataError("get_evidence_failed", error);
+  throwImpactReadError("get_evidence_failed", error);
   const item = evidence as unknown as ImpactEvidenceFile | null;
   if (item && ctx.role === "field_officer") {
     const visible = item.field_visit_id
@@ -1660,6 +2057,15 @@ export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<E
     supabase.from("impact_evidence_files").select("id,file_name,verification_status,created_at").limit(1000),
     supabase.from("impact_assessment_scores").select("id,section_id,readiness_category").is("section_id", null).limit(1000),
   ]);
+  [
+    ["msmes_count_failed", msmeCount.error],
+    ["impact_programmes_dashboard_failed", programmes.error],
+    ["impact_interventions_dashboard_failed", interventions.error],
+    ["impact_assessments_dashboard_failed", assessments.error],
+    ["impact_field_visits_dashboard_failed", fieldVisits.error],
+    ["impact_evidence_dashboard_failed", evidence.error],
+    ["impact_scores_dashboard_failed", scores.error],
+  ].forEach(([source, error]) => throwImpactReadError(String(source), error as { message?: string } | null));
 
   const programmeRows = programmes.data ?? [];
   const interventionRows = (interventions.data ?? []) as unknown as Array<{ id: string; title: string | null; status: string | null; created_at: string | null; msmes?: { state?: string | null; sector?: string | null } | null }>;
@@ -1751,7 +2157,7 @@ export async function createImpactReport(ctx: UserContext, formData: FormData) {
     title,
     report_type: reportType,
     status: "generated",
-    summary: textValue(formData, "summary") ?? `${title} generated from DBIN operational impact intelligence records.`,
+    summary: textValue(formData, "summary") ?? `${title} created from the internal programme-monitoring snapshot.`,
     programme_id: textValue(formData, "programme_id"),
     intervention_id: textValue(formData, "intervention_id"),
     assessment_id: textValue(formData, "assessment_id"),
@@ -1761,7 +2167,7 @@ export async function createImpactReport(ctx: UserContext, formData: FormData) {
     generated_at: new Date().toISOString(),
     report_json: metrics as unknown as Record<string, unknown>,
     evidence_references: [],
-    metadata: { deterministic: true, source: "impact_reporting_engine" },
+    metadata: { deterministic: true, source: "programme_monitoring_snapshot", download_export_generation: "not_wired" },
   };
   const { data, error } = await supabase.from("impact_reports").insert(payload).select("id").single();
   if (error) throw new Error(error.message);
@@ -1799,7 +2205,7 @@ export async function getImpactReport(ctx: UserContext, reportId: string) {
     supabase.from("impact_report_versions").select("id,report_id,version_number,title,summary,report_json,evidence_references,created_by_user_id,created_at").eq("report_id", reportId).order("version_number", { ascending: false }),
     supabase.from("impact_report_exports").select("id,report_id,export_format,export_status,export_url,requested_by_user_id,requested_at,completed_at").eq("report_id", reportId).order("requested_at", { ascending: false }),
   ]);
-  logImpactDataError("get_impact_report_failed", error);
+  throwImpactReadError("get_impact_report_failed", error);
   return {
     report: report as unknown as ImpactReport | null,
     versions: (versions ?? []) as ImpactReportVersion[],
@@ -1809,20 +2215,9 @@ export async function getImpactReport(ctx: UserContext, reportId: string) {
 
 export async function exportReportRecord(ctx: UserContext, reportId: string, formData: FormData) {
   requireReportingAccess(ctx);
-  const exportFormat = textValue(formData, "export_format") ?? "pdf";
-  const format = ["pdf", "csv", "xlsx", "json"].includes(exportFormat) ? exportFormat : "pdf";
-  const supabase = await createPrivilegedImpactWriteClient();
-  const { data, error } = await supabase.from("impact_report_exports").insert({
-    report_id: reportId,
-    export_format: format,
-    export_status: "generated",
-    export_url: textValue(formData, "export_url"),
-    requested_by_user_id: ctx.appUserId,
-    completed_at: new Date().toISOString(),
-    metadata: { deterministic: true },
-  }).select("id").single();
-  if (error) throw new Error(error.message);
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_report_exported", entityType: "impact_report", entityId: reportId, metadata: { role: ctx.role, export_format: format, export_id: data.id } });
+  void reportId;
+  void formData;
+  throw new Error("Download export generation is not wired. No export audit record was created.");
 }
 
 function insightSelect() {
@@ -2095,7 +2490,7 @@ export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQuer
     anomalyQuery,
     supabase.from("impact_intelligence_summaries").select("id,source_key,summary_type,status,title,summary,programme_id,report_id,generated_at").order("generated_at", { ascending: false }).limit(20),
   ]);
-  logImpactDataError("list_intelligence_feed_failed", error);
+  throwImpactReadError("list_intelligence_feed_failed", error);
   return {
     insights: (insights ?? []) as unknown as ImpactAiInsight[],
     recommendations: (recommendations ?? []) as ImpactAiRecommendation[],
@@ -2113,7 +2508,7 @@ export async function getInsightDetail(ctx: UserContext, insightId: string) {
     supabase.from("impact_risk_flags").select(riskSelect()).limit(20),
     supabase.from("impact_anomaly_events").select("id,source_key,anomaly_type,severity,status,title,description,programme_id,intervention_id,assessment_id,report_id,msme_id,detected_at").limit(20),
   ]);
-  logImpactDataError("get_insight_detail_failed", error);
+  throwImpactReadError("get_insight_detail_failed", error);
   const item = insight as unknown as ImpactAiInsight | null;
   if (item && ctx.role === "field_officer") {
     const { data: visits } = await supabase.from("impact_field_visits").select("id").eq("assigned_to_user_id", ctx.appUserId ?? "").eq("msme_id", item.msme_id ?? "");
@@ -2161,6 +2556,6 @@ export async function listImpactReports(ctxOrOptions?: UserContext | ImpactQuery
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 25);
 
-  logImpactDataError("list_reports_failed", error);
+  throwImpactReadError("list_reports_failed", error);
   return (data ?? []) as unknown as ImpactReport[];
 }

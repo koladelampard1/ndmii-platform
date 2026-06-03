@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getImpactProgrammeDetail } from "@/lib/data/impact-intelligence";
+import { QuickLink, StatusBadge } from "../../_components";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -10,7 +11,7 @@ function formatDate(value: string | null) {
 export default async function ImpactProgrammeDetailPage({ params }: { params: Promise<{ programmeId: string }> }) {
   const { programmeId } = await params;
   const ctx = await getCurrentUserContext();
-  const { programme, interventions, enrolments } = await getImpactProgrammeDetail(ctx, programmeId);
+  const { programme, interventions, enrolments, cohorts } = await getImpactProgrammeDetail(ctx, programmeId);
 
   if (!programme) {
     return (
@@ -46,8 +47,38 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Sponsor</p><p className="mt-1 font-semibold text-slate-950">{programme.sponsor_name ?? "Pending"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Start</p><p className="mt-1 font-semibold text-slate-950">{formatDate(programme.start_date)}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">End</p><p className="mt-1 font-semibold text-slate-950">{formatDate(programme.end_date)}</p></div>
-        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Linked MSMEs</p><p className="mt-1 font-semibold text-slate-950">{enrolments.length}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohorts</p><p className="mt-1 font-semibold text-slate-950">{cohorts.length}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohort beneficiaries</p><p className="mt-1 font-semibold text-slate-950">{cohorts.reduce((sum, cohort) => sum + (cohort.member_count ?? cohort.current_beneficiaries ?? 0), 0)}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Legacy linked MSMEs</p><p className="mt-1 font-semibold text-slate-950">{enrolments.length}</p></div>
       </div>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-950">Linked cohorts</h2>
+          <Link href="/dashboard/impact-intelligence/cohorts" className="text-sm font-medium text-emerald-700">Open cohort registry</Link>
+        </div>
+        {cohorts.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No beneficiary cohorts have been linked to this programme yet.</p>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-lg border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Cohort</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead>
+              <tbody className="divide-y">
+                {cohorts.map((cohort) => (
+                  <tr key={cohort.id}>
+                    <td className="px-4 py-3"><Link href={`/dashboard/impact-intelligence/cohorts/${cohort.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{cohort.name}</Link></td>
+                    <td className="px-4 py-3 text-slate-600">{[cohort.lga, cohort.state].filter(Boolean).join(", ") || "National"}</td>
+                    <td className="px-4 py-3 text-slate-600">{cohort.sector ?? "All sectors"}</td>
+                    <td className="px-4 py-3 text-slate-600">{cohort.member_count ?? cohort.current_beneficiaries} / {cohort.target_beneficiaries}</td>
+                    <td className="px-4 py-3"><StatusBadge value={cohort.status} /></td>
+                    <td className="px-4 py-3"><QuickLink href={`/dashboard/impact-intelligence/cohorts/${cohort.id}`}>Open</QuickLink></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
 
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">

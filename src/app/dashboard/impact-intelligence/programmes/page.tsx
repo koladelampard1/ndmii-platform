@@ -28,7 +28,7 @@ export default async function ImpactProgrammesPage() {
         {programmes.length === 0 ? (
           <EmptyState
             title="No programmes yet"
-            description="Create the first BOI programme to start linking MSME interventions, assessment cycles, field monitoring, and evidence-backed reports."
+            description="Create the first internal programme record to start linking MSME interventions, assessment cycles, field monitoring, and snapshot report records."
             actionHref={canWrite ? "/dashboard/impact-intelligence/programmes/new" : undefined}
             actionLabel={canWrite ? "Create programme" : undefined}
             icon={Flag}
@@ -37,7 +37,7 @@ export default async function ImpactProgrammesPage() {
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Sponsor</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Timeline</th><th className="px-4 py-3">Action</th></tr>
+                <tr><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Sponsor</th><th className="px-4 py-3">Cohorts</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Timeline</th><th className="px-4 py-3">Action</th></tr>
               </thead>
               <tbody>
                 {programmes.map((programme) => (
@@ -47,6 +47,8 @@ export default async function ImpactProgrammesPage() {
                       <p className="mt-1 text-xs text-slate-500">{programme.programme_code ?? "No programme code"}</p>
                     </td>
                     <td className={`${tableCellClassName} text-slate-600`}>{programme.sponsor_name ?? "Pending"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{(programme.cohort_count ?? 0).toLocaleString("en-NG")}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{(programme.cohort_beneficiary_count ?? 0).toLocaleString("en-NG")}</td>
                     <td className={tableCellClassName}><StatusBadge value={programme.status ?? "draft"} /></td>
                     <td className={`${tableCellClassName} text-slate-600`}>{formatDate(programme.start_date)} to {formatDate(programme.end_date)}</td>
                     <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/programmes/${programme.id}`}>Open</QuickLink></td>
