@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -28,13 +28,58 @@ type PageProps = {
     assigned_officer_id?: string;
     create_programme_id?: string;
     create_cohort_id?: string;
+    error?: string;
   }>;
 };
+
+const EXPECTED_CREATE_INTERVENTION_ERRORS = [
+  "Select a programme.",
+  "Select a beneficiary cohort.",
+  "Select a cohort beneficiary.",
+  "Selected cohort beneficiary was not found.",
+  "Selected cohort beneficiary does not belong to the selected programme.",
+  "Selected cohort beneficiary does not belong to the selected cohort.",
+  "An open intervention of this type already exists for this cohort beneficiary.",
+  "Record an approved amount before recording disbursement.",
+  "Approved amount is required before recording disbursement.",
+  "Disbursed amount cannot exceed approved amount.",
+  "Move interventions through one lifecycle stage at a time.",
+  "Record approval before moving an intervention to disbursement.",
+  "Closure reason and closure note are required before closing an intervention.",
+  "Completed interventions require closure reason and closure note.",
+  "Closure-stage interventions require closure reason and closure note.",
+  "You do not have permission to manage impact intelligence records.",
+];
+
+function isExpectedCreateInterventionError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return EXPECTED_CREATE_INTERVENTION_ERRORS.some((message) => error.message.includes(message));
+}
+
+function createInterventionErrorRedirect(formData: FormData, message: string) {
+  const params = new URLSearchParams();
+  const programmeId = formData.get("programme_id");
+  const cohortId = formData.get("cohort_id");
+
+  if (typeof programmeId === "string" && programmeId) params.set("create_programme_id", programmeId);
+  if (typeof cohortId === "string" && cohortId) params.set("create_cohort_id", cohortId);
+  params.set("error", message);
+
+  return `/dashboard/impact-intelligence/interventions?${params.toString()}`;
+}
 
 async function createInterventionAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const interventionId = await createImpactIntervention(ctx, formData);
+  let interventionId: string;
+  try {
+    interventionId = await createImpactIntervention(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedCreateInterventionError(error)) throw error;
+    const message = error instanceof Error ? error.message : "Intervention could not be created.";
+    redirect(createInterventionErrorRedirect(formData, message));
+  }
   redirect(`/dashboard/impact-intelligence/interventions/${interventionId}`);
 }
 
@@ -90,6 +135,14 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
   const canRead = IMPACT_READ_ROLES.includes(ctx.role);
   const interventionTypes = Array.from(new Set(interventions.map((item) => item.intervention_type).filter(Boolean))).sort();
   const unanchoredCount = interventions.filter((item) => !item.cohort_id || !item.cohort_member_id).length;
+  const createProgrammeId = filters.create_programme_id ?? "";
+  const createCohortId = filters.create_cohort_id ?? "";
+  const createValidationHint = createProgrammeId && !createCohortId
+    ? "Select a beneficiary cohort before creating an intervention."
+    : createCohortId && cohortMembers.length === 0
+      ? "Select a cohort beneficiary before creating an intervention."
+      : null;
+  const canShowCreateSubmit = Boolean(createProgrammeId && createCohortId && cohortMembers.length > 0);
 
   return (
     <section className="space-y-6">
@@ -110,19 +163,25 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
         </SectionCard>
       )}
 
+      {!loadError && filters.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {filters.error}
+        </div>
+      )}
+
       {!loadError && canWrite && (
         <SectionCard title="Create Cohort-Anchored Intervention">
           <form method="get" className="grid gap-4 rounded-lg border bg-slate-50 p-4 lg:grid-cols-3">
             <label className="space-y-1 text-sm font-medium text-slate-700">
               Programme
-              <select required name="create_programme_id" defaultValue={filters.create_programme_id ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+              <select required name="create_programme_id" defaultValue={createProgrammeId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
                 <option value="">Select programme</option>
                 {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
               </select>
             </label>
             <label className="space-y-1 text-sm font-medium text-slate-700">
               Cohort
-              <select name="create_cohort_id" defaultValue={filters.create_cohort_id ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+              <select name="create_cohort_id" defaultValue={createCohortId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
                 <option value="">Select cohort</option>
                 {createCohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name} ({cohort.member_count ?? cohort.current_beneficiaries} members)</option>)}
               </select>
@@ -132,17 +191,23 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
             </div>
           </form>
 
+          {createValidationHint && (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              {createValidationHint}
+            </p>
+          )}
+
           <form action={createInterventionAction} className="mt-4 grid gap-4 lg:grid-cols-3">
-          <input type="hidden" name="programme_id" value={filters.create_programme_id ?? ""} />
-          <input type="hidden" name="cohort_id" value={filters.create_cohort_id ?? ""} />
+          <input type="hidden" name="programme_id" value={createProgrammeId} />
+          <input type="hidden" name="cohort_id" value={createCohortId} />
           <label className="space-y-1 text-sm font-medium text-slate-700">
             Title
             <input required name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Working capital support" />
           </label>
           <label className="space-y-1 text-sm font-medium text-slate-700">
             Cohort beneficiary
-            <select required name="cohort_member_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!filters.create_cohort_id}>
-              <option value="">{filters.create_cohort_id ? "Select cohort member" : "Load a cohort first"}</option>
+            <select required name="cohort_member_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId || cohortMembers.length === 0}>
+              <option value="">{createCohortId ? "Select cohort member" : "Load a cohort first"}</option>
               {cohortMembers.map((member) => <option key={member.id} value={member.id}>{member.msmes?.business_name ?? "Unknown MSME"} ({member.msmes?.msme_id ?? member.member_status})</option>)}
             </select>
           </label>
@@ -185,7 +250,9 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
             Description
             <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
           </label>
-          <div className="flex justify-end lg:col-span-3"><Button type="submit">Create intervention</Button></div>
+          <div className="flex justify-end lg:col-span-3">
+            {canShowCreateSubmit && <Button type="submit">Create intervention</Button>}
+          </div>
         </form>
         </SectionCard>
       )}
