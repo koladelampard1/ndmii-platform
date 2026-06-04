@@ -23,13 +23,34 @@ function AuthCallbackPageContent() {
         return;
       }
 
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
       if (exchangeError) {
         if (mounted) {
           setError(exchangeError.message || "Authentication link is invalid or has expired.");
         }
         return;
+      }
+
+      const session = data.session ?? (await supabase.auth.getSession()).data.session;
+      if (session) {
+        const sessionResponse = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            accessToken: session.access_token,
+            refreshToken: session.refresh_token,
+            expiresAt: session.expires_at ?? null,
+          }),
+        });
+
+        if (!sessionResponse.ok) {
+          if (mounted) {
+            setError("Authentication succeeded, but the app session could not be created. Please try again.");
+          }
+          return;
+        }
       }
 
       router.replace(next);

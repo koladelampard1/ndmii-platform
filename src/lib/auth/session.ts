@@ -24,6 +24,10 @@ type UserProfileRow = {
   auth_user_id: string | null;
 };
 
+const NDMII_AUTH_USER_ID_COOKIE = "ndmii_auth_user_id";
+const NDMII_APP_USER_ID_COOKIE = "ndmii_app_user_id";
+const NDMII_ROLE_COOKIE = "ndmii_role";
+
 const VALID_USER_ROLES = new Set<UserRole>([
   "public",
   "msme",
@@ -88,6 +92,119 @@ function toUserRole(value: string | null | undefined): UserRole | null {
   return VALID_USER_ROLES.has(normalized as UserRole) ? (normalized as UserRole) : null;
 }
 
+async function getFallbackAuthenticatedUser(baseDiagnostic: {
+  source: "getAuthenticatedUser";
+  requestHost: string;
+  pathname: string;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  expectedRole: null;
+}): Promise<AuthenticatedUser | null> {
+  const cookieStore = await cookies();
+  const fallbackAuthUserId = cookieStore.get(NDMII_AUTH_USER_ID_COOKIE)?.value?.trim() || null;
+  const fallbackAppUserId = cookieStore.get(NDMII_APP_USER_ID_COOKIE)?.value?.trim() || null;
+  const fallbackRole = toUserRole(cookieStore.get(NDMII_ROLE_COOKIE)?.value);
+
+  if (!fallbackAuthUserId && !fallbackAppUserId) {
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId: null,
+      authEmail: null,
+      matchedPublicUsersRow: null,
+      publicUsersAuthUserId: null,
+      resolvedRole: "public",
+      failureReason: "missing_supabase_auth_cookies",
+    });
+    return null;
+  }
+
+  try {
+    const profileClient = await createServiceRoleSupabaseClient();
+    const { data: profile, error } = fallbackAppUserId
+      ? await profileClient
+          .from("users")
+          .select("id,email,role,full_name,auth_user_id")
+          .eq("id", fallbackAppUserId)
+          .maybeSingle()
+      : await profileClient
+          .from("users")
+          .select("id,email,role,full_name,auth_user_id")
+          .eq("auth_user_id", fallbackAuthUserId)
+          .maybeSingle();
+
+    if (error) throw error;
+
+    const resolvedRole = toUserRole(profile?.role);
+    const authUserIdMatches = !fallbackAuthUserId || profile?.auth_user_id === fallbackAuthUserId;
+
+    if (!profile || !resolvedRole || !authUserIdMatches) {
+      logAuthRuntimeDiagnostic({
+        ...baseDiagnostic,
+        authUserId: fallbackAuthUserId,
+        authEmail: null,
+        matchedPublicUsersRow: profile
+          ? {
+              id: profile.id,
+              email: profile.email,
+              role: profile.role,
+              auth_user_id: profile.auth_user_id,
+            }
+          : null,
+        publicUsersAuthUserId: profile?.auth_user_id ?? null,
+        resolvedRole: "public",
+        failureReason: !profile
+          ? "fallback_public_users_row_missing"
+          : !resolvedRole
+            ? "fallback_public_users_role_invalid_or_missing"
+            : "fallback_auth_user_id_mismatch",
+      });
+      return null;
+    }
+
+    console.info("[server-auth-fallback-session]", {
+      authUserId: profile.auth_user_id,
+      appUserId: profile.id,
+      role: resolvedRole,
+    });
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId: profile.auth_user_id,
+      authEmail: profile.email,
+      matchedPublicUsersRow: {
+        id: profile.id,
+        email: profile.email,
+        role: profile.role,
+        auth_user_id: profile.auth_user_id,
+      },
+      publicUsersAuthUserId: profile.auth_user_id,
+      resolvedRole,
+      failureReason: fallbackRole && fallbackRole !== resolvedRole ? "fallback_cookie_role_superseded_by_public_users" : null,
+    });
+
+    return {
+      authUserId: profile.auth_user_id,
+      appUserId: profile.id,
+      role: resolvedRole,
+      email: profile.email,
+      fullName: profile.full_name ?? profile.email,
+    };
+  } catch (error) {
+    console.error("[server-auth] failed to resolve fallback session", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    logAuthRuntimeDiagnostic({
+      ...baseDiagnostic,
+      authUserId: fallbackAuthUserId,
+      authEmail: null,
+      matchedPublicUsersRow: null,
+      publicUsersAuthUserId: null,
+      resolvedRole: "public",
+      failureReason: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
   const requestMeta = await getAuthDiagnosticRequestMeta();
   const cookieStore = await cookies();
@@ -102,18 +219,7 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
     expectedRole: null,
   };
 
-  if (!accessToken && !refreshToken) {
-    logAuthRuntimeDiagnostic({
-      ...baseDiagnostic,
-      authUserId: null,
-      authEmail: null,
-      matchedPublicUsersRow: null,
-      publicUsersAuthUserId: null,
-      resolvedRole: "public",
-      failureReason: "missing_supabase_auth_cookies",
-    });
-    return null;
-  }
+  if (!accessToken && !refreshToken) return getFallbackAuthenticatedUser(baseDiagnostic);
 
   try {
     const authClient = await createServerSupabaseClient();
