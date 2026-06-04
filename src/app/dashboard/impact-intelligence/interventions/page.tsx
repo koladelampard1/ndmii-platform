@@ -17,6 +17,7 @@ import {
   listUserPickerOptions,
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { CreateInterventionForm } from "./create-intervention-form";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -137,12 +138,6 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
   const unanchoredCount = interventions.filter((item) => !item.cohort_id || !item.cohort_member_id).length;
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
-  const createValidationHint = createProgrammeId && !createCohortId
-    ? "Select a beneficiary cohort before creating an intervention."
-    : createCohortId && cohortMembers.length === 0
-      ? "Select a cohort beneficiary before creating an intervention."
-      : null;
-  const canShowCreateSubmit = Boolean(createProgrammeId && createCohortId && cohortMembers.length > 0);
 
   return (
     <section className="space-y-6">
@@ -171,89 +166,16 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
 
       {!loadError && canWrite && (
         <SectionCard title="Create Cohort-Anchored Intervention">
-          <form method="get" className="grid gap-4 rounded-lg border bg-slate-50 p-4 lg:grid-cols-3">
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Programme
-              <select required name="create_programme_id" defaultValue={createProgrammeId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                <option value="">Select programme</option>
-                {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Cohort
-              <select name="create_cohort_id" defaultValue={createCohortId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                <option value="">Select cohort</option>
-                {createCohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name} ({cohort.member_count ?? cohort.current_beneficiaries} members)</option>)}
-              </select>
-            </label>
-            <div className="flex items-end">
-              <Button type="submit" variant="secondary" className="w-full">Load cohort members</Button>
-            </div>
-          </form>
-
-          {createValidationHint && (
-            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-              {createValidationHint}
-            </p>
-          )}
-
-          <form action={createInterventionAction} className="mt-4 grid gap-4 lg:grid-cols-3">
-          <input type="hidden" name="programme_id" value={createProgrammeId} />
-          <input type="hidden" name="cohort_id" value={createCohortId} />
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Title
-            <input required name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Working capital support" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Cohort beneficiary
-            <select required name="cohort_member_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId || cohortMembers.length === 0}>
-              <option value="">{createCohortId ? "Select cohort member" : "Load a cohort first"}</option>
-              {cohortMembers.map((member) => <option key={member.id} value={member.id}>{member.msmes?.business_name ?? "Unknown MSME"} ({member.msmes?.msme_id ?? member.member_status})</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Type
-            <input name="intervention_type" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="finance, advisory, equipment" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Status
-            <select name="status" defaultValue="planned" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              {INTERVENTION_STATUSES.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Stage
-            <select name="stage" defaultValue="intake" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              {INTERVENTION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Approved amount
-            <input name="approved_amount" type="number" min="0" step="1000" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Disbursed amount
-            <input name="disbursed_amount" type="number" min="0" step="1000" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Start date
-            <input name="start_date" type="date" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Assigned officer
-            <select name="assigned_officer_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
-              {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.full_name ?? officer.email ?? officer.id}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-3">
-            Description
-            <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <div className="flex justify-end lg:col-span-3">
-            {canShowCreateSubmit && <Button type="submit">Create intervention</Button>}
-          </div>
-        </form>
+          <CreateInterventionForm
+            key={`${createProgrammeId}:${createCohortId}`}
+            programmes={programmes}
+            cohorts={createCohorts}
+            cohortMembers={cohortMembers}
+            officers={officers}
+            selectedProgrammeId={createProgrammeId}
+            selectedCohortId={createCohortId}
+            action={createInterventionAction}
+          />
         </SectionCard>
       )}
 
