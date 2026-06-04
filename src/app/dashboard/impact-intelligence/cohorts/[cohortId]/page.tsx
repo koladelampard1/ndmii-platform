@@ -194,7 +194,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
+                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
               </thead>
               <tbody>
                 {members.map((member) => {
@@ -218,6 +218,12 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
                         ) : (
                           <span className="text-sm text-slate-500">0</span>
                         )}
+                      </td>
+                      <td className={tableCellClassName}>
+                        <div className="space-y-1">
+                          <span className="text-sm font-medium text-slate-800">{member.assessment_count ?? 0}</span>
+                          {member.latest_assessment_status && <StatusBadge value={member.latest_assessment_status} />}
+                        </div>
                       </td>
                       <td className={tableCellClassName}>
                         {canManage ? (

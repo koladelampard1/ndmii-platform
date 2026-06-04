@@ -12,6 +12,8 @@ type ImpactQueryOptions = {
   status?: string | null;
   stage?: string | null;
   interventionType?: string | null;
+  interventionId?: string | null;
+  assessmentType?: string | null;
   assignedOfficerId?: string | null;
 };
 
@@ -37,7 +39,7 @@ export const INTERVENTION_STATUSES = ["planned", "active", "on_hold", "completed
 export const INTERVENTION_STAGES = ["intake", "eligibility", "approval", "disbursement", "monitoring", "closure"] as const;
 export const ASSESSMENT_TEMPLATE_STATUSES = ["draft", "active", "archived"] as const;
 export const ASSESSMENT_TYPES = ["baseline", "credit_readiness", "business_maturity", "impact", "compliance", "post_funding_monitoring", "field_verification"] as const;
-export const ASSESSMENT_STATUSES = ["draft", "scheduled", "in_progress", "submitted", "completed", "reviewed", "approved", "archived"] as const;
+export const ASSESSMENT_STATUSES = ["draft", "submitted", "reviewed", "approved", "returned", "completed", "scheduled", "in_progress", "archived"] as const;
 export const ASSESSMENT_QUESTION_TYPES = ["text", "textarea", "number", "select", "multi-select", "boolean", "date", "file_upload"] as const;
 export const FIELD_VISIT_STATUSES = ["pending", "assigned", "in_progress", "completed", "reviewed"] as const;
 export const EVIDENCE_CATEGORIES = ["business_photo", "facility_photo", "cac_document", "invoice", "monitoring_photo", "beneficiary_document", "signed_form", "compliance_document", "other"] as const;
@@ -104,6 +106,9 @@ export type ImpactBeneficiaryCohort = {
   dropped_count?: number;
   intervention_count?: number;
   unanchored_intervention_count?: number;
+  assessment_count?: number;
+  submitted_assessment_count?: number;
+  approved_assessment_count?: number;
 };
 
 export type ImpactCohortMember = {
@@ -123,6 +128,8 @@ export type ImpactCohortMember = {
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null; verification_status?: string | null } | null;
   impact_beneficiary_cohorts?: Pick<ImpactBeneficiaryCohort, "id" | "name" | "programme_id"> | null;
   intervention_count?: number;
+  assessment_count?: number;
+  latest_assessment_status?: string | null;
   interventions?: Pick<ImpactIntervention, "id" | "title" | "status">[];
 };
 
@@ -156,6 +163,7 @@ export type ImpactIntervention = {
   impact_cohort_members?: Pick<ImpactCohortMember, "id" | "member_status" | "cohort_id" | "programme_id" | "msme_id"> | null;
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null } | null;
   assigned_officers?: { id: string; full_name: string | null; email: string | null; role: string | null } | null;
+  assessment_count?: number;
 };
 
 export type ImpactInterventionEvent = {
@@ -182,7 +190,10 @@ export type ImpactAssessment = {
   template_id?: string | null;
   template_version?: number | null;
   programme_id: string | null;
+  cohort_id?: string | null;
+  cohort_member_id?: string | null;
   intervention_id: string | null;
+  field_visit_id?: string | null;
   msme_id: string | null;
   assessment_type: string | null;
   title?: string | null;
@@ -191,10 +202,19 @@ export type ImpactAssessment = {
   risk_level?: string | null;
   conducted_by_user_id: string | null;
   conducted_at: string | null;
+  submitted_at?: string | null;
+  submitted_by_user_id?: string | null;
+  returned_at?: string | null;
+  returned_by_user_id?: string | null;
+  return_reason?: string | null;
   created_at: string | null;
+  metadata?: Record<string, unknown> | null;
   impact_assessment_templates?: Pick<ImpactAssessmentTemplate, "id" | "name" | "version" | "assessment_type"> | null;
   impact_programmes?: Pick<ImpactProgramme, "id" | "name" | "programme_code"> | null;
-  impact_interventions?: Pick<ImpactIntervention, "id" | "title"> | null;
+  impact_beneficiary_cohorts?: Pick<ImpactBeneficiaryCohort, "id" | "name" | "programme_id"> | null;
+  impact_cohort_members?: Pick<ImpactCohortMember, "id" | "member_status" | "cohort_id" | "programme_id" | "msme_id"> | null;
+  impact_interventions?: Pick<ImpactIntervention, "id" | "title" | "cohort_id" | "cohort_member_id"> | null;
+  impact_field_visits?: Pick<ImpactFieldVisit, "id" | "title" | "status"> | null;
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null } | null;
 };
 
@@ -1004,11 +1024,16 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
     memberQuery = memberQuery.eq("assigned_to_user_id", ctx.appUserId);
   }
 
-  const [{ data: members, error: memberError }, { data: interventions }] = await Promise.all([
+  const [{ data: members, error: memberError }, { data: interventions }, { data: assessments }] = await Promise.all([
     memberQuery,
     supabase
       .from("impact_interventions")
       .select("id,title,status,cohort_member_id,cohort_id,programme_id,msme_id")
+      .eq("cohort_id", cohortId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("impact_assessments")
+      .select("id,cohort_member_id,status,created_at")
       .eq("cohort_id", cohortId)
       .order("created_at", { ascending: false }),
   ]);
@@ -1025,6 +1050,16 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
     rows.push({ id: String(intervention.id), title: String(intervention.title ?? "Intervention"), status: String(intervention.status ?? "planned") });
     interventionsByMember.set(memberId, rows);
   }
+  const assessmentCountsByMember = new Map<string, number>();
+  const latestAssessmentStatusByMember = new Map<string, string | null>();
+  for (const assessment of assessments ?? []) {
+    if (!assessment.cohort_member_id) continue;
+    const memberId = String(assessment.cohort_member_id);
+    assessmentCountsByMember.set(memberId, (assessmentCountsByMember.get(memberId) ?? 0) + 1);
+    if (!latestAssessmentStatusByMember.has(memberId)) {
+      latestAssessmentStatusByMember.set(memberId, String(assessment.status ?? "draft"));
+    }
+  }
 
   return {
     cohort: cohort as unknown as ImpactBeneficiaryCohort,
@@ -1032,6 +1067,8 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
       ...member,
       interventions: interventionsByMember.get(member.id) ?? [],
       intervention_count: interventionsByMember.get(member.id)?.length ?? 0,
+      assessment_count: assessmentCountsByMember.get(member.id) ?? 0,
+      latest_assessment_status: latestAssessmentStatusByMember.get(member.id) ?? null,
     })),
     dashboard: buildCohortDashboardMetrics(scopedMembers),
   };
@@ -1177,7 +1214,7 @@ export async function listImpactCohortMemberOptions(ctx: UserContext, options: I
 export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
   requireImpactRead(ctx);
   const supabase = await createPrivilegedImpactReadClient();
-  const [{ data: programme, error }, { data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }] = await Promise.all([
+  const [{ data: programme, error }, { data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }, { data: assessments }] = await Promise.all([
     supabase
       .from("impact_programmes")
       .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
@@ -1202,6 +1239,10 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
       .from("impact_cohort_members")
       .select("id,cohort_id,programme_id,msme_id,member_status,enrolled_at,completed_at,exited_at,assigned_to_user_id,created_by_user_id,created_at,updated_at,metadata")
       .eq("programme_id", id),
+    supabase
+      .from("impact_assessments")
+      .select("id,programme_id,cohort_id,status")
+      .eq("programme_id", id),
   ]);
 
   throwImpactReadError("get_programme_failed", error);
@@ -1211,6 +1252,16 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
     if (!intervention.cohort_id) continue;
     const cohortId = String(intervention.cohort_id);
     cohortInterventionCounts.set(cohortId, (cohortInterventionCounts.get(cohortId) ?? 0) + 1);
+  }
+  const cohortAssessmentCounts = new Map<string, { assessment_count: number; submitted_assessment_count: number; approved_assessment_count: number }>();
+  for (const assessment of assessments ?? []) {
+    if (!assessment.cohort_id) continue;
+    const cohortId = String(assessment.cohort_id);
+    const current = cohortAssessmentCounts.get(cohortId) ?? { assessment_count: 0, submitted_assessment_count: 0, approved_assessment_count: 0 };
+    current.assessment_count += 1;
+    if (["submitted", "reviewed", "approved", "completed"].includes(String(assessment.status ?? ""))) current.submitted_assessment_count += 1;
+    if (String(assessment.status) === "approved") current.approved_assessment_count += 1;
+    cohortAssessmentCounts.set(cohortId, current);
   }
   const unanchoredInterventions = ((interventions ?? []) as unknown as ImpactIntervention[]).filter((intervention) => !intervention.cohort_id);
   return {
@@ -1222,6 +1273,7 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
       ...cohort,
       ...(memberSummary.get(cohort.id) ?? { member_count: 0, active_count: 0, completed_count: 0, dropped_count: 0 }),
       intervention_count: cohortInterventionCounts.get(cohort.id) ?? 0,
+      ...(cohortAssessmentCounts.get(cohort.id) ?? { assessment_count: 0, submitted_assessment_count: 0, approved_assessment_count: 0 }),
     })),
   };
 }
@@ -1260,7 +1312,7 @@ export async function listImpactInterventions(ctxOrOptions?: UserContext | Impac
 
 export async function getImpactInterventionDetail(id: string, ctx?: UserContext) {
   const supabase = await createImpactReadClient(ctx);
-  const [{ data: intervention, error }, { data: events }] = await Promise.all([
+  const [{ data: intervention, error }, { data: events }, { data: assessments }] = await Promise.all([
     supabase
       .from("impact_interventions")
       .select(IMPACT_INTERVENTION_SELECT)
@@ -1271,12 +1323,18 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
       .select("id,intervention_id,programme_id,cohort_id,cohort_member_id,msme_id,event_type,from_status,to_status,from_stage,to_stage,title,note,actor_user_id,actor_role,created_at")
       .eq("intervention_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("impact_assessments")
+      .select(IMPACT_ASSESSMENT_SELECT)
+      .eq("intervention_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   throwImpactReadError("get_intervention_failed", error);
   return {
     intervention: intervention as unknown as ImpactIntervention | null,
     events: (events ?? []) as ImpactInterventionEvent[],
+    assessments: (assessments ?? []) as unknown as ImpactAssessment[],
   };
 }
 
@@ -1601,6 +1659,10 @@ function normaliseQuestionType(value: string | null): AssessmentQuestionType {
   return ASSESSMENT_QUESTION_TYPES.includes(value as AssessmentQuestionType) ? (value as AssessmentQuestionType) : "text";
 }
 
+function normaliseAssessmentStatus(value: string | null): AssessmentStatus {
+  return ASSESSMENT_STATUSES.includes(value as AssessmentStatus) ? (value as AssessmentStatus) : "draft";
+}
+
 function normaliseTemplateStatus(value: string | null): AssessmentTemplateStatus {
   return ASSESSMENT_TEMPLATE_STATUSES.includes(value as AssessmentTemplateStatus) ? (value as AssessmentTemplateStatus) : "draft";
 }
@@ -1662,6 +1724,62 @@ function normaliseAssessmentType(value: string | null): AssessmentType {
   };
 
   return legacyMap[value] ?? "baseline";
+}
+
+const IMPACT_ASSESSMENT_SELECT =
+  "id,template_id,template_version,programme_id,cohort_id,cohort_member_id,intervention_id,field_visit_id,msme_id,assessment_type,title,status,score,risk_level,conducted_by_user_id,conducted_at,submitted_at,submitted_by_user_id,returned_at,returned_by_user_id,return_reason,created_at,metadata,impact_assessment_templates(id,name,version,assessment_type),impact_programmes(id,name,programme_code),impact_beneficiary_cohorts(id,name,programme_id),impact_cohort_members(id,cohort_id,programme_id,msme_id,member_status),impact_interventions(id,title,cohort_id,cohort_member_id),impact_field_visits!impact_assessments_field_visit_id_fkey(id,title,status),msmes(id,business_name,msme_id,state,sector)";
+
+export type ImpactAssessmentValidationError = {
+  questionId: string;
+  message: string;
+};
+
+function questionOptionValues(question: ImpactAssessmentQuestion) {
+  if (!Array.isArray(question.options_json)) return [];
+  return question.options_json
+    .map((option) => {
+      if (typeof option === "string") return option;
+      if (option && typeof option === "object" && "value" in option) return String(option.value);
+      return null;
+    })
+    .filter((value): value is string => Boolean(value));
+}
+
+function isValidIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validateAssessmentAnswer(question: ImpactAssessmentQuestion, raw: string, requireAnswer: boolean): ImpactAssessmentValidationError | null {
+  if (!raw) {
+    return requireAnswer && question.is_required ? { questionId: question.id, message: `Required question missing: ${question.question_text}` } : null;
+  }
+
+  if (question.question_type === "number" && !Number.isFinite(Number(raw))) {
+    return { questionId: question.id, message: `${question.question_text} must be numeric.` };
+  }
+
+  if (question.question_type === "date" && !isValidIsoDate(raw)) {
+    return { questionId: question.id, message: `${question.question_text} must be a valid date.` };
+  }
+
+  if (question.question_type === "select") {
+    const options = questionOptionValues(question);
+    if (options.length > 0 && !options.includes(raw)) {
+      return { questionId: question.id, message: `${question.question_text} must use one of the configured options.` };
+    }
+  }
+
+  if (question.question_type === "multi-select") {
+    const options = questionOptionValues(question);
+    const values = raw.split(",").map((item) => item.trim()).filter(Boolean);
+    if (options.length > 0 && values.some((value) => !options.includes(value))) {
+      return { questionId: question.id, message: `${question.question_text} contains a selection that is not configured for this template.` };
+    }
+  }
+
+  return null;
 }
 
 export async function createAssessmentTemplate(ctx: UserContext, formData: FormData) {
@@ -1765,42 +1883,81 @@ export async function getAssessmentTemplate(templateId: string, ctx?: UserContex
 export async function createAssessment(ctx: UserContext, formData: FormData) {
   requireAssessmentManage(ctx);
   const templateId = textValue(formData, "template_id");
-  const msmeId = textValue(formData, "msme_id");
+  const programmeId = textValue(formData, "programme_id");
+  const cohortId = textValue(formData, "cohort_id");
+  const cohortMemberId = textValue(formData, "cohort_member_id");
   if (!templateId) throw new Error("Select an assessment template.");
-  if (!msmeId) throw new Error("Select an MSME for the assessment.");
+  if (!programmeId) throw new Error("Select a programme.");
+  if (!cohortId) throw new Error("Select a beneficiary cohort.");
+  if (!cohortMemberId) throw new Error("Select a cohort beneficiary.");
 
   const { template } = await getAssessmentTemplate(templateId, ctx);
   if (!template) throw new Error("Assessment template not found.");
 
   const supabase = await createPrivilegedImpactWriteClient();
+  const { data: member, error: memberError } = await supabase
+    .from("impact_cohort_members")
+    .select("id,cohort_id,programme_id,msme_id,member_status")
+    .eq("id", cohortMemberId)
+    .maybeSingle();
+  if (memberError) throw new Error(memberError.message);
+  if (!member) throw new Error("Selected cohort beneficiary was not found.");
+  if (member.programme_id !== programmeId) throw new Error("Selected cohort beneficiary does not belong to the selected programme.");
+  if (member.cohort_id !== cohortId) throw new Error("Selected cohort beneficiary does not belong to the selected cohort.");
+
+  const interventionId = textValue(formData, "intervention_id");
+  if (interventionId) {
+    const { data: intervention, error: interventionError } = await supabase
+      .from("impact_interventions")
+      .select("id,programme_id,cohort_id,cohort_member_id,msme_id")
+      .eq("id", interventionId)
+      .maybeSingle();
+    if (interventionError) throw new Error(interventionError.message);
+    if (!intervention) throw new Error("Selected intervention was not found.");
+    if (intervention.programme_id !== programmeId) throw new Error("Selected intervention does not belong to the selected programme.");
+    if (intervention.cohort_id !== cohortId) throw new Error("Selected intervention does not belong to the selected cohort.");
+    if (intervention.cohort_member_id !== cohortMemberId) throw new Error("Selected intervention does not belong to the selected cohort beneficiary.");
+    if (intervention.msme_id !== member.msme_id) throw new Error("Selected intervention MSME does not match the selected cohort beneficiary.");
+  }
+
   const payload = {
     template_id: template.id,
     template_version: template.version,
-    programme_id: textValue(formData, "programme_id"),
-    intervention_id: textValue(formData, "intervention_id"),
-    msme_id: msmeId,
-    assessment_type: normaliseAssessmentType(template.assessment_type),
+    programme_id: programmeId,
+    cohort_id: cohortId,
+    cohort_member_id: cohortMemberId,
+    intervention_id: interventionId,
+    msme_id: member.msme_id,
+    assessment_type: normaliseAssessmentType(textValue(formData, "assessment_type") ?? template.assessment_type),
     title: textValue(formData, "title") ?? template.name,
     status: "draft",
     created_by_user_id: ctx.appUserId,
     assigned_to_user_id: textValue(formData, "assigned_to_user_id"),
-    metadata: { template_name: template.name },
+    metadata: { template_name: template.name, source: "cohort_anchored_assessment" },
   };
   const { data, error } = await supabase.from("impact_assessments").insert(payload).select("id").single();
   if (error) throw new Error(error.message);
 
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_assessment_created", entityType: "impact_assessment", entityId: data.id, metadata: { role: ctx.role, template_id: template.id } });
+  await logActivity({ actorUserId: ctx.appUserId, action: "assessment_created", entityType: "impact_assessment", entityId: data.id, metadata: { role: ctx.role, template_id: template.id, programme_id: programmeId, cohort_id: cohortId, cohort_member_id: cohortMemberId } });
   return data.id as string;
 }
 
 export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactAssessment[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
   const supabase = await createImpactReadClient(ctx);
-  const { data, error } = await supabase
+  let query = supabase
     .from("impact_assessments")
-    .select("id,template_id,template_version,programme_id,intervention_id,msme_id,assessment_type,title,status,score,risk_level,conducted_by_user_id,conducted_at,created_at,impact_assessment_templates(id,name,version,assessment_type),impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector)")
+    .select(IMPACT_ASSESSMENT_SELECT)
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 25);
+
+  if (options.programmeId) query = query.eq("programme_id", options.programmeId);
+  if (options.cohortId) query = query.eq("cohort_id", options.cohortId);
+  if (options.assessmentType) query = query.eq("assessment_type", options.assessmentType);
+  if (options.status) query = query.eq("status", options.status);
+  if (options.interventionId) query = query.eq("intervention_id", options.interventionId);
+
+  const { data, error } = await query;
 
   throwImpactReadError("list_assessments_failed", error);
   return (data ?? []) as unknown as ImpactAssessment[];
@@ -1810,7 +1967,7 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
   const supabase = await createImpactReadClient(ctx);
   const { data: assessment, error } = await supabase
     .from("impact_assessments")
-    .select("id,template_id,template_version,programme_id,intervention_id,msme_id,assessment_type,title,status,score,risk_level,conducted_by_user_id,conducted_at,created_at,impact_assessment_templates(id,name,version,assessment_type),impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector)")
+    .select(IMPACT_ASSESSMENT_SELECT)
     .eq("id", assessmentId)
     .maybeSingle();
 
@@ -1865,18 +2022,18 @@ function responsePayload(question: ImpactAssessmentQuestion, rawValue: FormDataE
 
   if (question.question_type === "number") {
     const numeric = Number(raw);
-    payload.response_number = Number.isFinite(numeric) ? numeric : null;
-    score = Number.isFinite(numeric) && numeric > 0 ? maxScore : 0;
+    payload.response_number = raw && Number.isFinite(numeric) ? numeric : null;
+    score = raw && Number.isFinite(numeric) && numeric > 0 ? maxScore : 0;
     payload.score = score;
   } else if (question.question_type === "boolean") {
-    const value = raw === "true" || raw === "yes" || raw === "on";
+    const value = raw ? raw === "true" || raw === "yes" || raw === "on" : null;
     payload.response_boolean = value;
-    payload.response_text = value ? "Yes" : "No";
+    payload.response_text = value === null ? null : value ? "Yes" : "No";
     payload.score = value ? maxScore : 0;
   } else if (question.question_type === "multi-select") {
     const values = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
     payload.response_json = { values };
-    payload.response_text = values.join(", ");
+    payload.response_text = values.length > 0 ? values.join(", ") : null;
   } else {
     payload.response_text = raw || null;
   }
@@ -1897,23 +2054,38 @@ export function getMissingRequiredAssessmentQuestions(questions: ImpactAssessmen
   return questions.filter((question) => question.is_required && !answered.has(question.id));
 }
 
-export async function saveAssessmentResponse(ctx: UserContext, assessmentId: string, formData: FormData) {
+export function validateAssessmentResponses(questions: ImpactAssessmentQuestion[], formData: FormData, requireRequiredAnswers: boolean): ImpactAssessmentValidationError[] {
+  const errors: ImpactAssessmentValidationError[] = [];
+  for (const question of questions) {
+    const rawValue = formData.get(`response_${question.id}`);
+    const raw = typeof rawValue === "string" ? rawValue.trim() : "";
+    const error = validateAssessmentAnswer(question, raw, requireRequiredAnswers);
+    if (error) errors.push(error);
+  }
+  return errors;
+}
+
+async function persistAssessmentResponses(ctx: UserContext, assessmentId: string, formData: FormData, options: { requireRequiredAnswers: boolean; calculateScore: boolean }) {
   requireAssessmentManage(ctx);
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
-  if (detail.assessment.status === "reviewed" || detail.assessment.status === "approved") {
-    throw new Error("Reviewed assessments cannot be edited.");
+  if (detail.assessment.status === "reviewed" || detail.assessment.status === "approved" || detail.assessment.status === "completed") {
+    throw new Error("Reviewed or completed assessments cannot be edited.");
+  }
+
+  const validationErrors = validateAssessmentResponses(detail.questions, formData, options.requireRequiredAnswers);
+  if (validationErrors.length > 0) {
+    throw new Error(validationErrors[0].message);
   }
 
   const supabase = await createPrivilegedImpactWriteClient();
   for (const question of detail.questions) {
     const rawValue = formData.get(`response_${question.id}`);
-    if (question.is_required && (!rawValue || String(rawValue).trim().length === 0)) {
-      throw new Error(`Required question missing: ${question.question_text}`);
-    }
+    const raw = typeof rawValue === "string" ? rawValue.trim() : "";
+    const existing = detail.responses.find((response) => response.question_id === question.id);
+    if (!raw && !existing) continue;
 
     const payload = responsePayload(question, rawValue, detail.assessment.msme_id, ctx);
-    const existing = detail.responses.find((response) => response.question_id === question.id);
     if (existing) {
       const { error } = await supabase.from("impact_assessment_responses").update(payload).eq("id", existing.id);
       if (error) throw new Error(error.message);
@@ -1923,9 +2095,22 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
     }
   }
 
-  await supabase.from("impact_assessments").update({ status: "in_progress" }).eq("id", assessmentId).eq("status", "draft");
-  await calculateAssessmentScore(assessmentId, ctx);
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_assessment_responses_saved", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role } });
+  if (options.calculateScore) await calculateAssessmentScore(assessmentId, ctx);
+}
+
+export async function saveAssessmentDraft(ctx: UserContext, assessmentId: string, formData: FormData) {
+  await persistAssessmentResponses(ctx, assessmentId, formData, { requireRequiredAnswers: false, calculateScore: false });
+  const supabase = await createPrivilegedImpactWriteClient();
+  const { data: current } = await supabase.from("impact_assessments").select("status").eq("id", assessmentId).maybeSingle();
+  const status = normaliseAssessmentStatus(String(current?.status ?? "draft"));
+  if (status === "submitted") {
+    await supabase.from("impact_assessments").update({ status: "draft" }).eq("id", assessmentId);
+  }
+  await logActivity({ actorUserId: ctx.appUserId, action: "assessment_draft_saved", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role } });
+}
+
+export async function saveAssessmentResponse(ctx: UserContext, assessmentId: string, formData: FormData) {
+  await saveAssessmentDraft(ctx, assessmentId, formData);
 }
 
 export async function calculateAssessmentScore(assessmentId: string, ctx?: UserContext) {
@@ -1989,27 +2174,58 @@ export async function completeAssessment(ctx: UserContext, assessmentId: string)
   await logActivity({ actorUserId: ctx.appUserId, action: "impact_assessment_completed", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role, score: total.weighted_score } });
 }
 
+export async function submitAssessment(ctx: UserContext, assessmentId: string, formData: FormData) {
+  await persistAssessmentResponses(ctx, assessmentId, formData, { requireRequiredAnswers: true, calculateScore: true });
+  const supabase = await createPrivilegedImpactWriteClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("impact_assessments")
+    .update({
+      status: "submitted",
+      submitted_at: now,
+      submitted_by_user_id: ctx.appUserId,
+      return_reason: null,
+      returned_at: null,
+      returned_by_user_id: null,
+    })
+    .eq("id", assessmentId);
+  if (error) throw new Error(error.message);
+  await logActivity({ actorUserId: ctx.appUserId, action: "assessment_submitted", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role } });
+}
+
 export async function reviewAssessment(ctx: UserContext, assessmentId: string, formData: FormData) {
   requireAssessmentReview(ctx);
   const status = textValue(formData, "review_status") ?? "reviewed";
   const reviewStatus = ["reviewed", "approved", "returned"].includes(status) ? status : "reviewed";
+  const returnReason = textValue(formData, "return_reason") ?? textValue(formData, "notes");
+  if (reviewStatus === "returned" && !returnReason) {
+    throw new Error("Return reason is required when returning an assessment for correction.");
+  }
   await calculateAssessmentScore(assessmentId, ctx);
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_assessment_reviews").insert({
     assessment_id: assessmentId,
     reviewer_user_id: ctx.appUserId,
     review_status: reviewStatus,
-    notes: textValue(formData, "notes"),
+    notes: reviewStatus === "returned" ? returnReason : textValue(formData, "notes"),
     metadata: { role: ctx.role },
   });
   if (error) throw new Error(error.message);
-  const assessmentStatus = reviewStatus === "returned" ? "in_progress" : reviewStatus === "approved" ? "approved" : "reviewed";
+  const assessmentStatus = reviewStatus === "returned" ? "returned" : reviewStatus === "approved" ? "approved" : "reviewed";
   const { error: updateError } = await supabase
     .from("impact_assessments")
-    .update({ status: assessmentStatus, reviewed_by_user_id: ctx.appUserId, reviewed_at: new Date().toISOString() })
+    .update({
+      status: assessmentStatus,
+      reviewed_by_user_id: ctx.appUserId,
+      reviewed_at: new Date().toISOString(),
+      returned_by_user_id: reviewStatus === "returned" ? ctx.appUserId : null,
+      returned_at: reviewStatus === "returned" ? new Date().toISOString() : null,
+      return_reason: reviewStatus === "returned" ? returnReason : null,
+    })
     .eq("id", assessmentId);
   if (updateError) throw new Error(updateError.message);
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_assessment_reviewed", entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role, review_status: reviewStatus } });
+  const action = reviewStatus === "approved" ? "assessment_approved" : reviewStatus === "returned" ? "assessment_returned" : "assessment_reviewed";
+  await logActivity({ actorUserId: ctx.appUserId, action, entityType: "impact_assessment", entityId: assessmentId, metadata: { role: ctx.role, review_status: reviewStatus } });
 }
 
 function normaliseFieldVisitStatus(value: string | null): FieldVisitStatus {
@@ -2043,7 +2259,7 @@ function parseChecklistRows(raw: string | null) {
 }
 
 function fieldVisitSelect() {
-  return "id,programme_id,intervention_id,assessment_id,msme_id,title,visit_date,scheduled_at,location_text,status,assigned_to_user_id,completed_by_user_id,completed_at,reviewed_by_user_id,reviewed_at,findings,recommendations,follow_up_visit_id,priority,created_at,impact_programmes(id,name,programme_code),impact_interventions(id,title),impact_assessments(id,title,assessment_type),msmes(id,business_name,msme_id,state,sector)";
+  return "id,programme_id,intervention_id,assessment_id,msme_id,title,visit_date,scheduled_at,location_text,status,assigned_to_user_id,completed_by_user_id,completed_at,reviewed_by_user_id,reviewed_at,findings,recommendations,follow_up_visit_id,priority,created_at,impact_programmes(id,name,programme_code),impact_interventions(id,title),impact_assessments!impact_field_visits_assessment_id_fkey(id,title,assessment_type),msmes(id,business_name,msme_id,state,sector)";
 }
 
 function evidenceSelect() {

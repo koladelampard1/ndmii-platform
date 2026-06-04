@@ -4,33 +4,99 @@ import { ClipboardCheck, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
+  ASSESSMENT_STATUSES,
   ASSESSMENT_MANAGE_ROLES,
+  ASSESSMENT_TYPES,
   createAssessment,
+  listImpactCohortMemberOptions,
+  listImpactCohorts,
   listAssessmentTemplates,
   listImpactAssessments,
   listImpactInterventions,
   listImpactProgrammes,
-  listMsmePickerOptions,
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+
+type PageProps = {
+  searchParams?: Promise<{
+    programme_id?: string;
+    cohort_id?: string;
+    assessment_type?: string;
+    status?: string;
+    intervention_id?: string;
+    create_programme_id?: string;
+    create_cohort_id?: string;
+    error?: string;
+  }>;
+};
+
+const EXPECTED_ASSESSMENT_CREATE_ERRORS = [
+  "Select an assessment template.",
+  "Select a programme.",
+  "Select a beneficiary cohort.",
+  "Select a cohort beneficiary.",
+  "Selected cohort beneficiary was not found.",
+  "Selected cohort beneficiary does not belong to the selected programme.",
+  "Selected cohort beneficiary does not belong to the selected cohort.",
+  "Selected intervention was not found.",
+  "Selected intervention does not belong to the selected programme.",
+  "Selected intervention does not belong to the selected cohort.",
+  "Selected intervention does not belong to the selected cohort beneficiary.",
+  "Selected intervention MSME does not match the selected cohort beneficiary.",
+  "You do not have permission to manage impact assessments.",
+];
+
+function isExpectedCreateError(error: unknown) {
+  return error instanceof Error && EXPECTED_ASSESSMENT_CREATE_ERRORS.some((message) => error.message.includes(message));
+}
 
 async function createAssessmentAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const assessmentId = await createAssessment(ctx, formData);
+  let assessmentId: string;
+  try {
+    assessmentId = await createAssessment(ctx, formData);
+  } catch (error) {
+    if (!isExpectedCreateError(error)) throw error;
+    const params = new URLSearchParams();
+    const programmeId = formData.get("programme_id");
+    const cohortId = formData.get("cohort_id");
+    if (typeof programmeId === "string" && programmeId) params.set("create_programme_id", programmeId);
+    if (typeof cohortId === "string" && cohortId) params.set("create_cohort_id", cohortId);
+    params.set("error", error instanceof Error ? error.message : "Assessment could not be created.");
+    redirect(`/dashboard/impact-intelligence/assessments?${params.toString()}`);
+  }
   redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
 }
 
-export default async function ImpactAssessmentsPage() {
+function legacyAnchorStatus(metadata: Record<string, unknown> | null | undefined) {
+  const value = metadata?.legacy_cohort_anchor_status;
+  return typeof value === "string" ? value : null;
+}
+
+export default async function ImpactAssessmentsPage({ searchParams }: PageProps) {
+  const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
-  const [assessments, templates, programmes, interventions, msmes] = await Promise.all([
-    listImpactAssessments(ctx, { limit: 100 }),
+  const createProgrammeId = filters.create_programme_id ?? "";
+  const createCohortId = filters.create_cohort_id ?? "";
+  const [assessments, templates, programmes, cohorts, createCohorts, cohortMembers, interventions] = await Promise.all([
+    listImpactAssessments(ctx, {
+      limit: 100,
+      programmeId: filters.programme_id,
+      cohortId: filters.cohort_id,
+      assessmentType: filters.assessment_type,
+      status: filters.status,
+      interventionId: filters.intervention_id,
+    }),
     listAssessmentTemplates(ctx, { limit: 100 }),
     listImpactProgrammes(ctx, { limit: 100 }),
-    listImpactInterventions(ctx, { limit: 100 }),
-    listMsmePickerOptions({ limit: 150 }),
+    listImpactCohorts(ctx, { limit: 150, programmeId: filters.programme_id }),
+    listImpactCohorts(ctx, { limit: 150, programmeId: createProgrammeId }),
+    listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
+    listImpactInterventions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
   ]);
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
+  const createInterventions = interventions.filter((intervention) => !intervention.cohort_member_id || cohortMembers.some((member) => member.id === intervention.cohort_member_id));
 
   return (
     <section className="space-y-6">
@@ -42,46 +108,111 @@ export default async function ImpactAssessmentsPage() {
         actions={[{ href: "/dashboard/impact-intelligence/assessments/templates", label: "Templates", icon: ClipboardCheck }]}
       />
 
+      {filters.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {filters.error}
+        </div>
+      )}
+
       {canManage && (
-        <form action={createAssessmentAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
-          <h2 className="font-semibold text-slate-950 lg:col-span-3">Create assessment</h2>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Template
-            <select required name="template_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Select template</option>
-              {templates.map((template) => <option key={template.id} value={template.id}>{template.name} v{template.version}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            MSME
-            <select required name="msme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Select MSME</option>
-              {msmes.map((msme) => <option key={msme.id} value={msme.id}>{msme.business_name} ({msme.msme_id ?? msme.state ?? "DBIN"})</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Title
-            <input name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Q2 readiness assessment" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
+        <SectionCard title="Create Cohort-Anchored Assessment">
+          <form method="get" className="grid gap-3 rounded-lg border bg-slate-50 p-4 md:grid-cols-3">
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Programme
+              <select name="create_programme_id" defaultValue={createProgrammeId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+                <option value="">Select programme</option>
+                {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Cohort
+              <select name="create_cohort_id" defaultValue={createCohortId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+                <option value="">Select cohort</option>
+                {createCohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+              </select>
+            </label>
+            <div className="flex items-end">
+              <Button type="submit" variant="secondary" className="w-full">Load beneficiaries</Button>
+            </div>
+          </form>
+
+          <form action={createAssessmentAction} className="mt-4 grid gap-4 lg:grid-cols-3">
+            <input type="hidden" name="programme_id" value={createProgrammeId} />
+            <input type="hidden" name="cohort_id" value={createCohortId} />
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Cohort beneficiary
+              <select required name="cohort_member_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId}>
+                <option value="">Select beneficiary</option>
+                {cohortMembers.map((member) => <option key={member.id} value={member.id}>{member.msmes?.business_name ?? member.msme_id} ({member.msmes?.msme_id ?? member.member_status})</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Intervention
+              <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId}>
+                <option value="">No intervention</option>
+                {createInterventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Assessment type
+              <select name="assessment_type" defaultValue="baseline" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+                {ASSESSMENT_TYPES.map((assessmentType) => <option key={assessmentType} value={assessmentType}>{assessmentType.replaceAll("_", " ")}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Template
+              <select required name="template_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
+                <option value="">Select template</option>
+                {templates.map((template) => <option key={template.id} value={template.id}>{template.name} v{template.version}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-2">
+              Title
+              <input name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Baseline assessment" />
+            </label>
+            <div className="flex items-end justify-end lg:col-span-3">
+              <Button type="submit" className="w-full gap-2 md:w-auto" disabled={!createProgrammeId || !createCohortId}><Plus className="h-4 w-4" /> Create assessment</Button>
+            </div>
+          </form>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Filters">
+        <form method="get" className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
+          <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
             Programme
-            <select name="programme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
+            <select name="programme_id" defaultValue={filters.programme_id ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-700">
+              <option value="">All programmes</option>
               {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
             </select>
           </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Intervention
-            <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
-              {interventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
+          <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Cohort
+            <select name="cohort_id" defaultValue={filters.cohort_id ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-700">
+              <option value="">All cohorts</option>
+              {cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
             </select>
           </label>
-          <div className="flex items-end justify-end lg:col-span-1">
-            <Button type="submit" className="w-full gap-2"><Plus className="h-4 w-4" /> Create assessment</Button>
+          <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Type
+            <select name="assessment_type" defaultValue={filters.assessment_type ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-700">
+              <option value="">All types</option>
+              {ASSESSMENT_TYPES.map((assessmentType) => <option key={assessmentType} value={assessmentType}>{assessmentType.replaceAll("_", " ")}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Status
+            <select name="status" defaultValue={filters.status ?? ""} className="w-full rounded-md border px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-700">
+              <option value="">All statuses</option>
+              {ASSESSMENT_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+            </select>
+          </label>
+          <div className="flex items-end gap-2">
+            <Button type="submit" variant="secondary">Apply</Button>
+            <Link href="/dashboard/impact-intelligence/assessments" className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Clear</Link>
           </div>
         </form>
-      )}
+      </SectionCard>
 
       <SectionCard title="Assessment Register" action={<QuickLink href="/dashboard/impact-intelligence/analytics">Readiness analytics</QuickLink>}>
         {assessments.length === 0 ? (
@@ -96,7 +227,7 @@ export default async function ImpactAssessmentsPage() {
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">Assessment</th><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Score</th><th className="px-4 py-3">Action</th></tr>
+                <tr><th className="px-4 py-3">Assessment</th><th className="px-4 py-3">Beneficiary</th><th className="px-4 py-3">Programme / cohort</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Score</th><th className="px-4 py-3">Action</th></tr>
               </thead>
               <tbody>
                 {assessments.map((assessment) => (
@@ -106,7 +237,10 @@ export default async function ImpactAssessmentsPage() {
                       <p className="mt-1 text-xs text-slate-500">{assessment.assessment_type ?? "baseline"} • template v{assessment.template_version ?? assessment.impact_assessment_templates?.version ?? 1}</p>
                     </td>
                     <td className={`${tableCellClassName} text-slate-600`}>{assessment.msmes?.business_name ?? "Unlinked"}</td>
-                    <td className={`${tableCellClassName} text-slate-600`}>{assessment.impact_programmes?.name ?? "Unassigned"}</td>
+                    <td className={`${tableCellClassName} text-slate-600`}>
+                      <p>{assessment.impact_programmes?.name ?? "Unassigned"}</p>
+                      <p className="mt-1 text-xs text-slate-500">{assessment.impact_beneficiary_cohorts?.name ?? "Legacy/unanchored"}{!assessment.cohort_id && legacyAnchorStatus(assessment.metadata) ? ` • ${legacyAnchorStatus(assessment.metadata)?.replaceAll("_", " ")}` : ""}</p>
+                    </td>
                     <td className={tableCellClassName}><StatusBadge value={assessment.status ?? "draft"} /></td>
                     <td className={`${tableCellClassName} text-slate-600`}>{typeof assessment.score === "number" ? `${assessment.score.toFixed(1)}%` : "Pending"}</td>
                     <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/assessments/${assessment.id}`}>Open</QuickLink></td>

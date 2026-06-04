@@ -4,32 +4,57 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   ASSESSMENT_MANAGE_ROLES,
   ASSESSMENT_REVIEW_ROLES,
-  completeAssessment,
   getMissingRequiredAssessmentQuestions,
   getImpactAssessmentDetail,
   reviewAssessment,
-  saveAssessmentResponse,
+  saveAssessmentDraft,
+  submitAssessment,
   type ImpactAssessmentQuestion,
   type ImpactAssessmentResponse,
 } from "@/lib/data/impact-intelligence";
 
-async function saveResponsesAction(assessmentId: string, formData: FormData) {
-  "use server";
-  const ctx = await getCurrentUserContext();
-  await saveAssessmentResponse(ctx, assessmentId, formData);
-  redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
+const EXPECTED_ASSESSMENT_ERRORS = [
+  "Required question missing:",
+  "must be numeric.",
+  "must be a valid date.",
+  "must use one of the configured options.",
+  "contains a selection that is not configured",
+  "Return reason is required",
+  "Reviewed or completed assessments cannot be edited.",
+  "You do not have permission to manage impact assessments.",
+  "You do not have permission to review impact assessments.",
+];
+
+function isExpectedAssessmentError(error: unknown) {
+  return error instanceof Error && EXPECTED_ASSESSMENT_ERRORS.some((message) => error.message.includes(message));
 }
 
-async function completeAssessmentAction(assessmentId: string) {
+function redirectWithAssessmentError(assessmentId: string, error: unknown) {
+  const params = new URLSearchParams();
+  params.set("error", error instanceof Error ? error.message : "Assessment action could not be completed.");
+  redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}?${params.toString()}`);
+}
+
+async function saveDraftAction(assessmentId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
   try {
-    await completeAssessment(ctx, assessmentId);
+    await saveAssessmentDraft(ctx, assessmentId, formData);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Required question missing:")) {
-      redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}?completion_error=missing_required`);
-    }
-    throw error;
+    if (!isExpectedAssessmentError(error)) throw error;
+    redirectWithAssessmentError(assessmentId, error);
+  }
+  redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
+}
+
+async function submitAssessmentAction(assessmentId: string, formData: FormData) {
+  "use server";
+  const ctx = await getCurrentUserContext();
+  try {
+    await submitAssessment(ctx, assessmentId, formData);
+  } catch (error) {
+    if (!isExpectedAssessmentError(error)) throw error;
+    redirectWithAssessmentError(assessmentId, error);
   }
   redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
 }
@@ -37,7 +62,12 @@ async function completeAssessmentAction(assessmentId: string) {
 async function reviewAssessmentAction(assessmentId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await reviewAssessment(ctx, assessmentId, formData);
+  try {
+    await reviewAssessment(ctx, assessmentId, formData);
+  } catch (error) {
+    if (!isExpectedAssessmentError(error)) throw error;
+    redirectWithAssessmentError(assessmentId, error);
+  }
   redirect(`/dashboard/impact-intelligence/assessments/${assessmentId}`);
 }
 
@@ -96,8 +126,9 @@ function QuestionInput({ question, responses, disabled }: { question: ImpactAsse
 
 function statusClass(status: string | null) {
   if (status === "reviewed" || status === "approved") return "bg-emerald-100 text-emerald-700";
-  if (status === "completed") return "bg-blue-100 text-blue-700";
-  if (status === "in_progress" || status === "submitted") return "bg-amber-100 text-amber-700";
+  if (status === "submitted" || status === "completed") return "bg-blue-100 text-blue-700";
+  if (status === "returned") return "bg-red-100 text-red-700";
+  if (status === "in_progress") return "bg-amber-100 text-amber-700";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -106,7 +137,7 @@ export default async function AssessmentDetailPage({
   searchParams,
 }: {
   params: Promise<{ assessmentId: string }>;
-  searchParams: Promise<{ completion_error?: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { assessmentId } = await params;
   const query = await searchParams;
@@ -117,14 +148,13 @@ export default async function AssessmentDetailPage({
 
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
   const canReview = ASSESSMENT_REVIEW_ROLES.includes(ctx.role);
-  const locked = assessment.status === "reviewed" || assessment.status === "approved";
-  const saveResponses = saveResponsesAction.bind(null, assessment.id);
-  const complete = completeAssessmentAction.bind(null, assessment.id);
+  const locked = assessment.status === "reviewed" || assessment.status === "approved" || assessment.status === "completed";
+  const saveDraft = saveDraftAction.bind(null, assessment.id);
+  const submit = submitAssessmentAction.bind(null, assessment.id);
   const review = reviewAssessmentAction.bind(null, assessment.id);
   const overall = scores.find((score) => score.section_id === null);
   const missingRequiredQuestions = getMissingRequiredAssessmentQuestions(questions, responses);
   const missingRequiredQuestionIds = new Set(missingRequiredQuestions.map((question) => question.id));
-  const showCompletionError = query.completion_error === "missing_required";
 
   return (
     <section className="space-y-6">
@@ -133,24 +163,45 @@ export default async function AssessmentDetailPage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">{template?.name ?? "Assessment"} v{assessment.template_version ?? template?.version ?? 1}</p>
             <h1 className="mt-2 text-2xl font-semibold text-slate-950">{assessment.title ?? template?.name ?? "MSME assessment"}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{assessment.msmes?.business_name ?? "Unlinked MSME"} • {assessment.impact_programmes?.name ?? "No programme"} • {assessment.impact_interventions?.title ?? "No intervention"}</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{assessment.msmes?.business_name ?? "Unlinked MSME"} • {assessment.impact_programmes?.name ?? "No programme"} • {assessment.impact_beneficiary_cohorts?.name ?? "Legacy/unanchored cohort"} • {assessment.impact_interventions?.title ?? "No intervention"}</p>
           </div>
           <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${statusClass(assessment.status)}`}>{assessment.status ?? "draft"}</span>
         </div>
       </header>
+
+      {query.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {query.error}
+        </div>
+      )}
+
+      {assessment.status === "returned" && assessment.return_reason && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Returned for correction:</span> {assessment.return_reason}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Overall score</p><p className="mt-1 text-xl font-semibold text-slate-950">{overall ? `${overall.weighted_score.toFixed(1)}%` : "Pending"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Readiness</p><p className="mt-1 text-xl font-semibold capitalize text-slate-950">{overall?.readiness_category ?? assessment.risk_level ?? "Pending"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Responses</p><p className="mt-1 text-xl font-semibold text-slate-950">{responses.length}/{questions.length}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Reviews</p><p className="mt-1 text-xl font-semibold text-slate-950">{reviews.length}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Programme</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_programmes?.name ?? "Unassigned"}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohort</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_beneficiary_cohorts?.name ?? "Legacy/unanchored"}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Beneficiary status</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_cohort_members?.member_status ?? "Not anchored"}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Field visit</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_field_visits?.title ?? "Not linked"}</p></div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <form action={saveResponses} className="rounded-xl border bg-white p-5 shadow-sm">
+        <form action={saveDraft} className="rounded-xl border bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-semibold text-slate-950">Assessment response</h2>
-            {canManage && !locked && <Button type="submit">Save responses</Button>}
+            {canManage && !locked && (
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" variant="secondary">Save Draft</Button>
+                <Button type="submit" formAction={submit}>Submit Assessment</Button>
+              </div>
+            )}
           </div>
           <div className="mt-4 space-y-5">
             {sections.length === 0 ? (
@@ -210,14 +261,12 @@ export default async function AssessmentDetailPage({
           </article>
 
           {canManage && !locked && (
-            <form action={complete} className="rounded-xl border bg-white p-5 shadow-sm">
-              <h2 className="font-semibold text-slate-950">Completion</h2>
-              <p className="mt-2 text-sm text-slate-600">Completing validates required responses and recalculates the score.</p>
+            <article className="rounded-xl border bg-white p-5 shadow-sm">
+              <h2 className="font-semibold text-slate-950">Submission readiness</h2>
+              <p className="mt-2 text-sm text-slate-600">Drafts can be saved with missing required answers. Submission validates required answers and calculates the preliminary score.</p>
               {missingRequiredQuestions.length > 0 && (
-                <div className={`mt-4 rounded-lg border p-3 text-sm ${showCompletionError ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  <p className="font-semibold">
-                    {showCompletionError ? "Assessment cannot be completed yet." : "Required responses missing."}
-                  </p>
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-semibold">Required responses missing.</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {missingRequiredQuestions.map((question) => (
                       <li key={question.id}>{question.question_text}</li>
@@ -225,11 +274,10 @@ export default async function AssessmentDetailPage({
                   </ul>
                 </div>
               )}
-              <Button type="submit" className="mt-4 w-full" disabled={missingRequiredQuestions.length > 0}>Complete assessment</Button>
-            </form>
+            </article>
           )}
 
-          {canReview && assessment.status === "completed" && (
+          {canReview && (assessment.status === "submitted" || assessment.status === "completed") && (
             <form action={review} className="rounded-xl border bg-white p-5 shadow-sm">
               <h2 className="font-semibold text-slate-950">Review assessment</h2>
               <select name="review_status" defaultValue="reviewed" className="mt-3 w-full rounded-md border px-3 py-2 text-sm">
@@ -237,6 +285,7 @@ export default async function AssessmentDetailPage({
                 <option value="approved">Approved</option>
                 <option value="returned">Return for update</option>
               </select>
+              <input name="return_reason" className="mt-3 w-full rounded-md border px-3 py-2 text-sm" placeholder="Return reason when correction is required" />
               <textarea name="notes" rows={4} className="mt-3 w-full rounded-md border px-3 py-2 text-sm" placeholder="Review notes" />
               <Button type="submit" className="mt-3 w-full">Submit review</Button>
             </form>

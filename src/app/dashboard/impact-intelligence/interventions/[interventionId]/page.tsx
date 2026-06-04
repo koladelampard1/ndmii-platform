@@ -61,7 +61,7 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
       </section>
     );
   }
-  const { intervention, events } = detail;
+  const { intervention, events, assessments } = detail;
   if (!intervention) notFound();
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
   const updateProgress = updateProgressAction.bind(null, intervention.id);
@@ -126,6 +126,31 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
           </form>
         </div>
       )}
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-slate-950">Related assessments</h2>
+        {assessments.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No assessments are linked to this intervention yet.</p>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-lg border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr><th className="px-4 py-3">Assessment</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Score</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                {assessments.map((assessment) => (
+                  <tr key={assessment.id}>
+                    <td className="px-4 py-3"><a href={`/dashboard/impact-intelligence/assessments/${assessment.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{assessment.title ?? "Assessment"}</a></td>
+                    <td className="px-4 py-3 text-slate-600">{assessment.assessment_type ?? "baseline"}</td>
+                    <td className="px-4 py-3"><StatusBadge value={assessment.status ?? "draft"} /></td>
+                    <td className="px-4 py-3 text-slate-600">{typeof assessment.score === "number" ? `${assessment.score.toFixed(1)}%` : "Pending"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
 
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-slate-950">Timeline</h2>

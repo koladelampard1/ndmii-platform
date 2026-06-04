@@ -64,7 +64,7 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         ) : (
           <div className="mt-4 overflow-hidden rounded-lg border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Cohort</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Cohort</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead>
               <tbody className="divide-y">
                 {cohorts.map((cohort) => (
                   <tr key={cohort.id}>
@@ -73,6 +73,7 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
                     <td className="px-4 py-3 text-slate-600">{cohort.sector ?? "All sectors"}</td>
                     <td className="px-4 py-3 text-slate-600">{cohort.member_count ?? cohort.current_beneficiaries} / {cohort.target_beneficiaries}</td>
                     <td className="px-4 py-3 text-slate-600">{cohort.intervention_count ?? 0}</td>
+                    <td className="px-4 py-3 text-slate-600">{cohort.assessment_count ?? 0} total / {cohort.approved_assessment_count ?? 0} approved</td>
                     <td className="px-4 py-3"><StatusBadge value={cohort.status} /></td>
                     <td className="px-4 py-3"><QuickLink href={`/dashboard/impact-intelligence/cohorts/${cohort.id}`}>Open</QuickLink></td>
                   </tr>
