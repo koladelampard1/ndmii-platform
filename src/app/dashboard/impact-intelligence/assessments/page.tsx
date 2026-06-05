@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { ClipboardCheck, Plus } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -16,6 +16,7 @@ import {
   listImpactProgrammes,
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { CreateAssessmentForm } from "./create-assessment-form";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -148,64 +149,17 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
 
       {!loadError && canManage && (
         <SectionCard title="Create Cohort-Anchored Assessment">
-          <form method="get" className="grid gap-3 rounded-lg border bg-slate-50 p-4 md:grid-cols-3">
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Programme
-              <select name="create_programme_id" defaultValue={createProgrammeId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                <option value="">Select programme</option>
-                {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Cohort
-              <select name="create_cohort_id" defaultValue={createCohortId} className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                <option value="">Select cohort</option>
-                {createCohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
-              </select>
-            </label>
-            <div className="flex items-end">
-              <Button type="submit" variant="secondary" className="w-full">Load beneficiaries</Button>
-            </div>
-          </form>
-
-          <form action={createAssessmentAction} className="mt-4 grid gap-4 lg:grid-cols-3">
-            <input type="hidden" name="programme_id" value={createProgrammeId} />
-            <input type="hidden" name="cohort_id" value={createCohortId} />
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Cohort beneficiary
-              <select required name="cohort_member_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId}>
-                <option value="">Select beneficiary</option>
-                {cohortMembers.map((member) => <option key={member.id} value={member.id}>{member.msmes?.business_name ?? member.msme_id} ({member.msmes?.msme_id ?? member.member_status})</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Intervention
-              <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal" disabled={!createCohortId}>
-                <option value="">No intervention</option>
-                {createInterventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Assessment type
-              <select name="assessment_type" defaultValue="baseline" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                {ASSESSMENT_TYPES.map((assessmentType) => <option key={assessmentType} value={assessmentType}>{assessmentType.replaceAll("_", " ")}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700">
-              Template
-              <select required name="template_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-                <option value="">Select template</option>
-                {templates.map((template) => <option key={template.id} value={template.id}>{template.name} v{template.version}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-2">
-              Title
-              <input name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Baseline assessment" />
-            </label>
-            <div className="flex items-end justify-end lg:col-span-3">
-              <Button type="submit" className="w-full gap-2 md:w-auto" disabled={!createProgrammeId || !createCohortId}><Plus className="h-4 w-4" /> Create assessment</Button>
-            </div>
-          </form>
+          <CreateAssessmentForm
+            key={`${createProgrammeId}:${createCohortId}`}
+            programmes={programmes}
+            cohorts={createCohorts}
+            cohortMembers={cohortMembers}
+            interventions={createInterventions}
+            templates={templates}
+            selectedProgrammeId={createProgrammeId}
+            selectedCohortId={createCohortId}
+            action={createAssessmentAction}
+          />
         </SectionCard>
       )}
 
