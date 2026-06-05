@@ -84,17 +84,37 @@ export default async function MonitoringPage({
   const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
   const canManage = MONITORING_MANAGE_ROLES.includes(ctx.role);
-  const visits = await listFieldVisits(ctx, { limit: 100 });
-  const [programmes, createCohorts, cohortMembers, interventions, assessments, fieldOfficers] = canManage
-    ? await Promise.all([
-      listImpactProgrammes(ctx, { limit: 100 }),
-      listImpactCohorts(ctx, { limit: 150, programmeId: filters.create_programme_id }),
-      listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
-      listImpactInterventions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
-      listImpactAssessments(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
-      listUserPickerOptions("field_officer"),
-    ])
-    : [[], [], [], [], [], []];
+  let visits: Awaited<ReturnType<typeof listFieldVisits>> = [];
+  let programmes: Awaited<ReturnType<typeof listImpactProgrammes>> = [];
+  let createCohorts: Awaited<ReturnType<typeof listImpactCohorts>> = [];
+  let cohortMembers: Awaited<ReturnType<typeof listImpactCohortMemberOptions>> = [];
+  let interventions: Awaited<ReturnType<typeof listImpactInterventions>> = [];
+  let assessments: Awaited<ReturnType<typeof listImpactAssessments>> = [];
+  let fieldOfficers: Awaited<ReturnType<typeof listUserPickerOptions>> = [];
+  let loadError: string | null = null;
+
+  try {
+    visits = await listFieldVisits(ctx, { limit: 100 });
+    if (canManage) {
+      [programmes, createCohorts, cohortMembers, interventions, assessments, fieldOfficers] = await Promise.all([
+        listImpactProgrammes(ctx, { limit: 100 }),
+        listImpactCohorts(ctx, { limit: 150, programmeId: filters.create_programme_id }),
+        listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+        listImpactInterventions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+        listImpactAssessments(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+        listUserPickerOptions("field_officer"),
+      ]);
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Impact Intelligence monitoring records are unavailable.";
+    console.warn("[impact-intelligence] monitoring_page_load_failed", {
+      role: ctx.role,
+      authUserId: ctx.authUserId,
+      appUserId: ctx.appUserId,
+      error: loadError,
+    });
+  }
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
 
@@ -108,13 +128,23 @@ export default async function MonitoringPage({
         actions={[{ href: "/dashboard/impact-intelligence/evidence", label: "Evidence repository", icon: CalendarCheck }]}
       />
 
-      {filters.error && (
+      {loadError && (
+        <SectionCard title="Monitoring Register Unavailable">
+          <EmptyState
+            title="Monitoring records could not load"
+            description={loadError.includes("permission") ? "Your signed-in role does not currently have monitoring read access. Ask an administrator to verify your assigned role." : "Impact Intelligence monitoring records are temporarily unavailable. Try again after the data source is restored."}
+            icon={CalendarCheck}
+          />
+        </SectionCard>
+      )}
+
+      {!loadError && filters.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
           {filters.error}
         </div>
       )}
 
-      {canManage && (
+      {!loadError && canManage && (
         <SectionCard title="Create cohort-anchored monitoring task">
           <CreateFieldVisitForm
             key={`${createProgrammeId}:${createCohortId}`}
@@ -132,7 +162,7 @@ export default async function MonitoringPage({
         </SectionCard>
       )}
 
-      <SectionCard title="Field Monitoring Queue" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence</QuickLink>}>
+      {!loadError && <SectionCard title="Field Monitoring Queue" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence</QuickLink>}>
         {visits.length === 0 ? (
           <EmptyState
             title="No monitoring visits yet"
@@ -163,7 +193,7 @@ export default async function MonitoringPage({
             </table>
           </TableShell>
         )}
-      </SectionCard>
+      </SectionCard>}
     </section>
   );
 }
