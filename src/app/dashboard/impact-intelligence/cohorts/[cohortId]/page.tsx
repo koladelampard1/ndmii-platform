@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
-import { CheckCircle2, CircleDashed, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
+import { CalendarCheck, CheckCircle2, CircleDashed, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -76,6 +76,8 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
   const memberIds = new Set(members.map((member) => member.msme_id));
   const availableMsmes = registryMsmes.filter((msme) => !memberIds.has(msme.id));
   const enrolAction = enrollMembersAction.bind(null, cohortId);
+  const fieldVisitCount = members.reduce((sum, member) => sum + (member.field_visit_count ?? 0), 0);
+  const openFieldVisitCount = members.reduce((sum, member) => sum + (member.open_field_visit_count ?? 0), 0);
 
   return (
     <section className="space-y-6">
@@ -94,11 +96,12 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
         </div>
       </ImpactPageHeader>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <MetricTile label="Total beneficiaries" value={dashboard.totalBeneficiaries.toLocaleString("en-NG")} detail={`Target ${cohort.target_beneficiaries.toLocaleString("en-NG")}`} icon={UsersRound} tone="emerald" />
         <MetricTile label="Active beneficiaries" value={dashboard.activeBeneficiaries.toLocaleString("en-NG")} icon={CircleDashed} tone="blue" />
         <MetricTile label="Completed beneficiaries" value={dashboard.completedBeneficiaries.toLocaleString("en-NG")} icon={CheckCircle2} tone="emerald" />
         <MetricTile label="Dropped beneficiaries" value={dashboard.droppedBeneficiaries.toLocaleString("en-NG")} icon={UserMinus} tone="red" />
+        <MetricTile label="Field visits" value={fieldVisitCount.toLocaleString("en-NG")} detail={`${openFieldVisitCount.toLocaleString("en-NG")} open`} icon={CalendarCheck} tone="blue" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -194,7 +197,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
+                <tr><th className="px-4 py-3">MSME</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Verification</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Monitoring</th><th className="px-4 py-3">Member status</th><th className="px-4 py-3">Assigned officer</th><th className="px-4 py-3">Enrolled</th></tr>
               </thead>
               <tbody>
                 {members.map((member) => {
@@ -223,6 +226,12 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
                         <div className="space-y-1">
                           <span className="text-sm font-medium text-slate-800">{member.assessment_count ?? 0}</span>
                           {member.latest_assessment_status && <StatusBadge value={member.latest_assessment_status} />}
+                        </div>
+                      </td>
+                      <td className={tableCellClassName}>
+                        <div className="space-y-1 text-sm text-slate-700">
+                          <span className="font-medium text-slate-900">{member.field_visit_count ?? 0}</span>
+                          <span className="block text-xs text-slate-500">{member.open_field_visit_count ?? 0} open • {member.completed_field_visit_count ?? 0} completed</span>
                         </div>
                       </td>
                       <td className={tableCellClassName}>

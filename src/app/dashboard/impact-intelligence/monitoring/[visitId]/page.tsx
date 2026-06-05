@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -17,14 +17,26 @@ async function assignVisitAction(visitId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
   const assignedTo = String(formData.get("assigned_to_user_id") ?? "");
-  if (assignedTo) await assignFieldVisit(ctx, visitId, assignedTo);
+  try {
+    if (assignedTo) await assignFieldVisit(ctx, visitId, assignedTo);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedMonitoringActionError(error)) throw error;
+    redirectWithMonitoringError(visitId, error);
+  }
   redirect(`/dashboard/impact-intelligence/monitoring/${visitId}`);
 }
 
 async function completeVisitAction(visitId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await completeFieldVisit(ctx, visitId, formData);
+  try {
+    await completeFieldVisit(ctx, visitId, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedMonitoringActionError(error)) throw error;
+    redirectWithMonitoringError(visitId, error);
+  }
   redirect(`/dashboard/impact-intelligence/monitoring/${visitId}`);
 }
 
@@ -32,8 +44,35 @@ async function createEvidenceAction(visitId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
   formData.set("field_visit_id", visitId);
-  await createEvidenceRecord(ctx, formData);
+  try {
+    await createEvidenceRecord(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedMonitoringActionError(error)) throw error;
+    redirectWithMonitoringError(visitId, error);
+  }
   redirect(`/dashboard/impact-intelligence/monitoring/${visitId}`);
+}
+
+const EXPECTED_MONITORING_ACTION_ERRORS = [
+  "Selected field officer does not exist.",
+  "Selected assignee must have field_officer role.",
+  "You do not have permission to manage field monitoring.",
+  "You do not have permission to complete this field visit.",
+  "You can only access field visits assigned to you.",
+  "Evidence file name is required.",
+  "You do not have permission to create evidence records.",
+];
+
+function isExpectedMonitoringActionError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return EXPECTED_MONITORING_ACTION_ERRORS.some((message) => error.message.includes(message));
+}
+
+function redirectWithMonitoringError(visitId: string, error: unknown): never {
+  const params = new URLSearchParams();
+  params.set("error", error instanceof Error ? error.message : "Monitoring action could not be completed.");
+  redirect(`/dashboard/impact-intelligence/monitoring/${visitId}?${params.toString()}`);
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -48,8 +87,15 @@ function statusClass(status: string | null) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default async function MonitoringDetailPage({ params }: { params: Promise<{ visitId: string }> }) {
+export default async function MonitoringDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ visitId: string }>;
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const { visitId } = await params;
+  const query = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
   const [detail, fieldOfficers] = await Promise.all([getFieldVisit(ctx, visitId), listUserPickerOptions("field_officer")]);
   const { visit, assignments, checklist, notes, evidence } = detail;
@@ -75,7 +121,15 @@ export default async function MonitoringDetailPage({ params }: { params: Promise
         </div>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      {query.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {query.error}
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Programme</p><p className="mt-1 font-semibold text-slate-950">{visit.impact_programmes?.name ?? "Unassigned"}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohort</p><p className="mt-1 font-semibold text-slate-950">{visit.impact_beneficiary_cohorts?.name ?? "Unanchored"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Intervention</p><p className="mt-1 font-semibold text-slate-950">{visit.impact_interventions?.title ?? "Unassigned"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Assessment</p><p className="mt-1 font-semibold text-slate-950">{visit.impact_assessments?.title ?? "Unassigned"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Checklist</p><p className="mt-1 font-semibold text-slate-950">{checklist.filter((item) => item.is_completed).length}/{checklist.length}</p></div>

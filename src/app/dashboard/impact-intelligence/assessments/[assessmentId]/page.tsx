@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -143,7 +144,7 @@ export default async function AssessmentDetailPage({
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
-  const { assessment, template, sections, questions, responses, scores, reviews } = detail;
+  const { assessment, template, sections, questions, responses, scores, reviews, visits } = detail;
   if (!assessment) notFound();
 
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
@@ -191,6 +192,22 @@ export default async function AssessmentDetailPage({
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Beneficiary status</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_cohort_members?.member_status ?? "Not anchored"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Field visit</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_field_visits?.title ?? "Not linked"}</p></div>
       </div>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-slate-950">Related field visits</h2>
+        {visits.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No field visits are linked to this assessment yet.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {visits.map((visit) => (
+              <Link key={visit.id} href={`/dashboard/impact-intelligence/monitoring/${visit.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
+                <p className="font-medium text-slate-950">{visit.title ?? "Field visit"}</p>
+                <p className="mt-1 text-xs text-slate-500">{visit.location_text ?? "Location pending"} • {visit.status ?? "pending"}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </article>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <form action={saveDraft} className="rounded-xl border bg-white p-5 shadow-sm">

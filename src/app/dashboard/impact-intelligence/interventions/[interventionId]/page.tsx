@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -61,7 +62,7 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
       </section>
     );
   }
-  const { intervention, events, assessments } = detail;
+  const { intervention, events, assessments, visits } = detail;
   if (!intervention) notFound();
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
   const updateProgress = updateProgressAction.bind(null, intervention.id);
@@ -144,6 +145,31 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
                     <td className="px-4 py-3 text-slate-600">{assessment.assessment_type ?? "baseline"}</td>
                     <td className="px-4 py-3"><StatusBadge value={assessment.status ?? "draft"} /></td>
                     <td className="px-4 py-3 text-slate-600">{typeof assessment.score === "number" ? `${assessment.score.toFixed(1)}%` : "Pending"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-slate-950">Related field visits</h2>
+        {visits.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No field visits are linked to this intervention yet.</p>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-lg border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr><th className="px-4 py-3">Visit</th><th className="px-4 py-3">Beneficiary</th><th className="px-4 py-3">Scheduled</th><th className="px-4 py-3">Status</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                {visits.map((visit) => (
+                  <tr key={visit.id}>
+                    <td className="px-4 py-3"><Link href={`/dashboard/impact-intelligence/monitoring/${visit.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{visit.title ?? "Field visit"}</Link></td>
+                    <td className="px-4 py-3 text-slate-600">{visit.msmes?.business_name ?? "Unlinked MSME"}</td>
+                    <td className="px-4 py-3 text-slate-600">{formatDateTime(visit.scheduled_at ?? visit.visit_date)}</td>
+                    <td className="px-4 py-3"><StatusBadge value={visit.status ?? "pending"} /></td>
                   </tr>
                 ))}
               </tbody>

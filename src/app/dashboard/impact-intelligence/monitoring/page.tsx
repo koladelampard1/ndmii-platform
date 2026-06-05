@@ -1,20 +1,20 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { CalendarCheck, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { CalendarCheck } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   createFieldVisit,
-  FIELD_VISIT_STATUSES,
+  listImpactCohortMemberOptions,
+  listImpactCohorts,
   listFieldVisits,
   listImpactAssessments,
   listImpactInterventions,
   listImpactProgrammes,
-  listMsmePickerOptions,
   listUserPickerOptions,
   MONITORING_MANAGE_ROLES,
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { CreateFieldVisitForm } from "./create-field-visit-form";
 
 const DEFAULT_CHECKLIST = [
   "Confirm business location | verification | yes",
@@ -26,8 +26,49 @@ const DEFAULT_CHECKLIST = [
 async function createVisitAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const visitId = await createFieldVisit(ctx, formData);
+  let visitId: string;
+  try {
+    visitId = await createFieldVisit(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedCreateVisitError(error)) throw error;
+    const params = new URLSearchParams();
+    const programmeId = formData.get("programme_id");
+    const cohortId = formData.get("cohort_id");
+    if (typeof programmeId === "string" && programmeId) params.set("create_programme_id", programmeId);
+    if (typeof cohortId === "string" && cohortId) params.set("create_cohort_id", cohortId);
+    params.set("error", error instanceof Error ? error.message : "Field visit could not be created.");
+    redirect(`/dashboard/impact-intelligence/monitoring?${params.toString()}`);
+  }
   redirect(`/dashboard/impact-intelligence/monitoring/${visitId}`);
+}
+
+const EXPECTED_CREATE_VISIT_ERRORS = [
+  "Field visit title is required.",
+  "Select a programme for this field visit.",
+  "Select a beneficiary cohort for this field visit.",
+  "Select a cohort beneficiary for this field visit.",
+  "Selected field visit cohort beneficiary does not exist.",
+  "Selected field visit cohort beneficiary does not belong to the selected programme.",
+  "Selected field visit cohort beneficiary does not belong to the selected cohort.",
+  "Selected field officer does not exist.",
+  "Selected assignee must have field_officer role.",
+  "Selected field visit intervention does not exist.",
+  "Selected field visit intervention does not belong to the selected programme.",
+  "Selected field visit intervention does not belong to the selected cohort.",
+  "Selected field visit intervention does not belong to the selected cohort beneficiary.",
+  "Selected field visit intervention MSME does not match the selected cohort beneficiary.",
+  "Selected field visit assessment does not exist.",
+  "Selected field visit assessment does not belong to the selected programme.",
+  "Selected field visit assessment does not belong to the selected cohort.",
+  "Selected field visit assessment does not belong to the selected cohort beneficiary.",
+  "Selected field visit assessment MSME does not match the selected cohort beneficiary.",
+  "You do not have permission to manage field monitoring.",
+];
+
+function isExpectedCreateVisitError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return EXPECTED_CREATE_VISIT_ERRORS.some((message) => error.message.includes(message));
 }
 
 function formatDate(value: string | null | undefined) {
@@ -35,17 +76,27 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
 }
 
-export default async function MonitoringPage() {
+export default async function MonitoringPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ create_programme_id?: string; create_cohort_id?: string; error?: string }>;
+}) {
+  const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
-  const [visits, programmes, interventions, assessments, msmes, fieldOfficers] = await Promise.all([
-    listFieldVisits(ctx, { limit: 100 }),
-    listImpactProgrammes(ctx, { limit: 100 }),
-    listImpactInterventions(ctx, { limit: 100 }),
-    listImpactAssessments(ctx, { limit: 100 }),
-    listMsmePickerOptions({ limit: 150 }),
-    listUserPickerOptions("field_officer"),
-  ]);
   const canManage = MONITORING_MANAGE_ROLES.includes(ctx.role);
+  const visits = await listFieldVisits(ctx, { limit: 100 });
+  const [programmes, createCohorts, cohortMembers, interventions, assessments, fieldOfficers] = canManage
+    ? await Promise.all([
+      listImpactProgrammes(ctx, { limit: 100 }),
+      listImpactCohorts(ctx, { limit: 150, programmeId: filters.create_programme_id }),
+      listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+      listImpactInterventions(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+      listImpactAssessments(ctx, { limit: 150, programmeId: filters.create_programme_id, cohortId: filters.create_cohort_id }),
+      listUserPickerOptions("field_officer"),
+    ])
+    : [[], [], [], [], [], []];
+  const createProgrammeId = filters.create_programme_id ?? "";
+  const createCohortId = filters.create_cohort_id ?? "";
 
   return (
     <section className="space-y-6">
@@ -57,70 +108,28 @@ export default async function MonitoringPage() {
         actions={[{ href: "/dashboard/impact-intelligence/evidence", label: "Evidence repository", icon: CalendarCheck }]}
       />
 
+      {filters.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {filters.error}
+        </div>
+      )}
+
       {canManage && (
-        <form action={createVisitAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
-          <h2 className="font-semibold text-slate-950 lg:col-span-3">Create monitoring task</h2>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Visit title
-            <input required name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Post-disbursement monitoring visit" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            MSME
-            <select required name="msme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Select MSME</option>
-              {msmes.map((msme) => <option key={msme.id} value={msme.id}>{msme.business_name} ({msme.msme_id ?? msme.state ?? "DBIN"})</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Field officer
-            <select name="assigned_to_user_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Assign later</option>
-              {fieldOfficers.map((officer) => <option key={officer.id} value={officer.id}>{officer.full_name ?? officer.email ?? "Field officer"}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Programme
-            <select name="programme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
-              {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Intervention
-            <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
-              {interventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Assessment
-            <select name="assessment_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unassigned</option>
-              {assessments.map((assessment) => <option key={assessment.id} value={assessment.id}>{assessment.title ?? assessment.assessment_type ?? "Assessment"}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Scheduled date
-            <input name="visit_date" type="date" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Status
-            <select name="status" defaultValue="pending" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              {FIELD_VISIT_STATUSES.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Location
-            <input name="location_text" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Ikeja, Lagos" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-3">
-            Checklist
-            <textarea name="checklist_blueprint" rows={4} defaultValue={DEFAULT_CHECKLIST} className="w-full rounded-md border px-3 py-2 font-mono text-xs font-normal" />
-          </label>
-          <div className="flex justify-end lg:col-span-3">
-            <Button type="submit" className="gap-2"><Plus className="h-4 w-4" /> Create task</Button>
-          </div>
-        </form>
+        <SectionCard title="Create cohort-anchored monitoring task">
+          <CreateFieldVisitForm
+            key={`${createProgrammeId}:${createCohortId}`}
+            programmes={programmes}
+            cohorts={createCohorts}
+            cohortMembers={cohortMembers}
+            interventions={interventions}
+            assessments={assessments}
+            fieldOfficers={fieldOfficers}
+            selectedProgrammeId={createProgrammeId}
+            selectedCohortId={createCohortId}
+            defaultChecklist={DEFAULT_CHECKLIST}
+            action={createVisitAction}
+          />
+        </SectionCard>
       )}
 
       <SectionCard title="Field Monitoring Queue" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence</QuickLink>}>

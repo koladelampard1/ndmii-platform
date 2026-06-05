@@ -12,6 +12,8 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
   const { programmeId } = await params;
   const ctx = await getCurrentUserContext();
   const { programme, interventions, unanchoredInterventions, enrolments, cohorts } = await getImpactProgrammeDetail(ctx, programmeId);
+  const fieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.field_visit_count ?? 0), 0);
+  const openFieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.open_field_visit_count ?? 0), 0);
 
   if (!programme) {
     return (
@@ -51,6 +53,7 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohort beneficiaries</p><p className="mt-1 font-semibold text-slate-950">{cohorts.reduce((sum, cohort) => sum + (cohort.member_count ?? cohort.current_beneficiaries ?? 0), 0)}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Anchored interventions</p><p className="mt-1 font-semibold text-slate-950">{interventions.filter((item) => item.cohort_id).length}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Unanchored legacy</p><p className="mt-1 font-semibold text-slate-950">{unanchoredInterventions.length}</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Field visits</p><p className="mt-1 font-semibold text-slate-950">{fieldVisitCount}</p><p className="mt-1 text-xs text-slate-500">{openFieldVisitCount} open</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Legacy linked MSMEs</p><p className="mt-1 font-semibold text-slate-950">{enrolments.length}</p></div>
       </div>
 
@@ -64,7 +67,7 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         ) : (
           <div className="mt-4 overflow-hidden rounded-lg border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Cohort</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Cohort</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Sector</th><th className="px-4 py-3">Beneficiaries</th><th className="px-4 py-3">Interventions</th><th className="px-4 py-3">Assessments</th><th className="px-4 py-3">Monitoring</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead>
               <tbody className="divide-y">
                 {cohorts.map((cohort) => (
                   <tr key={cohort.id}>
@@ -74,6 +77,7 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
                     <td className="px-4 py-3 text-slate-600">{cohort.member_count ?? cohort.current_beneficiaries} / {cohort.target_beneficiaries}</td>
                     <td className="px-4 py-3 text-slate-600">{cohort.intervention_count ?? 0}</td>
                     <td className="px-4 py-3 text-slate-600">{cohort.assessment_count ?? 0} total / {cohort.approved_assessment_count ?? 0} approved</td>
+                    <td className="px-4 py-3 text-slate-600">{cohort.field_visit_count ?? 0} total / {cohort.open_field_visit_count ?? 0} open</td>
                     <td className="px-4 py-3"><StatusBadge value={cohort.status} /></td>
                     <td className="px-4 py-3"><QuickLink href={`/dashboard/impact-intelligence/cohorts/${cohort.id}`}>Open</QuickLink></td>
                   </tr>
