@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -57,6 +57,7 @@ async function createAssessmentAction(formData: FormData) {
   try {
     assessmentId = await createAssessment(ctx, formData);
   } catch (error) {
+    unstable_rethrow(error);
     if (!isExpectedCreateError(error)) throw error;
     const params = new URLSearchParams();
     const programmeId = formData.get("programme_id");
@@ -79,22 +80,43 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
   const ctx = await getCurrentUserContext();
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
-  const [assessments, templates, programmes, cohorts, createCohorts, cohortMembers, interventions] = await Promise.all([
-    listImpactAssessments(ctx, {
-      limit: 100,
-      programmeId: filters.programme_id,
-      cohortId: filters.cohort_id,
-      assessmentType: filters.assessment_type,
-      status: filters.status,
-      interventionId: filters.intervention_id,
-    }),
-    listAssessmentTemplates(ctx, { limit: 100 }),
-    listImpactProgrammes(ctx, { limit: 100 }),
-    listImpactCohorts(ctx, { limit: 150, programmeId: filters.programme_id }),
-    listImpactCohorts(ctx, { limit: 150, programmeId: createProgrammeId }),
-    listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
-    listImpactInterventions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
-  ]);
+  let assessments: Awaited<ReturnType<typeof listImpactAssessments>> = [];
+  let templates: Awaited<ReturnType<typeof listAssessmentTemplates>> = [];
+  let programmes: Awaited<ReturnType<typeof listImpactProgrammes>> = [];
+  let cohorts: Awaited<ReturnType<typeof listImpactCohorts>> = [];
+  let createCohorts: Awaited<ReturnType<typeof listImpactCohorts>> = [];
+  let cohortMembers: Awaited<ReturnType<typeof listImpactCohortMemberOptions>> = [];
+  let interventions: Awaited<ReturnType<typeof listImpactInterventions>> = [];
+  let loadError: string | null = null;
+
+  try {
+    [assessments, templates, programmes, cohorts, createCohorts, cohortMembers, interventions] = await Promise.all([
+      listImpactAssessments(ctx, {
+        limit: 100,
+        programmeId: filters.programme_id,
+        cohortId: filters.cohort_id,
+        assessmentType: filters.assessment_type,
+        status: filters.status,
+        interventionId: filters.intervention_id,
+      }),
+      listAssessmentTemplates(ctx, { limit: 100 }),
+      listImpactProgrammes(ctx, { limit: 100 }),
+      listImpactCohorts(ctx, { limit: 150, programmeId: filters.programme_id }),
+      listImpactCohorts(ctx, { limit: 150, programmeId: createProgrammeId }),
+      listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
+      listImpactInterventions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
+    ]);
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Impact Intelligence assessment records are unavailable.";
+    console.warn("[impact-intelligence] assessments_page_load_failed", {
+      role: ctx.role,
+      authUserId: ctx.authUserId,
+      appUserId: ctx.appUserId,
+      error: loadError,
+    });
+  }
+
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
   const createInterventions = interventions.filter((intervention) => !intervention.cohort_member_id || cohortMembers.some((member) => member.id === intervention.cohort_member_id));
 
@@ -108,13 +130,23 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
         actions={[{ href: "/dashboard/impact-intelligence/assessments/templates", label: "Templates", icon: ClipboardCheck }]}
       />
 
-      {filters.error && (
+      {loadError && (
+        <SectionCard title="Assessment Register Unavailable">
+          <EmptyState
+            title="Assessment records could not load"
+            description={loadError.includes("permission") ? "Your signed-in role does not currently have assessment or cohort read access. Ask an administrator to verify your assigned role." : "Impact Intelligence assessment records are temporarily unavailable. Try again after the data source is restored."}
+            icon={ClipboardCheck}
+          />
+        </SectionCard>
+      )}
+
+      {!loadError && filters.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
           {filters.error}
         </div>
       )}
 
-      {canManage && (
+      {!loadError && canManage && (
         <SectionCard title="Create Cohort-Anchored Assessment">
           <form method="get" className="grid gap-3 rounded-lg border bg-slate-50 p-4 md:grid-cols-3">
             <label className="space-y-1 text-sm font-medium text-slate-700">
@@ -177,7 +209,7 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
         </SectionCard>
       )}
 
-      <SectionCard title="Filters">
+      {!loadError && <SectionCard title="Filters">
         <form method="get" className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
           <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
             Programme
@@ -212,9 +244,9 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
             <Link href="/dashboard/impact-intelligence/assessments" className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Clear</Link>
           </div>
         </form>
-      </SectionCard>
+      </SectionCard>}
 
-      <SectionCard title="Assessment Register" action={<QuickLink href="/dashboard/impact-intelligence/analytics">Readiness analytics</QuickLink>}>
+      {!loadError && <SectionCard title="Assessment Register" action={<QuickLink href="/dashboard/impact-intelligence/analytics">Readiness analytics</QuickLink>}>
         {assessments.length === 0 ? (
           <EmptyState
             title="No assessments yet"
@@ -250,7 +282,7 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
             </table>
           </TableShell>
         )}
-      </SectionCard>
+      </SectionCard>}
     </section>
   );
 }
