@@ -48,6 +48,11 @@ export const REPORT_TYPES = ["executive_summary", "programme_performance", "asse
 export const REPORT_STATUSES = ["draft", "generated", "approved", "archived"] as const;
 export const INTELLIGENCE_CATEGORIES = ["risk", "recommendation", "anomaly", "monitoring", "intervention", "compliance", "readiness", "portfolio", "operational"] as const;
 export const INTELLIGENCE_PRIORITIES = ["low", "medium", "high", "critical"] as const;
+export const DEFAULT_ASSESSMENT_SCORING_BANDS = [
+  { label: "low", min: 0, max: 49.9999 },
+  { label: "moderate", min: 50, max: 74.9999 },
+  { label: "strong", min: 75, max: 100 },
+] as const;
 
 export type ProgrammeStatus = (typeof PROGRAMME_STATUSES)[number];
 export type CohortStatus = (typeof COHORT_STATUSES)[number];
@@ -225,10 +230,44 @@ export type ImpactAssessmentTemplate = {
   assessment_type: string;
   version: number;
   status: AssessmentTemplateStatus | string;
+  scoring_bands?: AssessmentScoringBand[] | null;
+  scoring_model_version?: number | null;
   created_by_user_id: string | null;
   created_at: string | null;
   updated_at: string | null;
   metadata?: Record<string, unknown> | null;
+};
+
+export type AssessmentScoringBand = {
+  label: "low" | "moderate" | "strong" | string;
+  min: number;
+  max: number;
+};
+
+type QuestionScoringConfig = {
+  mode?: string;
+  max_score?: number;
+  maxScore?: number;
+  true_score?: number;
+  trueScore?: number;
+  false_score?: number;
+  falseScore?: number;
+  threshold?: number;
+  operator?: string;
+  pass_score?: number;
+  passScore?: number;
+  fail_score?: number;
+  failScore?: number;
+  default_score?: number;
+  defaultScore?: number;
+  default_option_score?: number;
+  defaultOptionScore?: number;
+  aggregation?: string;
+  cap?: number;
+  options?: Record<string, unknown>;
+  option_scores?: Record<string, unknown>;
+  optionScores?: Record<string, unknown>;
+  ranges?: Array<Record<string, unknown>>;
 };
 
 export type ImpactAssessmentSection = {
@@ -276,6 +315,7 @@ export type ImpactAssessmentResponse = {
 export type ImpactAssessmentScore = {
   id: string;
   assessment_id: string;
+  score_run_id?: string | null;
   section_id: string | null;
   section_title: string | null;
   score: number;
@@ -283,6 +323,25 @@ export type ImpactAssessmentScore = {
   weighted_score: number;
   readiness_category: "low" | "moderate" | "strong" | null;
   calculated_at: string;
+  is_latest?: boolean | null;
+  scoring_model_version?: number | null;
+};
+
+export type ImpactAssessmentScoreRun = {
+  id: string;
+  assessment_id: string;
+  template_id: string | null;
+  template_version: number | null;
+  run_type: string;
+  score: number;
+  max_score: number;
+  weighted_score: number;
+  readiness_category: "low" | "moderate" | "strong" | null;
+  calculated_by_user_id: string | null;
+  calculated_at: string;
+  scoring_model_version: number;
+  scoring_snapshot?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type ImpactAssessmentReview = {
@@ -1667,11 +1726,147 @@ function normaliseTemplateStatus(value: string | null): AssessmentTemplateStatus
   return ASSESSMENT_TEMPLATE_STATUSES.includes(value as AssessmentTemplateStatus) ? (value as AssessmentTemplateStatus) : "draft";
 }
 
-function readinessCategory(score: number, maxScore: number): "low" | "moderate" | "strong" {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampScore(score: number, maxScore: number) {
+  return Math.max(0, Math.min(score, maxScore));
+}
+
+function normalizeScoringBands(value: unknown): AssessmentScoringBand[] {
+  const rows = Array.isArray(value) ? value : DEFAULT_ASSESSMENT_SCORING_BANDS;
+  const bands = rows
+    .map((item) => {
+      if (!isRecord(item)) return null;
+      const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : null;
+      const min = finiteNumber(item.min);
+      const max = finiteNumber(item.max);
+      if (!label || min === null || max === null || max < min) return null;
+      return { label, min, max };
+    })
+    .filter((item): item is AssessmentScoringBand => Boolean(item));
+  return bands.length > 0 ? bands : [...DEFAULT_ASSESSMENT_SCORING_BANDS];
+}
+
+function parseScoringBandsJson(raw: string | null) {
+  if (!raw) return normalizeScoringBands(null);
+  try {
+    return normalizeScoringBands(JSON.parse(raw) as unknown);
+  } catch (error) {
+    throw new Error(`Invalid scoring bands JSON: ${error instanceof Error ? error.message : "Unknown parse error"}`);
+  }
+}
+
+function readinessCategory(score: number, maxScore: number, bands?: AssessmentScoringBand[] | null): "low" | "moderate" | "strong" {
   const percent = maxScore > 0 ? (score / maxScore) * 100 : 0;
+  const matchedBand = normalizeScoringBands(bands).find((band) => percent >= band.min && percent <= band.max);
+  if (matchedBand?.label === "strong" || matchedBand?.label === "moderate" || matchedBand?.label === "low") return matchedBand.label;
   if (percent >= 75) return "strong";
   if (percent >= 50) return "moderate";
   return "low";
+}
+
+function normalizeScoringConfig(value: unknown): QuestionScoringConfig {
+  return isRecord(value) ? (value as QuestionScoringConfig) : {};
+}
+
+function questionMaxScore(question: Pick<ImpactAssessmentQuestion, "weight" | "scoring_config">) {
+  const config = normalizeScoringConfig(question.scoring_config);
+  const configuredMax = finiteNumber(config.max_score ?? config.maxScore);
+  const fallback = finiteNumber(question.weight) ?? 0;
+  return configuredMax !== null && configuredMax >= 0 ? configuredMax : fallback;
+}
+
+function questionOptionScoreMap(config: QuestionScoringConfig) {
+  const raw = config.option_scores ?? config.optionScores ?? config.options;
+  if (!isRecord(raw)) return new Map<string, number>();
+  return new Map(
+    Object.entries(raw)
+      .map(([key, value]) => {
+        const score = finiteNumber(value);
+        return score === null ? null : ([key, score] as const);
+      })
+      .filter((entry): entry is readonly [string, number] => Boolean(entry)),
+  );
+}
+
+function scoreNumberQuestion(raw: string, maxScore: number, config: QuestionScoringConfig) {
+  const numeric = finiteNumber(raw);
+  if (numeric === null) return 0;
+
+  if (Array.isArray(config.ranges)) {
+    for (const range of config.ranges) {
+      const min = finiteNumber(range.min);
+      const max = finiteNumber(range.max);
+      const score = finiteNumber(range.score ?? range.points);
+      const minPass = min === null || numeric >= min;
+      const maxPass = max === null || numeric <= max;
+      if (minPass && maxPass && score !== null) return clampScore(score, maxScore);
+    }
+    return clampScore(finiteNumber(config.default_score ?? config.defaultScore) ?? 0, maxScore);
+  }
+
+  const threshold = finiteNumber(config.threshold);
+  if (threshold !== null) {
+    const operator = typeof config.operator === "string" ? config.operator : ">=";
+    const passed = operator === ">" ? numeric > threshold : operator === "<" ? numeric < threshold : operator === "<=" ? numeric <= threshold : operator === "=" || operator === "==" ? numeric === threshold : numeric >= threshold;
+    const passScore = finiteNumber(config.pass_score ?? config.passScore) ?? maxScore;
+    const failScore = finiteNumber(config.fail_score ?? config.failScore) ?? 0;
+    return clampScore(passed ? passScore : failScore, maxScore);
+  }
+
+  return numeric > 0 ? maxScore : 0;
+}
+
+function scoreRawQuestion(question: ImpactAssessmentQuestion, rawValue: FormDataEntryValue | string | null) {
+  const raw = typeof rawValue === "string" ? rawValue.trim() : "";
+  const config = normalizeScoringConfig(question.scoring_config);
+  const mode = typeof config.mode === "string" ? config.mode : "";
+  const maxScore = questionMaxScore(question);
+  const answered = raw.length > 0;
+  let score = answered ? maxScore : 0;
+
+  if (question.question_type === "number" || mode === "number_threshold" || mode === "number_range") {
+    score = answered ? scoreNumberQuestion(raw, maxScore, config) : 0;
+  } else if (question.question_type === "boolean" || mode === "boolean") {
+    const value = raw ? raw === "true" || raw === "yes" || raw === "on" : null;
+    const trueScore = finiteNumber(config.true_score ?? config.trueScore) ?? maxScore;
+    const falseScore = finiteNumber(config.false_score ?? config.falseScore) ?? 0;
+    score = value === null ? 0 : value ? trueScore : falseScore;
+  } else if (question.question_type === "select" || mode === "select_options") {
+    const optionScores = questionOptionScoreMap(config);
+    score = answered && optionScores.size > 0 ? optionScores.get(raw) ?? finiteNumber(config.default_option_score ?? config.defaultOptionScore) ?? 0 : score;
+  } else if (question.question_type === "multi-select" || mode === "multi_select_options") {
+    const values = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
+    const optionScores = questionOptionScoreMap(config);
+    if (values.length === 0) {
+      score = 0;
+    } else if (optionScores.size > 0) {
+      const itemScores = values.map((value) => optionScores.get(value) ?? finiteNumber(config.default_option_score ?? config.defaultOptionScore) ?? 0);
+      const aggregation = typeof config.aggregation === "string" ? config.aggregation : "sum";
+      const rawScore = aggregation === "max" ? Math.max(...itemScores) : aggregation === "average" ? itemScores.reduce((sum, item) => sum + item, 0) / itemScores.length : itemScores.reduce((sum, item) => sum + item, 0);
+      score = Math.min(rawScore, finiteNumber(config.cap) ?? maxScore);
+    }
+  }
+
+  return { score: clampScore(score, maxScore), maxScore };
+}
+
+function rawValueFromResponse(question: ImpactAssessmentQuestion, response: ImpactAssessmentResponse | undefined) {
+  if (!response) return "";
+  if (question.question_type === "number") return response.response_number?.toString() ?? "";
+  if (question.question_type === "boolean") return response.response_boolean === null ? "" : response.response_boolean ? "true" : "false";
+  if (question.question_type === "multi-select") {
+    const values = response.response_json?.values;
+    return Array.isArray(values) ? values.join(", ") : response.response_text ?? "";
+  }
+  return response.response_text ?? "";
 }
 
 function parseOptions(value: string | null) {
@@ -1690,7 +1885,7 @@ function parseTemplateQuestionRows(raw: string | null) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const [section, question, type, category, weight, required, options, helpText] = line.split("|").map((item) => item?.trim() ?? "");
+      const [section, question, type, category, weight, required, options, helpText, scoringConfig] = line.split("|").map((item) => item?.trim() ?? "");
       if (!section || !question) {
         throw new Error(`Question row ${index + 1} must include a section and question text.`);
       }
@@ -1704,12 +1899,24 @@ function parseTemplateQuestionRows(raw: string | null) {
         isRequired: ["yes", "true", "required", "1"].includes(required.toLowerCase()),
         options: parseOptions(options || null),
         helpText: helpText || null,
+        scoringConfig: parseQuestionScoringConfig(scoringConfig || null),
         displayOrder: index + 1,
       };
     });
 
   if (rows.length === 0) throw new Error("Add at least one assessment question.");
   return rows;
+}
+
+function parseQuestionScoringConfig(raw: string | null) {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) throw new Error("Scoring config must be a JSON object.");
+    return parsed;
+  } catch (error) {
+    throw new Error(`Invalid scoring config JSON: ${error instanceof Error ? error.message : "Unknown parse error"}`);
+  }
 }
 
 function normaliseAssessmentType(value: string | null): AssessmentType {
@@ -1796,6 +2003,8 @@ export async function createAssessmentTemplate(ctx: UserContext, formData: FormD
     assessment_type: normaliseAssessmentType(textValue(formData, "assessment_type")),
     version: versionValue && versionValue > 0 ? Math.trunc(versionValue) : 1,
     status: normaliseTemplateStatus(textValue(formData, "status")),
+    scoring_bands: parseScoringBandsJson(textValue(formData, "scoring_bands")),
+    scoring_model_version: 1,
     created_by_user_id: ctx.appUserId,
     metadata: { source: "assessment_template_engine" },
   };
@@ -1829,7 +2038,7 @@ export async function createAssessmentTemplate(ctx: UserContext, formData: FormD
     options_json: row.options,
     help_text: row.helpText,
     weight: row.weight,
-    scoring_config: {},
+    scoring_config: row.scoringConfig,
     conditional_logic: {},
   }));
   const { error: questionError } = await supabase.from("impact_assessment_questions").insert(questions);
@@ -1844,7 +2053,7 @@ export async function listAssessmentTemplates(ctxOrOptions?: UserContext | Impac
   const supabase = await createImpactReadClient(ctx);
   const { data, error } = await supabase
     .from("impact_assessment_templates")
-    .select("id,name,description,assessment_type,version,status,created_by_user_id,created_at,updated_at,metadata")
+    .select("id,name,description,assessment_type,version,status,scoring_bands,scoring_model_version,created_by_user_id,created_at,updated_at,metadata")
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 50);
 
@@ -1857,7 +2066,7 @@ export async function getAssessmentTemplate(templateId: string, ctx?: UserContex
   const [{ data: template, error }, { data: sections }, { data: questions }] = await Promise.all([
     supabase
       .from("impact_assessment_templates")
-      .select("id,name,description,assessment_type,version,status,created_by_user_id,created_at,updated_at,metadata")
+      .select("id,name,description,assessment_type,version,status,scoring_bands,scoring_model_version,created_by_user_id,created_at,updated_at,metadata")
       .eq("id", templateId)
       .maybeSingle(),
     supabase
@@ -1972,10 +2181,10 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
     .maybeSingle();
 
   throwImpactReadError("get_assessment_failed", error);
-  if (!assessment) return { assessment: null, template: null, sections: [], questions: [], responses: [], scores: [], reviews: [] };
+  if (!assessment) return { assessment: null, template: null, sections: [], questions: [], responses: [], scores: [], scoreRuns: [], reviews: [] };
 
   const templateId = (assessment as unknown as ImpactAssessment).template_id;
-  const [{ template, sections, questions }, { data: responses }, { data: scores }, { data: reviews }] = await Promise.all([
+  const [{ template, sections, questions }, { data: responses }, { data: scores }, { data: scoreRuns }, { data: reviews }] = await Promise.all([
     templateId ? getAssessmentTemplate(templateId, ctx) : Promise.resolve({ template: null, sections: [], questions: [] }),
     supabase
       .from("impact_assessment_responses")
@@ -1983,9 +2192,15 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
       .eq("assessment_id", assessmentId),
     supabase
       .from("impact_assessment_scores")
-      .select("id,assessment_id,section_id,section_title,score,max_score,weighted_score,readiness_category,calculated_at")
+      .select("id,assessment_id,score_run_id,section_id,section_title,score,max_score,weighted_score,readiness_category,calculated_at,is_latest,scoring_model_version")
       .eq("assessment_id", assessmentId)
+      .eq("is_latest", true)
       .order("section_title", { ascending: true }),
+    supabase
+      .from("impact_assessment_score_runs")
+      .select("id,assessment_id,template_id,template_version,run_type,score,max_score,weighted_score,readiness_category,calculated_by_user_id,calculated_at,scoring_model_version,scoring_snapshot,metadata")
+      .eq("assessment_id", assessmentId)
+      .order("calculated_at", { ascending: false }),
     supabase
       .from("impact_assessment_reviews")
       .select("id,assessment_id,reviewer_user_id,review_status,notes,created_at")
@@ -2000,15 +2215,14 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
     questions,
     responses: (responses ?? []) as ImpactAssessmentResponse[],
     scores: (scores ?? []) as ImpactAssessmentScore[],
+    scoreRuns: (scoreRuns ?? []) as ImpactAssessmentScoreRun[],
     reviews: (reviews ?? []) as ImpactAssessmentReview[],
   };
 }
 
 function responsePayload(question: ImpactAssessmentQuestion, rawValue: FormDataEntryValue | null, msmeId: string | null, ctx: UserContext) {
   const raw = typeof rawValue === "string" ? rawValue.trim() : "";
-  const maxScore = Number(question.weight ?? 0);
-  const answered = raw.length > 0;
-  let score = answered ? maxScore : 0;
+  const { score, maxScore } = scoreRawQuestion(question, rawValue);
   const payload: Record<string, unknown> = {
     response_text: null,
     response_number: null,
@@ -2023,13 +2237,10 @@ function responsePayload(question: ImpactAssessmentQuestion, rawValue: FormDataE
   if (question.question_type === "number") {
     const numeric = Number(raw);
     payload.response_number = raw && Number.isFinite(numeric) ? numeric : null;
-    score = raw && Number.isFinite(numeric) && numeric > 0 ? maxScore : 0;
-    payload.score = score;
   } else if (question.question_type === "boolean") {
     const value = raw ? raw === "true" || raw === "yes" || raw === "on" : null;
     payload.response_boolean = value;
     payload.response_text = value === null ? null : value ? "Yes" : "No";
-    payload.score = value ? maxScore : 0;
   } else if (question.question_type === "multi-select") {
     const values = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
     payload.response_json = { values };
@@ -2095,7 +2306,7 @@ async function persistAssessmentResponses(ctx: UserContext, assessmentId: string
     }
   }
 
-  if (options.calculateScore) await calculateAssessmentScore(assessmentId, ctx);
+  if (options.calculateScore) await calculateAssessmentScore(assessmentId, ctx, "submission");
 }
 
 export async function saveAssessmentDraft(ctx: UserContext, assessmentId: string, formData: FormData) {
@@ -2113,15 +2324,18 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
   await saveAssessmentDraft(ctx, assessmentId, formData);
 }
 
-export async function calculateAssessmentScore(assessmentId: string, ctx?: UserContext) {
+export async function calculateAssessmentScore(assessmentId: string, ctx?: UserContext, runType: "calculation" | "submission" | "review" | "completion" = "calculation") {
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
   const supabase = await createPrivilegedImpactWriteClient();
   const responseByQuestion = new Map(detail.responses.map((response) => [response.question_id, response]));
+  const bands = normalizeScoringBands(detail.template?.scoring_bands);
+  const scoringModelVersion = detail.template?.scoring_model_version ?? 1;
   const sectionScores = detail.sections.map((section) => {
     const questions = detail.questions.filter((question) => question.section_id === section.id);
-    const maxScore = questions.reduce((sum, question) => sum + Number(question.weight ?? 0), 0);
-    const score = questions.reduce((sum, question) => sum + Number(responseByQuestion.get(question.id)?.score ?? 0), 0);
+    const scoredQuestions = questions.map((question) => scoreRawQuestion(question, rawValueFromResponse(question, responseByQuestion.get(question.id))));
+    const maxScore = scoredQuestions.reduce((sum, item) => sum + item.maxScore, 0);
+    const score = scoredQuestions.reduce((sum, item) => sum + item.score, 0);
     return {
       assessment_id: assessmentId,
       section_id: section.id,
@@ -2129,7 +2343,8 @@ export async function calculateAssessmentScore(assessmentId: string, ctx?: UserC
       score,
       max_score: maxScore,
       weighted_score: maxScore > 0 ? (score / maxScore) * Number(section.weight || maxScore) : 0,
-      readiness_category: readinessCategory(score, maxScore),
+      readiness_category: readinessCategory(score, maxScore, bands),
+      scoring_model_version: scoringModelVersion,
       metadata: { question_count: questions.length },
     };
   });
@@ -2142,12 +2357,48 @@ export async function calculateAssessmentScore(assessmentId: string, ctx?: UserC
     score: totalScore,
     max_score: totalMax,
     weighted_score: totalMax > 0 ? (totalScore / totalMax) * 100 : 0,
-    readiness_category: readinessCategory(totalScore, totalMax),
+    readiness_category: readinessCategory(totalScore, totalMax, bands),
+    scoring_model_version: scoringModelVersion,
     metadata: { score_type: "overall" },
   };
 
-  await supabase.from("impact_assessment_scores").delete().eq("assessment_id", assessmentId);
-  const { error } = await supabase.from("impact_assessment_scores").insert([...sectionScores, total]);
+  const { data: scoreRun, error: scoreRunError } = await supabase
+    .from("impact_assessment_score_runs")
+    .insert({
+      assessment_id: assessmentId,
+      template_id: detail.assessment.template_id,
+      template_version: detail.assessment.template_version,
+      run_type: runType,
+      score: total.score,
+      max_score: total.max_score,
+      weighted_score: total.weighted_score,
+      readiness_category: total.readiness_category,
+      calculated_by_user_id: ctx?.appUserId ?? null,
+      scoring_model_version: scoringModelVersion,
+      scoring_snapshot: {
+        bands,
+        sections: detail.sections.map((section) => ({ id: section.id, title: section.title, weight: section.weight })),
+        questions: detail.questions.map((question) => ({
+          id: question.id,
+          section_id: question.section_id,
+          question_type: question.question_type,
+          weight: question.weight,
+          scoring_config: question.scoring_config ?? {},
+        })),
+      },
+      metadata: { source: "assessment_phase2a_scoring_engine" },
+    })
+    .select("id")
+    .single();
+  if (scoreRunError) throw new Error(scoreRunError.message);
+
+  await supabase.from("impact_assessment_scores").update({ is_latest: false }).eq("assessment_id", assessmentId).eq("is_latest", true);
+  const scoreRows = [...sectionScores, total].map((row) => ({
+    ...row,
+    score_run_id: scoreRun.id,
+    is_latest: true,
+  }));
+  const { error } = await supabase.from("impact_assessment_scores").insert(scoreRows);
   if (error) throw new Error(error.message);
   const { error: updateError } = await supabase
     .from("impact_assessments")
@@ -2164,7 +2415,7 @@ export async function completeAssessment(ctx: UserContext, assessmentId: string)
   const missing = getMissingRequiredAssessmentQuestions(detail.questions, detail.responses)[0];
   if (missing) throw new Error(`Required question missing: ${missing.question_text}`);
 
-  const total = await calculateAssessmentScore(assessmentId, ctx);
+  const total = await calculateAssessmentScore(assessmentId, ctx, "completion");
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase
     .from("impact_assessments")
@@ -2201,7 +2452,7 @@ export async function reviewAssessment(ctx: UserContext, assessmentId: string, f
   if (reviewStatus === "returned" && !returnReason) {
     throw new Error("Return reason is required when returning an assessment for correction.");
   }
-  await calculateAssessmentScore(assessmentId, ctx);
+  await calculateAssessmentScore(assessmentId, ctx, "review");
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_assessment_reviews").insert({
     assessment_id: assessmentId,
@@ -2593,7 +2844,7 @@ export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<E
     supabase.from("impact_assessments").select("id,title,status,created_at,risk_level").limit(1000),
     supabase.from("impact_field_visits").select("id,title,status,created_at").limit(1000),
     supabase.from("impact_evidence_files").select("id,file_name,verification_status,created_at").limit(1000),
-    supabase.from("impact_assessment_scores").select("id,section_id,readiness_category").is("section_id", null).limit(1000),
+    supabase.from("impact_assessment_scores").select("id,section_id,readiness_category").is("section_id", null).eq("is_latest", true).limit(1000),
   ]);
   [
     ["msmes_count_failed", msmeCount.error],
@@ -2850,7 +3101,7 @@ export async function generateMsmeInsights(ctx: UserContext) {
   const supabase = await createPrivilegedImpactReadClient();
   const [{ data: assessments }, { data: scores }, { data: evidence }] = await Promise.all([
     supabase.from("impact_assessments").select("id,title,status,msme_id,programme_id,intervention_id").limit(1000),
-    supabase.from("impact_assessment_scores").select("assessment_id,section_id,weighted_score,readiness_category").is("section_id", null).limit(1000),
+    supabase.from("impact_assessment_scores").select("assessment_id,section_id,weighted_score,readiness_category").is("section_id", null).eq("is_latest", true).limit(1000),
     supabase.from("impact_evidence_files").select("id,msme_id,verification_status").limit(1000),
   ]);
 

@@ -10,12 +10,18 @@ import {
 } from "@/lib/data/impact-intelligence";
 
 const DEFAULT_BLUEPRINT = [
-  "Business profile | Is the business registration information current? | boolean | compliance | 10 | yes | |",
+  "Business profile | Is the business registration information current? | boolean | compliance | 10 | yes | | | {\"mode\":\"boolean\",\"true_score\":10,\"false_score\":0}",
   "Business profile | Primary operating challenge | textarea | operations | 5 | no | |",
-  "Finance readiness | Monthly revenue band | select | finance | 15 | yes | Below NGN 500k, NGN 500k-2m, Above NGN 2m |",
+  "Finance readiness | Monthly revenue band | select | finance | 15 | yes | Below NGN 500k, NGN 500k-2m, Above NGN 2m | | {\"mode\":\"select_options\",\"option_scores\":{\"Below NGN 500k\":5,\"NGN 500k-2m\":10,\"Above NGN 2m\":15}}",
   "Finance readiness | Does the MSME keep sales records? | boolean | finance | 15 | yes | |",
   "Monitoring | Evidence file reference | file_upload | evidence | 5 | no | | Placeholder for future upload integration",
 ].join("\n");
+
+const DEFAULT_SCORING_BANDS = JSON.stringify([
+  { label: "low", min: 0, max: 49.9999 },
+  { label: "moderate", min: 50, max: 74.9999 },
+  { label: "strong", min: 75, max: 100 },
+], null, 2);
 
 async function createTemplateAction(formData: FormData) {
   "use server";
@@ -64,10 +70,17 @@ export default async function NewAssessmentTemplatePage() {
           <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Purpose, target MSME segment, and usage notes." />
         </label>
         <label className="space-y-2 text-sm font-medium text-slate-700 lg:col-span-2">
+          Scoring bands
+          <textarea name="scoring_bands" rows={5} defaultValue={DEFAULT_SCORING_BANDS} className="w-full rounded-md border px-3 py-2 font-mono text-xs font-normal leading-5" />
+          <span className="block text-xs font-normal leading-5 text-slate-500">
+            JSON array with label, min, and max percent values. Current dashboards support low, moderate, and strong labels.
+          </span>
+        </label>
+        <label className="space-y-2 text-sm font-medium text-slate-700 lg:col-span-2">
           Question blueprint
           <textarea required name="question_blueprint" rows={10} defaultValue={DEFAULT_BLUEPRINT} className="w-full rounded-md border px-3 py-2 font-mono text-xs font-normal leading-5" />
           <span className="block text-xs font-normal leading-5 text-slate-500">
-            One question per line: Section | Question | Type | Category | Weight | Required yes/no | Options comma list | Help text. Supported types: {ASSESSMENT_QUESTION_TYPES.join(", ")}.
+            One question per line: Section | Question | Type | Category | Weight | Required yes/no | Options comma list | Help text | Optional scoring config JSON. Supported types: {ASSESSMENT_QUESTION_TYPES.join(", ")}.
           </span>
         </label>
         <div className="flex justify-end lg:col-span-2">
