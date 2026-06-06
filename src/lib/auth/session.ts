@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import {
   SUPABASE_ACCESS_TOKEN_COOKIE,
   SUPABASE_REFRESH_TOKEN_COOKIE,
@@ -92,6 +93,23 @@ function toUserRole(value: string | null | undefined): UserRole | null {
   return VALID_USER_ROLES.has(normalized as UserRole) ? (normalized as UserRole) : null;
 }
 
+function getErrorType(error: unknown): string {
+  if (error instanceof Error) return error.name || "Error";
+  return typeof error;
+}
+
+function isRecoverableSupabaseVerificationError(error: unknown): boolean {
+  if (isAuthRetryableFetchError(error)) return true;
+  if (error instanceof TypeError) return true;
+
+  if (error && typeof error === "object" && "code" in error) {
+    const code = String(error.code).toUpperCase();
+    return ["ECONNABORTED", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "ENOTFOUND", "ETIMEDOUT"].includes(code);
+  }
+
+  return false;
+}
+
 async function getFallbackAuthenticatedUser(baseDiagnostic: {
   source: "getAuthenticatedUser";
   requestHost: string;
@@ -99,7 +117,7 @@ async function getFallbackAuthenticatedUser(baseDiagnostic: {
   hasAccessToken: boolean;
   hasRefreshToken: boolean;
   expectedRole: null;
-}): Promise<AuthenticatedUser | null> {
+}, supabaseVerificationError?: unknown): Promise<AuthenticatedUser | null> {
   const cookieStore = await cookies();
   const fallbackAuthUserId = cookieStore.get(NDMII_AUTH_USER_ID_COOKIE)?.value?.trim() || null;
   const fallbackAppUserId = cookieStore.get(NDMII_APP_USER_ID_COOKIE)?.value?.trim() || null;
@@ -166,6 +184,14 @@ async function getFallbackAuthenticatedUser(baseDiagnostic: {
       appUserId: profile.id,
       role: resolvedRole,
     });
+    if (supabaseVerificationError) {
+      console.info("[auth-fallback-after-supabase-verification-failure]", {
+        authUserId: profile.auth_user_id,
+        appUserId: profile.id,
+        resolvedDbRole: resolvedRole,
+        errorType: getErrorType(supabaseVerificationError),
+      });
+    }
     logAuthRuntimeDiagnostic({
       ...baseDiagnostic,
       authUserId: profile.auth_user_id,
@@ -221,27 +247,34 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
 
   if (!accessToken && !refreshToken) return getFallbackAuthenticatedUser(baseDiagnostic);
 
+  let supabaseSessionVerified = false;
+
   try {
     const authClient = await createServerSupabaseClient();
     let authUser = null;
-    let authErrorMessage: string | null = null;
+    let authError: unknown = null;
 
     if (accessToken) {
-      const { data: authData, error: authError } = await authClient.auth.getUser(accessToken);
+      const { data: authData, error } = await authClient.auth.getUser(accessToken);
       authUser = authData.user;
-      authErrorMessage = authError?.message ?? null;
+      authError = error;
     }
 
     if (!authUser && refreshToken) {
-      const { data: refreshData, error: refreshError } = await authClient.auth.refreshSession({
+      const { data: refreshData, error } = await authClient.auth.refreshSession({
         refresh_token: refreshToken,
       });
       accessToken = refreshData.session?.access_token ?? accessToken;
       authUser = refreshData.user ?? null;
-      authErrorMessage = refreshError?.message ?? authErrorMessage;
+      authError = error ?? authError;
     }
 
     if (!authUser) {
+      if (isRecoverableSupabaseVerificationError(authError)) {
+        return getFallbackAuthenticatedUser(baseDiagnostic, authError);
+      }
+
+      const authErrorMessage = authError instanceof Error ? authError.message : null;
       console.warn("[server-auth] unable to verify Supabase session", {
         error: authErrorMessage ?? "missing_auth_user",
       });
@@ -257,6 +290,7 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       return null;
     }
 
+    supabaseSessionVerified = true;
     const authUserId = authUser.id;
     const email = authUser.email?.trim().toLowerCase() || null;
     const profileClient = await createServiceRoleSupabaseClient();
@@ -342,6 +376,10 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       fullName: profile.full_name ?? profile.email ?? email,
     };
   } catch (error) {
+    if (!supabaseSessionVerified && isRecoverableSupabaseVerificationError(error)) {
+      return getFallbackAuthenticatedUser(baseDiagnostic, error);
+    }
+
     console.error("[server-auth] failed to resolve current user", {
       error: error instanceof Error ? error.message : String(error),
     });
