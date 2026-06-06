@@ -13,6 +13,11 @@ import {
   listUserPickerOptions,
   updateImpactInterventionLifecycle,
 } from "@/lib/data/impact-intelligence";
+import {
+  type ImpactEvidenceRecord,
+  listImpactEvidence,
+  logImpactEvidenceDiagnostic,
+} from "@/lib/data/impact-evidence";
 import { EmptyState, SectionCard, StatusBadge } from "../../_components";
 
 async function updateProgressAction(interventionId: string, formData: FormData) {
@@ -44,10 +49,20 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
   const ctx = await getCurrentUserContext();
   let detail: Awaited<ReturnType<typeof getImpactInterventionDetail>>;
   let officers: Awaited<ReturnType<typeof listUserPickerOptions>> = [];
+  let evidenceFiles: ImpactEvidenceRecord[] = [];
   try {
-    [detail, officers] = await Promise.all([
+    [detail, officers, evidenceFiles] = await Promise.all([
       getImpactInterventionDetail(interventionId, ctx),
       listUserPickerOptions("field_officer"),
+      listImpactEvidence(ctx, { interventionId, limit: 100 }).catch(() => {
+        logImpactEvidenceDiagnostic({
+          operation: "intervention_detail_evidence_unavailable",
+          actorRole: ctx.role,
+          success: false,
+          errorCode: "source_unavailable",
+        });
+        return [];
+      }),
     ]);
   } catch (error) {
     return (
@@ -174,6 +189,25 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </article>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-950">Intervention evidence ({evidenceFiles.length})</h2>
+          <Link href={`/dashboard/impact-intelligence/evidence?create_programme_id=${intervention.programme_id ?? ""}&create_cohort_id=${intervention.cohort_id ?? ""}`} className="text-sm font-medium text-emerald-700">Open evidence repository</Link>
+        </div>
+        {evidenceFiles.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No evidence is linked to this intervention.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {evidenceFiles.map((item) => (
+              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
+                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.status} · {item.msmes?.business_name ?? "Beneficiary"}</p>
+              </Link>
+            ))}
           </div>
         )}
       </article>

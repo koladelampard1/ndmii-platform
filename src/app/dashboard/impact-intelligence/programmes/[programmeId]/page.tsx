@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getImpactProgrammeDetail } from "@/lib/data/impact-intelligence";
+import {
+  listImpactEvidence,
+  logImpactEvidenceDiagnostic,
+} from "@/lib/data/impact-evidence";
 import { QuickLink, StatusBadge } from "../../_components";
 
 function formatDate(value: string | null) {
@@ -11,7 +15,19 @@ function formatDate(value: string | null) {
 export default async function ImpactProgrammeDetailPage({ params }: { params: Promise<{ programmeId: string }> }) {
   const { programmeId } = await params;
   const ctx = await getCurrentUserContext();
-  const { programme, interventions, unanchoredInterventions, enrolments, cohorts } = await getImpactProgrammeDetail(ctx, programmeId);
+  const [{ programme, interventions, unanchoredInterventions, enrolments, cohorts }, evidenceFiles] = await Promise.all([
+    getImpactProgrammeDetail(ctx, programmeId),
+    listImpactEvidence(ctx, { programmeId, limit: 500 }).catch(() => {
+      logImpactEvidenceDiagnostic({
+        operation: "programme_detail_evidence_unavailable",
+        programmeId,
+        actorRole: ctx.role,
+        success: false,
+        errorCode: "source_unavailable",
+      });
+      return [];
+    }),
+  ]);
   const fieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.field_visit_count ?? 0), 0);
   const openFieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.open_field_visit_count ?? 0), 0);
 
@@ -54,8 +70,28 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Anchored interventions</p><p className="mt-1 font-semibold text-slate-950">{interventions.filter((item) => item.cohort_id).length}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Unanchored legacy</p><p className="mt-1 font-semibold text-slate-950">{unanchoredInterventions.length}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Field visits</p><p className="mt-1 font-semibold text-slate-950">{fieldVisitCount}</p><p className="mt-1 text-xs text-slate-500">{openFieldVisitCount} open</p></div>
+        <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-950">{evidenceFiles.length}</p><p className="mt-1 text-xs text-slate-500">{evidenceFiles.filter((item) => item.status === "verified").length} verified</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Legacy linked MSMEs</p><p className="mt-1 font-semibold text-slate-950">{enrolments.length}</p></div>
       </div>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-950">Programme evidence</h2>
+          <Link href={`/dashboard/impact-intelligence/evidence?create_programme_id=${programme.id}`} className="text-sm font-medium text-emerald-700">Open evidence repository</Link>
+        </div>
+        {evidenceFiles.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No evidence is linked to this programme.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {evidenceFiles.slice(0, 12).map((item) => (
+              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
+                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.impact_beneficiary_cohorts?.name ?? "Legacy/unlinked cohort"} · {item.status}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </article>
 
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">

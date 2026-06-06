@@ -1,145 +1,187 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { FileArchive, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { FileArchive } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import type { UserContext } from "@/lib/auth/authorization";
 import {
-  createEvidenceRecord,
-  EVIDENCE_CATEGORIES,
-  listEvidence,
-  listFieldVisits,
-  listImpactAssessments,
-  listImpactInterventions,
-  listImpactProgrammes,
-  listMsmePickerOptions,
-} from "@/lib/data/impact-intelligence";
+  IMPACT_EVIDENCE_CREATE_ROLES,
+  type ImpactEvidenceRecord,
+  type ImpactEvidenceUploadOptions,
+  getImpactEvidenceUploadOptions,
+  listImpactEvidence,
+  logImpactEvidenceDiagnostic,
+  uploadImpactEvidence,
+} from "@/lib/data/impact-evidence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge } from "../_components";
+import { CreateEvidenceForm } from "./create-evidence-form";
 
-async function createEvidenceAction(formData: FormData) {
+type SearchParams = {
+  create_programme_id?: string;
+  create_cohort_id?: string;
+  error?: string;
+  success?: string;
+};
+
+const EMPTY_UPLOAD_OPTIONS: ImpactEvidenceUploadOptions = {
+  programmes: [],
+  cohorts: [],
+  members: [],
+  interventions: [],
+  assessments: [],
+  visits: [],
+};
+
+const EXPECTED_UPLOAD_ERRORS = [
+  "Select a programme",
+  "Select a beneficiary cohort",
+  "Select a cohort beneficiary",
+  "Selected evidence",
+  "Choose an evidence file",
+  "Evidence file must be",
+  "Evidence must be",
+  "already uploaded",
+  "assigned visits or beneficiaries",
+  "permission to upload",
+  "storage is unavailable",
+  "upload failed",
+  "could not be saved",
+  "could not be checked",
+  "could not be validated",
+  "links could not be saved",
+];
+
+function isExpectedUploadError(error: unknown) {
+  return error instanceof Error && EXPECTED_UPLOAD_ERRORS.some((message) => error.message.includes(message));
+}
+
+async function uploadEvidenceAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const evidenceId = await createEvidenceRecord(ctx, formData);
-  redirect(`/dashboard/impact-intelligence/evidence/${evidenceId}`);
+  try {
+    const evidenceId = await uploadImpactEvidence(ctx, formData);
+    redirect(`/dashboard/impact-intelligence/evidence/${evidenceId}?success=Evidence%20uploaded`);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!isExpectedUploadError(error)) throw error;
+    const params = new URLSearchParams();
+    const programmeId = formData.get("programme_id");
+    const cohortId = formData.get("cohort_id");
+    if (typeof programmeId === "string" && programmeId) params.set("create_programme_id", programmeId);
+    if (typeof cohortId === "string" && cohortId) params.set("create_cohort_id", cohortId);
+    params.set("error", error instanceof Error ? error.message : "Evidence upload could not be completed.");
+    redirect(`/dashboard/impact-intelligence/evidence?${params}`);
+  }
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return "Not captured";
+  if (!value) return "Not uploaded";
   return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
 }
 
-export default async function EvidencePage() {
-  const ctx = await getCurrentUserContext();
-  const [evidence, programmes, interventions, assessments, visits, msmes] = await Promise.all([
-    listEvidence(ctx, { limit: 100 }),
-    listImpactProgrammes(ctx, { limit: 100 }),
-    listImpactInterventions(ctx, { limit: 100 }),
-    listImpactAssessments(ctx, { limit: 100 }),
-    listFieldVisits(ctx, { limit: 100 }),
-    listMsmePickerOptions({ limit: 150 }),
-  ]);
-  const canCreate = ["admin", "programme_officer", "assessment_officer", "field_officer"].includes(ctx.role);
+function displayName(item: ImpactEvidenceRecord) {
+  return item.original_filename ?? item.file_name ?? "Evidence file";
+}
+
+export default async function EvidencePage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  const filters = (await searchParams) ?? {};
+  let ctx: UserContext | null = null;
+  let evidence: ImpactEvidenceRecord[] = [];
+  let uploadOptions = EMPTY_UPLOAD_OPTIONS;
+  let loadError: string | null = null;
+
+  try {
+    ctx = await getCurrentUserContext();
+    evidence = await listImpactEvidence(ctx, { limit: 100 });
+    if ((IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role)) {
+      uploadOptions = await getImpactEvidenceUploadOptions(ctx, {
+        programmeId: filters.create_programme_id,
+        cohortId: filters.create_cohort_id,
+      });
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Impact evidence is temporarily unavailable.";
+    logImpactEvidenceDiagnostic({
+      operation: "evidence_page_load_failed",
+      actorRole: ctx?.role ?? null,
+      errorMessage: loadError,
+      success: false,
+    });
+  }
+
+  const canCreate = Boolean(ctx && (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role));
 
   return (
     <section className="space-y-6">
       <ImpactPageHeader
-        eyebrow="Evidence intelligence"
+        eyebrow="Programme assurance"
         title="Evidence Repository"
-        description="Track storage-ready evidence placeholders linked to MSMEs, programmes, interventions, assessments, and field visits for traceable impact reporting."
-        badge={`${evidence.length} files`}
+        description="Upload, review, and securely access evidence anchored to programme cohorts, beneficiaries, interventions, assessments, and field monitoring."
+        badge={`${evidence.length} records`}
         actions={[{ href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring", icon: FileArchive }]}
       />
 
-      {canCreate && (
-        <form action={createEvidenceAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
-          <h2 className="font-semibold text-slate-950 lg:col-span-3">Create evidence placeholder</h2>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            File name
-            <input required name="file_name" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="signed-form-001.pdf" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Category
-            <select name="evidence_category" defaultValue="other" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              {EVIDENCE_CATEGORIES.map((category) => <option key={category} value={category}>{category.replaceAll("_", " ")}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Placeholder URL
-            <input name="file_url" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Optional URL or future storage path" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            MSME
-            <select name="msme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unlinked</option>
-              {msmes.map((msme) => <option key={msme.id} value={msme.id}>{msme.business_name}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Programme
-            <select name="programme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unlinked</option>
-              {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Intervention
-            <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unlinked</option>
-              {interventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Assessment
-            <select name="assessment_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unlinked</option>
-              {assessments.map((assessment) => <option key={assessment.id} value={assessment.id}>{assessment.title ?? assessment.assessment_type ?? "Assessment"}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Field visit
-            <select name="field_visit_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">Unlinked</option>
-              {visits.map((visit) => <option key={visit.id} value={visit.id}>{visit.title ?? "Field visit"}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Captured date
-            <input name="captured_at" type="datetime-local" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-3">
-            Description
-            <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-          </label>
-          <div className="flex justify-end lg:col-span-3">
-            <Button type="submit" className="gap-2"><Plus className="h-4 w-4" /> Create evidence</Button>
-          </div>
-        </form>
-      )}
-
-      <SectionCard title="Evidence Register" action={<QuickLink href="/dashboard/impact-intelligence/reports">Reports</QuickLink>}>
-        {evidence.length === 0 ? (
+      {loadError && (
+        <SectionCard title="Evidence Repository Unavailable">
           <EmptyState
-            title="No evidence yet"
-            description="Evidence placeholders will appear after field officers or programme teams record files for monitoring, verification, and impact validation."
+            title="Evidence records could not load"
+            description={loadError.includes("permission") ? "Your signed-in role does not currently have evidence access. Ask an administrator to verify your assigned role." : "Evidence records are temporarily unavailable. Try again after the data source is restored."}
             icon={FileArchive}
           />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {evidence.map((item) => (
-              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/40">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold uppercase text-slate-500">
-                    {(item.file_type ?? item.evidence_type ?? "file").slice(0, 3)}
+        </SectionCard>
+      )}
+
+      {!loadError && filters.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{filters.error}</div>
+      )}
+
+      {!loadError && filters.success && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{filters.success}</div>
+      )}
+
+      {!loadError && canCreate && (
+        <SectionCard title="Upload cohort-anchored evidence">
+          <CreateEvidenceForm
+            key={`${filters.create_programme_id ?? ""}:${filters.create_cohort_id ?? ""}`}
+            options={uploadOptions}
+            selectedProgrammeId={filters.create_programme_id ?? ""}
+            selectedCohortId={filters.create_cohort_id ?? ""}
+            action={uploadEvidenceAction}
+          />
+        </SectionCard>
+      )}
+
+      {!loadError && (
+        <SectionCard title="Evidence Register" action={<QuickLink href="/dashboard/impact-intelligence/monitoring">Monitoring</QuickLink>}>
+          {evidence.length === 0 ? (
+            <EmptyState
+              title="No evidence uploaded"
+              description={canCreate ? "Use the constrained upload form to add the first evidence file." : "Evidence within your assigned scope will appear here."}
+              icon={FileArchive}
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {evidence.map((item) => (
+                <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold uppercase text-slate-500">
+                      {(item.mime_type?.split("/")[1] ?? item.file_type ?? "file").slice(0, 4)}
+                    </div>
+                    <StatusBadge value={item.status ?? "draft"} />
                   </div>
-                  <StatusBadge value={item.verification_status} />
-                </div>
-                <h2 className="mt-3 font-semibold text-slate-950">{item.file_name}</h2>
-                <p className="mt-1 text-sm text-slate-600">{item.description ?? "No description recorded."}</p>
-                <p className="mt-3 text-xs text-slate-500">{item.evidence_category ?? "other"} • {item.msmes?.business_name ?? "Unlinked MSME"} • {formatDate(item.captured_at ?? item.created_at)}</p>
-              </Link>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+                  <h2 className="mt-3 break-words font-semibold text-slate-950">{displayName(item)}</h2>
+                  <p className="mt-1 text-sm text-slate-600">{item.description ?? "No evidence context note."}</p>
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    <p>{item.impact_programmes?.name ?? "Legacy/unlinked programme"} · {item.impact_beneficiary_cohorts?.name ?? "Legacy/unlinked cohort"}</p>
+                    <p>{item.msmes?.business_name ?? "Legacy/unlinked beneficiary"} · {formatDate(item.uploaded_at ?? item.created_at)}</p>
+                    <p>Uploaded by {item.uploaded_by?.full_name ?? item.uploaded_by?.email ?? "Unknown user"}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
     </section>
   );
 }

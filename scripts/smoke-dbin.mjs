@@ -35,6 +35,16 @@ const associationWorkspaceMigration = read("supabase/migrations/20260531190000_a
 const onboardingSaveHardeningMigration = read("supabase/migrations/20260601100000_msme_onboarding_save_hardening.sql");
 const loginPage = read("src/app/(auth)/login/page.tsx");
 const msmeOnboardingPage = read("src/app/dashboard/msme/onboarding/page.tsx");
+const impactEvidenceService = read("src/lib/data/impact-evidence.ts");
+const impactEvidenceMigration = read(
+  "supabase/migrations/20260606120000_impact_evidence_phase1.sql",
+);
+const impactEvidenceAccessRoute = read(
+  "src/app/api/impact-intelligence/evidence/[evidenceId]/route.ts",
+);
+const impactEvidencePage = read(
+  "src/app/dashboard/impact-intelligence/evidence/page.tsx",
+);
 
 check("public raw ID verification is blocked", () => {
   assert(
@@ -179,6 +189,44 @@ check("association member MSME linkage is unique when present", () => {
     onboardingSaveHardeningMigration.includes("create unique index if not exists idx_msmes_source_association_member_unique") &&
       onboardingSaveHardeningMigration.includes("where source_association_member_id is not null"),
     "Expected a partial unique index to prevent duplicate association member MSME workspaces.",
+  );
+});
+
+check("evidence storage is private and legacy placeholders remain drafts", () => {
+  assert(
+    impactEvidenceMigration.includes("'impact-evidence'") &&
+      impactEvidenceMigration.includes("public = false") &&
+      impactEvidenceMigration.includes("legacy_evidence_status") &&
+      impactEvidenceMigration.includes("status = 'draft'"),
+    "Expected a private evidence bucket and legacy placeholder preservation.",
+  );
+});
+
+check("evidence upload hashes files and cleans up failed writes", () => {
+  assert(
+    impactEvidenceService.includes('createHash("sha256")') &&
+      impactEvidenceService.includes("validateEvidenceContext") &&
+      impactEvidenceService.includes(".upload(storagePath") &&
+      impactEvidenceService.includes(".remove([storagePath])"),
+    "Expected constrained evidence upload with SHA-256 and storage cleanup.",
+  );
+});
+
+check("evidence access uses authorized signed URLs", () => {
+  assert(
+    impactEvidenceAccessRoute.includes("getImpactEvidence(ctx") &&
+      impactEvidenceAccessRoute.includes("createSignedUrl") &&
+      !impactEvidenceAccessRoute.includes("getPublicUrl"),
+    "Expected evidence access to authorize the record before issuing a signed URL.",
+  );
+});
+
+check("evidence list uses defensive loading", () => {
+  assert(
+    impactEvidencePage.includes("unstable_rethrow") &&
+      impactEvidencePage.includes("loadError") &&
+      impactEvidencePage.includes("Evidence Repository Unavailable"),
+    "Expected the evidence route to render an unavailable state instead of crashing.",
   );
 });
 

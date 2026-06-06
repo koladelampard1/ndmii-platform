@@ -5,13 +5,13 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   assignFieldVisit,
   completeFieldVisit,
-  createEvidenceRecord,
   EVIDENCE_CATEGORIES,
   getFieldVisit,
   listUserPickerOptions,
   MONITORING_MANAGE_ROLES,
   MONITORING_REVIEW_ROLES,
 } from "@/lib/data/impact-intelligence";
+import { IMPACT_EVIDENCE_CREATE_ROLES, uploadImpactEvidence } from "@/lib/data/impact-evidence";
 
 async function assignVisitAction(visitId: string, formData: FormData) {
   "use server";
@@ -45,7 +45,7 @@ async function createEvidenceAction(visitId: string, formData: FormData) {
   const ctx = await getCurrentUserContext();
   formData.set("field_visit_id", visitId);
   try {
-    await createEvidenceRecord(ctx, formData);
+    await uploadImpactEvidence(ctx, formData);
   } catch (error) {
     unstable_rethrow(error);
     if (!isExpectedMonitoringActionError(error)) throw error;
@@ -60,8 +60,15 @@ const EXPECTED_MONITORING_ACTION_ERRORS = [
   "You do not have permission to manage field monitoring.",
   "You do not have permission to complete this field visit.",
   "You can only access field visits assigned to you.",
-  "Evidence file name is required.",
-  "You do not have permission to create evidence records.",
+  "Choose an evidence file to upload.",
+  "Evidence file must be 10MB or smaller.",
+  "Evidence must be a PDF",
+  "You do not have permission to upload impact evidence.",
+  "Selected evidence",
+  "already uploaded",
+  "assigned visits or beneficiaries",
+  "upload failed",
+  "could not be saved",
 ];
 
 function isExpectedMonitoringActionError(error: unknown) {
@@ -104,6 +111,7 @@ export default async function MonitoringDetailPage({
   const canManage = MONITORING_MANAGE_ROLES.includes(ctx.role);
   const canReview = MONITORING_REVIEW_ROLES.includes(ctx.role);
   const canComplete = ctx.role === "field_officer" || canManage;
+  const canUploadEvidence = (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role);
   const assignVisit = assignVisitAction.bind(null, visit.id);
   const completeVisit = completeVisitAction.bind(null, visit.id);
   const createEvidence = createEvidenceAction.bind(null, visit.id);
@@ -177,20 +185,23 @@ export default async function MonitoringDetailPage({
             </form>
           )}
 
-          <form action={createEvidence} className="rounded-xl border bg-white p-5 shadow-sm">
-            <h2 className="font-semibold text-slate-950">Add evidence placeholder</h2>
-            <input required name="file_name" className="mt-3 w-full rounded-md border px-3 py-2 text-sm" placeholder="facility-photo-001.jpg" />
+          {canUploadEvidence && <form action={createEvidence} className="rounded-xl border bg-white p-5 shadow-sm">
+            <h2 className="font-semibold text-slate-950">Upload visit evidence</h2>
+            <input required name="evidence_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="mt-3 w-full rounded-md border px-3 py-2 text-sm file:mr-2 file:rounded file:border-0 file:bg-slate-900 file:px-2 file:py-1 file:text-white" />
             <select name="evidence_category" defaultValue="monitoring_photo" className="mt-3 w-full rounded-md border px-3 py-2 text-sm">
               {EVIDENCE_CATEGORIES.map((category) => <option key={category} value={category}>{category.replaceAll("_", " ")}</option>)}
             </select>
             <input name="file_url" className="mt-3 w-full rounded-md border px-3 py-2 text-sm" placeholder="Optional placeholder URL" />
             <input type="hidden" name="programme_id" value={visit.programme_id ?? ""} />
+            <input type="hidden" name="cohort_id" value={visit.cohort_id ?? ""} />
+            <input type="hidden" name="cohort_member_id" value={visit.cohort_member_id ?? ""} />
             <input type="hidden" name="intervention_id" value={visit.intervention_id ?? ""} />
             <input type="hidden" name="assessment_id" value={visit.assessment_id ?? ""} />
             <input type="hidden" name="msme_id" value={visit.msme_id ?? ""} />
             <textarea name="description" rows={3} className="mt-3 w-full rounded-md border px-3 py-2 text-sm" placeholder="Evidence description" />
-            <Button type="submit" className="mt-3 w-full">Create evidence</Button>
-          </form>
+            <p className="mt-2 text-xs text-slate-500">PDF, JPEG, PNG, or WebP. Maximum 10MB.</p>
+            <Button type="submit" className="mt-3 w-full">Upload evidence</Button>
+          </form>}
 
           {canReview && visit.status === "completed" && (
             <form action={completeVisit} className="rounded-xl border bg-white p-5 shadow-sm">
@@ -212,8 +223,8 @@ export default async function MonitoringDetailPage({
             <div className="mt-4 space-y-3">
               {evidence.map((item) => (
                 <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="block rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
-                  <p className="font-medium text-slate-950">{item.file_name}</p>
-                  <p className="mt-1 text-xs text-slate-500">{item.evidence_category ?? "other"} • {item.verification_status}</p>
+                  <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.evidence_category ?? "other"} • {item.status ?? "draft"}</p>
                 </Link>
               ))}
             </div>

@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
-import { CalendarCheck, CheckCircle2, CircleDashed, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
+import { CalendarCheck, CheckCircle2, CircleDashed, FileArchive, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -12,6 +12,10 @@ import {
   listUserPickerOptions,
   updateImpactCohortMemberStatus,
 } from "@/lib/data/impact-intelligence";
+import {
+  listImpactEvidence,
+  logImpactEvidenceDiagnostic,
+} from "@/lib/data/impact-evidence";
 import { ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../../_components";
 
 type PageProps = {
@@ -64,10 +68,20 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
   const { cohortId } = await params;
   const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
-  const [{ cohort, members, dashboard }, registryMsmes, fieldOfficers] = await Promise.all([
+  const [{ cohort, members, dashboard }, registryMsmes, fieldOfficers, evidenceFiles] = await Promise.all([
     getImpactCohortDetail(ctx, cohortId),
     listMsmePickerOptions({ limit: 150, state: filters.state, sector: filters.sector, search: filters.q }),
     listUserPickerOptions("field_officer"),
+    listImpactEvidence(ctx, { cohortId, limit: 250 }).catch(() => {
+      logImpactEvidenceDiagnostic({
+        operation: "cohort_detail_evidence_unavailable",
+        cohortId,
+        actorRole: ctx.role,
+        success: false,
+        errorCode: "source_unavailable",
+      });
+      return [];
+    }),
   ]);
 
   if (!cohort) notFound();
@@ -96,12 +110,13 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
         </div>
       </ImpactPageHeader>
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <MetricTile label="Total beneficiaries" value={dashboard.totalBeneficiaries.toLocaleString("en-NG")} detail={`Target ${cohort.target_beneficiaries.toLocaleString("en-NG")}`} icon={UsersRound} tone="emerald" />
         <MetricTile label="Active beneficiaries" value={dashboard.activeBeneficiaries.toLocaleString("en-NG")} icon={CircleDashed} tone="blue" />
         <MetricTile label="Completed beneficiaries" value={dashboard.completedBeneficiaries.toLocaleString("en-NG")} icon={CheckCircle2} tone="emerald" />
         <MetricTile label="Dropped beneficiaries" value={dashboard.droppedBeneficiaries.toLocaleString("en-NG")} icon={UserMinus} tone="red" />
         <MetricTile label="Field visits" value={fieldVisitCount.toLocaleString("en-NG")} detail={`${openFieldVisitCount.toLocaleString("en-NG")} open`} icon={CalendarCheck} tone="blue" />
+        <MetricTile label="Evidence" value={evidenceFiles.length.toLocaleString("en-NG")} detail={`${evidenceFiles.filter((item) => item.status === "verified").length} verified`} icon={FileArchive} tone="emerald" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -123,6 +138,21 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard title="Cohort Evidence" action={<QuickLink href={`/dashboard/impact-intelligence/evidence?create_programme_id=${cohort.programme_id}&create_cohort_id=${cohort.id}`}>Open repository</QuickLink>}>
+        {evidenceFiles.length === 0 ? (
+          <p className="rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No evidence is linked to this cohort.</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {evidenceFiles.slice(0, 12).map((item) => (
+              <a key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
+                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.msmes?.business_name ?? "Beneficiary"} · {item.status}</p>
+              </a>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {canManage && (
         <SectionCard title="Enroll MSMEs">

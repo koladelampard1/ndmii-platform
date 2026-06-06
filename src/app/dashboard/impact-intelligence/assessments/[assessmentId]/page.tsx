@@ -13,6 +13,10 @@ import {
   type ImpactAssessmentQuestion,
   type ImpactAssessmentResponse,
 } from "@/lib/data/impact-intelligence";
+import {
+  listImpactEvidence,
+  logImpactEvidenceDiagnostic,
+} from "@/lib/data/impact-evidence";
 
 const EXPECTED_ASSESSMENT_ERRORS = [
   "Required question missing:",
@@ -143,7 +147,18 @@ export default async function AssessmentDetailPage({
   const { assessmentId } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
+  const [detail, evidenceFiles] = await Promise.all([
+    getImpactAssessmentDetail(assessmentId, ctx),
+    listImpactEvidence(ctx, { assessmentId, limit: 100 }).catch(() => {
+      logImpactEvidenceDiagnostic({
+        operation: "assessment_detail_evidence_unavailable",
+        actorRole: ctx.role,
+        success: false,
+        errorCode: "source_unavailable",
+      });
+      return [];
+    }),
+  ]);
   const { assessment, template, sections, questions, responses, scores, reviews, visits } = detail;
   if (!assessment) notFound();
 
@@ -203,6 +218,25 @@ export default async function AssessmentDetailPage({
               <Link key={visit.id} href={`/dashboard/impact-intelligence/monitoring/${visit.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
                 <p className="font-medium text-slate-950">{visit.title ?? "Field visit"}</p>
                 <p className="mt-1 text-xs text-slate-500">{visit.location_text ?? "Location pending"} • {visit.status ?? "pending"}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </article>
+
+      <article className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-950">Assessment evidence ({evidenceFiles.length})</h2>
+          <Link href={`/dashboard/impact-intelligence/evidence?create_programme_id=${assessment.programme_id ?? ""}&create_cohort_id=${assessment.cohort_id ?? ""}`} className="text-sm font-medium text-emerald-700">Open evidence repository</Link>
+        </div>
+        {evidenceFiles.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed bg-slate-50 p-4 text-sm text-slate-600">No evidence is linked to this assessment.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {evidenceFiles.map((item) => (
+              <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
+                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.status} · {item.evidence_category?.replaceAll("_", " ") ?? "other"}</p>
               </Link>
             ))}
           </div>
