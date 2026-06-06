@@ -12,7 +12,12 @@ import {
   MONITORING_REVIEW_ROLES,
 } from "@/lib/data/impact-intelligence";
 import { IMPACT_EVIDENCE_CREATE_ROLES, uploadImpactEvidence } from "@/lib/data/impact-evidence";
+import {
+  listIndicatorMeasurements,
+  logImpactIndicatorDiagnostic,
+} from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
+import { IndicatorSummary } from "../../indicators/indicator-summary";
 
 async function assignVisitAction(visitId: string, formData: FormData) {
   "use server";
@@ -105,7 +110,22 @@ export default async function MonitoringDetailPage({
   const { visitId } = await params;
   const query = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
-  const [detail, fieldOfficers] = await Promise.all([getFieldVisit(ctx, visitId), listUserPickerOptions("field_officer")]);
+  const [detail, fieldOfficers, indicatorMeasurements] = await Promise.all([
+    getFieldVisit(ctx, visitId),
+    listUserPickerOptions("field_officer"),
+    listIndicatorMeasurements(ctx, { fieldVisitId: visitId, limit: 20 }).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "monitoring_detail_indicator_measurements_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        fieldVisitId: visitId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return null;
+    }),
+  ]);
   const { visit, assignments, checklist, notes, evidence } = detail;
   if (!visit) notFound();
 
@@ -144,6 +164,13 @@ export default async function MonitoringDetailPage({
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Checklist</p><p className="mt-1 font-semibold text-slate-950">{checklist.filter((item) => item.is_completed).length}/{checklist.length}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-950">{evidence.length}</p></div>
       </div>
+
+      <IndicatorSummary
+        title="Visit-linked indicator measurements"
+        aggregate={null}
+        measurements={indicatorMeasurements ?? []}
+        unavailable={indicatorMeasurements === null}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <form action={completeVisit} className="rounded-xl border bg-white p-5 shadow-sm">

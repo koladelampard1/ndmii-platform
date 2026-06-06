@@ -16,7 +16,12 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import {
+  aggregateCohortIndicators,
+  logImpactIndicatorDiagnostic,
+} from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
+import { IndicatorSummary } from "../../indicators/indicator-summary";
 import { ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../../_components";
 
 type PageProps = {
@@ -69,7 +74,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
   const { cohortId } = await params;
   const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
-  const [{ cohort, members, dashboard }, registryMsmes, fieldOfficers, evidenceFiles] = await Promise.all([
+  const [{ cohort, members, dashboard }, registryMsmes, fieldOfficers, evidenceFiles, indicatorAggregate] = await Promise.all([
     getImpactCohortDetail(ctx, cohortId),
     listMsmePickerOptions({ limit: 150, state: filters.state, sector: filters.sector, search: filters.q }),
     listUserPickerOptions("field_officer"),
@@ -82,6 +87,18 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
         errorCode: "source_unavailable",
       });
       return [];
+    }),
+    aggregateCohortIndicators(ctx, cohortId).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "cohort_detail_indicators_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        cohortId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return null;
     }),
   ]);
 
@@ -119,6 +136,8 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
         <MetricTile label="Field visits" value={fieldVisitCount.toLocaleString("en-NG")} detail={`${openFieldVisitCount.toLocaleString("en-NG")} open`} icon={CalendarCheck} tone="blue" />
         <MetricTile label="Evidence" value={evidenceFiles.length.toLocaleString("en-NG")} detail={`${evidenceFiles.filter((item) => item.status === "verified").length} verified`} icon={FileArchive} tone="emerald" />
       </div>
+
+      <IndicatorSummary aggregate={indicatorAggregate} unavailable={!indicatorAggregate} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <SectionCard title="State Distribution">

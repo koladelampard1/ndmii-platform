@@ -18,7 +18,14 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import {
+  aggregateInterventionIndicators,
+  type ImpactIndicatorMeasurement,
+  listIndicatorMeasurements,
+  logImpactIndicatorDiagnostic,
+} from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
+import { IndicatorSummary } from "../../indicators/indicator-summary";
 import { EmptyState, SectionCard, StatusBadge } from "../../_components";
 
 async function updateProgressAction(interventionId: string, formData: FormData) {
@@ -80,6 +87,32 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
   }
   const { intervention, events, assessments, visits } = detail;
   if (!intervention) notFound();
+  const [indicatorAggregate, indicatorMeasurements] = await Promise.all([
+    aggregateInterventionIndicators(ctx, interventionId).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "intervention_detail_indicator_aggregate_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        interventionId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return null;
+    }),
+    listIndicatorMeasurements(ctx, { interventionId, limit: 20 }).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "intervention_detail_indicator_measurements_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        interventionId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return [] as ImpactIndicatorMeasurement[];
+    }),
+  ]);
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
   const updateProgress = updateProgressAction.bind(null, intervention.id);
   const addNote = addNoteAction.bind(null, intervention.id);
@@ -116,6 +149,13 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Approved</p><p className="mt-1 font-semibold text-slate-950">{formatCurrency(intervention.approved_amount)}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Disbursed</p><p className="mt-1 font-semibold text-slate-950">{formatCurrency(intervention.disbursed_amount)}</p></div>
       </div>
+
+      <IndicatorSummary
+        title="Linked indicator measurements"
+        aggregate={indicatorAggregate}
+        measurements={indicatorMeasurements}
+        unavailable={!indicatorAggregate}
+      />
 
       {canWrite && (
         <div className="grid gap-4">

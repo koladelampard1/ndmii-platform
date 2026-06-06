@@ -45,6 +45,14 @@ const impactEvidenceAccessRoute = read(
 const impactEvidencePage = read(
   "src/app/dashboard/impact-intelligence/evidence/page.tsx",
 );
+const impactIndicatorMigration = read(
+  "supabase/migrations/20260606140000_impact_indicator_phase1.sql",
+);
+const impactIndicatorService = read("src/lib/data/impact-indicators.ts");
+const impactIndicatorPage = read(
+  "src/app/dashboard/impact-intelligence/indicators/page.tsx",
+);
+const authorization = read("src/lib/auth/authorization.ts");
 
 check("public raw ID verification is blocked", () => {
   assert(
@@ -227,6 +235,52 @@ check("evidence list uses defensive loading", () => {
       impactEvidencePage.includes("loadError") &&
       impactEvidencePage.includes("Evidence Repository Unavailable"),
     "Expected the evidence route to render an unavailable state instead of crashing.",
+  );
+});
+
+check("indicator tables deny anonymous and authenticated direct access", () => {
+  assert(
+    impactIndicatorMigration.includes("alter table public.impact_indicators enable row level security") &&
+      impactIndicatorMigration.includes("alter table public.impact_kpi_metrics enable row level security") &&
+      impactIndicatorMigration.includes("alter table public.impact_dashboard_snapshots enable row level security") &&
+      impactIndicatorMigration.includes("revoke all on public.impact_indicator_definitions from anon") &&
+      impactIndicatorMigration.includes("revoke all on public.impact_indicator_measurements from anon") &&
+      impactIndicatorMigration.includes("revoke all on public.impact_indicator_measurement_events from anon") &&
+      impactIndicatorMigration.includes("revoke all on public.impact_indicator_definitions from authenticated"),
+    "Expected legacy and Phase 1 indicator tables to use RLS with direct client access revoked.",
+  );
+});
+
+check("indicator Phase 1 separates definitions, measurements, and events", () => {
+  assert(
+    impactIndicatorMigration.includes("create table if not exists public.impact_indicator_definitions") &&
+      impactIndicatorMigration.includes("create table if not exists public.impact_indicator_measurements") &&
+      impactIndicatorMigration.includes("create table if not exists public.impact_indicator_measurement_events") &&
+      impactIndicatorMigration.includes("legacy_indicator_status") &&
+      impactIndicatorMigration.includes("'imported'"),
+    "Expected separate indicator definition, measurement, and append-only event tables with safe legacy preservation.",
+  );
+});
+
+check("indicator aggregation counts verified measurements only", () => {
+  assert(
+    impactIndicatorService.includes('measurements.filter((item) => item.verification_status === "verified")') &&
+      impactIndicatorService.includes('verificationStatus: "verified"') &&
+      impactIndicatorService.includes("calculateProgressPercentage") &&
+      impactIndicatorService.includes("calculateOutcomeStatus"),
+    "Expected official indicator aggregates to use verified measurements and explicit progress/outcome calculations.",
+  );
+});
+
+check("indicator route loads defensively and field officers have scoped access", () => {
+  assert(
+    impactIndicatorPage.includes("unstable_rethrow") &&
+      impactIndicatorPage.includes("loadError") &&
+      impactIndicatorPage.includes("Indicators Unavailable") &&
+      authorization.includes('"/dashboard/impact-intelligence/indicators"') &&
+      impactIndicatorService.includes('ctx.role === "field_officer"') &&
+      impactIndicatorService.includes("assertFieldOfficerMeasurementScope"),
+    "Expected defensive indicator loading and explicit field-officer route plus record scoping.",
   );
 });
 

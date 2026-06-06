@@ -5,7 +5,12 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import {
+  aggregateProgrammeIndicators,
+  logImpactIndicatorDiagnostic,
+} from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
+import { IndicatorSummary } from "../../indicators/indicator-summary";
 import { QuickLink, StatusBadge } from "../../_components";
 
 function formatDate(value: string | null) {
@@ -16,7 +21,7 @@ function formatDate(value: string | null) {
 export default async function ImpactProgrammeDetailPage({ params }: { params: Promise<{ programmeId: string }> }) {
   const { programmeId } = await params;
   const ctx = await getCurrentUserContext();
-  const [{ programme, interventions, unanchoredInterventions, enrolments, cohorts }, evidenceFiles] = await Promise.all([
+  const [{ programme, interventions, unanchoredInterventions, enrolments, cohorts }, evidenceFiles, indicatorAggregate] = await Promise.all([
     getImpactProgrammeDetail(ctx, programmeId),
     listImpactEvidence(ctx, { programmeId, limit: 500 }).catch(() => {
       logImpactEvidenceDiagnostic({
@@ -27,6 +32,18 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         errorCode: "source_unavailable",
       });
       return [];
+    }),
+    aggregateProgrammeIndicators(ctx, programmeId).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "programme_detail_indicators_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        programmeId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return null;
     }),
   ]);
   const fieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.field_visit_count ?? 0), 0);
@@ -74,6 +91,8 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-950">{evidenceFiles.length}</p><p className="mt-1 text-xs text-slate-500">{evidenceFiles.filter((item) => item.status === "verified").length} verified</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Legacy linked MSMEs</p><p className="mt-1 font-semibold text-slate-950">{enrolments.length}</p></div>
       </div>
+
+      <IndicatorSummary aggregate={indicatorAggregate} unavailable={!indicatorAggregate} />
 
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">

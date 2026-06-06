@@ -17,7 +17,12 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import {
+  listIndicatorMeasurements,
+  logImpactIndicatorDiagnostic,
+} from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
+import { IndicatorSummary } from "../../indicators/indicator-summary";
 
 const EXPECTED_ASSESSMENT_ERRORS = [
   "Required question missing:",
@@ -148,7 +153,7 @@ export default async function AssessmentDetailPage({
   const { assessmentId } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  const [detail, evidenceFiles] = await Promise.all([
+  const [detail, evidenceFiles, indicatorMeasurements] = await Promise.all([
     getImpactAssessmentDetail(assessmentId, ctx),
     listImpactEvidence(ctx, { assessmentId, limit: 100 }).catch(() => {
       logImpactEvidenceDiagnostic({
@@ -158,6 +163,18 @@ export default async function AssessmentDetailPage({
         errorCode: "source_unavailable",
       });
       return [];
+    }),
+    listIndicatorMeasurements(ctx, { assessmentId, limit: 20 }).catch((error) => {
+      logImpactIndicatorDiagnostic({
+        operation: "assessment_detail_indicator_measurements_unavailable",
+        role: ctx.role,
+        authUserId: ctx.authUserId,
+        appUserId: ctx.appUserId,
+        assessmentId,
+        errorMessage: error instanceof Error ? error.message : "Unknown indicator error",
+        success: false,
+      });
+      return null;
     }),
   ]);
   const { assessment, template, sections, questions, responses, scores, reviews, visits } = detail;
@@ -208,6 +225,13 @@ export default async function AssessmentDetailPage({
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Beneficiary status</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_cohort_members?.member_status ?? "Not anchored"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Field visit</p><p className="mt-1 font-semibold text-slate-950">{assessment.impact_field_visits?.title ?? "Not linked"}</p></div>
       </div>
+
+      <IndicatorSummary
+        title="Assessment-linked indicator measurements"
+        aggregate={null}
+        measurements={indicatorMeasurements ?? []}
+        unavailable={indicatorMeasurements === null}
+      />
 
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-slate-950">Related field visits</h2>
