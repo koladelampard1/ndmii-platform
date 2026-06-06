@@ -1,126 +1,132 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { FileText, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { FileText } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import type { UserContext } from "@/lib/auth/authorization";
 import {
-  createImpactReport,
-  listImpactReports,
-  listImpactInterventions,
-  listImpactProgrammes,
-  listMsmePickerOptions,
-  REPORT_TYPES,
-} from "@/lib/data/impact-intelligence";
+  REPORT_CREATE_ROLES,
+  createInstitutionalReport,
+  getReportFormOptions,
+  listInstitutionalReports,
+  logImpactReportDiagnostic,
+  type InstitutionalReport,
+  type ReportFormOptions,
+} from "@/lib/data/impact-reports";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { CreateReportForm } from "./create-report-form";
 
-const REPORTING_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
-const REPORT_WRITE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer"];
+type SearchParams = { error?: string; success?: string };
 
-function assertReportingRole(role: string) {
-  if (!REPORTING_ROLES.includes(role)) redirect("/access-denied");
+const EMPTY_OPTIONS: ReportFormOptions = { programmes: [], cohorts: [], members: [], interventions: [] };
+const EXPECTED_CREATE_ERRORS = ["required", "Select", "does not", "does not match", "permission", "unavailable"];
+
+function expectedCreateError(error: unknown) {
+  return error instanceof Error && EXPECTED_CREATE_ERRORS.some((message) => error.message.includes(message));
 }
-
 async function createReportAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const reportId = await createImpactReport(ctx, formData);
-  redirect(`/dashboard/impact-intelligence/reports/${reportId}`);
+  try {
+    const reportId = await createInstitutionalReport(ctx, formData);
+    redirect(`/dashboard/impact-intelligence/reports/${reportId}?success=Draft%20report%20created`);
+  } catch (error) {
+    unstable_rethrow(error);
+    if (!expectedCreateError(error)) throw error;
+    redirect(`/dashboard/impact-intelligence/reports?error=${encodeURIComponent(error instanceof Error ? error.message : "Report draft could not be created.")}`);
+  }
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "Not generated";
-  return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
+function scopeLabel(report: InstitutionalReport) {
+  const parts = [
+    report.impact_programmes?.name ?? "Programme unavailable",
+    report.impact_beneficiary_cohorts?.name,
+    report.msmes?.business_name,
+    report.impact_interventions?.title,
+  ].filter(Boolean);
+  return parts.join(" / ");
 }
 
-export default async function ReportsPage() {
-  const ctx = await getCurrentUserContext();
-  assertReportingRole(ctx.role);
-  const [reports, programmes, interventions, msmes] = await Promise.all([
-    listImpactReports(ctx, { limit: 100 }),
-    listImpactProgrammes(ctx, { limit: 100 }),
-    listImpactInterventions(ctx, { limit: 100 }),
-    listMsmePickerOptions({ limit: 150 }),
-  ]);
-  const canWrite = REPORT_WRITE_ROLES.includes(ctx.role);
+function isLegacy(report: InstitutionalReport) {
+  return report.metadata?.legacy_unverified === true || report.metadata?.report_phase !== "phase1a";
+}
+
+export default async function ReportsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  const query = (await searchParams) ?? {};
+  let ctx: UserContext | null = null;
+  let reports: InstitutionalReport[] = [];
+  let options = EMPTY_OPTIONS;
+  let listError: string | null = null;
+  let optionsError: string | null = null;
+
+  try {
+    ctx = await getCurrentUserContext();
+    try {
+      reports = await listInstitutionalReports(ctx, 100);
+    } catch (error) {
+      unstable_rethrow(error);
+      listError = error instanceof Error ? error.message : "Institutional reports are temporarily unavailable.";
+      logImpactReportDiagnostic({ operation: "report_list_load_failed", role: ctx.role, authUserId: ctx.authUserId, appUserId: ctx.appUserId, errorMessage: listError, success: false });
+    }
+    if ((REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role)) {
+      try {
+        options = await getReportFormOptions(ctx);
+      } catch (error) {
+        unstable_rethrow(error);
+        optionsError = error instanceof Error ? error.message : "Report scope options are temporarily unavailable.";
+        logImpactReportDiagnostic({ operation: "report_options_load_failed", role: ctx.role, authUserId: ctx.authUserId, appUserId: ctx.appUserId, errorMessage: optionsError, success: false });
+      }
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    listError = "Your report workspace could not be loaded. Verify the current session and assigned role.";
+    logImpactReportDiagnostic({ operation: "reports_page_context_failed", errorMessage: error instanceof Error ? error.message : "unknown_error", success: false });
+  }
+
+  const canCreate = Boolean(ctx && (REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role) && !optionsError);
 
   return (
     <section className="space-y-6">
       <ImpactPageHeader
-        eyebrow="Reporting engine"
+        eyebrow="Institutional programme reporting"
         title="Impact Reports"
-        description="Generate deterministic, evidence-linked report records from DBIN programme, intervention, assessment, monitoring, and evidence data."
-        badge={`${reports.length} records`}
+        description="Generate scope-correct, versioned reports from approved assessments, reviewed monitoring visits, verified evidence, and verified indicator measurements."
+        badge={`${reports.length} reports`}
         actions={[{ href: "/dashboard/impact-intelligence/executive", label: "Executive dashboard", icon: FileText }]}
       />
 
-      {canWrite && (
-        <form action={createReportAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-3">
-          <h2 className="font-semibold text-slate-950 lg:col-span-3">Generate report record</h2>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Title
-            <input required name="title" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="BOI MSME Impact Intelligence Summary" />
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Report type
-            <select name="report_type" defaultValue="executive_summary" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              {REPORT_TYPES.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Programme
-            <select name="programme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">All programmes</option>
-              {programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.name}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            Intervention
-            <select name="intervention_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">All interventions</option>
-              {interventions.map((intervention) => <option key={intervention.id} value={intervention.id}>{intervention.title}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700">
-            MSME
-            <select name="msme_id" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-              <option value="">All MSMEs</option>
-              {msmes.map((msme) => <option key={msme.id} value={msme.id}>{msme.business_name}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-3">
-            Summary
-            <textarea name="summary" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Optional deterministic summary note." />
-          </label>
-          <div className="flex justify-end lg:col-span-3">
-            <Button type="submit" className="gap-2"><Plus className="h-4 w-4" /> Generate report</Button>
-          </div>
-        </form>
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
+      {query.success && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{query.success}</div>}
+
+      {optionsError && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Report creation is temporarily unavailable because scope options could not load. Existing reports remain accessible.
+        </div>
       )}
+      {canCreate && <CreateReportForm options={options} action={createReportAction} />}
 
       <SectionCard title="Report Library" action={<QuickLink href="/dashboard/impact-intelligence/evidence">Evidence repository</QuickLink>}>
-        {reports.length === 0 ? (
-          <EmptyState
-            title="No reports yet"
-            description="Generate the first impact report record when programme, intervention, assessment, monitoring, and evidence data is ready for review."
-            icon={FileText}
-          />
+        {listError ? (
+          <EmptyState title="Reports unavailable" description="Report records could not be loaded. The page remains available while the report source or session is restored." icon={FileText} />
+        ) : reports.length === 0 ? (
+          <EmptyState title="No reports yet" description="Create a programme-scoped draft, generate its first immutable source version, then submit it for institutional review." icon={FileText} />
         ) : (
           <TableShell>
             <table className={tableClassName}>
               <thead className={tableHeadClassName}>
-                <tr><th className="px-4 py-3">Report</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Programme</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Generated</th><th className="px-4 py-3">Action</th></tr>
+                <tr><th className="px-4 py-3">Report</th><th className="px-4 py-3">Scope</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Latest version</th><th className="px-4 py-3">Official</th><th className="px-4 py-3">Action</th></tr>
               </thead>
               <tbody>
                 {reports.map((report) => (
                   <tr key={report.id} className={tableRowClassName}>
                     <td className={tableCellClassName}>
                       <Link href={`/dashboard/impact-intelligence/reports/${report.id}`} className="font-medium text-slate-950 hover:text-emerald-700">{report.title}</Link>
-                      <p className="mt-1 text-xs text-slate-500">{report.summary ?? "No summary"}</p>
+                      <p className="mt-1 text-xs capitalize text-slate-500">{report.report_type.replaceAll("_", " ")}</p>
+                      {isLegacy(report) && <p className="mt-2 text-xs font-medium text-amber-700">Legacy unverified: scope and source references may be unreliable.</p>}
                     </td>
-                    <td className={`${tableCellClassName} text-slate-600`}>{report.report_type?.replaceAll("_", " ") ?? "report"}</td>
-                    <td className={`${tableCellClassName} text-slate-600`}>{report.impact_programmes?.name ?? "All programmes"}</td>
-                    <td className={tableCellClassName}><StatusBadge value={report.status ?? "draft"} /></td>
-                    <td className={`${tableCellClassName} text-slate-600`}>{formatDate(report.generated_at ?? report.created_at)}</td>
+                    <td className={`${tableCellClassName} max-w-xs text-slate-600`}>{scopeLabel(report)}</td>
+                    <td className={tableCellClassName}><StatusBadge value={report.status} /></td>
+                    <td className={`${tableCellClassName} text-slate-600`}>{report.latest_version ? `v${report.latest_version.version_number}` : "Not generated"}</td>
+                    <td className={tableCellClassName}>{report.status === "approved" && !isLegacy(report) ? <StatusBadge value="official" /> : <span className="text-xs text-slate-500">No</span>}</td>
                     <td className={tableCellClassName}><QuickLink href={`/dashboard/impact-intelligence/reports/${report.id}`}>Open</QuickLink></td>
                   </tr>
                 ))}

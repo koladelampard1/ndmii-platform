@@ -52,6 +52,19 @@ const impactIndicatorService = read("src/lib/data/impact-indicators.ts");
 const impactIndicatorPage = read(
   "src/app/dashboard/impact-intelligence/indicators/page.tsx",
 );
+const impactReportMigration = read(
+  "supabase/migrations/20260606170000_impact_reports_phase1a.sql",
+);
+const impactReportService = read("src/lib/data/impact-reports.ts");
+const impactReportListPage = read(
+  "src/app/dashboard/impact-intelligence/reports/page.tsx",
+);
+const impactReportDetailPage = read(
+  "src/app/dashboard/impact-intelligence/reports/[reportId]/page.tsx",
+);
+const impactReportExportRoute = read(
+  "src/app/api/impact-intelligence/reports/exports/[exportId]/route.ts",
+);
 const authorization = read("src/lib/auth/authorization.ts");
 
 check("public raw ID verification is blocked", () => {
@@ -281,6 +294,64 @@ check("indicator route loads defensively and field officers have scoped access",
       impactIndicatorService.includes('ctx.role === "field_officer"') &&
       impactIndicatorService.includes("assertFieldOfficerMeasurementScope"),
     "Expected defensive indicator loading and explicit field-officer route plus record scoping.",
+  );
+});
+
+check("institutional reports enforce programme-anchored scope", () => {
+  assert(
+    impactReportMigration.includes("cohort_id uuid") &&
+      impactReportMigration.includes("cohort_member_id uuid") &&
+      impactReportMigration.includes("validate_impact_report_scope") &&
+      impactReportService.includes("validateReportScope") &&
+      impactReportService.includes("applyScope"),
+    "Expected programme-anchored report scope fields, database validation, and source query filtering.",
+  );
+});
+
+check("institutional reports qualify official sources", () => {
+  assert(
+    impactReportService.includes('.eq("status", "approved")') &&
+      impactReportService.includes('.eq("status", "reviewed")') &&
+      impactReportService.includes('.eq("verification_status", "verified")') &&
+      impactReportService.includes("legacy_placeholder !== true") &&
+      impactReportService.includes("completed_unreviewed_field_visits_excluded"),
+    "Expected approved assessments, reviewed visits, verified evidence/indicators, and explicit excluded monitoring counts.",
+  );
+});
+
+check("institutional report versions and references are immutable", () => {
+  assert(
+    impactReportMigration.includes("create_impact_report_version") &&
+      impactReportMigration.includes("prevent_impact_report_version_mutation") &&
+      impactReportMigration.includes("impact_report_version_evidence_references") &&
+      impactReportMigration.includes("impact_report_version_indicator_references") &&
+      impactReportMigration.includes("prevent_impact_report_evidence_reference_update") &&
+      impactReportMigration.includes("prevent_impact_report_indicator_reference_update"),
+    "Expected transactional immutable versions with normalized immutable source references.",
+  );
+});
+
+check("institutional report exports are private and file-backed", () => {
+  assert(
+    impactReportMigration.includes("'impact-reports'") &&
+      impactReportMigration.includes("public = false") &&
+      impactReportMigration.includes("impact_report_exports_generated_file_check") &&
+      impactReportService.includes(".upload(storagePath") &&
+      impactReportService.includes(".list(folder") &&
+      impactReportExportRoute.includes("createSignedUrl") &&
+      !impactReportExportRoute.includes("getPublicUrl"),
+    "Expected private PDF/JSON files, storage verification, generated-file constraints, and authorized signed downloads.",
+  );
+});
+
+check("institutional report routes load defensively", () => {
+  assert(
+    impactReportListPage.includes("unstable_rethrow") &&
+      impactReportListPage.includes("Reports unavailable") &&
+      impactReportDetailPage.includes("unstable_rethrow") &&
+      impactReportDetailPage.includes("Report Unavailable") &&
+      impactReportDetailPage.includes("sourceErrors"),
+    "Expected report routes to render unavailable states and isolate source widget failures.",
   );
 });
 

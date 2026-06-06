@@ -53,7 +53,7 @@ export const FIELD_VISIT_STATUSES = ["pending", "assigned", "in_progress", "comp
 export const EVIDENCE_CATEGORIES = ["business_photo", "facility_photo", "cac_document", "invoice", "monitoring_photo", "beneficiary_document", "signed_form", "compliance_document", "other"] as const;
 export const EVIDENCE_VERIFICATION_STATUSES = ["pending", "verified", "rejected", "needs_review", "returned", "archived"] as const;
 export const REPORT_TYPES = ["executive_summary", "programme_performance", "assessment_summary", "monitoring_report", "intervention_report", "impact_intelligence"] as const;
-export const REPORT_STATUSES = ["draft", "generated", "approved", "archived"] as const;
+export const REPORT_STATUSES = ["draft", "in_review", "returned", "approved", "archived"] as const;
 export const INTELLIGENCE_CATEGORIES = ["risk", "recommendation", "anomaly", "monitoring", "intervention", "compliance", "readiness", "portfolio", "operational"] as const;
 export const INTELLIGENCE_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 export const DEFAULT_ASSESSMENT_SCORING_BANDS = [
@@ -2965,77 +2965,24 @@ export async function getAssessmentAnalytics(ctx?: UserContext) {
 }
 
 export async function createImpactReport(ctx: UserContext, formData: FormData) {
-  requireReportWrite(ctx);
-  const title = textValue(formData, "title");
-  if (!title) throw new Error("Report title is required.");
-  const supabase = await createPrivilegedImpactWriteClient();
-  const metrics = await getExecutiveDashboardMetrics(ctx);
-  const reportType = normaliseReportType(textValue(formData, "report_type"));
-  const payload = {
-    title,
-    report_type: reportType,
-    status: "generated",
-    summary: textValue(formData, "summary") ?? `${title} created from the internal programme-monitoring snapshot.`,
-    programme_id: textValue(formData, "programme_id"),
-    intervention_id: textValue(formData, "intervention_id"),
-    assessment_id: textValue(formData, "assessment_id"),
-    field_visit_id: textValue(formData, "field_visit_id"),
-    msme_id: textValue(formData, "msme_id"),
-    generated_by_user_id: ctx.appUserId,
-    generated_at: new Date().toISOString(),
-    report_json: metrics as unknown as Record<string, unknown>,
-    evidence_references: [],
-    metadata: { deterministic: true, source: "programme_monitoring_snapshot", download_export_generation: "not_wired" },
-  };
-  const { data, error } = await supabase.from("impact_reports").insert(payload).select("id").single();
-  if (error) throw new Error(error.message);
-  await createReportVersion(ctx, data.id, { title: payload.title, summary: payload.summary, reportJson: payload.report_json, evidenceReferences: [] });
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_report_created", entityType: "impact_report", entityId: data.id, metadata: { role: ctx.role, report_type: reportType } });
-  return data.id as string;
+  const { createInstitutionalReport } = await import("@/lib/data/impact-reports");
+  return createInstitutionalReport(ctx, formData);
 }
 
-export async function createReportVersion(ctx: UserContext, reportId: string, input?: { title?: string; summary?: string | null; reportJson?: Record<string, unknown>; evidenceReferences?: unknown[] }) {
-  requireReportWrite(ctx);
-  const supabase = await createPrivilegedImpactWriteClient();
-  const [{ data: report }, { data: versions }] = await Promise.all([
-    supabase.from("impact_reports").select("id,title,summary,report_json,evidence_references").eq("id", reportId).maybeSingle(),
-    supabase.from("impact_report_versions").select("version_number").eq("report_id", reportId).order("version_number", { ascending: false }).limit(1),
-  ]);
-  if (!report) throw new Error("Report not found.");
-  const nextVersion = Number(versions?.[0]?.version_number ?? 0) + 1;
-  const { error } = await supabase.from("impact_report_versions").insert({
-    report_id: reportId,
-    version_number: nextVersion,
-    title: input?.title ?? report.title,
-    summary: input?.summary ?? report.summary,
-    report_json: input?.reportJson ?? report.report_json ?? {},
-    evidence_references: input?.evidenceReferences ?? report.evidence_references ?? [],
-    created_by_user_id: ctx.appUserId,
-    metadata: { source: "impact_reporting_engine" },
-  });
-  if (error) throw new Error(error.message);
+export async function createReportVersion(ctx: UserContext, reportId: string) {
+  const { generateInstitutionalReportVersion } = await import("@/lib/data/impact-reports");
+  return generateInstitutionalReportVersion(ctx, reportId);
 }
 
 export async function getImpactReport(ctx: UserContext, reportId: string) {
-  const supabase = await createReportingReadClient(ctx);
-  const [{ data: report, error }, { data: versions }, { data: exports }] = await Promise.all([
-    supabase.from("impact_reports").select(reportSelect()).eq("id", reportId).maybeSingle(),
-    supabase.from("impact_report_versions").select("id,report_id,version_number,title,summary,report_json,evidence_references,created_by_user_id,created_at").eq("report_id", reportId).order("version_number", { ascending: false }),
-    supabase.from("impact_report_exports").select("id,report_id,export_format,export_status,export_url,requested_by_user_id,requested_at,completed_at").eq("report_id", reportId).order("requested_at", { ascending: false }),
-  ]);
-  throwImpactReadError("get_impact_report_failed", error);
-  return {
-    report: report as unknown as ImpactReport | null,
-    versions: (versions ?? []) as ImpactReportVersion[],
-    exports: (exports ?? []) as ImpactReportExport[],
-  };
+  const { getInstitutionalReport } = await import("@/lib/data/impact-reports");
+  return getInstitutionalReport(ctx, reportId, { includeSources: true });
 }
 
 export async function exportReportRecord(ctx: UserContext, reportId: string, formData: FormData) {
-  requireReportingAccess(ctx);
-  void reportId;
-  void formData;
-  throw new Error("Download export generation is not wired. No export audit record was created.");
+  const { generateInstitutionalReportExport } = await import("@/lib/data/impact-reports");
+  const format = textValue(formData, "export_format") === "pdf" ? "pdf" : "json";
+  return generateInstitutionalReportExport(ctx, reportId, format);
 }
 
 function insightSelect() {
@@ -3367,13 +3314,7 @@ export async function dismissInsight(ctx: UserContext, insightId: string) {
 
 export async function listImpactReports(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactReport[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
-  const supabase = await createReportingReadClient(ctx);
-  const { data, error } = await supabase
-    .from("impact_reports")
-    .select(reportSelect())
-    .order("created_at", { ascending: false })
-    .limit(options.limit ?? 25);
-
-  throwImpactReadError("list_reports_failed", error);
-  return (data ?? []) as unknown as ImpactReport[];
+  if (!ctx) throw new Error("Institutional report access requires an authenticated user context.");
+  const { listInstitutionalReports } = await import("@/lib/data/impact-reports");
+  return listInstitutionalReports(ctx, options.limit ?? 25) as unknown as Promise<ImpactReport[]>;
 }
