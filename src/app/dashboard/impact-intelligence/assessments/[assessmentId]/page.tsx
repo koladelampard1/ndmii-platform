@@ -17,6 +17,7 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 
 const EXPECTED_ASSESSMENT_ERRORS = [
   "Required question missing:",
@@ -235,7 +236,7 @@ export default async function AssessmentDetailPage({
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {evidenceFiles.map((item) => (
               <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
-                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <EvidenceFileSummary evidence={item} />
                 <p className="mt-1 text-xs text-slate-500">{item.status} · {item.evidence_category?.replaceAll("_", " ") ?? "other"}</p>
               </Link>
             ))}

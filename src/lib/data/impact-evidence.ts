@@ -37,7 +37,7 @@ export type ImpactEvidenceRecord = {
   stored_filename: string | null;
   mime_type: string | null;
   file_size_bytes: number | null;
-  sha256_hash: string | null;
+  checksum_sha256: string | null;
   captured_at: string | null;
   uploaded_at: string | null;
   uploaded_by_user_id: string | null;
@@ -113,8 +113,33 @@ type EvidenceContext = {
   fieldVisitId: string | null;
 };
 
-const EVIDENCE_SELECT =
-  "id,programme_id,cohort_id,cohort_member_id,intervention_id,assessment_id,field_visit_id,msme_id,file_name,file_url,file_type,evidence_type,evidence_category,verification_status,status,description,storage_bucket,storage_path,original_filename,stored_filename,mime_type,file_size_bytes,sha256_hash,captured_at,uploaded_at,uploaded_by_user_id,submitted_at,reviewed_at,reviewed_by_user_id,review_decision,review_note,returned_at,returned_by_user_id,return_reason,archived_at,archived_by_user_id,created_at,metadata,impact_programmes(id,name,programme_code),impact_beneficiary_cohorts(id,name,programme_id),impact_cohort_members(id,member_status,msme_id),impact_interventions(id,title),impact_assessments(id,title,assessment_type),impact_field_visits(id,title,status),msmes(id,business_name,msme_id,state,sector),uploaded_by:users!impact_evidence_files_uploaded_by_user_id_fkey(id,full_name,email,role),reviewed_by:users!impact_evidence_files_reviewed_by_user_id_fkey(id,full_name,email,role)";
+export const IMPACT_EVIDENCE_SELECT =
+  "id,programme_id,cohort_id,cohort_member_id,intervention_id,assessment_id,field_visit_id,msme_id,file_name,file_url,file_type,evidence_type,evidence_category,verification_status,status,description,storage_bucket,storage_path,original_filename,stored_filename,mime_type,file_size_bytes,checksum_sha256,captured_at,uploaded_at,uploaded_by_user_id,submitted_at,reviewed_at,reviewed_by_user_id,review_decision,review_note,returned_at,returned_by_user_id,return_reason,archived_at,archived_by_user_id,created_at,metadata,impact_programmes(id,name,programme_code),impact_beneficiary_cohorts(id,name,programme_id),impact_cohort_members(id,member_status,msme_id),impact_interventions(id,title),impact_assessments(id,title,assessment_type),impact_field_visits(id,title,status),msmes(id,business_name,msme_id,state,sector),uploaded_by:users!impact_evidence_files_uploaded_by_user_id_fkey(id,full_name,email,role),reviewed_by:users!impact_evidence_files_reviewed_by_user_id_fkey(id,full_name,email,role)";
+
+function nullableString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+export function mapImpactEvidenceRow(row: unknown): ImpactEvidenceRecord {
+  const value = (row ?? {}) as Record<string, unknown>;
+  return {
+    ...(value as unknown as ImpactEvidenceRecord),
+    original_filename: nullableString(value.original_filename),
+    storage_bucket: nullableString(value.storage_bucket),
+    storage_path: nullableString(value.storage_path),
+    mime_type: nullableString(value.mime_type),
+    file_size_bytes: typeof value.file_size_bytes === "number" ? value.file_size_bytes : null,
+    checksum_sha256: nullableString(value.checksum_sha256),
+    uploaded_at: nullableString(value.uploaded_at),
+    submitted_at: nullableString(value.submitted_at),
+    reviewed_at: nullableString(value.reviewed_at),
+    archived_at: nullableString(value.archived_at),
+  };
+}
+
+export function mapImpactEvidenceRows(rows: unknown[] | null | undefined) {
+  return (rows ?? []).map(mapImpactEvidenceRow);
+}
 
 function textValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -332,7 +357,7 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     .from("impact_evidence_files")
     .select("id")
     .eq("cohort_member_id", context.cohortMemberId)
-    .eq("sha256_hash", sha256Hash)
+    .eq("checksum_sha256", sha256Hash)
     .neq("status", "archived")
     .limit(1)
     .maybeSingle();
@@ -373,7 +398,7 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     stored_filename: storedFilename,
     mime_type: file.type,
     file_size_bytes: file.size,
-    sha256_hash: sha256Hash,
+    checksum_sha256: sha256Hash,
     captured_at: textValue(formData, "captured_at"),
     uploaded_at: now,
     uploaded_by_user_id: ctx.appUserId,
@@ -443,7 +468,7 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
 export async function listImpactEvidence(ctx: UserContext, options: EvidenceQueryOptions = {}) {
   requireRole(ctx, IMPACT_EVIDENCE_READ_ROLES, "You do not have permission to read impact evidence.");
   const supabase = await createServiceRoleSupabaseClient();
-  let query = supabase.from("impact_evidence_files").select(EVIDENCE_SELECT).order("created_at", { ascending: false }).limit(options.limit ?? 100);
+  let query = supabase.from("impact_evidence_files").select(IMPACT_EVIDENCE_SELECT).order("created_at", { ascending: false }).limit(options.limit ?? 100);
   if (options.programmeId) query = query.eq("programme_id", options.programmeId);
   if (options.cohortId) query = query.eq("cohort_id", options.cohortId);
   if (options.cohortMemberId) query = query.eq("cohort_member_id", options.cohortMemberId);
@@ -462,7 +487,7 @@ export async function listImpactEvidence(ctx: UserContext, options: EvidenceQuer
 
   const { data, error } = await query;
   if (error) throw new Error(`Impact evidence source unavailable: ${error.message}`);
-  return (data ?? []) as unknown as ImpactEvidenceRecord[];
+  return mapImpactEvidenceRows(data);
 }
 
 export async function getImpactEvidenceUploadOptions(
@@ -550,12 +575,12 @@ export async function getImpactEvidence(ctx: UserContext, evidenceId: string) {
   requireRole(ctx, IMPACT_EVIDENCE_READ_ROLES, "You do not have permission to read impact evidence.");
   const supabase = await createServiceRoleSupabaseClient();
   const [{ data: evidence, error }, { data: events, error: eventError }] = await Promise.all([
-    supabase.from("impact_evidence_files").select(EVIDENCE_SELECT).eq("id", evidenceId).maybeSingle(),
+    supabase.from("impact_evidence_files").select(IMPACT_EVIDENCE_SELECT).eq("id", evidenceId).maybeSingle(),
     supabase.from("impact_evidence_events").select("id,evidence_id,event_type,from_status,to_status,actor_user_id,actor_role,note,metadata,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),
   ]);
   if (error) throw new Error(`Impact evidence source unavailable: ${error.message}`);
   if (eventError) throw new Error(`Impact evidence history unavailable: ${eventError.message}`);
-  const record = evidence as unknown as ImpactEvidenceRecord | null;
+  const record = evidence ? mapImpactEvidenceRow(evidence) : null;
   if (record && !(await canAccessImpactEvidence(ctx, record))) throw new Error("You can only access evidence for assigned visits or beneficiaries.");
   return { evidence: record, events: (events ?? []) as ImpactEvidenceEvent[] };
 }

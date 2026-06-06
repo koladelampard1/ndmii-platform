@@ -159,9 +159,15 @@ export default async function EvidenceDetailPage({
           </div>
           <dl className="mt-5 grid gap-4 text-sm md:grid-cols-2">
             <div><dt className="text-xs text-slate-500">Original filename</dt><dd className="mt-1 break-words font-medium text-slate-950">{evidence.original_filename ?? evidence.file_name}</dd></div>
+            <div><dt className="text-xs text-slate-500">Storage bucket</dt><dd className="mt-1 break-words font-medium text-slate-950">{evidence.storage_bucket ?? "Not available"}</dd></div>
+            <div><dt className="text-xs text-slate-500">Storage path</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700">{evidence.storage_path ?? "Not available"}</dd></div>
             <div><dt className="text-xs text-slate-500">MIME type</dt><dd className="mt-1 font-medium text-slate-950">{evidence.mime_type ?? "Not available"}</dd></div>
             <div><dt className="text-xs text-slate-500">File size</dt><dd className="mt-1 font-medium text-slate-950">{formatBytes(evidence.file_size_bytes)}</dd></div>
-            <div><dt className="text-xs text-slate-500">SHA-256</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700">{evidence.sha256_hash ?? "Not available"}</dd></div>
+            <div><dt className="text-xs text-slate-500">SHA-256</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700">{evidence.checksum_sha256 ?? "Not available"}</dd></div>
+            <div><dt className="text-xs text-slate-500">Uploaded at</dt><dd className="mt-1 font-medium text-slate-950">{formatDateTime(evidence.uploaded_at)}</dd></div>
+            <div><dt className="text-xs text-slate-500">Submitted at</dt><dd className="mt-1 font-medium text-slate-950">{formatDateTime(evidence.submitted_at)}</dd></div>
+            <div><dt className="text-xs text-slate-500">Reviewed at</dt><dd className="mt-1 font-medium text-slate-950">{formatDateTime(evidence.reviewed_at)}</dd></div>
+            <div><dt className="text-xs text-slate-500">Archived at</dt><dd className="mt-1 font-medium text-slate-950">{formatDateTime(evidence.archived_at)}</dd></div>
             <div><dt className="text-xs text-slate-500">Uploaded by</dt><dd className="mt-1 font-medium text-slate-950">{evidence.uploaded_by?.full_name ?? evidence.uploaded_by?.email ?? "Unknown user"}</dd></div>
             <div><dt className="text-xs text-slate-500">Reviewed by</dt><dd className="mt-1 font-medium text-slate-950">{evidence.reviewed_by?.full_name ?? evidence.reviewed_by?.email ?? "Not reviewed"}</dd></div>
           </dl>

@@ -18,6 +18,7 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { EmptyState, SectionCard, StatusBadge } from "../../_components";
 
 async function updateProgressAction(interventionId: string, formData: FormData) {
@@ -204,7 +205,7 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {evidenceFiles.map((item) => (
               <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
-                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <EvidenceFileSummary evidence={item} />
                 <p className="mt-1 text-xs text-slate-500">{item.status} · {item.msmes?.business_name ?? "Beneficiary"}</p>
               </Link>
             ))}

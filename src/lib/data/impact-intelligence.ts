@@ -1,6 +1,13 @@
 import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { UserContext } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
+import {
+  IMPACT_EVIDENCE_SELECT,
+  mapImpactEvidenceRow,
+  mapImpactEvidenceRows,
+  uploadImpactEvidence,
+  type ImpactEvidenceRecord,
+} from "@/lib/data/impact-evidence";
 
 type ImpactQueryOptions = {
   limit?: number;
@@ -44,7 +51,7 @@ export const ASSESSMENT_STATUSES = ["draft", "submitted", "reviewed", "approved"
 export const ASSESSMENT_QUESTION_TYPES = ["text", "textarea", "number", "select", "multi-select", "boolean", "date", "file_upload"] as const;
 export const FIELD_VISIT_STATUSES = ["pending", "assigned", "in_progress", "completed", "reviewed"] as const;
 export const EVIDENCE_CATEGORIES = ["business_photo", "facility_photo", "cac_document", "invoice", "monitoring_photo", "beneficiary_document", "signed_form", "compliance_document", "other"] as const;
-export const EVIDENCE_VERIFICATION_STATUSES = ["pending", "verified", "rejected", "needs_review"] as const;
+export const EVIDENCE_VERIFICATION_STATUSES = ["pending", "verified", "rejected", "needs_review", "returned", "archived"] as const;
 export const REPORT_TYPES = ["executive_summary", "programme_performance", "assessment_summary", "monitoring_report", "intervention_report", "impact_intelligence"] as const;
 export const REPORT_STATUSES = ["draft", "generated", "approved", "archived"] as const;
 export const INTELLIGENCE_CATEGORIES = ["risk", "recommendation", "anomaly", "monitoring", "intervention", "compliance", "readiness", "portfolio", "operational"] as const;
@@ -421,34 +428,7 @@ export type ImpactMonitoringNote = {
   created_at: string;
 };
 
-export type ImpactEvidenceFile = {
-  id: string;
-  programme_id: string | null;
-  intervention_id: string | null;
-  assessment_id: string | null;
-  field_visit_id: string | null;
-  msme_id: string | null;
-  file_name: string;
-  file_url: string | null;
-  file_type: string | null;
-  evidence_type: string;
-  evidence_category: EvidenceCategory | string | null;
-  verification_status: EvidenceVerificationStatus | string;
-  description: string | null;
-  storage_bucket: string | null;
-  storage_path: string | null;
-  captured_at: string | null;
-  uploaded_by_user_id: string | null;
-  verified_by_user_id: string | null;
-  verified_at: string | null;
-  created_at: string | null;
-  metadata?: Record<string, unknown> | null;
-  impact_programmes?: Pick<ImpactProgramme, "id" | "name" | "programme_code"> | null;
-  impact_interventions?: Pick<ImpactIntervention, "id" | "title"> | null;
-  impact_assessments?: Pick<ImpactAssessment, "id" | "title" | "assessment_type"> | null;
-  impact_field_visits?: Pick<ImpactFieldVisit, "id" | "title" | "status"> | null;
-  msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null } | null;
-};
+export type ImpactEvidenceFile = ImpactEvidenceRecord;
 
 export type ImpactEvidenceLink = {
   id: string;
@@ -750,12 +730,6 @@ function requireMonitoringManage(ctx: UserContext) {
 function requireMonitoringReview(ctx: UserContext) {
   if (!MONITORING_REVIEW_ROLES.includes(ctx.role)) {
     throw new Error("You do not have permission to review field monitoring.");
-  }
-}
-
-function requireEvidenceCreate(ctx: UserContext) {
-  if (![...MONITORING_MANAGE_ROLES, "assessment_officer", "field_officer"].includes(ctx.role)) {
-    throw new Error("You do not have permission to create evidence records.");
   }
 }
 
@@ -2539,14 +2513,6 @@ function normaliseFieldVisitStatus(value: string | null): FieldVisitStatus {
   return FIELD_VISIT_STATUSES.includes(value as FieldVisitStatus) ? (value as FieldVisitStatus) : "pending";
 }
 
-function normaliseEvidenceCategory(value: string | null): EvidenceCategory {
-  return EVIDENCE_CATEGORIES.includes(value as EvidenceCategory) ? (value as EvidenceCategory) : "other";
-}
-
-function normaliseEvidenceStatus(value: string | null): EvidenceVerificationStatus {
-  return EVIDENCE_VERIFICATION_STATUSES.includes(value as EvidenceVerificationStatus) ? (value as EvidenceVerificationStatus) : "pending";
-}
-
 function parseChecklistRows(raw: string | null) {
   if (!raw) return [];
   return raw
@@ -2570,7 +2536,7 @@ function fieldVisitSelect() {
 }
 
 function evidenceSelect() {
-  return "id,programme_id,intervention_id,assessment_id,field_visit_id,msme_id,file_name,file_url,file_type,evidence_type,evidence_category,verification_status,description,storage_bucket,storage_path,captured_at,uploaded_by_user_id,verified_by_user_id,verified_at,created_at,metadata,impact_programmes(id,name,programme_code),impact_interventions(id,title),impact_assessments(id,title,assessment_type),impact_field_visits(id,title,status),msmes(id,business_name,msme_id,state,sector)";
+  return IMPACT_EVIDENCE_SELECT;
 }
 
 export async function createFieldVisit(ctx: UserContext, formData: FormData) {
@@ -2752,7 +2718,7 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
     assignments: (assignments ?? []) as ImpactFieldVisitAssignment[],
     checklist: (checklist ?? []) as ImpactMonitoringChecklist[],
     notes: (notes ?? []) as ImpactMonitoringNote[],
-    evidence: (evidence ?? []) as unknown as ImpactEvidenceFile[],
+    evidence: mapImpactEvidenceRows(evidence),
   };
 }
 
@@ -2831,56 +2797,7 @@ export async function completeFieldVisit(ctx: UserContext, visitId: string, form
 }
 
 export async function createEvidenceRecord(ctx: UserContext, formData: FormData) {
-  requireEvidenceCreate(ctx);
-  const fileName = textValue(formData, "file_name");
-  if (!fileName) throw new Error("Evidence file name is required.");
-
-  const category = normaliseEvidenceCategory(textValue(formData, "evidence_category"));
-  const evidenceType = category.includes("photo") ? "photo" : "document";
-  const supabase = await createPrivilegedImpactWriteClient();
-  const payload = {
-    programme_id: textValue(formData, "programme_id"),
-    intervention_id: textValue(formData, "intervention_id"),
-    assessment_id: textValue(formData, "assessment_id"),
-    field_visit_id: textValue(formData, "field_visit_id"),
-    msme_id: textValue(formData, "msme_id"),
-    file_name: fileName,
-    file_url: textValue(formData, "file_url"),
-    file_type: textValue(formData, "file_type") ?? "placeholder",
-    evidence_type: textValue(formData, "evidence_type") ?? evidenceType,
-    evidence_category: category,
-    verification_status: "pending",
-    description: textValue(formData, "description"),
-    storage_bucket: textValue(formData, "storage_bucket"),
-    storage_path: textValue(formData, "storage_path"),
-    captured_at: textValue(formData, "captured_at"),
-    uploaded_by_user_id: ctx.appUserId,
-    metadata: { storage_ready: true },
-  };
-
-  const { data, error } = await supabase.from("impact_evidence_files").insert(payload).select("id").single();
-  if (error) throw new Error(error.message);
-  await linkEvidenceToEntity(ctx, data.id, formData);
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_evidence_created", entityType: "impact_evidence_file", entityId: data.id, metadata: { role: ctx.role, category } });
-  return data.id as string;
-}
-
-export async function linkEvidenceToEntity(ctx: UserContext, evidenceId: string, formData: FormData) {
-  requireEvidenceCreate(ctx);
-  const supabase = await createPrivilegedImpactWriteClient();
-  const payload = {
-    evidence_id: evidenceId,
-    programme_id: textValue(formData, "programme_id"),
-    intervention_id: textValue(formData, "intervention_id"),
-    assessment_id: textValue(formData, "assessment_id"),
-    field_visit_id: textValue(formData, "field_visit_id"),
-    msme_id: textValue(formData, "msme_id"),
-    link_type: textValue(formData, "link_type") ?? "supporting_evidence",
-    created_by_user_id: ctx.appUserId,
-  };
-  if (!payload.programme_id && !payload.intervention_id && !payload.assessment_id && !payload.field_visit_id && !payload.msme_id) return;
-  const { error } = await supabase.from("impact_evidence_links").insert(payload);
-  if (error) throw new Error(error.message);
+  return uploadImpactEvidence(ctx, formData);
 }
 
 export async function listEvidence(ctx?: UserContext, options: ImpactQueryOptions = {}): Promise<ImpactEvidenceFile[]> {
@@ -2900,7 +2817,7 @@ export async function listEvidence(ctx?: UserContext, options: ImpactQueryOption
 
   const { data, error } = await query;
   throwImpactReadError("list_evidence_failed", error);
-  return (data ?? []) as unknown as ImpactEvidenceFile[];
+  return mapImpactEvidenceRows(data);
 }
 
 export async function getEvidence(ctx: UserContext, evidenceId: string) {
@@ -2910,7 +2827,7 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
     supabase.from("impact_evidence_links").select("id,evidence_id,programme_id,intervention_id,assessment_id,field_visit_id,msme_id,link_type,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),
   ]);
   throwImpactReadError("get_evidence_failed", error);
-  const item = evidence as unknown as ImpactEvidenceFile | null;
+  const item = evidence ? mapImpactEvidenceRow(evidence) : null;
   if (item && ctx.role === "field_officer") {
     const visible = item.field_visit_id
       ? await supabase.from("impact_field_visits").select("id").eq("id", item.field_visit_id).eq("assigned_to_user_id", ctx.appUserId ?? "").maybeSingle()
@@ -2918,23 +2835,6 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
     if (!visible.data) throw new Error("You can only access evidence linked to your assigned visits.");
   }
   return { evidence: item, links: (links ?? []) as ImpactEvidenceLink[] };
-}
-
-export async function verifyEvidence(ctx: UserContext, evidenceId: string, formData: FormData) {
-  requireMonitoringReview(ctx);
-  const verificationStatus = normaliseEvidenceStatus(textValue(formData, "verification_status"));
-  const supabase = await createPrivilegedImpactWriteClient();
-  const { error } = await supabase
-    .from("impact_evidence_files")
-    .update({
-      verification_status: verificationStatus,
-      verified_by_user_id: ctx.appUserId,
-      verified_at: new Date().toISOString(),
-      metadata: { review_note: textValue(formData, "review_note") },
-    })
-    .eq("id", evidenceId);
-  if (error) throw new Error(error.message);
-  await logActivity({ actorUserId: ctx.appUserId, action: "impact_evidence_verified", entityType: "impact_evidence_file", entityId: evidenceId, metadata: { role: ctx.role, verification_status: verificationStatus } });
 }
 
 function bucketBy<T>(items: T[], getKey: (item: T) => string | null | undefined): DistributionBucket[] {

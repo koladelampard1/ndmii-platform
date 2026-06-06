@@ -12,6 +12,7 @@ import {
   MONITORING_REVIEW_ROLES,
 } from "@/lib/data/impact-intelligence";
 import { IMPACT_EVIDENCE_CREATE_ROLES, uploadImpactEvidence } from "@/lib/data/impact-evidence";
+import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 
 async function assignVisitAction(visitId: string, formData: FormData) {
   "use server";
@@ -223,7 +224,7 @@ export default async function MonitoringDetailPage({
             <div className="mt-4 space-y-3">
               {evidence.map((item) => (
                 <Link key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="block rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
-                  <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                  <EvidenceFileSummary evidence={item} />
                   <p className="mt-1 text-xs text-slate-500">{item.evidence_category ?? "other"} • {item.status ?? "draft"}</p>
                 </Link>
               ))}

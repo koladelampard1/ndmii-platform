@@ -9,9 +9,12 @@ alter table public.impact_evidence_files
   add column if not exists cohort_member_id uuid references public.impact_cohort_members(id) on delete set null,
   add column if not exists status text not null default 'draft',
   add column if not exists original_filename text,
+  add column if not exists storage_bucket text,
+  add column if not exists storage_path text,
   add column if not exists stored_filename text,
   add column if not exists mime_type text,
-  add column if not exists sha256_hash text,
+  add column if not exists file_size_bytes bigint,
+  add column if not exists checksum_sha256 text,
   add column if not exists uploaded_at timestamptz,
   add column if not exists submitted_at timestamptz,
   add column if not exists reviewed_at timestamptz,
@@ -108,7 +111,7 @@ begin
   ) then
     alter table public.impact_evidence_files
       add constraint impact_evidence_files_sha256_check
-      check (sha256_hash is null or sha256_hash ~ '^[a-f0-9]{64}$');
+      check (checksum_sha256 is null or checksum_sha256 ~ '^[a-f0-9]{64}$');
   end if;
 
   if not exists (
@@ -156,7 +159,7 @@ create index if not exists idx_impact_evidence_files_field_visit
 create index if not exists idx_impact_evidence_files_status
   on public.impact_evidence_files(status);
 create index if not exists idx_impact_evidence_files_sha256
-  on public.impact_evidence_files(sha256_hash);
+  on public.impact_evidence_files(checksum_sha256);
 create index if not exists idx_impact_evidence_files_uploaded_by
   on public.impact_evidence_files(uploaded_by_user_id);
 create unique index if not exists idx_impact_evidence_files_storage_object
@@ -269,7 +272,7 @@ begin
       or new.stored_filename is null
       or new.mime_type is null
       or new.file_size_bytes is null
-      or new.sha256_hash is null
+      or new.checksum_sha256 is null
       or new.uploaded_at is null
       or new.uploaded_by_user_id is null then
       raise exception 'Uploaded evidence requires complete storage metadata.';

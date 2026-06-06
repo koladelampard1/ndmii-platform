@@ -16,6 +16,7 @@ import {
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
 } from "@/lib/data/impact-evidence";
+import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../../_components";
 
 type PageProps = {
@@ -146,7 +147,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {evidenceFiles.slice(0, 12).map((item) => (
               <a key={item.id} href={`/dashboard/impact-intelligence/evidence/${item.id}`} className="rounded-lg border p-3 hover:border-emerald-200 hover:bg-emerald-50/40">
-                <p className="font-medium text-slate-950">{item.original_filename ?? item.file_name}</p>
+                <EvidenceFileSummary evidence={item} />
                 <p className="mt-1 text-xs text-slate-500">{item.msmes?.business_name ?? "Beneficiary"} · {item.status}</p>
               </a>
             ))}
