@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
 import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,18 +27,40 @@ import {
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { IndicatorSummary } from "../../indicators/indicator-summary";
 import { EmptyState, SectionCard, StatusBadge } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
+
+const EXPECTED_INTERVENTION_ERRORS = ["required", "invalid", "status", "stage", "amount", "officer", "permission", "intervention"];
+
+function redirectWithInterventionError(interventionId: string, error: unknown): never {
+  const message = error instanceof Error ? error.message : "Intervention action could not be completed.";
+  redirect(`/dashboard/impact-intelligence/interventions/${interventionId}?error=${encodeURIComponent(message)}`);
+}
 
 async function updateProgressAction(interventionId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await updateImpactInterventionLifecycle(ctx, interventionId, formData);
+  try {
+    await updateImpactInterventionLifecycle(ctx, interventionId, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/interventions/[interventionId]", operation: "intervention_lifecycle_update_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_INTERVENTION_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirectWithInterventionError(interventionId, error);
+  }
   redirect(`/dashboard/impact-intelligence/interventions/${interventionId}`);
 }
 
 async function addNoteAction(interventionId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await appendImpactInterventionNote(ctx, interventionId, formData);
+  try {
+    await appendImpactInterventionNote(ctx, interventionId, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/interventions/[interventionId]", operation: "intervention_note_append_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_INTERVENTION_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirectWithInterventionError(interventionId, error);
+  }
   redirect(`/dashboard/impact-intelligence/interventions/${interventionId}`);
 }
 
@@ -52,41 +74,49 @@ function formatCurrency(value: number | null) {
   return `NGN ${value.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
 }
 
-export default async function ImpactInterventionDetailPage({ params }: { params: Promise<{ interventionId: string }> }) {
+export default async function ImpactInterventionDetailPage({ params, searchParams }: { params: Promise<{ interventionId: string }>; searchParams?: Promise<{ error?: string }> }) {
   const { interventionId } = await params;
-  const ctx = await getCurrentUserContext();
-  let detail: Awaited<ReturnType<typeof getImpactInterventionDetail>>;
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getImpactInterventionDetail>> | null = null;
   let officers: Awaited<ReturnType<typeof listUserPickerOptions>> = [];
   let evidenceFiles: ImpactEvidenceRecord[] = [];
   try {
-    [detail, officers, evidenceFiles] = await Promise.all([
-      getImpactInterventionDetail(interventionId, ctx),
-      listUserPickerOptions("field_officer"),
-      listImpactEvidence(ctx, { interventionId, limit: 100 }).catch(() => {
-        logImpactEvidenceDiagnostic({
-          operation: "intervention_detail_evidence_unavailable",
-          actorRole: ctx.role,
-          success: false,
-          errorCode: "source_unavailable",
-        });
-        return [];
-      }),
-    ]);
+    ctx = await getCurrentUserContext();
+    detail = await getImpactInterventionDetail(interventionId, ctx);
   } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/interventions/[interventionId]", operation: "intervention_detail_load_failed", error });
     return (
       <section className="space-y-6">
         <SectionCard title="Intervention Unavailable">
-          <EmptyState
-            title="Intervention record could not load"
-            description={error instanceof Error ? error.message : "The intervention source is temporarily unavailable."}
-            icon={HandCoins}
-          />
+          <EmptyState title="Intervention record could not load" description="The intervention source, current session, or role assignment is temporarily unavailable." icon={HandCoins} />
         </SectionCard>
       </section>
     );
   }
   const { intervention, events, assessments, visits } = detail;
   if (!intervention) notFound();
+  let officerOptionsFailed = false;
+  [officers, evidenceFiles] = await Promise.all([
+      IMPACT_WRITE_ROLES.includes(ctx.role)
+        ? listUserPickerOptions("field_officer").catch((error) => {
+            officerOptionsFailed = true;
+            logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/interventions/[interventionId]", operation: "intervention_officer_options_load_failed", error });
+            return [];
+          })
+        : Promise.resolve([]),
+      listImpactEvidence(ctx, { interventionId, limit: 100 }).catch((error) => {
+        logImpactEvidenceDiagnostic({
+          operation: "intervention_detail_evidence_unavailable",
+          actorRole: ctx.role,
+          success: false,
+          errorCode: "source_unavailable",
+          errorMessage: error instanceof Error ? error.message : "Unknown evidence error",
+        });
+        return [];
+      }),
+  ]);
   const [indicatorAggregate, indicatorMeasurements] = await Promise.all([
     aggregateInterventionIndicators(ctx, interventionId).catch((error) => {
       logImpactIndicatorDiagnostic({
@@ -113,7 +143,7 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
       return [] as ImpactIndicatorMeasurement[];
     }),
   ]);
-  const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
+  const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role) && !officerOptionsFailed;
   const updateProgress = updateProgressAction.bind(null, intervention.id);
   const addNote = addNoteAction.bind(null, intervention.id);
   const stage = getInterventionStage(intervention);
@@ -139,6 +169,8 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
         </div>
       </header>
 
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
+
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Programme</p><p className="mt-1 font-semibold text-slate-950">{intervention.impact_programmes?.name ?? "Unassigned"}</p></div>
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">Cohort</p><p className="mt-1 font-semibold text-slate-950">{intervention.impact_beneficiary_cohorts?.name ?? "Unanchored"}</p></div>
@@ -156,6 +188,12 @@ export default async function ImpactInterventionDetailPage({ params }: { params:
         measurements={indicatorMeasurements}
         unavailable={!indicatorAggregate}
       />
+
+      {IMPACT_WRITE_ROLES.includes(ctx.role) && officerOptionsFailed && (
+        <SectionCard title="Intervention Updates Unavailable">
+          <EmptyState title="Intervention update options could not load" description="Field-officer options are temporarily unavailable. The intervention remains readable, but lifecycle updates are disabled." icon={HandCoins} />
+        </SectionCard>
+      )}
 
       {canWrite && (
         <div className="grid gap-4">

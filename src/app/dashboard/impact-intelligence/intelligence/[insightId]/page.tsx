@@ -1,15 +1,25 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
+import { BrainCircuit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { dismissInsight, getInsightDetail } from "@/lib/data/impact-intelligence";
+import { EmptyState, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
-const INTELLIGENCE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
-const MANAGE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
+const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
 
 async function dismissAction(insightId: string) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await dismissInsight(ctx, insightId);
+  try {
+    await dismissInsight(ctx, insightId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/intelligence/[insightId]", operation: "insight_detail_dismiss_failed", error });
+    if (!(error instanceof Error) || !["permission", "insight", "status"].some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirect(`/dashboard/impact-intelligence/intelligence/${insightId}?error=${encodeURIComponent(error.message)}`);
+  }
   redirect(`/dashboard/impact-intelligence/intelligence/${insightId}`);
 }
 
@@ -19,11 +29,27 @@ function badgeClass(priority: string) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default async function InsightDetailPage({ params }: { params: Promise<{ insightId: string }> }) {
+export default async function InsightDetailPage({ params, searchParams }: { params: Promise<{ insightId: string }>; searchParams?: Promise<{ error?: string }> }) {
   const { insightId } = await params;
-  const ctx = await getCurrentUserContext();
-  if (!INTELLIGENCE_ROLES.includes(ctx.role)) redirect("/access-denied");
-  const { insight, recommendations, riskFlags, anomalies } = await getInsightDetail(ctx, insightId);
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getInsightDetail>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    if (!INTELLIGENCE_ROLES.includes(ctx.role)) redirect("/access-denied");
+    detail = await getInsightDetail(ctx, insightId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/intelligence/[insightId]", operation: "insight_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Intelligence Record Unavailable">
+          <EmptyState title="Intelligence record could not load" description="The legacy intelligence source, current session, or assigned scope is temporarily unavailable." icon={BrainCircuit} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { insight, recommendations, riskFlags, anomalies } = detail;
   if (!insight) notFound();
   const canManage = MANAGE_ROLES.includes(ctx.role);
   const dismiss = dismissAction.bind(null, insight.id);
@@ -43,6 +69,8 @@ export default async function InsightDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
       </header>
+
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
 
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-lg border bg-white p-4"><p className="text-xs text-slate-500">MSME</p><p className="mt-1 font-semibold text-slate-950">{insight.msmes?.business_name ?? "Portfolio"}</p></div>

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { Flag, Plus } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { IMPACT_WRITE_ROLES, listImpactProgrammes } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { logImpactRouteDiagnostic } from "../_diagnostics";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -10,9 +12,18 @@ function formatDate(value: string | null) {
 }
 
 export default async function ImpactProgrammesPage() {
-  const ctx = await getCurrentUserContext();
-  const programmes = await listImpactProgrammes(ctx, { limit: 100 });
-  const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let programmes: Awaited<ReturnType<typeof listImpactProgrammes>> = [];
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    programmes = await listImpactProgrammes(ctx, { limit: 100 });
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Programme records are temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes", operation: "programme_list_load_failed", error });
+  }
+  const canWrite = Boolean(ctx && !loadError && IMPACT_WRITE_ROLES.includes(ctx.role));
 
   return (
     <section className="space-y-6">
@@ -24,8 +35,14 @@ export default async function ImpactProgrammesPage() {
         actions={canWrite ? [{ href: "/dashboard/impact-intelligence/programmes/new", label: "New programme", icon: Plus, variant: "primary" }] : []}
       />
 
-      <SectionCard title="Programme Registry" action={<QuickLink href="/dashboard/impact-intelligence/executive">Executive view</QuickLink>}>
-        {programmes.length === 0 ? (
+      <SectionCard title="Programme Registry" action={!loadError ? <QuickLink href="/dashboard/impact-intelligence/executive">Executive view</QuickLink> : undefined}>
+        {loadError ? (
+          <EmptyState
+            title="Programme records could not load"
+            description="The programme source, current session, or role assignment is temporarily unavailable. Other Impact Intelligence modules remain accessible."
+            icon={Flag}
+          />
+        ) : programmes.length === 0 ? (
           <EmptyState
             title="No programmes yet"
             description="Create the first internal programme record to start linking MSME interventions, assessment cycles, field monitoring, and snapshot report records."

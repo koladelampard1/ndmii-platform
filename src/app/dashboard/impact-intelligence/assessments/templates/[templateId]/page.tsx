@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, unstable_rethrow } from "next/navigation";
+import { ClipboardCheck } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getAssessmentTemplate } from "@/lib/data/impact-intelligence";
+import { EmptyState, SectionCard } from "../../../_components";
+import { logImpactRouteDiagnostic } from "../../../_diagnostics";
 
 function optionsText(options: unknown) {
   if (!Array.isArray(options) || options.length === 0) return "No options";
@@ -17,8 +20,23 @@ function optionsText(options: unknown) {
 
 export default async function AssessmentTemplateDetailPage({ params }: { params: Promise<{ templateId: string }> }) {
   const { templateId } = await params;
-  const ctx = await getCurrentUserContext();
-  const { template, sections, questions } = await getAssessmentTemplate(templateId, ctx);
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getAssessmentTemplate>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    detail = await getAssessmentTemplate(templateId, ctx);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates/[templateId]", operation: "assessment_template_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Assessment Template Unavailable">
+          <EmptyState title="Assessment template could not load" description="The template source, current session, or role assignment is temporarily unavailable." icon={ClipboardCheck} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { template, sections, questions } = detail;
   if (!template) notFound();
 
   return (

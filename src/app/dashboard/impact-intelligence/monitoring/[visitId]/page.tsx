@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
+import { CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -18,6 +19,8 @@ import {
 } from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { IndicatorSummary } from "../../indicators/indicator-summary";
+import { EmptyState, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 async function assignVisitAction(visitId: string, formData: FormData) {
   "use server";
@@ -27,6 +30,7 @@ async function assignVisitAction(visitId: string, formData: FormData) {
     if (assignedTo) await assignFieldVisit(ctx, visitId, assignedTo);
   } catch (error) {
     unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_assignment_failed", error });
     if (!isExpectedMonitoringActionError(error)) throw error;
     redirectWithMonitoringError(visitId, error);
   }
@@ -40,6 +44,7 @@ async function completeVisitAction(visitId: string, formData: FormData) {
     await completeFieldVisit(ctx, visitId, formData);
   } catch (error) {
     unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_completion_failed", error });
     if (!isExpectedMonitoringActionError(error)) throw error;
     redirectWithMonitoringError(visitId, error);
   }
@@ -54,6 +59,7 @@ async function createEvidenceAction(visitId: string, formData: FormData) {
     await uploadImpactEvidence(ctx, formData);
   } catch (error) {
     unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_evidence_upload_failed", error });
     if (!isExpectedMonitoringActionError(error)) throw error;
     redirectWithMonitoringError(visitId, error);
   }
@@ -109,10 +115,34 @@ export default async function MonitoringDetailPage({
 }) {
   const { visitId } = await params;
   const query = (await searchParams) ?? {};
-  const ctx = await getCurrentUserContext();
-  const [detail, fieldOfficers, indicatorMeasurements] = await Promise.all([
-    getFieldVisit(ctx, visitId),
-    listUserPickerOptions("field_officer"),
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getFieldVisit>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    detail = await getFieldVisit(ctx, visitId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Monitoring Visit Unavailable">
+          <EmptyState title="Monitoring visit could not load" description="The monitoring source, current session, or assigned scope is temporarily unavailable." icon={CalendarCheck} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { visit, assignments, checklist, notes, evidence } = detail;
+  if (!visit) notFound();
+  const canManage = MONITORING_MANAGE_ROLES.includes(ctx.role);
+  let officerOptionsFailed = false;
+  const [fieldOfficers, indicatorMeasurements] = await Promise.all([
+    canManage
+      ? listUserPickerOptions("field_officer").catch((error) => {
+          officerOptionsFailed = true;
+          logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_officer_options_load_failed", error });
+          return [];
+        })
+      : Promise.resolve([]),
     listIndicatorMeasurements(ctx, { fieldVisitId: visitId, limit: 20 }).catch((error) => {
       logImpactIndicatorDiagnostic({
         operation: "monitoring_detail_indicator_measurements_unavailable",
@@ -126,10 +156,7 @@ export default async function MonitoringDetailPage({
       return null;
     }),
   ]);
-  const { visit, assignments, checklist, notes, evidence } = detail;
-  if (!visit) notFound();
 
-  const canManage = MONITORING_MANAGE_ROLES.includes(ctx.role);
   const canReview = MONITORING_REVIEW_ROLES.includes(ctx.role);
   const canComplete = ctx.role === "field_officer" || canManage;
   const canUploadEvidence = (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role);
@@ -201,7 +228,13 @@ export default async function MonitoringDetailPage({
         </form>
 
         <aside className="space-y-4">
-          {canManage && (
+          {canManage && officerOptionsFailed && (
+            <SectionCard title="Assignment Unavailable">
+              <EmptyState title="Field-officer options could not load" description="Visit assignment is temporarily disabled. Monitoring details and other authorized actions remain available." icon={CalendarCheck} />
+            </SectionCard>
+          )}
+
+          {canManage && !officerOptionsFailed && (
             <form action={assignVisit} className="rounded-xl border bg-white p-5 shadow-sm">
               <h2 className="font-semibold text-slate-950">Assignment</h2>
               <select name="assigned_to_user_id" defaultValue={visit.assigned_to_user_id ?? ""} className="mt-3 w-full rounded-md border px-3 py-2 text-sm">

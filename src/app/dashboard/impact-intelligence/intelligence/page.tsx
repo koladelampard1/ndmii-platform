@@ -1,58 +1,62 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { BrainCircuit, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { BrainCircuit } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   dismissInsight,
-  generateMonitoringInsights,
-  generateMsmeInsights,
-  generateProgrammeInsights,
-  generateRiskFlags,
   listIntelligenceFeed,
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, MetricTile, SectionCard, StatusBadge } from "../_components";
+import { logImpactRouteDiagnostic } from "../_diagnostics";
 
-const INTELLIGENCE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
-const MANAGE_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer"];
-
-async function generateIntelligenceAction() {
-  "use server";
-  const ctx = await getCurrentUserContext();
-  await generateMsmeInsights(ctx);
-  await generateProgrammeInsights(ctx);
-  await generateMonitoringInsights(ctx);
-  await generateRiskFlags(ctx);
-  redirect("/dashboard/impact-intelligence/intelligence");
-}
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
+const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
 
 async function dismissInsightAction(insightId: string) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await dismissInsight(ctx, insightId);
+  try {
+    await dismissInsight(ctx, insightId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/intelligence", operation: "insight_dismiss_failed", error });
+    if (!(error instanceof Error) || !["permission", "insight", "status"].some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirect(`/dashboard/impact-intelligence/intelligence?error=${encodeURIComponent(error.message)}`);
+  }
   redirect("/dashboard/impact-intelligence/intelligence");
 }
 
-export default async function IntelligencePage() {
-  const ctx = await getCurrentUserContext();
-  if (!INTELLIGENCE_ROLES.includes(ctx.role)) redirect("/access-denied");
-  const feed = await listIntelligenceFeed(ctx, { limit: 100 });
-  const canManage = MANAGE_ROLES.includes(ctx.role);
+export default async function IntelligencePage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let feed: Awaited<ReturnType<typeof listIntelligenceFeed>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    if (!INTELLIGENCE_ROLES.includes(ctx.role)) redirect("/access-denied");
+    feed = await listIntelligenceFeed(ctx, { limit: 100 });
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/intelligence", operation: "intelligence_feed_load_failed", error });
+  }
+  const canManage = Boolean(ctx && feed && MANAGE_ROLES.includes(ctx.role));
 
   return (
     <section className="space-y-6">
       <ImpactPageHeader
-        eyebrow="Decision support"
-        title="Impact Intelligence Feed"
-        description="Deterministic operational insights, recommendations, anomalies, and risk signals generated from DBIN evidence-backed records."
-        badge="Assistive intelligence"
+        eyebrow="Internal programme monitoring"
+        title="Legacy Programme Intelligence Register"
+        description="Read-only access to existing deterministic programme records. New insight generation is disabled during the truthful DBIN foundation phase."
+        badge="Internal legacy register"
       />
-      {canManage && (
-        <form action={generateIntelligenceAction} className="flex justify-end">
-          <Button type="submit" className="gap-2"><RefreshCw className="h-4 w-4" /> Generate intelligence</Button>
-        </form>
-      )}
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Not yet wired: DBIN-wide insight definitions. Existing records remain visible for internal review, but this phase does not create AI or deterministic insight claims.</p>
 
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
+      {!feed ? (
+        <SectionCard title="Intelligence Register Unavailable">
+          <EmptyState title="Intelligence records could not load" description="The legacy intelligence source, current session, or assigned scope is temporarily unavailable." icon={BrainCircuit} />
+        </SectionCard>
+      ) : (
+      <>
       <div className="grid gap-4 md:grid-cols-4">
         <MetricTile label="Open insights" value={feed.insights.filter((item) => item.status === "open").length} tone="emerald" />
         <MetricTile label="Recommendations" value={feed.recommendations.length} tone="blue" />
@@ -140,6 +144,8 @@ export default async function IntelligencePage() {
           </div>
         )}
       </SectionCard>
+      </>
+      )}
     </section>
   );
 }

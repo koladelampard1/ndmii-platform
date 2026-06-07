@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
+import { Flag } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getImpactProgrammeDetail } from "@/lib/data/impact-intelligence";
 import {
@@ -11,7 +13,8 @@ import {
 } from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { IndicatorSummary } from "../../indicators/indicator-summary";
-import { QuickLink, StatusBadge } from "../../_components";
+import { EmptyState, QuickLink, SectionCard, StatusBadge } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -20,16 +23,41 @@ function formatDate(value: string | null) {
 
 export default async function ImpactProgrammeDetailPage({ params }: { params: Promise<{ programmeId: string }> }) {
   const { programmeId } = await params;
-  const ctx = await getCurrentUserContext();
-  const [{ programme, interventions, unanchoredInterventions, enrolments, cohorts }, evidenceFiles, indicatorAggregate] = await Promise.all([
-    getImpactProgrammeDetail(ctx, programmeId),
-    listImpactEvidence(ctx, { programmeId, limit: 500 }).catch(() => {
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getImpactProgrammeDetail>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    detail = await getImpactProgrammeDetail(ctx, programmeId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes/[programmeId]", operation: "programme_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Programme Unavailable">
+          <EmptyState title="Programme record could not load" description="The programme source, current session, or role assignment is temporarily unavailable." icon={Flag} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { programme, interventions, unanchoredInterventions, enrolments, cohorts } = detail;
+  if (!programme) {
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Programme Unavailable">
+          <EmptyState title="Programme record was not found" description={`No programme record is available for reference ${programmeId}.`} icon={Flag} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const [evidenceFiles, indicatorAggregate] = await Promise.all([
+    listImpactEvidence(ctx, { programmeId, limit: 500 }).catch((error) => {
       logImpactEvidenceDiagnostic({
         operation: "programme_detail_evidence_unavailable",
         programmeId,
         actorRole: ctx.role,
         success: false,
         errorCode: "source_unavailable",
+        errorMessage: error instanceof Error ? error.message : "Unknown evidence error",
       });
       return [];
     }),
@@ -48,23 +76,6 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
   ]);
   const fieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.field_visit_count ?? 0), 0);
   const openFieldVisitCount = cohorts.reduce((sum, cohort) => sum + (cohort.open_field_visit_count ?? 0), 0);
-
-  if (!programme) {
-    return (
-      <section className="space-y-6">
-        <header className="rounded-xl border bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Programme lookup</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Programme unavailable</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            The programme record could not be found or is temporarily unavailable. Reference: {programmeId}
-          </p>
-          <Link href="/dashboard/impact-intelligence/programmes" className="mt-4 inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
-            Back to programmes
-          </Link>
-        </header>
-      </section>
-    );
-  }
 
   return (
     <section className="space-y-6">

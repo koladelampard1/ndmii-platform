@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Plus, UsersRound } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { COHORT_MANAGE_ROLES, listImpactCohorts } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
+import { logImpactRouteDiagnostic } from "../_diagnostics";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -10,9 +12,18 @@ function formatDate(value: string | null) {
 }
 
 export default async function ImpactCohortsPage() {
-  const ctx = await getCurrentUserContext();
-  const cohorts = await listImpactCohorts(ctx, { limit: 100 });
-  const canManage = COHORT_MANAGE_ROLES.includes(ctx.role);
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let cohorts: Awaited<ReturnType<typeof listImpactCohorts>> = [];
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    cohorts = await listImpactCohorts(ctx, { limit: 100 });
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Cohort records are temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts", operation: "cohort_list_load_failed", error });
+  }
+  const canManage = Boolean(ctx && !loadError && COHORT_MANAGE_ROLES.includes(ctx.role));
   const totals = cohorts.reduce(
     (acc, cohort) => {
       acc.beneficiaries += cohort.member_count ?? cohort.current_beneficiaries ?? 0;
@@ -39,11 +50,13 @@ export default async function ImpactCohortsPage() {
         <MetricTile label="Recruiting cohorts" value={totals.recruiting} detail="Cohorts still accepting MSME enrolment." />
       </div>
 
-      <SectionCard title="Cohort Registry" action={<QuickLink href="/dashboard/impact-intelligence/programmes">Programmes</QuickLink>}>
-        {cohorts.length === 0 ? (
+      <SectionCard title="Cohort Registry" action={!loadError ? <QuickLink href="/dashboard/impact-intelligence/programmes">Programmes</QuickLink> : undefined}>
+        {loadError ? (
+          <EmptyState title="Cohort records could not load" description="The cohort source, current session, or role assignment is temporarily unavailable." icon={UsersRound} />
+        ) : cohorts.length === 0 ? (
           <EmptyState
-            title={ctx.role === "field_officer" ? "No assigned beneficiaries" : "No cohorts yet"}
-            description={ctx.role === "field_officer" ? "Assigned cohort beneficiaries will appear here after a programme officer assigns MSMEs to you." : "Create a cohort to enrol MSMEs against a programme before opening intervention and monitoring workflows."}
+            title={ctx?.role === "field_officer" ? "No assigned beneficiaries" : "No cohorts yet"}
+            description={ctx?.role === "field_officer" ? "Assigned cohort beneficiaries will appear here after a programme officer assigns MSMEs to you." : "Create a cohort to enrol MSMEs against a programme before opening intervention and monitoring workflows."}
             actionHref={canManage ? "/dashboard/impact-intelligence/cohorts/new" : undefined}
             actionLabel={canManage ? "Create cohort" : undefined}
             icon={UsersRound}

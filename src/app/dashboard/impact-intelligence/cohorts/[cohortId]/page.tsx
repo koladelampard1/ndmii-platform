@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { notFound } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { CalendarCheck, CheckCircle2, CircleDashed, FileArchive, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -22,12 +22,20 @@ import {
 } from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { IndicatorSummary } from "../../indicators/indicator-summary";
-import { ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../../_components";
+import { EmptyState, ImpactPageHeader, MetricTile, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 type PageProps = {
   params: Promise<{ cohortId: string }>;
-  searchParams?: Promise<{ state?: string; sector?: string; q?: string }>;
+  searchParams?: Promise<{ state?: string; sector?: string; q?: string; error?: string }>;
 };
+
+const EXPECTED_COHORT_ACTION_ERRORS = ["required", "select", "invalid", "cohort", "MSME", "member", "field officer", "permission", "already enrolled", "CSV"];
+
+function redirectWithCohortError(cohortId: string, error: unknown): never {
+  const message = error instanceof Error ? error.message : "Cohort action could not be completed.";
+  redirect(`/dashboard/impact-intelligence/cohorts/${cohortId}?error=${encodeURIComponent(message)}`);
+}
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -37,7 +45,14 @@ function formatDate(value: string | null) {
 async function enrollMembersAction(cohortId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await enrollImpactCohortMembers(ctx, cohortId, formData);
+  try {
+    await enrollImpactCohortMembers(ctx, cohortId, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_member_enrol_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_COHORT_ACTION_ERRORS.some((message) => error.message.toLowerCase().includes(message.toLowerCase()))) throw error;
+    redirectWithCohortError(cohortId, error);
+  }
   revalidatePath(`/dashboard/impact-intelligence/cohorts/${cohortId}`);
   revalidatePath("/dashboard/impact-intelligence/cohorts");
 }
@@ -45,7 +60,14 @@ async function enrollMembersAction(cohortId: string, formData: FormData) {
 async function updateMemberStatusAction(cohortId: string, memberId: string, formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  await updateImpactCohortMemberStatus(ctx, memberId, formData);
+  try {
+    await updateImpactCohortMemberStatus(ctx, memberId, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_member_update_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_COHORT_ACTION_ERRORS.some((message) => error.message.toLowerCase().includes(message.toLowerCase()))) throw error;
+    redirectWithCohortError(cohortId, error);
+  }
   revalidatePath(`/dashboard/impact-intelligence/cohorts/${cohortId}`);
   revalidatePath("/dashboard/impact-intelligence/cohorts");
 }
@@ -73,18 +95,50 @@ function DistributionList({ items }: { items: Array<{ label: string; value: numb
 export default async function ImpactCohortDetailPage({ params, searchParams }: PageProps) {
   const { cohortId } = await params;
   const filters = (await searchParams) ?? {};
-  const ctx = await getCurrentUserContext();
-  const [{ cohort, members, dashboard }, registryMsmes, fieldOfficers, evidenceFiles, indicatorAggregate] = await Promise.all([
-    getImpactCohortDetail(ctx, cohortId),
-    listMsmePickerOptions({ limit: 150, state: filters.state, sector: filters.sector, search: filters.q }),
-    listUserPickerOptions("field_officer"),
-    listImpactEvidence(ctx, { cohortId, limit: 250 }).catch(() => {
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getImpactCohortDetail>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    detail = await getImpactCohortDetail(ctx, cohortId);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Cohort Unavailable">
+          <EmptyState title="Cohort record could not load" description="The cohort source, current session, or assigned scope is temporarily unavailable." icon={UsersRound} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { cohort, members, dashboard } = detail;
+  if (!cohort) notFound();
+  const canManage = COHORT_MANAGE_ROLES.includes(ctx.role);
+  let registryOptionsFailed = false;
+  let officerOptionsFailed = false;
+  const [registryMsmes, fieldOfficers, evidenceFiles, indicatorAggregate] = await Promise.all([
+    canManage
+      ? listMsmePickerOptions({ limit: 150, state: filters.state, sector: filters.sector, search: filters.q }).catch((error) => {
+          registryOptionsFailed = true;
+          logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_registry_options_load_failed", error });
+          return [];
+        })
+      : Promise.resolve([]),
+    canManage
+      ? listUserPickerOptions("field_officer").catch((error) => {
+          officerOptionsFailed = true;
+          logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_officer_options_load_failed", error });
+          return [];
+        })
+      : Promise.resolve([]),
+    listImpactEvidence(ctx, { cohortId, limit: 250 }).catch((error) => {
       logImpactEvidenceDiagnostic({
         operation: "cohort_detail_evidence_unavailable",
         cohortId,
         actorRole: ctx.role,
         success: false,
         errorCode: "source_unavailable",
+        errorMessage: error instanceof Error ? error.message : "Unknown evidence error",
       });
       return [];
     }),
@@ -101,9 +155,8 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
       return null;
     }),
   ]);
+  const canManageMembers = canManage && !registryOptionsFailed && !officerOptionsFailed;
 
-  if (!cohort) notFound();
-  const canManage = COHORT_MANAGE_ROLES.includes(ctx.role);
   const officerById = new Map(fieldOfficers.map((officer) => [officer.id, officer]));
   const memberIds = new Set(members.map((member) => member.msme_id));
   const availableMsmes = registryMsmes.filter((msme) => !memberIds.has(msme.id));
@@ -127,6 +180,10 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
           <div><span className="font-medium text-slate-800">Timeline:</span> {formatDate(cohort.start_date)} to {formatDate(cohort.end_date)}</div>
         </div>
       </ImpactPageHeader>
+
+      {filters.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{filters.error}</div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <MetricTile label="Total beneficiaries" value={dashboard.totalBeneficiaries.toLocaleString("en-NG")} detail={`Target ${cohort.target_beneficiaries.toLocaleString("en-NG")}`} icon={UsersRound} tone="emerald" />
@@ -174,7 +231,13 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
         )}
       </SectionCard>
 
-      {canManage && (
+      {canManage && (registryOptionsFailed || officerOptionsFailed) && (
+        <SectionCard title="Cohort Management Unavailable">
+          <EmptyState title="Member management options could not load" description="Registry or field-officer options are temporarily unavailable. Existing cohort data remains visible, but enrolment and member updates are disabled." icon={UsersRound} />
+        </SectionCard>
+      )}
+
+      {canManageMembers && (
         <SectionCard title="Enroll MSMEs">
           <form method="get" className="grid gap-3 rounded-lg border bg-slate-50 p-4 md:grid-cols-4">
             <input name="state" defaultValue={filters.state ?? ""} className="rounded-md border px-3 py-2 text-sm" placeholder="Filter state" />
@@ -285,7 +348,7 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
                         </div>
                       </td>
                       <td className={tableCellClassName}>
-                        {canManage ? (
+                        {canManageMembers ? (
                           <form action={updateAction} className="flex min-w-[260px] gap-2">
                             <select name="member_status" defaultValue={member.member_status} className="h-9 rounded-md border px-2 text-sm">
                               {COHORT_MEMBER_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}

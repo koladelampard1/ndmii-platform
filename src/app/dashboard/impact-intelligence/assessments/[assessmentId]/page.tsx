@@ -1,5 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
+import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -23,6 +24,8 @@ import {
 } from "@/lib/data/impact-indicators";
 import { EvidenceFileSummary } from "../../evidence/evidence-file-summary";
 import { IndicatorSummary } from "../../indicators/indicator-summary";
+import { EmptyState, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 const EXPECTED_ASSESSMENT_ERRORS = [
   "Required question missing:",
@@ -52,6 +55,8 @@ async function saveDraftAction(assessmentId: string, formData: FormData) {
   try {
     await saveAssessmentDraft(ctx, assessmentId, formData);
   } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/[assessmentId]", operation: "assessment_draft_save_failed", error });
     if (!isExpectedAssessmentError(error)) throw error;
     redirectWithAssessmentError(assessmentId, error);
   }
@@ -64,6 +69,8 @@ async function submitAssessmentAction(assessmentId: string, formData: FormData) 
   try {
     await submitAssessment(ctx, assessmentId, formData);
   } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/[assessmentId]", operation: "assessment_submit_failed", error });
     if (!isExpectedAssessmentError(error)) throw error;
     redirectWithAssessmentError(assessmentId, error);
   }
@@ -76,6 +83,8 @@ async function reviewAssessmentAction(assessmentId: string, formData: FormData) 
   try {
     await reviewAssessment(ctx, assessmentId, formData);
   } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/[assessmentId]", operation: "assessment_review_failed", error });
     if (!isExpectedAssessmentError(error)) throw error;
     redirectWithAssessmentError(assessmentId, error);
   }
@@ -152,15 +161,32 @@ export default async function AssessmentDetailPage({
 }) {
   const { assessmentId } = await params;
   const query = await searchParams;
-  const ctx = await getCurrentUserContext();
-  const [detail, evidenceFiles, indicatorMeasurements] = await Promise.all([
-    getImpactAssessmentDetail(assessmentId, ctx),
-    listImpactEvidence(ctx, { assessmentId, limit: 100 }).catch(() => {
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let detail: Awaited<ReturnType<typeof getImpactAssessmentDetail>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    detail = await getImpactAssessmentDetail(assessmentId, ctx);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/[assessmentId]", operation: "assessment_detail_load_failed", error });
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Assessment Unavailable">
+          <EmptyState title="Assessment record could not load" description="The assessment source, current session, or role assignment is temporarily unavailable." icon={ClipboardCheck} />
+        </SectionCard>
+      </section>
+    );
+  }
+  const { assessment, template, sections, questions, responses, scores, reviews, visits } = detail;
+  if (!assessment) notFound();
+  const [evidenceFiles, indicatorMeasurements] = await Promise.all([
+    listImpactEvidence(ctx, { assessmentId, limit: 100 }).catch((error) => {
       logImpactEvidenceDiagnostic({
         operation: "assessment_detail_evidence_unavailable",
         actorRole: ctx.role,
         success: false,
         errorCode: "source_unavailable",
+        errorMessage: error instanceof Error ? error.message : "Unknown evidence error",
       });
       return [];
     }),
@@ -177,8 +203,6 @@ export default async function AssessmentDetailPage({
       return null;
     }),
   ]);
-  const { assessment, template, sections, questions, responses, scores, reviews, visits } = detail;
-  if (!assessment) notFound();
 
   const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
   const canReview = ASSESSMENT_REVIEW_ROLES.includes(ctx.role);

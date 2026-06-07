@@ -1,18 +1,40 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createImpactProgramme, IMPACT_WRITE_ROLES, PROGRAMME_STATUSES } from "@/lib/data/impact-intelligence";
+import { EmptyState, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
+
+const EXPECTED_PROGRAMME_ERRORS = ["required", "valid", "already exists", "permission", "programme"];
 
 async function createProgrammeAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const programmeId = await createImpactProgramme(ctx, formData);
+  let programmeId: string;
+  try {
+    programmeId = await createImpactProgramme(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes/new", operation: "programme_create_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_PROGRAMME_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirect(`/dashboard/impact-intelligence/programmes/new?error=${encodeURIComponent(error.message)}`);
+  }
   redirect(`/dashboard/impact-intelligence/programmes/${programmeId}`);
 }
 
-export default async function NewImpactProgrammePage() {
-  const ctx = await getCurrentUserContext();
-  if (!IMPACT_WRITE_ROLES.includes(ctx.role)) redirect("/access-denied");
+export default async function NewImpactProgrammePage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    if (!IMPACT_WRITE_ROLES.includes(ctx.role)) redirect("/access-denied");
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Programme creation is temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes/new", operation: "programme_create_page_load_failed", error });
+  }
 
   return (
     <section className="space-y-6">
@@ -24,6 +46,13 @@ export default async function NewImpactProgrammePage() {
         </p>
       </header>
 
+      {loadError ? (
+        <SectionCard title="Programme Creation Unavailable">
+          <EmptyState title="Programme creation could not load" description="The current session or programme source is temporarily unavailable. No programme data has been changed." icon={Flag} />
+        </SectionCard>
+      ) : (
+      <>
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
       <form action={createProgrammeAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-2">
         <label className="space-y-1 text-sm font-medium text-slate-700">
           Programme name
@@ -59,6 +88,8 @@ export default async function NewImpactProgrammePage() {
           <Button type="submit">Create programme</Button>
         </div>
       </form>
+      </>
+      )}
     </section>
   );
 }

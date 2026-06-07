@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { ClipboardCheck, FileText, MapPinned, ShieldCheck } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getExecutiveDashboardMetrics, type DistributionBucket } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, MetricTile, SectionCard, StatusBadge } from "../_components";
+import { logImpactRouteDiagnostic } from "../_diagnostics";
 
-const REPORTING_ROLES = ["admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
+const REPORTING_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
 
 function assertReportingRole(role: string) {
   if (!REPORTING_ROLES.includes(role)) redirect("/access-denied");
@@ -38,27 +39,41 @@ function DistributionChart({ title, data }: { title: string; data: DistributionB
 }
 
 export default async function ExecutiveDashboardPage() {
-  const ctx = await getCurrentUserContext();
-  assertReportingRole(ctx.role);
-  const metrics = await getExecutiveDashboardMetrics(ctx);
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let metrics: Awaited<ReturnType<typeof getExecutiveDashboardMetrics>> | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    assertReportingRole(ctx.role);
+    metrics = await getExecutiveDashboardMetrics(ctx);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/executive", operation: "executive_dashboard_load_failed", error });
+  }
 
   return (
     <section className="space-y-6">
       <ImpactPageHeader
-        eyebrow="Executive visibility"
-        title="Impact Intelligence Executive Dashboard"
-        description="Operational summary for MSME intervention performance, readiness, monitoring, evidence verification, and institutional alerts."
-        badge="Board pack view"
+        eyebrow="Internal programme monitoring"
+        title="Programme Monitoring Dashboard"
+        description="Internal summary of programme-linked interventions, assessments, monitoring visits, and evidence metadata. This is not a DBIN-wide executive impact report."
+        badge="Internal only"
         actions={[{ href: "/dashboard/impact-intelligence/reports", label: "Reports", icon: FileText, variant: "primary" }]}
       />
 
+      {!metrics ? (
+        <SectionCard title="Executive Dashboard Unavailable">
+          <EmptyState title="Programme monitoring metrics could not load" description="The dashboard source, current session, or role assignment is temporarily unavailable. No metrics are being inferred." />
+        </SectionCard>
+      ) : (
+      <>
+
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <MetricTile label="MSMEs" value={metrics.totalMsmes} detail="Total registry footprint" tone="slate" />
+        <MetricTile label="DBIN MSMEs" value={metrics.totalMsmes} detail="Registry context only; not programme beneficiaries" tone="slate" />
         <MetricTile label="Active programmes" value={metrics.activeProgrammes} detail="Currently active" tone="emerald" />
         <MetricTile label="Interventions" value={metrics.interventionCounts} detail="Tracked support records" tone="blue" />
         <MetricTile label="Assessments" value={metrics.completedAssessments} detail="Completed/reviewed" tone="slate" />
-        <MetricTile label="Monitoring" value={`${metrics.monitoringCompletionRate}%`} detail="Completion rate" tone="amber" />
-        <MetricTile label="Evidence" value={metrics.verifiedEvidence} detail="Verified records" tone="emerald" />
+        <MetricTile label="Visit completion" value={`${metrics.monitoringCompletionRate}%`} detail="Completed or reviewed visits / all visit records" tone="amber" />
+        <MetricTile label="Evidence metadata" value={metrics.verifiedEvidence} detail="Records marked verified; files may still be placeholders" tone="emerald" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -68,9 +83,10 @@ export default async function ExecutiveDashboardPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DistributionChart title="State Distribution" data={metrics.stateDistribution} />
-        <DistributionChart title="Sector Distribution" data={metrics.sectorDistribution} />
+        <DistributionChart title="Intervention-linked MSME State (raw values)" data={metrics.stateDistribution} />
+        <DistributionChart title="Intervention-linked MSME Sector (raw values)" data={metrics.sectorDistribution} />
       </div>
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Data quality warning: state and sector charts are limited to intervention-linked MSMEs and use raw, unstandardized values. They are not official regional coverage metrics.</p>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Recent Activity">
@@ -110,6 +126,8 @@ export default async function ExecutiveDashboardPage() {
         <Link href="/dashboard/impact-intelligence/monitoring" className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"><MapPinned className="mb-2 h-5 w-5 text-emerald-700" /> Monitoring queue</Link>
         <Link href="/dashboard/impact-intelligence/evidence" className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"><ShieldCheck className="mb-2 h-5 w-5 text-emerald-700" /> Evidence verification</Link>
       </div>
+      </>
+      )}
     </section>
   );
 }

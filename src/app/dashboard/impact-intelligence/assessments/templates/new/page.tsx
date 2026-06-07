@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
@@ -8,6 +9,10 @@ import {
   ASSESSMENT_TYPES,
   createAssessmentTemplate,
 } from "@/lib/data/impact-intelligence";
+import { EmptyState, SectionCard } from "../../../_components";
+import { logImpactRouteDiagnostic } from "../../../_diagnostics";
+
+const EXPECTED_TEMPLATE_ERRORS = ["required", "invalid", "valid", "blueprint", "scoring", "version", "permission", "already exists"];
 
 const DEFAULT_BLUEPRINT = [
   "Business profile | Is the business registration information current? | boolean | compliance | 10 | yes | | | {\"mode\":\"boolean\",\"true_score\":10,\"false_score\":0}",
@@ -26,13 +31,30 @@ const DEFAULT_SCORING_BANDS = JSON.stringify([
 async function createTemplateAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const templateId = await createAssessmentTemplate(ctx, formData);
+  let templateId: string;
+  try {
+    templateId = await createAssessmentTemplate(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates/new", operation: "assessment_template_create_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_TEMPLATE_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirect(`/dashboard/impact-intelligence/assessments/templates/new?error=${encodeURIComponent(error.message)}`);
+  }
   redirect(`/dashboard/impact-intelligence/assessments/templates/${templateId}`);
 }
 
-export default async function NewAssessmentTemplatePage() {
-  const ctx = await getCurrentUserContext();
-  if (!ASSESSMENT_MANAGE_ROLES.includes(ctx.role)) redirect("/access-denied");
+export default async function NewAssessmentTemplatePage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    if (!ASSESSMENT_MANAGE_ROLES.includes(ctx.role)) redirect("/access-denied");
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Assessment template creation is temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates/new", operation: "assessment_template_create_page_load_failed", error });
+  }
 
   return (
     <section className="space-y-6">
@@ -42,6 +64,13 @@ export default async function NewAssessmentTemplatePage() {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Define the sections, question order, question types, required flags, and weights used for BOI MSME assessments.</p>
       </header>
 
+      {loadError ? (
+        <SectionCard title="Template Creation Unavailable">
+          <EmptyState title="Assessment template creation could not load" description="The current session or assessment source is temporarily unavailable." icon={ClipboardCheck} />
+        </SectionCard>
+      ) : (
+      <>
+      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
       <form action={createTemplateAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-2">
         <label className="space-y-1 text-sm font-medium text-slate-700">
           Template name
@@ -87,6 +116,8 @@ export default async function NewAssessmentTemplatePage() {
           <Button type="submit">Create template</Button>
         </div>
       </form>
+      </>
+      )}
     </section>
   );
 }

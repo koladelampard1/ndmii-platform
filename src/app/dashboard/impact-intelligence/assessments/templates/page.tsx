@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ClipboardCheck, Plus } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { ASSESSMENT_MANAGE_ROLES, listAssessmentTemplates } from "@/lib/data/impact-intelligence";
+import { EmptyState, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 function statusClass(status: string) {
   if (status === "active") return "bg-emerald-100 text-emerald-700";
@@ -10,9 +13,18 @@ function statusClass(status: string) {
 }
 
 export default async function AssessmentTemplatesPage() {
-  const ctx = await getCurrentUserContext();
-  const templates = await listAssessmentTemplates(ctx, { limit: 100 });
-  const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let templates: Awaited<ReturnType<typeof listAssessmentTemplates>> = [];
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    templates = await listAssessmentTemplates(ctx, { limit: 100 });
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Assessment templates are temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates", operation: "assessment_template_list_load_failed", error });
+  }
+  const canManage = Boolean(ctx && !loadError && ASSESSMENT_MANAGE_ROLES.includes(ctx.role));
 
   return (
     <section className="space-y-6">
@@ -31,6 +43,11 @@ export default async function AssessmentTemplatesPage() {
         </div>
       </header>
 
+      {loadError ? (
+        <SectionCard title="Assessment Templates Unavailable">
+          <EmptyState title="Assessment templates could not load" description="The template source, current session, or role assignment is temporarily unavailable." icon={ClipboardCheck} />
+        </SectionCard>
+      ) : (
       <article className="rounded-xl border bg-white p-5 shadow-sm">
         {templates.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-slate-50 p-6 text-center">
@@ -61,6 +78,7 @@ export default async function AssessmentTemplatesPage() {
           </div>
         )}
       </article>
+      )}
     </section>
   );
 }

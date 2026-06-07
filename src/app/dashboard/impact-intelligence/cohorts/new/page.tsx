@@ -1,21 +1,43 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { COHORT_MANAGE_ROLES, COHORT_STATUSES, createImpactCohort, listImpactProgrammes } from "@/lib/data/impact-intelligence";
-import { ImpactPageHeader, SectionCard } from "../../_components";
+import { EmptyState, ImpactPageHeader, SectionCard } from "../../_components";
+import { logImpactRouteDiagnostic } from "../../_diagnostics";
+
+const EXPECTED_COHORT_ERRORS = ["required", "valid", "programme", "cohort", "permission", "already exists"];
 
 async function createCohortAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const cohortId = await createImpactCohort(ctx, formData);
+  let cohortId: string;
+  try {
+    cohortId = await createImpactCohort(ctx, formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/new", operation: "cohort_create_failed", error });
+    if (!(error instanceof Error) || !EXPECTED_COHORT_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
+    redirect(`/dashboard/impact-intelligence/cohorts/new?error=${encodeURIComponent(error.message)}`);
+  }
   redirect(`/dashboard/impact-intelligence/cohorts/${cohortId}`);
 }
 
-export default async function NewImpactCohortPage() {
-  const ctx = await getCurrentUserContext();
-  if (!COHORT_MANAGE_ROLES.includes(ctx.role)) redirect("/access-denied");
-  const programmes = await listImpactProgrammes(ctx, { limit: 100 });
+export default async function NewImpactCohortPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+  const query = (await searchParams) ?? {};
+  let ctx: Awaited<ReturnType<typeof getCurrentUserContext>> | null = null;
+  let programmes: Awaited<ReturnType<typeof listImpactProgrammes>> = [];
+  let loadError: string | null = null;
+  try {
+    ctx = await getCurrentUserContext();
+    if (!COHORT_MANAGE_ROLES.includes(ctx.role)) redirect("/access-denied");
+    programmes = await listImpactProgrammes(ctx, { limit: 100 });
+  } catch (error) {
+    unstable_rethrow(error);
+    loadError = error instanceof Error ? error.message : "Cohort creation is temporarily unavailable.";
+    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/new", operation: "cohort_create_page_load_failed", error });
+  }
 
   return (
     <section className="space-y-6">
@@ -27,6 +49,11 @@ export default async function NewImpactCohortPage() {
       />
 
       <SectionCard title="Cohort Details">
+        {loadError ? (
+          <EmptyState title="Cohort creation could not load" description="Programme options or the current session are temporarily unavailable. No cohort data has been changed." icon={UsersRound} />
+        ) : (
+        <>
+        {query.error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
         <form action={createCohortAction} className="grid gap-4 lg:grid-cols-3">
           <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-2">
             Name
@@ -78,6 +105,8 @@ export default async function NewImpactCohortPage() {
             <Button type="submit">Create cohort</Button>
           </div>
         </form>
+        </>
+        )}
       </SectionCard>
     </section>
   );
