@@ -6,7 +6,7 @@ import { dismissInsight, getInsightDetail } from "@/lib/data/impact-intelligence
 import { EmptyState, SectionCard } from "../../_components";
 import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"];
 const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
 
 async function dismissAction(insightId: string) {

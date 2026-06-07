@@ -4,7 +4,7 @@ import { getAssessmentAnalytics, getMonitoringAnalytics, getProgrammeAnalytics, 
 import { EmptyState, ImpactPageHeader, MetricTile, SectionCard } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
 
-const REPORTING_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
+const REPORTING_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor"];
 
 function assertReportingRole(role: string) {
   if (!REPORTING_ROLES.includes(role)) redirect("/access-denied");

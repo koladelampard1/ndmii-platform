@@ -66,7 +66,23 @@ const impactReportExportRoute = read(
   "src/app/api/impact-intelligence/reports/exports/[exportId]/route.ts",
 );
 const authorization = read("src/lib/auth/authorization.ts");
+const authSession = read("src/lib/auth/session.ts");
 const roleTypes = read("src/types/roles.ts");
+const analyticsRoute = read(
+  "src/app/dashboard/impact-intelligence/analytics/page.tsx",
+);
+const executiveRoute = read(
+  "src/app/dashboard/impact-intelligence/executive/page.tsx",
+);
+const intelligenceRoute = read(
+  "src/app/dashboard/impact-intelligence/intelligence/page.tsx",
+);
+const intelligenceDetailRoute = read(
+  "src/app/dashboard/impact-intelligence/intelligence/[insightId]/page.tsx",
+);
+const riskFlagsRoute = read(
+  "src/app/dashboard/impact-intelligence/risk-flags/page.tsx",
+);
 const impactPermissions = read(
   "src/lib/impact-intelligence/permissions.ts",
 );
@@ -372,8 +388,20 @@ check("data analyst is a recognized Impact Intelligence role", () => {
   assert(
     roleTypes.includes('| "data_analyst"') &&
       authorization.includes('"data_analyst"') &&
-      authorization.includes('data_analyst: "/dashboard/impact-intelligence/analytics"'),
-    "Expected data_analyst in role types, normalization, and route-home configuration.",
+      authorization.includes('data_analyst: "/dashboard/impact-intelligence/analytics"') &&
+      authSession.includes('"data_analyst"'),
+    "Expected data_analyst in role types, normalization, session validation, and route-home configuration.",
+  );
+});
+
+check("data analyst page guards cover approved intelligence views", () => {
+  assert(
+    analyticsRoute.includes('"data_analyst"') &&
+      executiveRoute.includes('"data_analyst"') &&
+      intelligenceRoute.includes('"data_analyst"') &&
+      intelligenceDetailRoute.includes('"data_analyst"') &&
+      riskFlagsRoute.includes('"data_analyst"'),
+    "Expected data_analyst in analytics, executive, intelligence, intelligence detail, and risk flag page guards.",
   );
 });
 

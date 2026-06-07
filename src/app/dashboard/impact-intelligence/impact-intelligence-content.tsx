@@ -28,6 +28,7 @@ type LauncherAudience =
   | "programme_officer"
   | "assessment_officer"
   | "field_officer"
+  | "data_analyst"
   | "auditor";
 
 type LifecycleStep = {
@@ -47,6 +48,8 @@ type LauncherCard = {
   audiences: LauncherAudience[];
   priority: number;
 };
+
+const PORTFOLIO_AUDIENCES: LauncherAudience[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor"];
 
 const LIFECYCLE_STEPS: LifecycleStep[] = [
   {
@@ -114,7 +117,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Review portfolio readiness, active programmes, monitoring coverage, and report status.",
     icon: Gauge,
     lifecycle: "Executive Decisions",
-    audiences: ["boi_executive", "auditor"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 1,
   },
   {
@@ -123,7 +126,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Open programme monitoring reports and track which outputs still need indicator and evidence backing.",
     icon: FileText,
     lifecycle: "Reports",
-    audiences: ["boi_executive", "programme_officer", "assessment_officer", "auditor"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 2,
   },
   {
@@ -132,7 +135,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Review deterministic monitoring risks from existing programme records.",
     icon: Flag,
     lifecycle: "Executive Decisions",
-    audiences: ["boi_executive", "field_officer", "auditor"],
+    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"],
     priority: 3,
   },
   {
@@ -141,7 +144,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Manage the institutional programme portfolio and programme-level beneficiary context.",
     icon: Layers3,
     lifecycle: "Programme",
-    audiences: ["programme_officer"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 1,
   },
   {
@@ -150,7 +153,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Create cohorts, enrol MSMEs, assign field officers, and track beneficiary status before interventions.",
     icon: UsersRound,
     lifecycle: "Beneficiary Cohort",
-    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 2,
   },
   {
@@ -159,7 +162,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Track support delivered to MSMEs and the lifecycle status of each intervention.",
     icon: Network,
     lifecycle: "Intervention",
-    audiences: ["programme_officer"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 3,
   },
   {
@@ -168,7 +171,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Run structured assessment workflows tied to programmes, interventions, and MSMEs.",
     icon: ClipboardCheck,
     lifecycle: "Assessment",
-    audiences: ["assessment_officer"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 1,
   },
   {
@@ -177,7 +180,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Prepare definitions, baselines, targets, and follow-up values. This module is not operational yet.",
     icon: Target,
     lifecycle: "Impact Indicators",
-    audiences: ["assessment_officer"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 2,
   },
   {
@@ -204,7 +207,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Register and review evidence metadata linked to visits, assessments, interventions, and MSMEs.",
     icon: FileArchive,
     lifecycle: "Evidence",
-    audiences: ["field_officer", "auditor"],
+    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"],
     priority: 2,
   },
   {
@@ -213,7 +216,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Inspect programme monitoring charts. These are operational views, not predictive analytics.",
     icon: BarChart3,
     lifecycle: "Executive Decisions",
-    audiences: ["boi_executive", "programme_officer"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 5,
   },
   {
@@ -222,7 +225,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Read existing deterministic records only. No new AI insight surface is introduced in this phase.",
     icon: LineChart,
     lifecycle: "Legacy Records",
-    audiences: ["boi_executive", "programme_officer", "assessment_officer", "auditor"],
+    audiences: PORTFOLIO_AUDIENCES,
     priority: 9,
   },
 ];
@@ -234,6 +237,7 @@ const AUDIENCE_BY_ROLE: Partial<Record<UserRole, LauncherAudience>> = {
   programme_officer: "programme_officer",
   assessment_officer: "assessment_officer",
   field_officer: "field_officer",
+  data_analyst: "data_analyst",
   auditor: "auditor",
 };
 

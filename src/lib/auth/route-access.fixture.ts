@@ -73,6 +73,10 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags"],
     denied: ["/dashboard/msme", "/dashboard/admin", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
   },
+  data_analyst: {
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags"],
+    denied: ["/dashboard/msme", "/dashboard/admin"],
+  },
   auditor: {
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
     denied: ["/dashboard/msme", "/dashboard/admin"],

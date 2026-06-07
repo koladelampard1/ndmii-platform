@@ -7,6 +7,7 @@ const IMPACT_INTELLIGENCE_ROLES = [
   "programme_officer",
   "assessment_officer",
   "field_officer",
+  "data_analyst",
   "auditor",
 ] as const;
 
@@ -16,6 +17,7 @@ const IMPACT_PORTFOLIO_ROLES = [
   "boi_executive",
   "programme_officer",
   "assessment_officer",
+  "data_analyst",
   "auditor",
 ] as const;
 

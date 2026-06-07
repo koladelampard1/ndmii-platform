@@ -11,7 +11,7 @@ function redirectWithRiskError(error: unknown): never {
   redirect(`/dashboard/impact-intelligence/risk-flags?error=${encodeURIComponent(message)}`);
 }
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"];
 const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
 
 async function generateRiskFlagsAction() {

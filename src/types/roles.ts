@@ -7,6 +7,7 @@ export type UserRole =
   | "programme_officer"
   | "assessment_officer"
   | "field_officer"
+  | "data_analyst"
   | "auditor"
   | "fccpc_officer"
   | "nrs_officer"

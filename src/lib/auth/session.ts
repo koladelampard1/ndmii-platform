@@ -38,6 +38,7 @@ const VALID_USER_ROLES = new Set<UserRole>([
   "programme_officer",
   "assessment_officer",
   "field_officer",
+  "data_analyst",
   "auditor",
   "fccpc_officer",
   "nrs_officer",
