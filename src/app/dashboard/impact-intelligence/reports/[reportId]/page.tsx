@@ -3,11 +3,10 @@ import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { AlertTriangle, Download, FileCheck2, FileText, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import type { UserContext } from "@/lib/auth/authorization";
 import {
-  REPORT_ARCHIVE_ROLES,
-  REPORT_CREATE_ROLES,
-  REPORT_REVIEW_ROLES,
   generateInstitutionalReportExport,
   generateInstitutionalReportVersion,
   getInstitutionalReport,
@@ -116,6 +115,7 @@ export default async function ReportDetailPage({
   let ctx: UserContext | null = null;
   let detail: ReportDetail | null = null;
   let loadError: string | null = null;
+  let accessDenied = false;
 
   try {
     ctx = await getCurrentUserContext();
@@ -125,6 +125,7 @@ export default async function ReportDetailPage({
     }) as ReportDetail;
   } catch (error) {
     unstable_rethrow(error);
+    accessDenied = isImpactProgrammeReadDenied(error);
     loadError = error instanceof Error ? error.message : "Institutional report is temporarily unavailable.";
     logImpactReportDiagnostic({ operation: "report_detail_load_failed", role: ctx?.role ?? null, authUserId: ctx?.authUserId ?? null, appUserId: ctx?.appUserId ?? null, reportId, errorMessage: loadError, success: false });
   }
@@ -134,7 +135,7 @@ export default async function ReportDetailPage({
     return (
       <section className="space-y-6">
         <ImpactPageHeader eyebrow="Institutional programme reporting" title="Report Unavailable" description="The report workspace remains available, but this report could not be loaded safely." />
-        <EmptyState title="Report could not load" description="Verify the current session, role assignment, and report data source, then reload this page." icon={FileText} />
+        <EmptyState title="Report could not load" description={accessDenied ? loadError ?? "You are not assigned to this programme." : "Verify the current session, role assignment, and report data source, then reload this page."} icon={FileText} />
       </section>
     );
   }
@@ -151,11 +152,11 @@ export default async function ReportDetailPage({
   const indicatorReferences = detail.indicatorReferences;
   const exports = detail.exports;
   const legacy = isLegacy(report);
-  const canGenerate = Boolean(ctx && (REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role) && ["draft", "returned"].includes(report.status) && !legacy);
-  const canSubmit = Boolean(ctx && (REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role) && ["draft", "returned"].includes(report.status) && report.latest_version_id && !legacy);
-  const canReview = Boolean(ctx && (REPORT_REVIEW_ROLES as readonly string[]).includes(ctx.role) && report.status === "in_review" && !legacy);
-  const canArchive = Boolean(ctx && (REPORT_ARCHIVE_ROLES as readonly string[]).includes(ctx.role) && ["draft", "returned", "approved"].includes(report.status) && !legacy);
-  const canExport = Boolean(ctx && ["admin", "super_admin", "programme_officer", "assessment_officer"].includes(ctx.role) && report.status === "approved" && !legacy);
+  const canGenerate = Boolean(ctx && canRole(ctx.role, "report", "update") && ["draft", "returned"].includes(report.status) && !legacy);
+  const canSubmit = Boolean(ctx && canRole(ctx.role, "report", "submit") && ["draft", "returned"].includes(report.status) && report.latest_version_id && !legacy);
+  const canReview = Boolean(ctx && canRole(ctx.role, "report", "approve") && report.status === "in_review" && !legacy);
+  const canArchive = Boolean(ctx && canRole(ctx.role, "report", "archive") && ["draft", "returned", "approved"].includes(report.status) && !legacy);
+  const canExport = Boolean(ctx && canRole(ctx.role, "report", "export") && report.status === "approved" && !legacy);
 
   return (
     <section className="space-y-6">

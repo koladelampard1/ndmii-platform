@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { FileText } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
+import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import type { UserContext } from "@/lib/auth/authorization";
 import {
-  REPORT_CREATE_ROLES,
   createInstitutionalReport,
   getReportFormOptions,
   listInstitutionalReports,
@@ -67,7 +68,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
       listError = error instanceof Error ? error.message : "Institutional reports are temporarily unavailable.";
       logImpactReportDiagnostic({ operation: "report_list_load_failed", role: ctx.role, authUserId: ctx.authUserId, appUserId: ctx.appUserId, errorMessage: listError, success: false });
     }
-    if ((REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role)) {
+    if (canRole(ctx.role, "report", "create")) {
       try {
         options = await getReportFormOptions(ctx);
       } catch (error) {
@@ -82,7 +83,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
     logImpactReportDiagnostic({ operation: "reports_page_context_failed", errorMessage: error instanceof Error ? error.message : "unknown_error", success: false });
   }
 
-  const canCreate = Boolean(ctx && (REPORT_CREATE_ROLES as readonly string[]).includes(ctx.role) && !optionsError);
+  const canCreate = Boolean(ctx && canRole(ctx.role, "report", "create") && !optionsError);
+  const scopeEmptyMessage = ctx ? getProgrammeScopeEmptyMessage(ctx) : null;
 
   return (
     <section className="space-y-6">
@@ -91,7 +93,9 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
         title="Impact Reports"
         description="Generate scope-correct, versioned reports from approved assessments, reviewed monitoring visits, verified evidence, and verified indicator measurements."
         badge={`${reports.length} reports`}
-        actions={[{ href: "/dashboard/impact-intelligence/executive", label: "Executive dashboard", icon: FileText }]}
+        actions={ctx && canAccessRoute(ctx.role, "/dashboard/impact-intelligence/executive")
+          ? [{ href: "/dashboard/impact-intelligence/executive", label: "Executive dashboard", icon: FileText }]
+          : []}
       />
 
       {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
@@ -108,7 +112,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
         {listError ? (
           <EmptyState title="Reports unavailable" description="Report records could not be loaded. The page remains available while the report source or session is restored." icon={FileText} />
         ) : reports.length === 0 ? (
-          <EmptyState title="No reports yet" description="Create a programme-scoped draft, generate its first immutable source version, then submit it for institutional review." icon={FileText} />
+          <EmptyState title="No reports yet" description={scopeEmptyMessage ?? "Create a programme-scoped draft, generate its first immutable source version, then submit it for institutional review."} icon={FileText} />
         ) : (
           <TableShell>
             <table className={tableClassName}>

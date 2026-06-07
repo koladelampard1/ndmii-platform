@@ -3,6 +3,7 @@ import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { CalendarCheck, CheckCircle2, CircleDashed, FileArchive, ShieldCheck, UserMinus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
 import {
   COHORT_MANAGE_ROLES,
   COHORT_MEMBER_STATUSES,
@@ -103,10 +104,13 @@ export default async function ImpactCohortDetailPage({ params, searchParams }: P
   } catch (error) {
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/cohorts/[cohortId]", operation: "cohort_detail_load_failed", error });
+    const description = isImpactProgrammeReadDenied(error)
+      ? error.message
+      : "The cohort source, current session, or assigned scope is temporarily unavailable.";
     return (
       <section className="space-y-6">
         <SectionCard title="Cohort Unavailable">
-          <EmptyState title="Cohort record could not load" description="The cohort source, current session, or assigned scope is temporarily unavailable." icon={UsersRound} />
+          <EmptyState title="Cohort record could not load" description={description} icon={UsersRound} />
         </SectionCard>
       </section>
     );

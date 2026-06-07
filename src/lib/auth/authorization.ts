@@ -198,12 +198,14 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   }
 
   if (getImpactRoutePolicy(path)) {
+    const canonicalAllowed = canAccessImpactRoute(role, path);
     logImpactPolicyDrift({
       role,
       route: path,
       legacyAllowed,
-      canonicalAllowed: canAccessImpactRoute(role, path),
+      canonicalAllowed,
     });
+    return canonicalAllowed;
   }
   return legacyAllowed;
 }
@@ -316,11 +318,8 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },
     { href: "/dashboard/impact-intelligence/evidence", label: "Evidence" },
-    { href: "/dashboard/impact-intelligence/executive", label: "Executive Dashboard" },
-    { href: "/dashboard/impact-intelligence/analytics", label: "Analytics" },
+    { href: "/dashboard/impact-intelligence/indicators", label: "Indicators" },
     { href: "/dashboard/impact-intelligence/reports", label: "Reports" },
-    { href: "/dashboard/impact-intelligence/intelligence", label: "Intelligence" },
-    { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
   assessment_officer: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },

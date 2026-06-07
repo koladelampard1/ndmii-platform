@@ -3,9 +3,11 @@ import type { UserContext } from "@/lib/auth/authorization";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import {
   applyProgrammeScope,
+  enforceProgrammeReadAccess,
   getProgrammeScopeFilter,
   logProgrammeScopeShadowDecision,
 } from "@/lib/impact-intelligence/access-scope";
+import { requireRolePermission } from "@/lib/impact-intelligence/permissions";
 
 export const IMPACT_EVIDENCE_BUCKET = "impact-evidence";
 export const IMPACT_EVIDENCE_MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -13,7 +15,7 @@ export const IMPACT_EVIDENCE_SIGNED_URL_SECONDS = 60 * 5;
 export const IMPACT_EVIDENCE_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 export const IMPACT_EVIDENCE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
 export const IMPACT_EVIDENCE_STATUSES = ["draft", "uploaded", "submitted", "under_review", "verified", "rejected", "returned", "archived"] as const;
-export const IMPACT_EVIDENCE_CREATE_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer"] as const;
+export const IMPACT_EVIDENCE_CREATE_ROLES = ["super_admin", "assessment_officer", "field_officer"] as const;
 export const IMPACT_EVIDENCE_REVIEW_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
 export const IMPACT_EVIDENCE_READ_ROLES = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
 
@@ -342,6 +344,7 @@ async function insertEvidenceEvent(params: {
 }
 
 export async function uploadImpactEvidence(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "evidence", "create", "You do not have permission to upload impact evidence.");
   requireRole(ctx, IMPACT_EVIDENCE_CREATE_ROLES, "You do not have permission to upload impact evidence.");
   const context = await validateEvidenceContext(ctx, formData);
   await logProgrammeScopeShadowDecision({ ctx, programmeId: context.programmeId, action: "write", resource: "evidence", legacyAllowed: true });
@@ -504,6 +507,7 @@ export async function getImpactEvidenceUploadOptions(
   ctx: UserContext,
   filters: { programmeId?: string | null; cohortId?: string | null } = {},
 ): Promise<ImpactEvidenceUploadOptions> {
+  requireRolePermission(ctx.role, "evidence", "create", "You do not have permission to upload impact evidence.");
   requireRole(ctx, IMPACT_EVIDENCE_CREATE_ROLES, "You do not have permission to upload impact evidence.");
   const supabase = await createServiceRoleSupabaseClient();
   const scope = ctx.role === "field_officer" ? await getFieldOfficerScope(ctx) : null;
@@ -525,6 +529,9 @@ export async function getImpactEvidenceUploadOptions(
     }
     if (memberIds.size === 0) return { programmes: [], cohorts: [], members: [], interventions: [], assessments: [], visits: [] };
     memberQuery = memberQuery.in("id", Array.from(memberIds));
+  } else {
+    await getProgrammeScopeFilter(ctx);
+    memberQuery = applyProgrammeScope(memberQuery, ctx);
   }
 
   const { data: members, error: memberError } = await memberQuery;
@@ -571,9 +578,17 @@ export async function getImpactEvidenceUploadOptions(
   };
 }
 
-export async function canAccessImpactEvidence(ctx: UserContext, evidence: Pick<ImpactEvidenceRecord, "field_visit_id" | "cohort_member_id">) {
+export async function canAccessImpactEvidence(ctx: UserContext, evidence: Pick<ImpactEvidenceRecord, "programme_id" | "field_visit_id" | "cohort_member_id">) {
   if (!(IMPACT_EVIDENCE_READ_ROLES as readonly string[]).includes(ctx.role)) return false;
-  if (ctx.role !== "field_officer") return true;
+  if (ctx.role !== "field_officer") {
+    if (!evidence.programme_id) return false;
+    try {
+      await enforceProgrammeReadAccess({ ctx, programmeId: evidence.programme_id, resource: "evidence" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const scope = await getFieldOfficerScope(ctx);
   return Boolean(
     (evidence.field_visit_id && scope.visitIds.includes(evidence.field_visit_id))
@@ -581,27 +596,41 @@ export async function canAccessImpactEvidence(ctx: UserContext, evidence: Pick<I
   );
 }
 
-export async function getImpactEvidence(ctx: UserContext, evidenceId: string) {
+export async function getImpactEvidence(ctx: UserContext, evidenceId: string, options: { enforceReadScope?: boolean } = {}) {
   requireRole(ctx, IMPACT_EVIDENCE_READ_ROLES, "You do not have permission to read impact evidence.");
   const supabase = await createServiceRoleSupabaseClient();
-  const [{ data: evidence, error }, { data: events, error: eventError }] = await Promise.all([
-    supabase.from("impact_evidence_files").select(IMPACT_EVIDENCE_SELECT).eq("id", evidenceId).maybeSingle(),
-    supabase.from("impact_evidence_events").select("id,evidence_id,event_type,from_status,to_status,actor_user_id,actor_role,note,metadata,created_at").eq("evidence_id", evidenceId).order("created_at", { ascending: false }),
-  ]);
+  const { data: evidence, error } = await supabase.from("impact_evidence_files").select(IMPACT_EVIDENCE_SELECT).eq("id", evidenceId).maybeSingle();
   if (error) throw new Error(`Impact evidence source unavailable: ${error.message}`);
-  if (eventError) throw new Error(`Impact evidence history unavailable: ${eventError.message}`);
   const record = evidence ? mapImpactEvidenceRow(evidence) : null;
-  if (record && !(await canAccessImpactEvidence(ctx, record))) throw new Error("You can only access evidence for assigned visits or beneficiaries.");
-  if (record) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: record.programme_id, action: "read", resource: "evidence", legacyAllowed: true });
+  if (record && ctx.role === "field_officer" && !(await canAccessImpactEvidence(ctx, record))) {
+    throw new Error("You can only access evidence for assigned visits or beneficiaries.");
   }
+  if (record && ctx.role !== "field_officer" && options.enforceReadScope !== false) {
+    await enforceProgrammeReadAccess({ ctx, programmeId: record.programme_id, resource: "evidence" });
+  }
+  const { data: events, error: eventError } = await supabase
+    .from("impact_evidence_events")
+    .select("id,evidence_id,event_type,from_status,to_status,actor_user_id,actor_role,note,metadata,created_at")
+    .eq("evidence_id", evidenceId)
+    .order("created_at", { ascending: false });
+  if (eventError) throw new Error(`Impact evidence history unavailable: ${eventError.message}`);
   return { evidence: record, events: (events ?? []) as ImpactEvidenceEvent[] };
 }
 
 export async function transitionImpactEvidence(ctx: UserContext, evidenceId: string, action: string, formData: FormData) {
-  const supabase = await createServiceRoleSupabaseClient();
-  const { evidence } = await getImpactEvidence(ctx, evidenceId);
+  const permissionAction = action === "submit"
+    ? "submit"
+    : action === "verified"
+      ? "verify"
+      : action === "returned"
+        ? "return"
+        : action === "archive"
+          ? "archive"
+          : "review";
+  requireRolePermission(ctx.role, "evidence", permissionAction, "You do not have permission to perform this evidence action.");
+  const { evidence } = await getImpactEvidence(ctx, evidenceId, { enforceReadScope: false });
   if (!evidence) throw new Error("Evidence record was not found.");
+  const supabase = await createServiceRoleSupabaseClient();
   await logProgrammeScopeShadowDecision({ ctx, programmeId: evidence.programme_id, action: "write", resource: "evidence", legacyAllowed: true });
   const now = new Date().toISOString();
   let nextStatus: ImpactEvidenceStatus;

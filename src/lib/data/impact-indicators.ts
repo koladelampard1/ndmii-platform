@@ -2,9 +2,11 @@ import type { UserContext } from "@/lib/auth/authorization";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import {
   applyProgrammeScope,
+  enforceProgrammeReadAccess,
   getProgrammeScopeFilter,
   logProgrammeScopeShadowDecision,
 } from "@/lib/impact-intelligence/access-scope";
+import { requireRolePermission } from "@/lib/impact-intelligence/permissions";
 
 export const INDICATOR_DEFINITION_STATUSES = ["draft", "active", "archived"] as const;
 export const INDICATOR_DIRECTIONS = ["increase", "decrease", "maintain"] as const;
@@ -14,8 +16,8 @@ export const INDICATOR_VERIFICATION_STATUSES = ["draft", "submitted", "verified"
 export const INDICATOR_OUTCOME_STATUSES = ["no_baseline", "below_target", "on_track", "achieved", "exceeded", "regressed"] as const;
 
 export const INDICATOR_READ_ROLES = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
-export const INDICATOR_DEFINITION_MANAGE_ROLES = ["admin", "super_admin", "programme_officer"] as const;
-export const INDICATOR_MEASUREMENT_CREATE_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer"] as const;
+export const INDICATOR_DEFINITION_MANAGE_ROLES = ["super_admin"] as const;
+export const INDICATOR_MEASUREMENT_CREATE_ROLES = ["super_admin", "assessment_officer", "field_officer"] as const;
 export const INDICATOR_MEASUREMENT_VERIFY_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
 
 export type IndicatorDirection = (typeof INDICATOR_DIRECTIONS)[number];
@@ -322,13 +324,17 @@ export async function getIndicatorDefinition(ctx: UserContext, indicatorDefiniti
     const scope = await getFieldOfficerScope(ctx);
     if (!data.programme_id || !scope.programmeIds.includes(String(data.programme_id))) throw new Error("You can only access indicators within your assigned scope.");
   }
-  if (data?.programme_id) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: data.programme_id, action: "read", resource: "indicator_definition", legacyAllowed: true });
+  if (data?.programme_id && ctx.role !== "field_officer") {
+    await enforceProgrammeReadAccess({ ctx, programmeId: data.programme_id, resource: "indicator_definition" });
+  }
+  if (data && (ctx.role === "boi_executive" || ctx.role === "data_analyst") && data.status !== "active") {
+    throw new Error("This role can only access active indicator definitions.");
   }
   return data as unknown as ImpactIndicatorDefinition | null;
 }
 
 export async function createIndicatorDefinition(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "indicator", "create", "You do not have permission to create indicator definitions.");
   requireRole(ctx, INDICATOR_DEFINITION_MANAGE_ROLES, "You do not have permission to manage indicator definitions.");
   const name = textValue(formData, "name");
   const unitOfMeasure = textValue(formData, "unit_of_measure");
@@ -427,6 +433,7 @@ async function insertMeasurementEvent(params: {
 }
 
 export async function createIndicatorMeasurement(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "indicator", "create", "You do not have permission to create indicator measurements.");
   requireRole(ctx, INDICATOR_MEASUREMENT_CREATE_ROLES, "You do not have permission to create indicator measurements.");
   const definitionId = textValue(formData, "indicator_definition_id");
   if (!definitionId) throw new Error("Select an indicator definition.");
@@ -493,6 +500,8 @@ export async function createIndicatorMeasurement(ctx: UserContext, formData: For
 }
 
 async function transitionMeasurement(ctx: UserContext, measurementId: string, nextStatus: IndicatorVerificationStatus, reviewNote?: string | null) {
+  const permissionAction = nextStatus === "submitted" ? "submit" : nextStatus === "verified" ? "verify" : "return";
+  requireRolePermission(ctx.role, "indicator", permissionAction, "You do not have permission to perform this indicator action.");
   const supabase = await createServiceRoleSupabaseClient();
   const { data: current, error: currentError } = await supabase
     .from("impact_indicator_measurements")
@@ -569,6 +578,9 @@ async function aggregateScope(ctx: UserContext, filters: IndicatorFilters) {
 }
 
 export async function aggregateProgrammeIndicators(ctx: UserContext, programmeId: string) {
+  if (ctx.role !== "field_officer") {
+    await enforceProgrammeReadAccess({ ctx, programmeId, resource: "indicator_analytics" });
+  }
   return aggregateScope(ctx, { programmeId });
 }
 
@@ -584,6 +596,7 @@ export async function getIndicatorFormOptions(ctx: UserContext): Promise<Indicat
   requireRole(ctx, INDICATOR_READ_ROLES, "You do not have permission to load indicator options.");
   const supabase = await createServiceRoleSupabaseClient();
   const scope = ctx.role === "field_officer" ? await getFieldOfficerScope(ctx) : null;
+  const programmeFilter = scope ? null : await getProgrammeScopeFilter(ctx);
   const [programmes, cohorts, members, interventions, assessments, scoreRuns, visits, users] = await Promise.all([
     supabase.from("impact_programmes").select("id,name,programme_code").order("name").limit(250),
     supabase.from("impact_beneficiary_cohorts").select("id,programme_id,name").order("name").limit(250),
@@ -603,18 +616,35 @@ export async function getIndicatorFormOptions(ctx: UserContext): Promise<Indicat
     memberRows = memberRows.filter((row) => scope.memberIds.includes(row.id));
     visitRows = visitRows.filter((row) => scope.visitIds.includes(row.id));
   }
-  const allowedProgrammeIds = scope ? new Set(scope.programmeIds) : null;
+  const allowedProgrammeIds = scope
+    ? new Set(scope.programmeIds)
+    : programmeFilter?.mode === "assigned"
+      ? new Set(programmeFilter.programmeIds)
+      : programmeFilter?.mode === "none"
+        ? new Set<string>()
+        : null;
   const allowedCohortIds = scope ? new Set(scope.cohortIds) : null;
   const allowedMemberIds = scope ? new Set(scope.memberIds) : null;
+  const cohortRows = ((cohorts.data ?? []) as IndicatorFormOptions["cohorts"])
+    .filter((row) => !allowedProgrammeIds || allowedProgrammeIds.has(row.programme_id))
+    .filter((row) => !allowedCohortIds || allowedCohortIds.has(row.id));
+  if (!scope && allowedProgrammeIds) {
+    memberRows = memberRows.filter((row) => allowedProgrammeIds.has(row.programme_id));
+    visitRows = visitRows.filter((row) => Boolean(row.programme_id && allowedProgrammeIds.has(row.programme_id)));
+  }
+  const interventionRows = ((interventions.data ?? []) as IndicatorFormOptions["interventions"])
+    .filter((row) => !allowedProgrammeIds || allowedProgrammeIds.has(row.programme_id))
+    .filter((row) => !allowedMemberIds || Boolean(row.cohort_member_id && allowedMemberIds.has(row.cohort_member_id)));
   const assessmentRows = ((assessments.data ?? []) as IndicatorFormOptions["assessments"])
+    .filter((row) => !allowedProgrammeIds || Boolean(row.programme_id && allowedProgrammeIds.has(row.programme_id)))
     .filter((row) => !allowedMemberIds || Boolean(row.cohort_member_id && allowedMemberIds.has(row.cohort_member_id)));
   const allowedAssessmentIds = scope ? new Set(assessmentRows.map((row) => row.id)) : null;
 
   return {
     programmes: ((programmes.data ?? []) as IndicatorFormOptions["programmes"]).filter((row) => !allowedProgrammeIds || allowedProgrammeIds.has(row.id)),
-    cohorts: ((cohorts.data ?? []) as IndicatorFormOptions["cohorts"]).filter((row) => !allowedCohortIds || allowedCohortIds.has(row.id)),
+    cohorts: cohortRows,
     members: memberRows,
-    interventions: ((interventions.data ?? []) as IndicatorFormOptions["interventions"]).filter((row) => !allowedMemberIds || Boolean(row.cohort_member_id && allowedMemberIds.has(row.cohort_member_id))),
+    interventions: interventionRows,
     assessments: assessmentRows,
     scoreRuns: ((scoreRuns.data ?? []) as IndicatorFormOptions["scoreRuns"]).filter((row) => !allowedAssessmentIds || allowedAssessmentIds.has(row.assessment_id)),
     visits: visitRows,

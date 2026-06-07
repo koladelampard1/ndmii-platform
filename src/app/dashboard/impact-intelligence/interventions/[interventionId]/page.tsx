@@ -3,6 +3,7 @@ import Link from "next/link";
 import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
 import {
   appendImpactInterventionNote,
   getImpactInterventionDetail,
@@ -87,10 +88,13 @@ export default async function ImpactInterventionDetailPage({ params, searchParam
   } catch (error) {
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/interventions/[interventionId]", operation: "intervention_detail_load_failed", error });
+    const description = isImpactProgrammeReadDenied(error)
+      ? error.message
+      : "The intervention source, current session, or role assignment is temporarily unavailable.";
     return (
       <section className="space-y-6">
         <SectionCard title="Intervention Unavailable">
-          <EmptyState title="Intervention record could not load" description="The intervention source, current session, or role assignment is temporarily unavailable." icon={HandCoins} />
+          <EmptyState title="Intervention record could not load" description={description} icon={HandCoins} />
         </SectionCard>
       </section>
     );

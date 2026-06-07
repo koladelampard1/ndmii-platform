@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { CalendarCheck } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
 import {
   createFieldVisit,
   listImpactCohortMemberOptions,
@@ -117,6 +118,7 @@ export default async function MonitoringPage({
   }
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
+  const scopeEmptyMessage = getProgrammeScopeEmptyMessage(ctx);
 
   return (
     <section className="space-y-6">
@@ -166,7 +168,7 @@ export default async function MonitoringPage({
         {visits.length === 0 ? (
           <EmptyState
             title="No monitoring visits yet"
-            description={canManage ? "Create the first monitoring task and assign it to a field officer so findings and evidence can be linked back to interventions." : "Assigned monitoring tasks will appear here."}
+            description={scopeEmptyMessage ?? (canManage ? "Create the first monitoring task and assign it to a field officer so findings and evidence can be linked back to interventions." : "Assigned monitoring tasks will appear here.")}
             icon={CalendarCheck}
           />
         ) : (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Flag } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
 import { getImpactProgrammeDetail } from "@/lib/data/impact-intelligence";
 import {
   listImpactEvidence,
@@ -31,10 +32,13 @@ export default async function ImpactProgrammeDetailPage({ params }: { params: Pr
   } catch (error) {
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes/[programmeId]", operation: "programme_detail_load_failed", error });
+    const description = isImpactProgrammeReadDenied(error)
+      ? error.message
+      : "The programme source, current session, or role assignment is temporarily unavailable.";
     return (
       <section className="space-y-6">
         <SectionCard title="Programme Unavailable">
-          <EmptyState title="Programme record could not load" description="The programme source, current session, or role assignment is temporarily unavailable." icon={Flag} />
+          <EmptyState title="Programme record could not load" description={description} icon={Flag} />
         </SectionCard>
       </section>
     );

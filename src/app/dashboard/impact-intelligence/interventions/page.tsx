@@ -3,6 +3,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
 import {
   createImpactIntervention,
   getInterventionStage,
@@ -134,6 +135,7 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
 
   const canWrite = IMPACT_WRITE_ROLES.includes(ctx.role);
   const canRead = IMPACT_READ_ROLES.includes(ctx.role);
+  const scopeEmptyMessage = getProgrammeScopeEmptyMessage(ctx);
   const interventionTypes = Array.from(new Set(interventions.map((item) => item.intervention_type).filter(Boolean))).sort();
   const unanchoredCount = interventions.filter((item) => !item.cohort_id || !item.cohort_member_id).length;
   const createProgrammeId = filters.create_programme_id ?? "";
@@ -242,7 +244,7 @@ export default async function ImpactInterventionsPage({ searchParams }: PageProp
         {interventions.length === 0 ? (
           <EmptyState
             title="No interventions yet"
-            description="Programme officers can create the first MSME intervention once a beneficiary is available, then connect assessments, monitoring, and evidence."
+            description={scopeEmptyMessage ?? "Programme officers can create the first MSME intervention once a beneficiary is available, then connect assessments, monitoring, and evidence."}
             icon={HandCoins}
           />
         ) : (

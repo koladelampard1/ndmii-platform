@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { requireWorkspaceRole } from "@/lib/auth/workspace-guards";
+import { canAccessRoute } from "@/lib/impact-intelligence/permissions";
 
 const IMPACT_INTELLIGENCE_ROLES = [
   "admin",
@@ -22,9 +24,13 @@ const IMPACT_PORTFOLIO_ROLES = [
 ] as const;
 
 export async function requireImpactRoute(pathname: string) {
-  return requireWorkspaceRole([...IMPACT_INTELLIGENCE_ROLES], pathname);
+  const ctx = await requireWorkspaceRole([...IMPACT_INTELLIGENCE_ROLES], pathname);
+  if (!canAccessRoute(ctx.role, pathname)) redirect("/access-denied");
+  return ctx;
 }
 
 export async function requireImpactPortfolioRoute(pathname: string) {
-  return requireWorkspaceRole([...IMPACT_PORTFOLIO_ROLES], pathname);
+  const ctx = await requireWorkspaceRole([...IMPACT_PORTFOLIO_ROLES], pathname);
+  if (!canAccessRoute(ctx.role, pathname)) redirect("/access-denied");
+  return ctx;
 }

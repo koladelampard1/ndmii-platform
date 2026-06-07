@@ -190,4 +190,3 @@ export function QuickLink({ href, children }: { href: string; children: ReactNod
     </Link>
   );
 }
-

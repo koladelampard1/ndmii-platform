@@ -2,6 +2,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import { generateRiskFlags, listIntelligenceFeed, resolveRiskFlag } from "@/lib/data/impact-intelligence";
 import { EmptyState, ImpactPageHeader, MetricTile, SectionCard, StatusBadge } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
@@ -11,8 +12,7 @@ function redirectWithRiskError(error: unknown): never {
   redirect(`/dashboard/impact-intelligence/risk-flags?error=${encodeURIComponent(message)}`);
 }
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"];
-const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "assessment_officer", "data_analyst", "auditor", "field_officer"];
 
 async function generateRiskFlagsAction() {
   "use server";
@@ -54,7 +54,8 @@ export default async function RiskFlagsPage({ searchParams }: { searchParams?: P
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/risk-flags", operation: "risk_flag_list_load_failed", error });
   }
-  const canManage = Boolean(ctx && feed && MANAGE_ROLES.includes(ctx.role));
+  const canGenerate = Boolean(ctx && feed && canRole(ctx.role, "risk_flag", "create"));
+  const canResolve = Boolean(ctx && feed && canRole(ctx.role, "risk_flag", "update"));
   const openFlags = feed?.riskFlags.filter((flag) => flag.status === "open") ?? [];
 
   return (
@@ -72,7 +73,7 @@ export default async function RiskFlagsPage({ searchParams }: { searchParams?: P
         </SectionCard>
       ) : (
       <>
-      {canManage && (
+      {canGenerate && (
         <form action={generateRiskFlagsAction} className="flex justify-end">
           <Button type="submit" className="gap-2"><AlertTriangle className="h-4 w-4" /> Generate risk flags</Button>
         </form>
@@ -104,7 +105,7 @@ export default async function RiskFlagsPage({ searchParams }: { searchParams?: P
                       <StatusBadge value={flag.status} />
                     </div>
                   </div>
-                  {canManage && flag.status === "open" && (
+                  {canResolve && flag.status === "open" && (
                     <form action={resolve} className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <input name="resolution_note" className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm" placeholder="Resolution note" />
                       <Button type="submit" variant="secondary" className="gap-2"><ShieldCheck className="h-4 w-4" /> Resolve</Button>

@@ -2,12 +2,12 @@ import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { BrainCircuit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import { dismissInsight, getInsightDetail } from "@/lib/data/impact-intelligence";
 import { EmptyState, SectionCard } from "../../_components";
 import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"];
-const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "assessment_officer", "data_analyst", "auditor", "field_officer"];
 
 async function dismissAction(insightId: string) {
   "use server";
@@ -51,7 +51,7 @@ export default async function InsightDetailPage({ params, searchParams }: { para
   }
   const { insight, recommendations, riskFlags, anomalies } = detail;
   if (!insight) notFound();
-  const canManage = MANAGE_ROLES.includes(ctx.role);
+  const canManage = canRole(ctx.role, "intelligence", "update");
   const dismiss = dismissAction.bind(null, insight.id);
 
   return (

@@ -10,9 +10,11 @@ import {
 } from "@/lib/data/impact-evidence";
 import {
   applyProgrammeScope,
+  enforceProgrammeReadAccess,
   getProgrammeScopeFilter,
   logProgrammeScopeShadowDecision,
 } from "@/lib/impact-intelligence/access-scope";
+import { requireRolePermission } from "@/lib/impact-intelligence/permissions";
 
 type ImpactQueryOptions = {
   limit?: number;
@@ -40,7 +42,7 @@ export const IMPACT_SCOPED_READ_ROLES: UserRole[] = [...IMPACT_READ_ROLES, "fiel
 export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
 export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "auditor", "field_officer"];
 export const COHORT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
-export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer", "assessment_officer"];
+export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["super_admin", "assessment_officer"];
 export const ASSESSMENT_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];
 export const MONITORING_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer", "assessment_officer"];
 export const MONITORING_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];
@@ -680,7 +682,7 @@ async function createReportingReadClient(ctx?: UserContext) {
 }
 
 async function createIntelligenceReadClient(ctx: UserContext) {
-  requireIntelligenceAccess(ctx);
+  requireRolePermission(ctx.role, "intelligence", "read", "You do not have permission to access impact intelligence.");
   return createPrivilegedImpactReadClient();
 }
 
@@ -750,16 +752,24 @@ function requireReportWrite(ctx: UserContext) {
   }
 }
 
-function requireIntelligenceAccess(ctx: UserContext) {
-  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"].includes(ctx.role)) {
-    throw new Error("You do not have permission to access impact intelligence.");
+async function getFieldOfficerPortfolioScope(ctx: UserContext) {
+  if (ctx.role !== "field_officer" || !ctx.appUserId) {
+    return { memberIds: [] as string[], visitIds: [] as string[] };
   }
-}
-
-function requireIntelligenceManage(ctx: UserContext) {
-  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"].includes(ctx.role)) {
-    throw new Error("You do not have permission to manage impact intelligence.");
-  }
+  const supabase = await createPrivilegedImpactReadClient();
+  const [members, visits] = await Promise.all([
+    supabase.from("impact_cohort_members").select("id").eq("assigned_to_user_id", ctx.appUserId),
+    supabase.from("impact_field_visits").select("id,cohort_member_id").eq("assigned_to_user_id", ctx.appUserId),
+  ]);
+  throwImpactReadError("field_officer_member_scope_failed", members.error);
+  throwImpactReadError("field_officer_visit_scope_failed", visits.error);
+  return {
+    memberIds: Array.from(new Set([
+      ...(members.data ?? []).map((row) => String(row.id)),
+      ...(visits.data ?? []).map((row) => String(row.cohort_member_id ?? "")).filter(Boolean),
+    ])),
+    visitIds: (visits.data ?? []).map((row) => String(row.id)),
+  };
 }
 
 function textValue(formData: FormData, key: string) {
@@ -962,13 +972,14 @@ export function parseInterventionForm(formData: FormData) {
 
 export async function listImpactProgrammes(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactProgramme[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
+  if (ctx?.role === "field_officer") return [];
   const supabase = await createImpactReadClient(ctx);
   let programmeQuery = supabase
     .from("impact_programmes")
     .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
     .order("created_at", { ascending: false })
     .limit(options.limit ?? 50);
-  if (ctx && ctx.role !== "field_officer") {
+  if (ctx) {
     await getProgrammeScopeFilter(ctx);
     programmeQuery = applyProgrammeScope(programmeQuery, ctx, "id");
   }
@@ -1070,7 +1081,9 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
 
   throwImpactReadError("get_cohort_failed", error);
   if (!cohort) return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
-  await logProgrammeScopeShadowDecision({ ctx, programmeId: cohort.programme_id, action: "read", resource: "cohort", legacyAllowed: true });
+  if (ctx.role !== "field_officer") {
+    await enforceProgrammeReadAccess({ ctx, programmeId: cohort.programme_id, resource: "cohort" });
+  }
 
   let memberQuery = supabase
     .from("impact_cohort_members")
@@ -1281,6 +1294,12 @@ export async function listImpactCohortMemberOptions(ctx: UserContext, options: I
     .limit(options.limit ?? 150);
 
   if (options.programmeId) query = query.eq("programme_id", options.programmeId);
+  if (ctx.role === "field_officer") {
+    query = query.eq("assigned_to_user_id", ctx.appUserId ?? "00000000-0000-0000-0000-000000000000");
+  } else {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
 
   const { data, error } = await query;
   throwImpactReadError("list_cohort_member_options_failed", error);
@@ -1289,14 +1308,19 @@ export async function listImpactCohortMemberOptions(ctx: UserContext, options: I
 
 export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
   requireImpactRead(ctx);
-  await logProgrammeScopeShadowDecision({ ctx, programmeId: id, action: "read", resource: "programme", legacyAllowed: true });
   const supabase = await createPrivilegedImpactReadClient();
-  const [{ data: programme, error }, { data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }, { data: assessments }, { data: visits }] = await Promise.all([
-    supabase
-      .from("impact_programmes")
-      .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
-      .eq("id", id)
-      .maybeSingle(),
+  const { data: programme, error } = await supabase
+    .from("impact_programmes")
+    .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
+    .eq("id", id)
+    .maybeSingle();
+  throwImpactReadError("get_programme_failed", error);
+  if (!programme) {
+    return { programme: null, interventions: [], unanchoredInterventions: [], enrolments: [], cohorts: [] };
+  }
+  await enforceProgrammeReadAccess({ ctx, programmeId: id, resource: "programme" });
+
+  const [{ data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }, { data: assessments }, { data: visits }] = await Promise.all([
     supabase
       .from("impact_interventions")
       .select(IMPACT_INTERVENTION_SELECT)
@@ -1326,7 +1350,6 @@ export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
       .eq("programme_id", id),
   ]);
 
-  throwImpactReadError("get_programme_failed", error);
   const memberSummary = summarizeCohortMembers((cohortMembers ?? []) as ImpactCohortMember[]);
   const cohortInterventionCounts = new Map<string, number>();
   for (const intervention of interventions ?? []) {
@@ -1397,7 +1420,11 @@ export async function listImpactInterventions(ctxOrOptions?: UserContext | Impac
   if (options.interventionType) query = query.eq("intervention_type", options.interventionType);
   if (options.assignedOfficerId) query = query.eq("assigned_officer_id", options.assignedOfficerId);
   if (options.cohortMemberId) query = query.eq("cohort_member_id", options.cohortMemberId);
-  if (ctx && ctx.role !== "field_officer") {
+  if (ctx?.role === "field_officer") {
+    const scope = await getFieldOfficerPortfolioScope(ctx);
+    if (scope.memberIds.length === 0) return [];
+    query = query.in("cohort_member_id", scope.memberIds);
+  } else if (ctx) {
     await getProgrammeScopeFilter(ctx);
     query = applyProgrammeScope(query, ctx);
   }
@@ -1409,12 +1436,23 @@ export async function listImpactInterventions(ctxOrOptions?: UserContext | Impac
 
 export async function getImpactInterventionDetail(id: string, ctx?: UserContext) {
   const supabase = await createImpactReadClient(ctx);
-  const [{ data: intervention, error }, { data: events }, { data: assessments }, { data: visits }] = await Promise.all([
-    supabase
-      .from("impact_interventions")
-      .select(IMPACT_INTERVENTION_SELECT)
-      .eq("id", id)
-      .maybeSingle(),
+  const { data: intervention, error } = await supabase
+    .from("impact_interventions")
+    .select(IMPACT_INTERVENTION_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  throwImpactReadError("get_intervention_failed", error);
+  if (ctx && intervention && ctx.role !== "field_officer") {
+    await enforceProgrammeReadAccess({ ctx, programmeId: intervention.programme_id, resource: "intervention" });
+  }
+  if (ctx?.role === "field_officer" && intervention) {
+    const scope = await getFieldOfficerPortfolioScope(ctx);
+    if (!intervention.cohort_member_id || !scope.memberIds.includes(String(intervention.cohort_member_id))) {
+      throw new Error("You can only access interventions for assigned beneficiaries.");
+    }
+  }
+
+  const [{ data: events }, { data: assessments }, { data: visits }] = await Promise.all([
     supabase
       .from("impact_intervention_events")
       .select("id,intervention_id,programme_id,cohort_id,cohort_member_id,msme_id,event_type,from_status,to_status,from_stage,to_stage,title,note,actor_user_id,actor_role,created_at")
@@ -1432,10 +1470,6 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
       .order("created_at", { ascending: false }),
   ]);
 
-  throwImpactReadError("get_intervention_failed", error);
-  if (ctx && intervention) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: intervention.programme_id, action: "read", resource: "intervention", legacyAllowed: true });
-  }
   return {
     intervention: intervention as unknown as ImpactIntervention | null,
     events: (events ?? []) as ImpactInterventionEvent[],
@@ -2040,6 +2074,7 @@ function validateAssessmentAnswer(question: ImpactAssessmentQuestion, raw: strin
 }
 
 export async function createAssessmentTemplate(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "assessment_template", "create", "You do not have permission to manage assessment templates.");
   requireAssessmentManage(ctx);
   const name = textValue(formData, "name");
   if (!name) throw new Error("Template name is required.");
@@ -2140,6 +2175,7 @@ export async function getAssessmentTemplate(templateId: string, ctx?: UserContex
 }
 
 export async function createAssessment(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "assessment", "create", "You do not have permission to create impact assessments.");
   requireAssessmentManage(ctx);
   const templateId = textValue(formData, "template_id");
   const programmeId = textValue(formData, "programme_id");
@@ -2217,7 +2253,14 @@ export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQ
   if (options.status) query = query.eq("status", options.status);
   if (options.interventionId) query = query.eq("intervention_id", options.interventionId);
   if (options.cohortMemberId) query = query.eq("cohort_member_id", options.cohortMemberId);
-  if (ctx && ctx.role !== "field_officer") {
+  if (ctx?.role === "field_officer") {
+    const scope = await getFieldOfficerPortfolioScope(ctx);
+    if (scope.memberIds.length === 0 && scope.visitIds.length === 0) return [];
+    const clauses: string[] = [];
+    if (scope.memberIds.length > 0) clauses.push(`cohort_member_id.in.(${scope.memberIds.join(",")})`);
+    if (scope.visitIds.length > 0) clauses.push(`field_visit_id.in.(${scope.visitIds.join(",")})`);
+    query = query.or(clauses.join(","));
+  } else if (ctx) {
     await getProgrammeScopeFilter(ctx);
     query = applyProgrammeScope(query, ctx);
   }
@@ -2229,7 +2272,11 @@ export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQ
   return (data ?? []) as unknown as ImpactAssessment[];
 }
 
-export async function getImpactAssessmentDetail(assessmentId: string, ctx?: UserContext) {
+export async function getImpactAssessmentDetail(
+  assessmentId: string,
+  ctx?: UserContext,
+  options: { enforceReadScope?: boolean } = {},
+) {
   const supabase = await createImpactReadClient(ctx);
   const { data: assessment, error } = await supabase
     .from("impact_assessments")
@@ -2239,8 +2286,20 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
 
   throwImpactReadError("get_assessment_failed", error);
   if (!assessment) return { assessment: null, template: null, sections: [], questions: [], responses: [], scores: [], scoreRuns: [], reviews: [], visits: [] };
-  if (ctx) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: assessment.programme_id, action: "read", resource: "assessment", legacyAllowed: true });
+  if (ctx && ctx.role !== "field_officer" && options.enforceReadScope !== false) {
+    await enforceProgrammeReadAccess({ ctx, programmeId: assessment.programme_id, resource: "assessment" });
+  }
+  if (ctx?.role === "field_officer") {
+    const scope = await getFieldOfficerPortfolioScope(ctx);
+    const scopedAssessment = assessment as unknown as ImpactAssessment;
+    const assigned = Boolean(
+      (scopedAssessment.cohort_member_id && scope.memberIds.includes(scopedAssessment.cohort_member_id))
+      || (scopedAssessment.field_visit_id && scope.visitIds.includes(scopedAssessment.field_visit_id))
+    );
+    if (!assigned) throw new Error("You can only access assessments for assigned visits or beneficiaries.");
+  }
+  if (ctx && options.enforceReadScope !== false && (ctx.role === "boi_executive" || ctx.role === "data_analyst") && assessment.status !== "approved") {
+    throw new Error("This role can only access approved assessments.");
   }
 
   const templateId = (assessment as unknown as ImpactAssessment).template_id;
@@ -2343,8 +2402,9 @@ export function validateAssessmentResponses(questions: ImpactAssessmentQuestion[
 }
 
 async function persistAssessmentResponses(ctx: UserContext, assessmentId: string, formData: FormData, options: { requireRequiredAnswers: boolean; calculateScore: boolean }) {
+  requireRolePermission(ctx.role, "assessment", "update", "You do not have permission to update impact assessments.");
   requireAssessmentManage(ctx);
-  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx, { enforceReadScope: false });
   if (!detail.assessment) throw new Error("Assessment not found.");
   await logProgrammeScopeShadowDecision({ ctx, programmeId: detail.assessment.programme_id, action: "write", resource: "assessment", legacyAllowed: true });
   if (detail.assessment.status === "reviewed" || detail.assessment.status === "approved" || detail.assessment.status === "completed") {
@@ -2392,7 +2452,7 @@ export async function saveAssessmentResponse(ctx: UserContext, assessmentId: str
 }
 
 export async function calculateAssessmentScore(assessmentId: string, ctx?: UserContext, runType: "calculation" | "submission" | "review" | "completion" = "calculation") {
-  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx, { enforceReadScope: false });
   if (!detail.assessment) throw new Error("Assessment not found.");
   const supabase = await createPrivilegedImpactWriteClient();
   const responseByQuestion = new Map(detail.responses.map((response) => [response.question_id, response]));
@@ -2476,8 +2536,9 @@ export async function calculateAssessmentScore(assessmentId: string, ctx?: UserC
 }
 
 export async function completeAssessment(ctx: UserContext, assessmentId: string) {
+  requireRolePermission(ctx.role, "assessment", "update", "You do not have permission to complete impact assessments.");
   requireAssessmentManage(ctx);
-  const detail = await getImpactAssessmentDetail(assessmentId, ctx);
+  const detail = await getImpactAssessmentDetail(assessmentId, ctx, { enforceReadScope: false });
   if (!detail.assessment) throw new Error("Assessment not found.");
   const missing = getMissingRequiredAssessmentQuestions(detail.questions, detail.responses)[0];
   if (missing) throw new Error(`Required question missing: ${missing.question_text}`);
@@ -2493,6 +2554,7 @@ export async function completeAssessment(ctx: UserContext, assessmentId: string)
 }
 
 export async function submitAssessment(ctx: UserContext, assessmentId: string, formData: FormData) {
+  requireRolePermission(ctx.role, "assessment", "submit", "You do not have permission to submit impact assessments.");
   await persistAssessmentResponses(ctx, assessmentId, formData, { requireRequiredAnswers: true, calculateScore: true });
   const supabase = await createPrivilegedImpactWriteClient();
   const now = new Date().toISOString();
@@ -2512,6 +2574,9 @@ export async function submitAssessment(ctx: UserContext, assessmentId: string, f
 }
 
 export async function reviewAssessment(ctx: UserContext, assessmentId: string, formData: FormData) {
+  const requestedStatus = textValue(formData, "review_status") ?? "reviewed";
+  const requiredAction = requestedStatus === "approved" ? "approve" : requestedStatus === "returned" ? "return" : "review";
+  requireRolePermission(ctx.role, "assessment", requiredAction, "You do not have permission to review impact assessments.");
   requireAssessmentReview(ctx);
   const status = textValue(formData, "review_status") ?? "reviewed";
   const reviewStatus = ["reviewed", "approved", "returned"].includes(status) ? status : "reviewed";
@@ -2739,24 +2804,25 @@ export async function listImpactFieldVisits(ctxOrOptions?: UserContext | ImpactQ
   return listFieldVisits(ctx, options);
 }
 
-export async function getFieldVisit(ctx: UserContext, visitId: string) {
+export async function getFieldVisit(ctx: UserContext, visitId: string, options: { enforceReadScope?: boolean } = {}) {
   const supabase = await createScopedImpactReadClient(ctx);
-  const [{ data: visit, error }, { data: assignments }, { data: checklist }, { data: notes }, { data: evidence }] = await Promise.all([
-    supabase.from("impact_field_visits").select(fieldVisitSelect()).eq("id", visitId).maybeSingle(),
+  const { data: visit, error } = await supabase.from("impact_field_visits").select(fieldVisitSelect()).eq("id", visitId).maybeSingle();
+  throwImpactReadError("get_field_visit_failed", error);
+  const fieldVisit = visit as unknown as ImpactFieldVisit | null;
+  if (fieldVisit && ctx.role === "field_officer" && fieldVisit.assigned_to_user_id !== ctx.appUserId) {
+    throw new Error("You can only access field visits assigned to you.");
+  }
+  if (fieldVisit && ctx.role !== "field_officer" && options.enforceReadScope !== false) {
+    await enforceProgrammeReadAccess({ ctx, programmeId: fieldVisit.programme_id, resource: "monitoring" });
+  }
+
+  const [{ data: assignments }, { data: checklist }, { data: notes }, { data: evidence }] = await Promise.all([
     supabase.from("impact_field_visit_assignments").select("id,field_visit_id,assigned_to_user_id,assigned_by_user_id,assignment_status,assigned_at,completed_at").eq("field_visit_id", visitId).order("assigned_at", { ascending: false }),
     supabase.from("impact_monitoring_checklists").select("id,field_visit_id,checklist_item,item_category,is_required,is_completed,display_order").eq("field_visit_id", visitId).order("display_order", { ascending: true }),
     supabase.from("impact_monitoring_notes").select("id,field_visit_id,note_type,title,note,created_by_user_id,created_at").eq("field_visit_id", visitId).order("created_at", { ascending: false }),
     supabase.from("impact_evidence_files").select(evidenceSelect()).eq("field_visit_id", visitId).order("created_at", { ascending: false }),
   ]);
 
-  throwImpactReadError("get_field_visit_failed", error);
-  const fieldVisit = visit as unknown as ImpactFieldVisit | null;
-  if (fieldVisit) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: fieldVisit.programme_id, action: "read", resource: "monitoring", legacyAllowed: true });
-  }
-  if (fieldVisit && ctx.role === "field_officer" && fieldVisit.assigned_to_user_id !== ctx.appUserId) {
-    throw new Error("You can only access field visits assigned to you.");
-  }
 
   return {
     visit: fieldVisit,
@@ -2768,7 +2834,7 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
 }
 
 export async function completeFieldVisit(ctx: UserContext, visitId: string, formData: FormData) {
-  const detail = await getFieldVisit(ctx, visitId);
+  const detail = await getFieldVisit(ctx, visitId, { enforceReadScope: false });
   if (!detail.visit) throw new Error("Field visit not found.");
   await logProgrammeScopeShadowDecision({ ctx, programmeId: detail.visit.programme_id, action: "write", resource: "monitoring", legacyAllowed: true });
   const supabase = await createPrivilegedImpactWriteClient();
@@ -2878,8 +2944,8 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
   ]);
   throwImpactReadError("get_evidence_failed", error);
   const item = evidence ? mapImpactEvidenceRow(evidence) : null;
-  if (item) {
-    await logProgrammeScopeShadowDecision({ ctx, programmeId: item.programme_id, action: "read", resource: "evidence", legacyAllowed: true });
+  if (item && ctx.role !== "field_officer") {
+    await enforceProgrammeReadAccess({ ctx, programmeId: item.programme_id, resource: "evidence" });
   }
   if (item && ctx.role === "field_officer") {
     const visible = item.field_visit_id
@@ -2910,39 +2976,60 @@ function normaliseReportType(value: string | null): ImpactReportType {
 }
 
 export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<ExecutiveDashboardMetrics> {
+  if (ctx) {
+    requireRolePermission(ctx.role, "executive_dashboard", "read", "You do not have permission to access the executive dashboard.");
+  }
   const supabase = await createReportingReadClient(ctx);
+  let programmeQuery = supabase.from("impact_programmes").select("id,name,status,created_at").limit(1000);
+  let interventionQuery = supabase.from("impact_interventions").select("id,programme_id,msme_id,title,status,created_at,msmes(state,sector)").limit(1000);
+  let assessmentQuery = supabase.from("impact_assessments").select("id,programme_id,title,status,created_at,risk_level").limit(1000);
+  let fieldVisitQuery = supabase.from("impact_field_visits").select("id,programme_id,title,status,created_at").limit(1000);
+  let evidenceQuery = supabase.from("impact_evidence_files").select("id,programme_id,file_name,status,verification_status,created_at").limit(1000);
+
+  if (ctx) {
+    await getProgrammeScopeFilter(ctx);
+    programmeQuery = applyProgrammeScope(programmeQuery, ctx, "id");
+    interventionQuery = applyProgrammeScope(interventionQuery, ctx);
+    assessmentQuery = applyProgrammeScope(assessmentQuery, ctx);
+    fieldVisitQuery = applyProgrammeScope(fieldVisitQuery, ctx);
+    evidenceQuery = applyProgrammeScope(evidenceQuery, ctx);
+    if (ctx.role === "boi_executive" || ctx.role === "data_analyst") {
+      assessmentQuery = assessmentQuery.eq("status", "approved");
+      evidenceQuery = evidenceQuery.eq("status", "verified").eq("verification_status", "verified");
+    }
+  }
+
   const [
-    msmeCount,
     programmes,
     interventions,
     assessments,
     fieldVisits,
     evidence,
-    scores,
   ] = await Promise.all([
-    supabase.from("msmes").select("id", { count: "exact", head: true }),
-    supabase.from("impact_programmes").select("id,name,status,created_at").limit(1000),
-    supabase.from("impact_interventions").select("id,title,status,created_at,msmes(state,sector)").limit(1000),
-    supabase.from("impact_assessments").select("id,title,status,created_at,risk_level").limit(1000),
-    supabase.from("impact_field_visits").select("id,title,status,created_at").limit(1000),
-    supabase.from("impact_evidence_files").select("id,file_name,verification_status,created_at").limit(1000),
-    supabase.from("impact_assessment_scores").select("id,section_id,readiness_category").is("section_id", null).eq("is_latest", true).limit(1000),
+    programmeQuery,
+    interventionQuery,
+    assessmentQuery,
+    fieldVisitQuery,
+    evidenceQuery,
   ]);
   [
-    ["msmes_count_failed", msmeCount.error],
     ["impact_programmes_dashboard_failed", programmes.error],
     ["impact_interventions_dashboard_failed", interventions.error],
     ["impact_assessments_dashboard_failed", assessments.error],
     ["impact_field_visits_dashboard_failed", fieldVisits.error],
     ["impact_evidence_dashboard_failed", evidence.error],
-    ["impact_scores_dashboard_failed", scores.error],
   ].forEach(([source, error]) => throwImpactReadError(String(source), error as { message?: string } | null));
 
   const programmeRows = programmes.data ?? [];
-  const interventionRows = (interventions.data ?? []) as unknown as Array<{ id: string; title: string | null; status: string | null; created_at: string | null; msmes?: { state?: string | null; sector?: string | null } | null }>;
+  const interventionRows = (interventions.data ?? []) as unknown as Array<{ id: string; msme_id: string | null; title: string | null; status: string | null; created_at: string | null; msmes?: { state?: string | null; sector?: string | null } | null }>;
   const assessmentRows = assessments.data ?? [];
   const visitRows = fieldVisits.data ?? [];
   const evidenceRows = evidence.data ?? [];
+  const assessmentIds = assessmentRows.map((assessment) => String(assessment.id));
+  const scores = assessmentIds.length > 0
+    ? await supabase.from("impact_assessment_scores").select("id,assessment_id,section_id,readiness_category").in("assessment_id", assessmentIds).is("section_id", null).eq("is_latest", true).limit(1000)
+    : { data: [], error: null };
+  throwImpactReadError("impact_scores_dashboard_failed", scores.error);
   const scoreRows = scores.data ?? [];
   const completedVisits = visitRows.filter((visit) => ["completed", "reviewed"].includes(visit.status ?? "")).length;
   const monitoringCompletionRate = visitRows.length > 0 ? Math.round((completedVisits / visitRows.length) * 100) : 0;
@@ -2962,7 +3049,7 @@ export async function getExecutiveDashboardMetrics(ctx?: UserContext): Promise<E
   if (lowReadiness > 0) operationalAlerts.push({ title: "Low readiness assessments", detail: `${lowReadiness} assessment(s) scored low readiness.`, severity: "medium" });
 
   return {
-    totalMsmes: msmeCount.count ?? 0,
+    totalMsmes: new Set(interventionRows.map((item) => item.msme_id).filter(Boolean)).size,
     activeProgrammes: programmeRows.filter((programme) => programme.status === "active").length,
     interventionCounts: interventionRows.length,
     completedAssessments: assessmentRows.filter((assessment) => ["completed", "reviewed", "approved"].includes(assessment.status ?? "")).length,
@@ -3126,7 +3213,7 @@ async function upsertAnomaly(row: {
 }
 
 export async function generateMsmeInsights(ctx: UserContext) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "intelligence", "update", "You do not have permission to generate impact intelligence.");
   const supabase = await createPrivilegedImpactReadClient();
   const [{ data: assessments }, { data: scores }, { data: evidence }] = await Promise.all([
     supabase.from("impact_assessments").select("id,title,status,msme_id,programme_id,intervention_id").limit(1000),
@@ -3184,7 +3271,7 @@ export async function generateMsmeInsights(ctx: UserContext) {
 }
 
 export async function generateProgrammeInsights(ctx: UserContext) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "intelligence", "update", "You do not have permission to generate impact intelligence.");
   const [programmes, interventions, visits] = await Promise.all([
     listImpactProgrammes(ctx, { limit: 1000 }),
     listImpactInterventions(ctx, { limit: 1000 }),
@@ -3232,7 +3319,7 @@ async function createIntelligenceSummary(programmeId: string, input: { source_ke
 }
 
 export async function generateMonitoringInsights(ctx: UserContext) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "intelligence", "update", "You do not have permission to generate impact intelligence.");
   const [visits, evidence] = await Promise.all([listFieldVisits(ctx, { limit: 1000 }), listEvidence(ctx, { limit: 1000 })]);
   let generated = 0;
   const now = Date.now();
@@ -3256,7 +3343,7 @@ export async function generateMonitoringInsights(ctx: UserContext) {
 }
 
 export async function generateRiskFlags(ctx: UserContext) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "risk_flag", "create", "You do not have permission to generate risk flags.");
   const [interventions, evidence, assessments] = await Promise.all([
     listImpactInterventions(ctx, { limit: 1000 }),
     listEvidence(ctx, { limit: 1000 }),
@@ -3341,7 +3428,7 @@ export async function getInsightDetail(ctx: UserContext, insightId: string) {
 }
 
 export async function resolveRiskFlag(ctx: UserContext, riskFlagId: string, formData: FormData) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "risk_flag", "update", "You do not have permission to resolve risk flags.");
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_risk_flags").update({
     status: "resolved",
@@ -3354,7 +3441,7 @@ export async function resolveRiskFlag(ctx: UserContext, riskFlagId: string, form
 }
 
 export async function dismissInsight(ctx: UserContext, insightId: string) {
-  requireIntelligenceManage(ctx);
+  requireRolePermission(ctx.role, "intelligence", "update", "You do not have permission to dismiss impact intelligence.");
   const supabase = await createPrivilegedImpactWriteClient();
   const { error } = await supabase.from("impact_ai_insights").update({
     status: "dismissed",

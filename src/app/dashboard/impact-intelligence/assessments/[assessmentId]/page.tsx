@@ -3,9 +3,9 @@ import Link from "next/link";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
-  ASSESSMENT_MANAGE_ROLES,
-  ASSESSMENT_REVIEW_ROLES,
   getMissingRequiredAssessmentQuestions,
   getImpactAssessmentDetail,
   reviewAssessment,
@@ -169,10 +169,13 @@ export default async function AssessmentDetailPage({
   } catch (error) {
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/[assessmentId]", operation: "assessment_detail_load_failed", error });
+    const description = isImpactProgrammeReadDenied(error)
+      ? error.message
+      : "The assessment source, current session, or role assignment is temporarily unavailable.";
     return (
       <section className="space-y-6">
         <SectionCard title="Assessment Unavailable">
-          <EmptyState title="Assessment record could not load" description="The assessment source, current session, or role assignment is temporarily unavailable." icon={ClipboardCheck} />
+          <EmptyState title="Assessment record could not load" description={description} icon={ClipboardCheck} />
         </SectionCard>
       </section>
     );
@@ -204,8 +207,10 @@ export default async function AssessmentDetailPage({
     }),
   ]);
 
-  const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
-  const canReview = ASSESSMENT_REVIEW_ROLES.includes(ctx.role);
+  const canManage = canRole(ctx.role, "assessment", "update");
+  const canReview = canRole(ctx.role, "assessment", "review")
+    || canRole(ctx.role, "assessment", "approve")
+    || canRole(ctx.role, "assessment", "return");
   const locked = assessment.status === "reviewed" || assessment.status === "approved" || assessment.status === "completed";
   const saveDraft = saveDraftAction.bind(null, assessment.id);
   const submit = submitAssessmentAction.bind(null, assessment.id);

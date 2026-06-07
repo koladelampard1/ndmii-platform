@@ -2,6 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import vm from "node:vm";
+import ts from "typescript";
 
 const root = process.cwd();
 
@@ -45,6 +47,7 @@ const impactEvidenceAccessRoute = read(
 const impactEvidencePage = read(
   "src/app/dashboard/impact-intelligence/evidence/page.tsx",
 );
+const impactDataService = read("src/lib/data/impact-intelligence.ts");
 const impactIndicatorMigration = read(
   "supabase/migrations/20260606140000_impact_indicator_phase1.sql",
 );
@@ -86,6 +89,17 @@ const riskFlagsRoute = read(
 const impactPermissions = read(
   "src/lib/impact-intelligence/permissions.ts",
 );
+const impactPermissionsModule = (() => {
+  const source = ts.transpileModule(impactPermissions, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  vm.runInNewContext(source, { module: commonJsModule, exports: commonJsModule.exports, console });
+  return commonJsModule.exports;
+})();
 const impactAccessScope = read(
   "src/lib/impact-intelligence/access-scope.ts",
 );
@@ -95,6 +109,14 @@ const impactRbacMigration = read(
 const impactAssignmentBackfill = read(
   "scripts/backfill-impact-programme-assignments.mjs",
 );
+const impactRouteGuards = read(
+  "src/app/dashboard/impact-intelligence/_route-guards.ts",
+);
+const impactRouteFixture = read("src/lib/auth/route-access.fixture.ts");
+const impactAssessmentPage = read(
+  "src/app/dashboard/impact-intelligence/assessments/page.tsx",
+);
+const impactAssessmentService = read("src/lib/data/impact-intelligence.ts");
 
 check("public raw ID verification is blocked", () => {
   assert(
@@ -422,12 +444,104 @@ check("canonical Impact permission registry covers core role decisions", () => {
   );
 });
 
-check("legacy route access remains authoritative with policy drift diagnostics", () => {
+check("canonical Impact route access is authoritative with policy drift diagnostics", () => {
   assert(
     authorization.includes("legacyAllowed") &&
       authorization.includes("logImpactPolicyDrift") &&
-      authorization.includes("return legacyAllowed"),
-    "Expected shadow-mode route comparison without enforcing canonical denials.",
+      authorization.includes("return canonicalAllowed") &&
+      impactRouteGuards.includes("canAccessRoute(ctx.role, pathname)"),
+    "Expected canonical Impact route decisions with legacy drift diagnostics.",
+  );
+});
+
+check("programme officer canonical permissions are read-only for assessments, evidence, and indicators", () => {
+  const programmeOfficerReadResources = compact(impactPermissions).match(
+    /const PROGRAMME_OFFICER_READ_RESOURCES: ImpactResource\[\] = \[(.*?)\];/,
+  )?.[1] ?? "";
+  const programmeOfficerPermissions = compact(impactPermissions).match(
+    /programme_officer: \[(.*?)\], assessment_officer:/,
+  )?.[1] ?? "";
+  assert(
+    programmeOfficerReadResources.includes('"assessment"') &&
+      programmeOfficerReadResources.includes('"evidence"') &&
+      programmeOfficerReadResources.includes('"indicator"') &&
+      !programmeOfficerReadResources.includes('"assessment_template"') &&
+      !programmeOfficerReadResources.includes('"analytics"') &&
+      !programmeOfficerReadResources.includes('"executive_dashboard"') &&
+      !programmeOfficerReadResources.includes('"intelligence"') &&
+      !programmeOfficerReadResources.includes('"risk_flag"') &&
+      programmeOfficerPermissions.includes("PROGRAMME_OFFICER_READ_RESOURCES") &&
+      !programmeOfficerPermissions.includes('permissions("assessment"') &&
+      !programmeOfficerPermissions.includes('permissions("assessment_template"') &&
+      !programmeOfficerPermissions.includes('permissions("evidence"') &&
+      !programmeOfficerPermissions.includes('permissions("indicator"') &&
+      !programmeOfficerPermissions.includes('permissions("intelligence"') &&
+      !programmeOfficerPermissions.includes('permissions("risk_flag"'),
+    "Expected Programme Officer to have no assessment, evidence, indicator, intelligence, or risk mutation grants.",
+  );
+});
+
+check("programme officer canonical permission decisions execute as expected", () => {
+  const { canAccessRoute, canRole } = impactPermissionsModule;
+  assert(
+    canRole("programme_officer", "programme", "create") &&
+      canRole("programme_officer", "monitoring_visit", "assign") &&
+      canRole("programme_officer", "report", "submit") &&
+      canRole("programme_officer", "assessment", "read") &&
+      canRole("programme_officer", "evidence", "read") &&
+      canRole("programme_officer", "indicator", "read") &&
+      !canRole("programme_officer", "assessment", "create") &&
+      !canRole("programme_officer", "assessment_template", "read") &&
+      !canRole("programme_officer", "evidence", "create") &&
+      !canRole("programme_officer", "evidence", "submit") &&
+      !canRole("programme_officer", "indicator", "create") &&
+      !canRole("programme_officer", "indicator", "submit") &&
+      !canRole("programme_officer", "executive_dashboard", "read") &&
+      !canRole("programme_officer", "intelligence", "read") &&
+      !canRole("programme_officer", "risk_flag", "read") &&
+      canAccessRoute("programme_officer", "/dashboard/impact-intelligence/assessments") &&
+      canAccessRoute("programme_officer", "/dashboard/impact-intelligence/evidence") &&
+      canAccessRoute("programme_officer", "/dashboard/impact-intelligence/indicators") &&
+      !canAccessRoute("programme_officer", "/dashboard/impact-intelligence/assessments/templates") &&
+      !canAccessRoute("programme_officer", "/dashboard/impact-intelligence/executive") &&
+      !canAccessRoute("programme_officer", "/dashboard/impact-intelligence/intelligence") &&
+      !canAccessRoute("programme_officer", "/dashboard/impact-intelligence/risk-flags"),
+    "Expected executable Programme Officer permission and route decisions to match Phase 3B policy.",
+  );
+});
+
+check("programme officer hidden Impact routes are explicitly denied", () => {
+  const fixture = compact(impactRouteFixture);
+  assert(
+    fixture.includes('programme_officer: { allowed: ["/dashboard/impact-intelligence"') &&
+      fixture.includes('"/dashboard/impact-intelligence/assessments/templates"') &&
+      fixture.includes('"/dashboard/impact-intelligence/executive"') &&
+      fixture.includes('"/dashboard/impact-intelligence/intelligence"') &&
+      fixture.includes('"/dashboard/impact-intelligence/risk-flags"'),
+    "Expected explicit Programme Officer route denials for templates, executive, intelligence, and risk flags.",
+  );
+});
+
+check("programme officer write actions use canonical permission checks", () => {
+  assert(
+    impactAssessmentService.includes('requireRolePermission(ctx.role, "assessment_template", "create"') &&
+      impactAssessmentService.includes('requireRolePermission(ctx.role, "assessment", "create"') &&
+      impactAssessmentService.includes('requireRolePermission(ctx.role, "assessment", "submit"') &&
+      impactEvidenceService.includes('requireRolePermission(ctx.role, "evidence", "create"') &&
+      impactEvidenceService.includes('requireRolePermission(ctx.role, "evidence", permissionAction') &&
+      impactIndicatorService.includes('requireRolePermission(ctx.role, "indicator", "create"') &&
+      impactIndicatorService.includes('requireRolePermission(ctx.role, "indicator", permissionAction'),
+    "Expected canonical service-layer guards for assessment, evidence, and indicator mutations.",
+  );
+});
+
+check("programme officer write controls render from canonical permissions", () => {
+  assert(
+    impactAssessmentPage.includes('canRole(ctx.role, "assessment", "create")') &&
+      impactEvidencePage.includes('canRole(ctx.role, "evidence", "create")') &&
+      impactIndicatorPage.includes('canRole(ctx.role, "indicator", "create")') &&
+      impactIndicatorPage.includes('canRole(ctx.role, "indicator", "submit")'),
+    "Expected assessment, evidence, and indicator controls to use canonical permissions.",
   );
 });
 
@@ -450,8 +564,10 @@ check("scope resolver supports privileged and assigned programme decisions", () 
       impactAccessScope.includes('mode: "assigned"') &&
       impactAccessScope.includes("scope.programmeIds.includes(programmeId)") &&
       impactAccessScope.includes('mode: "legacy_fallback"') &&
+      impactAccessScope.includes('"no_active_assignment"') &&
+      impactAccessScope.includes('"programme_not_assigned"') &&
       impactAccessScope.includes("[impact-access-scope]"),
-    "Expected admin/super-admin access, assigned programme checks, legacy fallback, and safe diagnostics.",
+    "Expected admin/super-admin access, assigned programme checks, mutation fallback, hard read denial reasons, and safe diagnostics.",
   );
 });
 
@@ -469,9 +585,13 @@ check("programme assignment scope supports Phase 2 read and write decisions", ()
   );
 });
 
-check("programme assignment enforcement remains observable shadow mode", () => {
+check("programme assignment reads are hard enforced while mutations remain shadow compatible", () => {
   assert(
-    impactAccessScope.includes("[impact-rbac-shadow]") &&
+      impactAccessScope.includes("enforceProgrammeReadAccess") &&
+      impactAccessScope.includes("ImpactProgrammeReadDeniedError") &&
+      impactAccessScope.includes("[impact-rbac]") &&
+      impactAccessScope.includes('decision: explanation.allowed ? "allow" : "deny"') &&
+      impactAccessScope.includes("[impact-rbac-shadow]") &&
       impactAccessScope.includes('"would_deny"') &&
       impactAccessScope.includes('"would_allow"') &&
       impactAccessScope.includes("legacyFallbackUsed") &&
@@ -480,7 +600,44 @@ check("programme assignment enforcement remains observable shadow mode", () => {
       impactEvidenceService.includes("logProgrammeScopeShadowDecision") &&
       impactIndicatorService.includes("logProgrammeScopeShadowDecision") &&
       impactReportService.includes("logProgrammeScopeShadowDecision"),
-    "Expected shadow allow/deny comparison logs with assignment-aware diagnostics across core services.",
+    "Expected hard read decisions plus shadow write comparison logs across core services.",
+  );
+});
+
+check("programme-scoped detail reads deny before loading descendants", () => {
+  assert(
+    impactDataService.includes('enforceProgrammeReadAccess({ ctx, programmeId: id, resource: "programme" })') &&
+      impactDataService.includes('enforceProgrammeReadAccess({ ctx, programmeId: cohort.programme_id, resource: "cohort" })') &&
+      impactDataService.includes('resource: "intervention"') &&
+      impactDataService.includes('resource: "assessment"') &&
+      impactDataService.includes('resource: "monitoring"') &&
+      impactEvidenceService.includes('resource: "evidence"') &&
+      impactIndicatorService.includes('resource: "indicator_definition"') &&
+      impactReportService.includes('resource: "report"'),
+    "Expected programme, cohort, intervention, assessment, monitoring, evidence, indicator, and report detail enforcement.",
+  );
+});
+
+check("hard read enforcement preserves role-specific access modes", () => {
+  assert(
+    impactAccessScope.includes('reason: "administrative_access"') &&
+      impactAccessScope.includes('reason: "global_read_access"') &&
+      impactAccessScope.includes('reason = "read_only_role"') &&
+      impactAccessScope.includes('reason = "unsupported_scope"') &&
+      impactDataService.includes('if (ctx?.role === "field_officer") return []') &&
+      impactDataService.includes("getFieldOfficerPortfolioScope") &&
+      impactDataService.includes('query = query.eq("status", "approved")') &&
+      impactEvidenceService.includes('query.eq("status", "verified").eq("verification_status", "verified")'),
+    "Expected admin/global access reasons, read-only decisions, approved-data filters, and no broad field-officer programme scope.",
+  );
+});
+
+check("unassigned users receive explicit empty and detail denial states", () => {
+  assert(
+    impactAccessScope.includes("No programmes have been assigned to your account yet.") &&
+      impactAccessScope.includes("You are not assigned to this programme.") &&
+      impactAccessScope.includes("getProgrammeScopeEmptyMessage"),
+    "Expected clear no-assignment and unassigned-programme UI messages.",
   );
 });
 

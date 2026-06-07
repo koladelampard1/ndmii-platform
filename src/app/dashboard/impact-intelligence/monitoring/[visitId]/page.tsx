@@ -3,6 +3,8 @@ import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
   assignFieldVisit,
   completeFieldVisit,
@@ -12,7 +14,7 @@ import {
   MONITORING_MANAGE_ROLES,
   MONITORING_REVIEW_ROLES,
 } from "@/lib/data/impact-intelligence";
-import { IMPACT_EVIDENCE_CREATE_ROLES, uploadImpactEvidence } from "@/lib/data/impact-evidence";
+import { uploadImpactEvidence } from "@/lib/data/impact-evidence";
 import {
   listIndicatorMeasurements,
   logImpactIndicatorDiagnostic,
@@ -123,10 +125,13 @@ export default async function MonitoringDetailPage({
   } catch (error) {
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/monitoring/[visitId]", operation: "monitoring_detail_load_failed", error });
+    const description = isImpactProgrammeReadDenied(error)
+      ? error.message
+      : "The monitoring source, current session, or assigned scope is temporarily unavailable.";
     return (
       <section className="space-y-6">
         <SectionCard title="Monitoring Visit Unavailable">
-          <EmptyState title="Monitoring visit could not load" description="The monitoring source, current session, or assigned scope is temporarily unavailable." icon={CalendarCheck} />
+          <EmptyState title="Monitoring visit could not load" description={description} icon={CalendarCheck} />
         </SectionCard>
       </section>
     );
@@ -159,7 +164,7 @@ export default async function MonitoringDetailPage({
 
   const canReview = MONITORING_REVIEW_ROLES.includes(ctx.role);
   const canComplete = ctx.role === "field_officer" || canManage;
-  const canUploadEvidence = (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role);
+  const canUploadEvidence = canRole(ctx.role, "evidence", "create");
   const assignVisit = assignVisitAction.bind(null, visit.id);
   const completeVisit = completeVisitAction.bind(null, visit.id);
   const createEvidence = createEvidenceAction.bind(null, visit.id);

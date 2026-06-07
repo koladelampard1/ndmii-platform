@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { BrainCircuit } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
   dismissInsight,
   listIntelligenceFeed,
@@ -9,8 +10,7 @@ import {
 import { EmptyState, ImpactPageHeader, MetricTile, SectionCard, StatusBadge } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"];
-const MANAGE_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "assessment_officer", "data_analyst", "auditor", "field_officer"];
 
 async function dismissInsightAction(insightId: string) {
   "use server";
@@ -38,7 +38,7 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
     unstable_rethrow(error);
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/intelligence", operation: "intelligence_feed_load_failed", error });
   }
-  const canManage = Boolean(ctx && feed && MANAGE_ROLES.includes(ctx.role));
+  const canManage = Boolean(ctx && feed && canRole(ctx.role, "intelligence", "update"));
 
   return (
     <section className="space-y-6">

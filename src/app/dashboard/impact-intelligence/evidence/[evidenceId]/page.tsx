@@ -3,10 +3,10 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { Download, Eye, FileWarning, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import type { UserContext } from "@/lib/auth/authorization";
 import {
-  IMPACT_EVIDENCE_CREATE_ROLES,
-  IMPACT_EVIDENCE_REVIEW_ROLES,
   type ImpactEvidenceEvent,
   type ImpactEvidenceRecord,
   getImpactEvidence,
@@ -72,6 +72,7 @@ export default async function EvidenceDetailPage({
   let evidence: ImpactEvidenceRecord | null = null;
   let events: ImpactEvidenceEvent[] = [];
   let loadError: string | null = null;
+  let accessDenied = false;
 
   try {
     ctx = await getCurrentUserContext();
@@ -80,6 +81,7 @@ export default async function EvidenceDetailPage({
     events = detail.events;
   } catch (error) {
     unstable_rethrow(error);
+    accessDenied = isImpactProgrammeReadDenied(error);
     loadError = error instanceof Error ? error.message : "Evidence detail is temporarily unavailable.";
     logImpactEvidenceDiagnostic({
       operation: "evidence_detail_load_failed",
@@ -96,7 +98,7 @@ export default async function EvidenceDetailPage({
         <SectionCard title="Evidence Unavailable">
           <EmptyState
             title={loadError ? "Evidence detail could not load" : "Evidence record was not found"}
-            description={loadError?.includes("assigned") || loadError?.includes("permission") ? "This record is outside your assigned evidence scope." : "The evidence record is missing or its source is temporarily unavailable."}
+            description={accessDenied ? loadError ?? "You are not assigned to this programme." : loadError?.includes("assigned") || loadError?.includes("permission") ? "This record is outside your assigned evidence scope." : "The evidence record is missing or its source is temporarily unavailable."}
             icon={FileWarning}
           />
         </SectionCard>
@@ -104,8 +106,12 @@ export default async function EvidenceDetailPage({
     );
   }
 
-  const canSubmit = Boolean(ctx && (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role) && ["uploaded", "returned"].includes(evidence.status));
-  const canReview = Boolean(ctx && (IMPACT_EVIDENCE_REVIEW_ROLES as readonly string[]).includes(ctx.role));
+  const canSubmit = Boolean(ctx && canRole(ctx.role, "evidence", "submit") && ["uploaded", "returned"].includes(evidence.status));
+  const canReview = Boolean(ctx && (
+    canRole(ctx.role, "evidence", "review")
+    || canRole(ctx.role, "evidence", "verify")
+    || canRole(ctx.role, "evidence", "return")
+  ));
   const hasStoredFile = Boolean(evidence.storage_bucket && evidence.storage_path && evidence.original_filename);
   const transition = (action: string) => evidenceTransitionAction.bind(null, evidence.id, action);
 

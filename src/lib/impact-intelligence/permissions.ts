@@ -90,6 +90,19 @@ const PORTFOLIO_READ_RESOURCES: ImpactResource[] = [
   "risk_flag",
   "export",
 ];
+const PROGRAMME_OFFICER_READ_RESOURCES: ImpactResource[] = [
+  "workspace",
+  "programme",
+  "cohort",
+  "beneficiary",
+  "intervention",
+  "assessment",
+  "monitoring_visit",
+  "evidence",
+  "indicator",
+  "report",
+  "export",
+];
 
 const ROLE_PERMISSIONS: Record<ImpactRole, readonly ImpactPermission[]> = {
   super_admin: [
@@ -124,13 +137,11 @@ const ROLE_PERMISSIONS: Record<ImpactRole, readonly ImpactPermission[]> = {
     ...permissions("export", ["export"]),
   ],
   programme_officer: [
-    ...readPermissions(PORTFOLIO_READ_RESOURCES),
+    ...readPermissions(PROGRAMME_OFFICER_READ_RESOURCES),
     ...["programme", "cohort", "beneficiary", "intervention"].flatMap((resource) =>
       permissions(resource as ImpactResource, CREATE_UPDATE),
     ),
     ...permissions("monitoring_visit", ["create", "update", "assign"]),
-    ...permissions("evidence", ["create", "submit"]),
-    ...permissions("indicator", ["create", "update", "submit"]),
     ...permissions("report", [...CREATE_UPDATE, ...SUBMIT, "export"]),
     ...permissions("export", ["export"]),
   ],
@@ -211,6 +222,15 @@ function routeMatchesPrefix(route: string, prefix: string) {
 export function canRole(role: UserRole, resource: ImpactResource, action: ImpactAction): boolean {
   if (!isImpactRole(role)) return false;
   return ROLE_PERMISSIONS[role].some((permission) => permission.resource === resource && permission.action === action);
+}
+
+export function requireRolePermission(
+  role: UserRole,
+  resource: ImpactResource,
+  action: ImpactAction,
+  message: string,
+) {
+  if (!canRole(role, resource, action)) throw new Error(message);
 }
 
 export function getRolePermissions(role: UserRole): readonly ImpactPermission[] {

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { unstable_rethrow } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { ASSESSMENT_MANAGE_ROLES, listAssessmentTemplates } from "@/lib/data/impact-intelligence";
+import { canRole } from "@/lib/impact-intelligence/permissions";
+import { listAssessmentTemplates } from "@/lib/data/impact-intelligence";
 import { EmptyState, SectionCard } from "../../_components";
 import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
@@ -24,7 +25,7 @@ export default async function AssessmentTemplatesPage() {
     loadError = error instanceof Error ? error.message : "Assessment templates are temporarily unavailable.";
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates", operation: "assessment_template_list_load_failed", error });
   }
-  const canManage = Boolean(ctx && !loadError && ASSESSMENT_MANAGE_ROLES.includes(ctx.role));
+  const canManage = Boolean(ctx && !loadError && canRole(ctx.role, "assessment_template", "create"));
 
   return (
     <section className="space-y-6">

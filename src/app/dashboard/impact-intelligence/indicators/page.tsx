@@ -3,13 +3,12 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { AlertTriangle, BarChart3, ClipboardCheck, Plus, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
   INDICATOR_CALCULATION_METHODS,
-  INDICATOR_DEFINITION_MANAGE_ROLES,
   INDICATOR_DEFINITION_STATUSES,
   INDICATOR_DIRECTIONS,
-  INDICATOR_MEASUREMENT_CREATE_ROLES,
-  INDICATOR_MEASUREMENT_VERIFY_ROLES,
   INDICATOR_SOURCE_TYPES,
   aggregateIndicatorMeasurements,
   createIndicatorDefinition,
@@ -334,8 +333,8 @@ function MeasurementForm({ definitions, options }: { definitions: ImpactIndicato
 }
 
 function MeasurementActions({ ctx, measurement }: { ctx: UserContext; measurement: ImpactIndicatorMeasurement }) {
-  const canSubmit = (INDICATOR_MEASUREMENT_CREATE_ROLES as readonly string[]).includes(ctx.role) && ["draft", "returned"].includes(measurement.verification_status);
-  const canVerify = (INDICATOR_MEASUREMENT_VERIFY_ROLES as readonly string[]).includes(ctx.role) && measurement.verification_status === "submitted";
+  const canSubmit = canRole(ctx.role, "indicator", "submit") && ["draft", "returned"].includes(measurement.verification_status);
+  const canVerify = canRole(ctx.role, "indicator", "verify") && measurement.verification_status === "submitted";
   if (!canSubmit && !canVerify) return null;
   const submit = submitMeasurementAction.bind(null, measurement.id);
   const verify = verifyMeasurementAction.bind(null, measurement.id);
@@ -375,19 +374,21 @@ export default async function ImpactIndicatorsPage({
       listIndicatorDefinitions(ctx, { limit: 150 }),
       listIndicatorMeasurements(ctx, { limit: 150 }),
     ]);
-    try {
-      options = await getIndicatorFormOptions(ctx);
-    } catch (error) {
-      unstable_rethrow(error);
-      optionsError = error instanceof Error ? error.message : "Indicator form options are temporarily unavailable.";
-      logImpactIndicatorDiagnostic({
-        operation: "indicator_options_load_failed",
-        role: ctx.role,
-        authUserId: ctx.authUserId,
-        appUserId: ctx.appUserId,
-        errorMessage: optionsError,
-        success: false,
-      });
+    if (canRole(ctx.role, "indicator", "create")) {
+      try {
+        options = await getIndicatorFormOptions(ctx);
+      } catch (error) {
+        unstable_rethrow(error);
+        optionsError = error instanceof Error ? error.message : "Indicator form options are temporarily unavailable.";
+        logImpactIndicatorDiagnostic({
+          operation: "indicator_options_load_failed",
+          role: ctx.role,
+          authUserId: ctx.authUserId,
+          appUserId: ctx.appUserId,
+          errorMessage: optionsError,
+          success: false,
+        });
+      }
     }
   } catch (error) {
     unstable_rethrow(error);
@@ -403,8 +404,9 @@ export default async function ImpactIndicatorsPage({
   }
 
   const aggregate = aggregateIndicatorMeasurements(definitions, measurements);
-  const canCreateDefinitions = Boolean(ctx && (INDICATOR_DEFINITION_MANAGE_ROLES as readonly string[]).includes(ctx.role) && !optionsError);
-  const canCreateMeasurements = Boolean(ctx && (INDICATOR_MEASUREMENT_CREATE_ROLES as readonly string[]).includes(ctx.role) && !optionsError);
+  const canCreateDefinitions = Boolean(ctx && canRole(ctx.role, "indicator", "create") && !optionsError);
+  const canCreateMeasurements = Boolean(ctx && canRole(ctx.role, "indicator", "create") && !optionsError);
+  const scopeEmptyMessage = ctx ? getProgrammeScopeEmptyMessage(ctx) : null;
 
   return (
     <section className="space-y-6">
@@ -458,7 +460,7 @@ export default async function ImpactIndicatorsPage({
 
           <SectionCard title="Indicator Definitions">
             {definitions.length === 0 ? (
-              <EmptyState title="No indicator definitions" description={canCreateDefinitions ? "Create the first measurable outcome definition for a programme, cohort, or intervention." : "Indicator definitions will appear here when programme officers activate them."} icon={Target} />
+              <EmptyState title="No indicator definitions" description={scopeEmptyMessage ?? (canCreateDefinitions ? "Create the first measurable outcome definition for a programme, cohort, or intervention." : "Indicator definitions will appear here when programme officers activate them.")} icon={Target} />
             ) : (
               <TableShell>
                 <table className={tableClassName}>

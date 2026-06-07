@@ -2,8 +2,8 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
-  ASSESSMENT_MANAGE_ROLES,
   ASSESSMENT_QUESTION_TYPES,
   ASSESSMENT_TEMPLATE_STATUSES,
   ASSESSMENT_TYPES,
@@ -49,7 +49,7 @@ export default async function NewAssessmentTemplatePage({ searchParams }: { sear
   let loadError: string | null = null;
   try {
     ctx = await getCurrentUserContext();
-    if (!ASSESSMENT_MANAGE_ROLES.includes(ctx.role)) redirect("/access-denied");
+    if (!canRole(ctx.role, "assessment_template", "create")) redirect("/access-denied");
   } catch (error) {
     unstable_rethrow(error);
     loadError = error instanceof Error ? error.message : "Assessment template creation is temporarily unavailable.";

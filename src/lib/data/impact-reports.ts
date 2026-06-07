@@ -4,9 +4,11 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { createInstitutionalReportPdf } from "@/lib/reports/institutional-report-pdf";
 import {
   applyProgrammeScope,
+  enforceProgrammeReadAccess,
   getProgrammeScopeFilter,
   logProgrammeScopeShadowDecision,
 } from "@/lib/impact-intelligence/access-scope";
+import { requireRolePermission } from "@/lib/impact-intelligence/permissions";
 
 export const REPORT_PHASE1A_TYPES = [
   "executive_summary",
@@ -187,13 +189,32 @@ async function logActivity(ctx: UserContext, action: string, entityId: string, m
 }
 
 export async function getReportFormOptions(ctx: UserContext): Promise<ReportFormOptions> {
+  requireRolePermission(ctx.role, "report", "create", "You do not have permission to create institutional reports.");
   requireRole(ctx, REPORT_CREATE_ROLES, "You do not have permission to create institutional reports.");
   const supabase = await createServiceRoleSupabaseClient();
-  const [programmes, cohorts, members, interventions] = await Promise.all([
+  await getProgrammeScopeFilter(ctx);
+  const programmeQuery = applyProgrammeScope(
     supabase.from("impact_programmes").select("id,name,programme_code").order("name").limit(250),
+    ctx,
+    "id",
+  );
+  const cohortQuery = applyProgrammeScope(
     supabase.from("impact_beneficiary_cohorts").select("id,programme_id,name").order("name").limit(500),
+    ctx,
+  );
+  const memberQuery = applyProgrammeScope(
     supabase.from("impact_cohort_members").select("id,programme_id,cohort_id,msme_id,member_status,msmes(id,business_name,msme_id)").order("enrolled_at", { ascending: false }).limit(1000),
+    ctx,
+  );
+  const interventionQuery = applyProgrammeScope(
     supabase.from("impact_interventions").select("id,programme_id,cohort_id,cohort_member_id,msme_id,title").order("created_at", { ascending: false }).limit(1000),
+    ctx,
+  );
+  const [programmes, cohorts, members, interventions] = await Promise.all([
+    programmeQuery,
+    cohortQuery,
+    memberQuery,
+    interventionQuery,
   ]);
   const error = programmes.error || cohorts.error || members.error || interventions.error;
   if (error) throw new Error(`Report scope options unavailable: ${error.message}`);
@@ -253,6 +274,7 @@ async function validateReportScope(scope: ReportScope) {
 }
 
 export async function createInstitutionalReport(ctx: UserContext, formData: FormData) {
+  requireRolePermission(ctx.role, "report", "create", "You do not have permission to create institutional reports.");
   requireRole(ctx, REPORT_CREATE_ROLES, "You do not have permission to create institutional reports.");
   const title = textValue(formData, "title");
   const programmeId = textValue(formData, "programme_id");
@@ -455,8 +477,9 @@ async function buildVersionPayload(report: InstitutionalReport) {
 }
 
 export async function generateInstitutionalReportVersion(ctx: UserContext, reportId: string) {
+  requireRolePermission(ctx.role, "report", "update", "You do not have permission to generate institutional report versions.");
   requireRole(ctx, REPORT_CREATE_ROLES, "You do not have permission to generate institutional report versions.");
-  const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false });
+  const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false, enforceReadScope: false });
   if (!report) throw new Error("Report not found.");
   await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "write", resource: "report", legacyAllowed: true });
   if (isLegacyReport(report)) throw new Error("Legacy reports cannot generate Phase 1A versions.");
@@ -487,7 +510,9 @@ export async function generateInstitutionalReportVersion(ctx: UserContext, repor
 }
 
 export async function transitionInstitutionalReport(ctx: UserContext, reportId: string, action: "submit" | "return" | "approve" | "archive", formData?: FormData) {
-  const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false });
+  const permissionAction = action === "submit" ? "submit" : action === "return" ? "return" : action === "approve" ? "approve" : "archive";
+  requireRolePermission(ctx.role, "report", permissionAction, "You do not have permission to perform this report action.");
+  const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false, enforceReadScope: false });
   if (!report) throw new Error("Report not found.");
   await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "write", resource: "report", legacyAllowed: true });
   if (isLegacyReport(report)) throw new Error("Legacy reports cannot enter the Phase 1A approval workflow.");
@@ -550,7 +575,7 @@ export async function listInstitutionalReports(ctx: UserContext, limit = 100): P
 export async function getInstitutionalReport(
   ctx: UserContext,
   reportId: string,
-  options: { includeSources?: boolean; versionId?: string } = {},
+  options: { includeSources?: boolean; versionId?: string; enforceReadScope?: boolean } = {},
 ) {
   requireRole(ctx, REPORT_READ_ROLES, "You do not have permission to read institutional reports.");
   const supabase = await createServiceRoleSupabaseClient();
@@ -559,7 +584,9 @@ export async function getInstitutionalReport(
   const report = reportResult.data as unknown as InstitutionalReport | null;
   if (!report) return { report: null, versions: [], evidenceReferences: [], indicatorReferences: [], exports: [] };
   assertCanReadReport(ctx, report);
-  await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "read", resource: "report", legacyAllowed: true });
+  if (options.enforceReadScope !== false) {
+    await enforceProgrammeReadAccess({ ctx, programmeId: report.programme_id, resource: "report" });
+  }
   const versionsResult = await supabase.from("impact_report_versions").select(VERSION_SELECT).eq("report_id", reportId).order("version_number", { ascending: false });
   if (versionsResult.error) throw new Error(`Report versions unavailable: ${versionsResult.error.message}`);
   const versions = (versionsResult.data ?? []) as unknown as InstitutionalReportVersion[];
@@ -596,9 +623,10 @@ function exportFileName(report: InstitutionalReport, version: InstitutionalRepor
 }
 
 export async function generateInstitutionalReportExport(ctx: UserContext, reportId: string, format: "pdf" | "json") {
+  requireRolePermission(ctx.role, "report", "export", "You do not have permission to generate report exports.");
   requireRole(ctx, ["admin", "super_admin", "programme_officer", "assessment_officer"], "You do not have permission to generate report exports.");
   if (!["pdf", "json"].includes(format)) throw new Error("Select PDF or JSON export.");
-  const detail = await getInstitutionalReport(ctx, reportId, { includeSources: true });
+  const detail = await getInstitutionalReport(ctx, reportId, { includeSources: true, enforceReadScope: false });
   if (!detail.report) throw new Error("Report not found.");
   if (detail.report.status !== "approved") throw new Error("Only approved reports can be exported as official reports.");
   const version = detail.versions.find((item) => item.id === detail.report?.latest_version_id);

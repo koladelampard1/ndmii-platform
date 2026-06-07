@@ -3,9 +3,10 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import {
   ASSESSMENT_STATUSES,
-  ASSESSMENT_MANAGE_ROLES,
   ASSESSMENT_TYPES,
   createAssessment,
   listImpactCohortMemberOptions,
@@ -79,6 +80,7 @@ function legacyAnchorStatus(metadata: Record<string, unknown> | null | undefined
 export default async function ImpactAssessmentsPage({ searchParams }: PageProps) {
   const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
+  const canManage = canRole(ctx.role, "assessment", "create");
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
   let assessments: Awaited<ReturnType<typeof listImpactAssessments>> = [];
@@ -100,11 +102,11 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
         status: filters.status,
         interventionId: filters.intervention_id,
       }),
-      listAssessmentTemplates(ctx, { limit: 100 }),
+      canManage ? listAssessmentTemplates(ctx, { limit: 100 }) : Promise.resolve([]),
       listImpactProgrammes(ctx, { limit: 100 }),
       listImpactCohorts(ctx, { limit: 150, programmeId: filters.programme_id }),
-      listImpactCohorts(ctx, { limit: 150, programmeId: createProgrammeId }),
-      listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
+      canManage ? listImpactCohorts(ctx, { limit: 150, programmeId: createProgrammeId }) : Promise.resolve([]),
+      canManage ? listImpactCohortMemberOptions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }) : Promise.resolve([]),
       listImpactInterventions(ctx, { limit: 150, programmeId: createProgrammeId, cohortId: createCohortId }),
     ]);
   } catch (error) {
@@ -118,7 +120,7 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
     });
   }
 
-  const canManage = ASSESSMENT_MANAGE_ROLES.includes(ctx.role);
+  const scopeEmptyMessage = getProgrammeScopeEmptyMessage(ctx);
   const createInterventions = interventions.filter((intervention) => !intervention.cohort_member_id || cohortMembers.some((member) => member.id === intervention.cohort_member_id));
 
   return (
@@ -204,7 +206,7 @@ export default async function ImpactAssessmentsPage({ searchParams }: PageProps)
         {assessments.length === 0 ? (
           <EmptyState
             title="No assessments yet"
-            description="Create a template first, then assign assessments to MSMEs, programmes, and interventions so readiness and risk intelligence has structured input."
+            description={scopeEmptyMessage ?? "Create a template first, then assign assessments to MSMEs, programmes, and interventions so readiness and risk intelligence has structured input."}
             actionHref={canManage ? "/dashboard/impact-intelligence/assessments/templates/new" : undefined}
             actionLabel={canManage ? "Create template" : undefined}
             icon={ClipboardCheck}

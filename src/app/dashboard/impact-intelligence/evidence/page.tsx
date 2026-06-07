@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { FileArchive } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
+import { canRole } from "@/lib/impact-intelligence/permissions";
 import type { UserContext } from "@/lib/auth/authorization";
 import {
-  IMPACT_EVIDENCE_CREATE_ROLES,
   type ImpactEvidenceRecord,
   type ImpactEvidenceUploadOptions,
   getImpactEvidenceUploadOptions,
@@ -92,7 +93,7 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
   try {
     ctx = await getCurrentUserContext();
     evidence = await listImpactEvidence(ctx, { limit: 100 });
-    if ((IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role)) {
+    if (canRole(ctx.role, "evidence", "create")) {
       uploadOptions = await getImpactEvidenceUploadOptions(ctx, {
         programmeId: filters.create_programme_id,
         cohortId: filters.create_cohort_id,
@@ -109,7 +110,8 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
     });
   }
 
-  const canCreate = Boolean(ctx && (IMPACT_EVIDENCE_CREATE_ROLES as readonly string[]).includes(ctx.role));
+  const canCreate = Boolean(ctx && canRole(ctx.role, "evidence", "create"));
+  const scopeEmptyMessage = ctx ? getProgrammeScopeEmptyMessage(ctx) : null;
 
   return (
     <section className="space-y-6">
@@ -156,7 +158,7 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
           {evidence.length === 0 ? (
             <EmptyState
               title="No evidence uploaded"
-              description={canCreate ? "Use the constrained upload form to add the first evidence file." : "Evidence within your assigned scope will appear here."}
+              description={scopeEmptyMessage ?? (canCreate ? "Use the constrained upload form to add the first evidence file." : "Evidence within your assigned scope will appear here.")}
               icon={FileArchive}
             />
           ) : (

@@ -3,6 +3,8 @@ import { unstable_rethrow } from "next/navigation";
 import { Flag, Plus } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { IMPACT_WRITE_ROLES, listImpactProgrammes } from "@/lib/data/impact-intelligence";
+import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
+import { canAccessRoute } from "@/lib/impact-intelligence/permissions";
 import { EmptyState, ImpactPageHeader, QuickLink, SectionCard, StatusBadge, TableShell, tableCellClassName, tableClassName, tableHeadClassName, tableRowClassName } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
 
@@ -24,6 +26,7 @@ export default async function ImpactProgrammesPage() {
     logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/programmes", operation: "programme_list_load_failed", error });
   }
   const canWrite = Boolean(ctx && !loadError && IMPACT_WRITE_ROLES.includes(ctx.role));
+  const scopeEmptyMessage = ctx ? getProgrammeScopeEmptyMessage(ctx) : null;
 
   return (
     <section className="space-y-6">
@@ -35,7 +38,12 @@ export default async function ImpactProgrammesPage() {
         actions={canWrite ? [{ href: "/dashboard/impact-intelligence/programmes/new", label: "New programme", icon: Plus, variant: "primary" }] : []}
       />
 
-      <SectionCard title="Programme Registry" action={!loadError ? <QuickLink href="/dashboard/impact-intelligence/executive">Executive view</QuickLink> : undefined}>
+      <SectionCard
+        title="Programme Registry"
+        action={!loadError && ctx && canAccessRoute(ctx.role, "/dashboard/impact-intelligence/executive")
+          ? <QuickLink href="/dashboard/impact-intelligence/executive">Executive view</QuickLink>
+          : undefined}
+      >
         {loadError ? (
           <EmptyState
             title="Programme records could not load"
@@ -44,8 +52,8 @@ export default async function ImpactProgrammesPage() {
           />
         ) : programmes.length === 0 ? (
           <EmptyState
-            title="No programmes yet"
-            description="Create the first internal programme record to start linking MSME interventions, assessment cycles, field monitoring, and snapshot report records."
+            title={scopeEmptyMessage ?? "No programmes yet"}
+            description={scopeEmptyMessage ?? "Create the first internal programme record to start linking MSME interventions, assessment cycles, field monitoring, and snapshot report records."}
             actionHref={canWrite ? "/dashboard/impact-intelligence/programmes/new" : undefined}
             actionLabel={canWrite ? "Create programme" : undefined}
             icon={Flag}

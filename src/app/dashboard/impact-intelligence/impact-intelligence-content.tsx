@@ -18,6 +18,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canAccessRoute } from "@/lib/impact-intelligence/permissions";
 import type { UserRole } from "@/types/roles";
 
 type LifecycleStatus = "Operational" | "Partial" | "Missing";
@@ -255,10 +256,12 @@ function roleLabel(role: UserRole) {
 
 function getLauncherCards(role: UserRole) {
   const audience = AUDIENCE_BY_ROLE[role] ?? DEFAULT_AUDIENCE;
-  return LAUNCHER_CARDS.filter((card) => card.audiences.includes(audience)).sort((a, b) => a.priority - b.priority);
+  return LAUNCHER_CARDS
+    .filter((card) => card.audiences.includes(audience) && canAccessRoute(role, card.href))
+    .sort((a, b) => a.priority - b.priority);
 }
 
-function LifecycleProgressPanel() {
+function LifecycleProgressPanel({ role }: { role: UserRole }) {
   const totals = LIFECYCLE_STEPS.reduce(
     (acc, step) => {
       acc[step.status] += 1;
@@ -299,7 +302,7 @@ function LifecycleProgressPanel() {
             </>
           );
 
-          return step.href ? (
+          return step.href && canAccessRoute(role, step.href) ? (
             <Link key={step.label} href={step.href} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 transition hover:border-emerald-200 hover:bg-emerald-50/50">
               {content}
             </Link>
@@ -373,7 +376,7 @@ export async function ImpactIntelligenceContent() {
         </div>
       </header>
 
-      <LifecycleProgressPanel />
+      <LifecycleProgressPanel role={ctx.role} />
       <LauncherSection role={ctx.role} />
     </section>
   );
