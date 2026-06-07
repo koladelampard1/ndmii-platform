@@ -427,13 +427,58 @@ check("scope resolver supports privileged and assigned programme decisions", () 
   );
 });
 
+check("programme assignment scope supports Phase 2 read and write decisions", () => {
+  assert(
+    impactAccessScope.includes("getProgrammeScopeFilter") &&
+      impactAccessScope.includes("applyProgrammeScope") &&
+      impactAccessScope.includes("canReadProgrammeResource") &&
+      impactAccessScope.includes("canWriteProgrammeResource") &&
+      impactAccessScope.includes("explainScopeDecision") &&
+      impactAccessScope.includes('scope.mode === "assigned" && scope.programmeIds.includes(programmeId)') &&
+      impactAccessScope.includes('scope.mode === "delegated_field_scope"') &&
+      impactAccessScope.includes('action === "write" && scope.readOnly'),
+    "Expected assigned-programme decisions, admin/read-only handling, and no broad field-officer programme scope.",
+  );
+});
+
+check("programme assignment enforcement remains observable shadow mode", () => {
+  assert(
+    impactAccessScope.includes("[impact-rbac-shadow]") &&
+      impactAccessScope.includes('"would_deny"') &&
+      impactAccessScope.includes('"would_allow"') &&
+      impactAccessScope.includes("legacyFallbackUsed") &&
+      impactAccessScope.includes("assignmentCount") &&
+      impactAccessScope.includes("appUserId") &&
+      impactEvidenceService.includes("logProgrammeScopeShadowDecision") &&
+      impactIndicatorService.includes("logProgrammeScopeShadowDecision") &&
+      impactReportService.includes("logProgrammeScopeShadowDecision"),
+    "Expected shadow allow/deny comparison logs with assignment-aware diagnostics across core services.",
+  );
+});
+
+check("approved-data roles remain read only and receive approved sources", () => {
+  assert(
+    impactAccessScope.includes('mode: "approved_data"') &&
+      impactAccessScope.includes("readOnly: true") &&
+      impactEvidenceService.includes('ctx.role === "data_analyst"') &&
+      impactEvidenceService.includes('query.eq("status", "verified")') &&
+      impactIndicatorService.includes('ctx.role === "data_analyst"') &&
+      impactReportService.includes('ctx.role === "data_analyst"') &&
+      impactReportService.includes('query.eq("status", "approved")'),
+    "Expected data analysts to retain read-only approved-data scope.",
+  );
+});
+
 check("programme assignment backfill is dry-run and idempotent", () => {
   assert(
     impactAssignmentBackfill.includes('process.argv.includes("--apply")') &&
       impactAssignmentBackfill.includes("DRY RUN") &&
       impactAssignmentBackfill.includes("existing.has(key)") &&
-      impactAssignmentBackfill.includes("No programme exists. No assignments will be created."),
-    "Expected an explicit --apply gate, duplicate avoidance, and safe empty-programme behavior.",
+      impactAssignmentBackfill.includes('"--user-email"') &&
+      impactAssignmentBackfill.includes('"--programme-code"') &&
+      impactAssignmentBackfill.includes('"--role"') &&
+      impactAssignmentBackfill.includes("Provide both --user-email and --programme-code"),
+    "Expected an explicit --apply gate, duplicate avoidance, and explicitly targeted assignment filters.",
   );
 });
 

@@ -7,6 +7,15 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const eligibleRoles = ["programme_officer", "assessment_officer"];
 
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1]?.trim() || null : null;
+}
+
+const userEmail = argumentValue("--user-email");
+const programmeCode = argumentValue("--programme-code");
+const requestedRole = argumentValue("--role");
+
 function log(message, details) {
   if (details === undefined) console.log(message);
   else console.log(message, details);
@@ -14,6 +23,11 @@ function log(message, details) {
 
 async function main() {
   log(`Impact programme assignment backfill (${apply ? "APPLY" : "DRY RUN"})`);
+  log("Filters", { userEmail, programmeCode, role: requestedRole });
+
+  if (requestedRole && !eligibleRoles.includes(requestedRole)) {
+    throw new Error(`--role must be one of: ${eligibleRoles.join(", ")}`);
+  }
 
   if (!supabaseUrl || !serviceRoleKey) {
     log("No database connection was attempted.");
@@ -27,9 +41,15 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  let usersQuery = supabase.from("users").select("id,email,role").in("role", eligibleRoles).order("role");
+  let programmesQuery = supabase.from("impact_programmes").select("id,name,programme_code,status").order("created_at");
+  if (userEmail) usersQuery = usersQuery.ilike("email", userEmail);
+  if (requestedRole) usersQuery = usersQuery.eq("role", requestedRole);
+  if (programmeCode) programmesQuery = programmesQuery.ilike("programme_code", programmeCode);
+
   const [usersResult, programmesResult, assignmentsResult] = await Promise.all([
-    supabase.from("users").select("id,role").in("role", eligibleRoles).order("role"),
-    supabase.from("impact_programmes").select("id,name,programme_code,status").order("created_at"),
+    usersQuery,
+    programmesQuery,
     supabase
       .from("impact_user_programme_assignments")
       .select("user_id,programme_id,assignment_role,status")
@@ -52,6 +72,12 @@ async function main() {
   log(`Existing programmes: ${programmes.length}`);
   log(`Existing active matching assignments: ${existing.size}`);
 
+  if (!userEmail || !programmeCode) {
+    log("No assignments proposed. Provide both --user-email and --programme-code to target an assignment explicitly.");
+    log("Optional: add --role to validate the user's assignment role, and --apply after reviewing the dry run.");
+    return;
+  }
+
   if (users.length === 0) {
     log("No programme or assessment officers require backfill.");
     return;
@@ -62,7 +88,7 @@ async function main() {
   }
 
   const proposed = [];
-  for (const [userIndex, user] of users.entries()) {
+  for (const user of users) {
     for (const programme of programmes) {
       const key = `${user.id}:${programme.id}:${user.role}`;
       if (existing.has(key)) continue;
@@ -71,14 +97,15 @@ async function main() {
         programme_id: programme.id,
         assignment_role: user.role,
         status: "active",
-        reason: "Phase 1 legacy broad-access backfill",
+        reason: "Phase 2 explicit programme assignment backfill",
         metadata: {
           source: "backfill-impact-programme-assignments",
-          preserves_legacy_access: true,
+          explicit_user_email: userEmail,
+          explicit_programme_code: programmeCode,
         },
       });
       log(
-        `WOULD ASSIGN ${user.role} user #${userIndex + 1} to programme ${programme.programme_code ?? programme.id} (${programme.name})`,
+        `WOULD ASSIGN ${user.role} ${user.email} to programme ${programme.programme_code ?? programme.id} (${programme.name})`,
       );
     }
   }

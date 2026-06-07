@@ -28,8 +28,32 @@ export type ProgrammeAccessExplanation = {
   mode: ImpactAccessMode;
   assignmentCount: number;
   fallbackToLegacy: boolean;
+  legacyFallbackUsed: boolean;
+  action: "read" | "write";
   reason: string;
 };
+
+export type ProgrammeScopeFilter = {
+  mode: "all" | "assigned" | "none";
+  programmeIds: string[];
+  assignmentCount: number;
+  legacyFallbackUsed: boolean;
+  reason: string;
+};
+
+export type ProgrammeScopeDiagnostic = {
+  role: UserContext["role"];
+  appUserId: string | null;
+  programmeId: string | null;
+  action: "read" | "write";
+  resource: string;
+  decision: "allow" | "deny" | "would_allow" | "would_deny";
+  reason: string;
+  legacyFallbackUsed: boolean;
+  assignmentCount: number;
+};
+
+const programmeScopeFilterCache = new WeakMap<UserContext, ProgrammeScopeFilter>();
 
 function logScopeDiagnostic(
   operation: string,
@@ -75,7 +99,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: false,
-      reason: "Administrative compatibility access; operational ownership is not implied.",
+      reason: "administrative_access: compatibility access retained; operational ownership is not implied.",
     };
   }
   if (ctx.role === "boi_executive") {
@@ -218,30 +242,144 @@ export async function explainProgrammeAccess(
   ctx: UserContext,
   programmeId: string,
 ): Promise<ProgrammeAccessExplanation> {
-  const scope = await resolveImpactAccessScope(ctx);
-  let allowed = false;
+  return explainScopeDecision(ctx, programmeId, "read");
+}
 
-  if (["unrestricted", "administrative", "aggregate", "approved_data", "legacy_fallback"].includes(scope.mode)) {
-    allowed = true;
-  } else if (scope.mode === "assigned") {
-    allowed = scope.programmeIds.includes(programmeId);
+export async function canAccessProgramme(ctx: UserContext, programmeId: string): Promise<boolean> {
+  return canReadProgrammeResource(ctx, programmeId);
+}
+
+export function decideProgrammeScope(
+  scope: ImpactAccessScope,
+  programmeId: string,
+  action: "read" | "write",
+): ProgrammeAccessExplanation {
+  const broadRead = ["unrestricted", "administrative", "aggregate", "approved_data", "legacy_fallback"].includes(scope.mode);
+  const broadWrite = ["unrestricted", "administrative", "legacy_fallback"].includes(scope.mode);
+  const assigned = scope.mode === "assigned" && scope.programmeIds.includes(programmeId);
+  const allowed = action === "read" ? broadRead || assigned : (broadWrite || assigned) && !scope.readOnly;
+  let reason = scope.reason;
+  if (scope.mode === "assigned" && !assigned) {
+    reason = "Programme is outside the user's active assignment portfolio.";
+  } else if (action === "write" && scope.readOnly) {
+    reason = "Role has read-only Impact Intelligence scope.";
+  } else if (scope.mode === "delegated_field_scope") {
+    reason = "Field officers do not receive broad programme access; beneficiary and visit assignments remain authoritative.";
   }
-
-  const explanation: ProgrammeAccessExplanation = {
+  return {
     allowed,
     programmeId,
-    role: ctx.role,
+    role: scope.role,
     mode: scope.mode,
     assignmentCount: scope.assignmentCount,
     fallbackToLegacy: scope.fallbackToLegacy,
-    reason: scope.mode === "assigned" && !allowed
-      ? "Programme is outside the user's active assignment portfolio."
-      : scope.reason,
+    legacyFallbackUsed: scope.fallbackToLegacy,
+    action,
+    reason,
   };
+}
+
+export async function getProgrammeScopeFilter(ctx: UserContext): Promise<ProgrammeScopeFilter> {
+  const scope = await resolveImpactAccessScope(ctx);
+  let filter: ProgrammeScopeFilter;
+  if (scope.mode === "assigned") {
+    filter = {
+      mode: "assigned",
+      programmeIds: scope.programmeIds,
+      assignmentCount: scope.assignmentCount,
+      legacyFallbackUsed: false,
+      reason: scope.reason,
+    };
+  } else if (scope.mode === "denied" || scope.mode === "delegated_field_scope") {
+    filter = {
+      mode: "none",
+      programmeIds: [],
+      assignmentCount: scope.assignmentCount,
+      legacyFallbackUsed: false,
+      reason: scope.reason,
+    };
+  } else {
+    filter = {
+      mode: "all",
+      programmeIds: [],
+      assignmentCount: scope.assignmentCount,
+      legacyFallbackUsed: scope.fallbackToLegacy,
+      reason: scope.reason,
+    };
+  }
+  programmeScopeFilterCache.set(ctx, filter);
+  return filter;
+}
+
+type ProgrammeFilterQuery<T> = T & {
+  in(column: string, values: string[]): T;
+  eq(column: string, value: string): T;
+};
+
+export function applyProgrammeScope<T>(
+  query: T,
+  ctx: UserContext,
+  columnName = "programme_id",
+): T {
+  const filter = programmeScopeFilterCache.get(ctx);
+  if (!filter) {
+    logScopeDiagnostic("scope_filter_not_preloaded", {
+      role: ctx.role,
+      fallbackToLegacy: true,
+      reason: "Programme scope filter was not preloaded; retaining the existing query in shadow mode.",
+    });
+    return query;
+  }
+  if (filter.mode === "assigned") {
+    return (query as ProgrammeFilterQuery<T>).in(columnName, filter.programmeIds);
+  }
+  if (filter.mode === "none") {
+    return (query as ProgrammeFilterQuery<T>).eq(columnName, "00000000-0000-0000-0000-000000000000");
+  }
+  return query;
+}
+
+export async function explainScopeDecision(
+  ctx: UserContext,
+  programmeId: string,
+  action: "read" | "write",
+): Promise<ProgrammeAccessExplanation> {
+  const explanation = decideProgrammeScope(await resolveImpactAccessScope(ctx), programmeId, action);
   logScopeDiagnostic("programme_access_decision", explanation);
   return explanation;
 }
 
-export async function canAccessProgramme(ctx: UserContext, programmeId: string): Promise<boolean> {
-  return (await explainProgrammeAccess(ctx, programmeId)).allowed;
+export async function canReadProgrammeResource(ctx: UserContext, programmeId: string): Promise<boolean> {
+  return (await explainScopeDecision(ctx, programmeId, "read")).allowed;
+}
+
+export async function canWriteProgrammeResource(ctx: UserContext, programmeId: string): Promise<boolean> {
+  return (await explainScopeDecision(ctx, programmeId, "write")).allowed;
+}
+
+export async function logProgrammeScopeShadowDecision(params: {
+  ctx: UserContext;
+  programmeId: string | null | undefined;
+  action: "read" | "write";
+  resource: string;
+  legacyAllowed: boolean;
+}) {
+  if (!params.programmeId) return null;
+  const explanation = await explainScopeDecision(params.ctx, params.programmeId, params.action);
+  let decision: ProgrammeScopeDiagnostic["decision"] = explanation.allowed ? "allow" : "deny";
+  if (params.legacyAllowed && !explanation.allowed) decision = "would_deny";
+  if (!params.legacyAllowed && explanation.allowed) decision = "would_allow";
+  const diagnostic: ProgrammeScopeDiagnostic = {
+    role: params.ctx.role,
+    appUserId: params.ctx.appUserId,
+    programmeId: params.programmeId,
+    action: params.action,
+    resource: params.resource,
+    decision,
+    reason: explanation.reason,
+    legacyFallbackUsed: explanation.legacyFallbackUsed,
+    assignmentCount: explanation.assignmentCount,
+  };
+  console.info("[impact-rbac-shadow]", decision, diagnostic);
+  return diagnostic;
 }

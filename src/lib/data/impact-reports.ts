@@ -2,6 +2,11 @@ import { createHash, randomUUID } from "crypto";
 import type { UserContext } from "@/lib/auth/authorization";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { createInstitutionalReportPdf } from "@/lib/reports/institutional-report-pdf";
+import {
+  applyProgrammeScope,
+  getProgrammeScopeFilter,
+  logProgrammeScopeShadowDecision,
+} from "@/lib/impact-intelligence/access-scope";
 
 export const REPORT_PHASE1A_TYPES = [
   "executive_summary",
@@ -12,7 +17,7 @@ export const REPORT_PHASE1A_TYPES = [
   "impact_intelligence",
 ] as const;
 export const REPORT_PHASE1A_STATUSES = ["draft", "in_review", "returned", "approved", "archived"] as const;
-export const REPORT_READ_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "boi_executive", "auditor"] as const;
+export const REPORT_READ_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "boi_executive", "data_analyst", "auditor"] as const;
 export const REPORT_CREATE_ROLES = ["admin", "super_admin", "programme_officer"] as const;
 export const REPORT_REVIEW_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
 export const REPORT_ARCHIVE_ROLES = ["admin", "super_admin"] as const;
@@ -164,8 +169,8 @@ function isLegacyReport(report: Pick<InstitutionalReport, "metadata">) {
 
 function assertCanReadReport(ctx: UserContext, report: InstitutionalReport) {
   requireRole(ctx, REPORT_READ_ROLES, "You do not have permission to read institutional reports.");
-  if (ctx.role === "boi_executive" && (report.status !== "approved" || isLegacyReport(report))) {
-    throw new Error("BOI executives can only access approved institutional reports.");
+  if ((ctx.role === "boi_executive" || ctx.role === "data_analyst") && (report.status !== "approved" || isLegacyReport(report))) {
+    throw new Error("This role can only access approved institutional reports.");
   }
 }
 
@@ -263,6 +268,7 @@ export async function createInstitutionalReport(ctx: UserContext, formData: Form
     intervention_id: textValue(formData, "intervention_id"),
   };
   await validateReportScope(scope);
+  await logProgrammeScopeShadowDecision({ ctx, programmeId, action: "write", resource: "report", legacyAllowed: true });
   const supabase = await createServiceRoleSupabaseClient();
   const { data, error } = await supabase.from("impact_reports").insert({
     ...scope,
@@ -452,6 +458,7 @@ export async function generateInstitutionalReportVersion(ctx: UserContext, repor
   requireRole(ctx, REPORT_CREATE_ROLES, "You do not have permission to generate institutional report versions.");
   const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false });
   if (!report) throw new Error("Report not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "write", resource: "report", legacyAllowed: true });
   if (isLegacyReport(report)) throw new Error("Legacy reports cannot generate Phase 1A versions.");
   if (!["draft", "returned"].includes(report.status)) throw new Error("Only draft or returned reports can generate a version.");
   const built = await buildVersionPayload(report);
@@ -482,6 +489,7 @@ export async function generateInstitutionalReportVersion(ctx: UserContext, repor
 export async function transitionInstitutionalReport(ctx: UserContext, reportId: string, action: "submit" | "return" | "approve" | "archive", formData?: FormData) {
   const { report } = await getInstitutionalReport(ctx, reportId, { includeSources: false });
   if (!report) throw new Error("Report not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "write", resource: "report", legacyAllowed: true });
   if (isLegacyReport(report)) throw new Error("Legacy reports cannot enter the Phase 1A approval workflow.");
   const supabase = await createServiceRoleSupabaseClient();
   const now = new Date().toISOString();
@@ -522,7 +530,9 @@ export async function listInstitutionalReports(ctx: UserContext, limit = 100): P
   requireRole(ctx, REPORT_READ_ROLES, "You do not have permission to read institutional reports.");
   const supabase = await createServiceRoleSupabaseClient();
   let query = supabase.from("impact_reports").select(REPORT_SELECT).order("created_at", { ascending: false }).limit(limit);
-  if (ctx.role === "boi_executive") query = query.eq("status", "approved").eq("metadata->>report_phase", "phase1a");
+  await getProgrammeScopeFilter(ctx);
+  query = applyProgrammeScope(query, ctx);
+  if (ctx.role === "boi_executive" || ctx.role === "data_analyst") query = query.eq("status", "approved").eq("metadata->>report_phase", "phase1a");
   const { data, error } = await query;
   if (error) throw new Error(`Institutional reports unavailable: ${error.message}`);
   const reports = (data ?? []) as unknown as InstitutionalReport[];
@@ -549,6 +559,7 @@ export async function getInstitutionalReport(
   const report = reportResult.data as unknown as InstitutionalReport | null;
   if (!report) return { report: null, versions: [], evidenceReferences: [], indicatorReferences: [], exports: [] };
   assertCanReadReport(ctx, report);
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: report.programme_id, action: "read", resource: "report", legacyAllowed: true });
   const versionsResult = await supabase.from("impact_report_versions").select(VERSION_SELECT).eq("report_id", reportId).order("version_number", { ascending: false });
   if (versionsResult.error) throw new Error(`Report versions unavailable: ${versionsResult.error.message}`);
   const versions = (versionsResult.data ?? []) as unknown as InstitutionalReportVersion[];

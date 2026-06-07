@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "crypto";
 import type { UserContext } from "@/lib/auth/authorization";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import {
+  applyProgrammeScope,
+  getProgrammeScopeFilter,
+  logProgrammeScopeShadowDecision,
+} from "@/lib/impact-intelligence/access-scope";
 
 export const IMPACT_EVIDENCE_BUCKET = "impact-evidence";
 export const IMPACT_EVIDENCE_MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -10,7 +15,7 @@ export const IMPACT_EVIDENCE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", 
 export const IMPACT_EVIDENCE_STATUSES = ["draft", "uploaded", "submitted", "under_review", "verified", "rejected", "returned", "archived"] as const;
 export const IMPACT_EVIDENCE_CREATE_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer"] as const;
 export const IMPACT_EVIDENCE_REVIEW_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
-export const IMPACT_EVIDENCE_READ_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
+export const IMPACT_EVIDENCE_READ_ROLES = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
 
 export type ImpactEvidenceStatus = (typeof IMPACT_EVIDENCE_STATUSES)[number];
 
@@ -339,6 +344,7 @@ async function insertEvidenceEvent(params: {
 export async function uploadImpactEvidence(ctx: UserContext, formData: FormData) {
   requireRole(ctx, IMPACT_EVIDENCE_CREATE_ROLES, "You do not have permission to upload impact evidence.");
   const context = await validateEvidenceContext(ctx, formData);
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: context.programmeId, action: "write", resource: "evidence", legacyAllowed: true });
   const fileValue = formData.get("evidence_file");
   const file = fileValue instanceof File ? fileValue : null;
   const validation = validateImpactEvidenceFile(file);
@@ -483,7 +489,11 @@ export async function listImpactEvidence(ctx: UserContext, options: EvidenceQuer
     if (scope.visitIds.length > 0) filters.push(`field_visit_id.in.(${scope.visitIds.join(",")})`);
     if (scope.memberIds.length > 0) filters.push(`cohort_member_id.in.(${scope.memberIds.join(",")})`);
     query = query.or(filters.join(","));
+  } else {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
   }
+  if (ctx.role === "boi_executive" || ctx.role === "data_analyst") query = query.eq("status", "verified").eq("verification_status", "verified");
 
   const { data, error } = await query;
   if (error) throw new Error(`Impact evidence source unavailable: ${error.message}`);
@@ -582,6 +592,9 @@ export async function getImpactEvidence(ctx: UserContext, evidenceId: string) {
   if (eventError) throw new Error(`Impact evidence history unavailable: ${eventError.message}`);
   const record = evidence ? mapImpactEvidenceRow(evidence) : null;
   if (record && !(await canAccessImpactEvidence(ctx, record))) throw new Error("You can only access evidence for assigned visits or beneficiaries.");
+  if (record) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: record.programme_id, action: "read", resource: "evidence", legacyAllowed: true });
+  }
   return { evidence: record, events: (events ?? []) as ImpactEvidenceEvent[] };
 }
 
@@ -589,6 +602,7 @@ export async function transitionImpactEvidence(ctx: UserContext, evidenceId: str
   const supabase = await createServiceRoleSupabaseClient();
   const { evidence } = await getImpactEvidence(ctx, evidenceId);
   if (!evidence) throw new Error("Evidence record was not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: evidence.programme_id, action: "write", resource: "evidence", legacyAllowed: true });
   const now = new Date().toISOString();
   let nextStatus: ImpactEvidenceStatus;
   let eventType: string;

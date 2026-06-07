@@ -8,6 +8,11 @@ import {
   uploadImpactEvidence,
   type ImpactEvidenceRecord,
 } from "@/lib/data/impact-evidence";
+import {
+  applyProgrammeScope,
+  getProgrammeScopeFilter,
+  logProgrammeScopeShadowDecision,
+} from "@/lib/impact-intelligence/access-scope";
 
 type ImpactQueryOptions = {
   limit?: number;
@@ -30,10 +35,10 @@ type ImpactReadArgs = {
   options: ImpactQueryOptions;
 };
 
-export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"];
+export const IMPACT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "auditor"];
 export const IMPACT_SCOPED_READ_ROLES: UserRole[] = [...IMPACT_READ_ROLES, "field_officer"];
 export const IMPACT_WRITE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
-export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor", "field_officer"];
+export const COHORT_READ_ROLES: UserRole[] = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "auditor", "field_officer"];
 export const COHORT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer"];
 export const ASSESSMENT_MANAGE_ROLES: UserRole[] = ["admin", "super_admin", "programme_officer", "assessment_officer"];
 export const ASSESSMENT_REVIEW_ROLES: UserRole[] = ["admin", "super_admin", "assessment_officer"];
@@ -734,7 +739,7 @@ function requireMonitoringReview(ctx: UserContext) {
 }
 
 function requireReportingAccess(ctx: UserContext) {
-  if (!["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "auditor"].includes(ctx.role)) {
+  if (!["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "auditor"].includes(ctx.role)) {
     throw new Error("You do not have permission to access impact analytics and reports.");
   }
 }
@@ -958,12 +963,17 @@ export function parseInterventionForm(formData: FormData) {
 export async function listImpactProgrammes(ctxOrOptions?: UserContext | ImpactQueryOptions, maybeOptions: ImpactQueryOptions = {}): Promise<ImpactProgramme[]> {
   const { ctx, options } = resolveImpactReadArgs(ctxOrOptions, maybeOptions);
   const supabase = await createImpactReadClient(ctx);
-  const [{ data, error }, { data: cohorts }, { data: members }] = await Promise.all([
-    supabase
+  let programmeQuery = supabase
     .from("impact_programmes")
     .select("id,name,programme_code,sponsor_name,description,status,start_date,end_date,created_by_user_id,created_at,updated_at")
     .order("created_at", { ascending: false })
-      .limit(options.limit ?? 50),
+    .limit(options.limit ?? 50);
+  if (ctx && ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    programmeQuery = applyProgrammeScope(programmeQuery, ctx, "id");
+  }
+  const [{ data, error }, { data: cohorts }, { data: members }] = await Promise.all([
+    programmeQuery,
     supabase
       .from("impact_beneficiary_cohorts")
       .select("id,programme_id,current_beneficiaries"),
@@ -1017,6 +1027,10 @@ export async function listImpactCohorts(ctx: UserContext, options: ImpactQueryOp
 
   if (allowedCohortIds) query = query.in("id", allowedCohortIds);
   if (options.programmeId) query = query.eq("programme_id", options.programmeId);
+  if (ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
 
   const [{ data, error }, { data: members }, { data: interventions }] = await Promise.all([
     query,
@@ -1056,6 +1070,7 @@ export async function getImpactCohortDetail(ctx: UserContext, cohortId: string) 
 
   throwImpactReadError("get_cohort_failed", error);
   if (!cohort) return { cohort: null, members: [], dashboard: buildCohortDashboardMetrics([]) };
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: cohort.programme_id, action: "read", resource: "cohort", legacyAllowed: true });
 
   let memberQuery = supabase
     .from("impact_cohort_members")
@@ -1138,6 +1153,7 @@ export async function createImpactCohort(ctx: UserContext, formData: FormData) {
   requireCohortManage(ctx);
   const supabase = await createPrivilegedImpactWriteClient();
   const payload = { ...parseCohortForm(formData), created_by_user_id: ctx.appUserId };
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: payload.programme_id, action: "write", resource: "cohort", legacyAllowed: true });
   const { data, error } = await supabase.from("impact_beneficiary_cohorts").insert(payload).select("id").single();
   if (error) throw new Error(error.message);
   if (!data?.id) throw new Error("Cohort was created but no cohort ID was returned.");
@@ -1273,6 +1289,7 @@ export async function listImpactCohortMemberOptions(ctx: UserContext, options: I
 
 export async function getImpactProgrammeDetail(ctx: UserContext, id: string) {
   requireImpactRead(ctx);
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: id, action: "read", resource: "programme", legacyAllowed: true });
   const supabase = await createPrivilegedImpactReadClient();
   const [{ data: programme, error }, { data: interventions }, { data: enrolments }, { data: cohorts }, { data: cohortMembers }, { data: assessments }, { data: visits }] = await Promise.all([
     supabase
@@ -1380,6 +1397,10 @@ export async function listImpactInterventions(ctxOrOptions?: UserContext | Impac
   if (options.interventionType) query = query.eq("intervention_type", options.interventionType);
   if (options.assignedOfficerId) query = query.eq("assigned_officer_id", options.assignedOfficerId);
   if (options.cohortMemberId) query = query.eq("cohort_member_id", options.cohortMemberId);
+  if (ctx && ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
 
   const { data, error } = await query;
   throwImpactReadError("list_interventions_failed", error);
@@ -1412,6 +1433,9 @@ export async function getImpactInterventionDetail(id: string, ctx?: UserContext)
   ]);
 
   throwImpactReadError("get_intervention_failed", error);
+  if (ctx && intervention) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: intervention.programme_id, action: "read", resource: "intervention", legacyAllowed: true });
+  }
   return {
     intervention: intervention as unknown as ImpactIntervention | null,
     events: (events ?? []) as ImpactInterventionEvent[],
@@ -1424,6 +1448,7 @@ export async function createImpactIntervention(ctx: UserContext, formData: FormD
   requireImpactWrite(ctx);
   const supabase = await createPrivilegedImpactWriteClient();
   const parsed = parseInterventionForm(formData);
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: parsed.programme_id, action: "write", resource: "intervention", legacyAllowed: true });
   validateFinancials(parsed.approved_amount, parsed.disbursed_amount);
   const now = new Date().toISOString();
   const initialApprovedAt = parsed.approved_amount !== null ? now : null;
@@ -1497,6 +1522,7 @@ export async function updateImpactInterventionStatus(ctx: UserContext, intervent
   const supabase = await createPrivilegedImpactWriteClient();
   const { intervention } = await getImpactInterventionDetail(interventionId, ctx);
   if (!intervention) throw new Error("Intervention not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: intervention.programme_id, action: "write", resource: "intervention", legacyAllowed: true });
 
   const nextStatus = normaliseStatus(textValue(formData, "status"));
   const nextStage = normaliseStage(textValue(formData, "stage"));
@@ -1531,6 +1557,7 @@ export async function updateImpactInterventionLifecycle(ctx: UserContext, interv
   const supabase = await createPrivilegedImpactWriteClient();
   const { intervention } = await getImpactInterventionDetail(interventionId, ctx);
   if (!intervention) throw new Error("Intervention not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: intervention.programme_id, action: "write", resource: "intervention", legacyAllowed: true });
 
   const currentMetadata = (intervention.metadata ?? {}) as Record<string, unknown>;
   const currentStage = String(currentMetadata.stage ?? "intake");
@@ -2122,6 +2149,7 @@ export async function createAssessment(ctx: UserContext, formData: FormData) {
   if (!programmeId) throw new Error("Select a programme.");
   if (!cohortId) throw new Error("Select a beneficiary cohort.");
   if (!cohortMemberId) throw new Error("Select a cohort beneficiary.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId, action: "write", resource: "assessment", legacyAllowed: true });
 
   const { template } = await getAssessmentTemplate(templateId, ctx);
   if (!template) throw new Error("Assessment template not found.");
@@ -2189,6 +2217,11 @@ export async function listImpactAssessments(ctxOrOptions?: UserContext | ImpactQ
   if (options.status) query = query.eq("status", options.status);
   if (options.interventionId) query = query.eq("intervention_id", options.interventionId);
   if (options.cohortMemberId) query = query.eq("cohort_member_id", options.cohortMemberId);
+  if (ctx && ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
+  if (ctx?.role === "boi_executive" || ctx?.role === "data_analyst") query = query.eq("status", "approved");
 
   const { data, error } = await query;
 
@@ -2206,6 +2239,9 @@ export async function getImpactAssessmentDetail(assessmentId: string, ctx?: User
 
   throwImpactReadError("get_assessment_failed", error);
   if (!assessment) return { assessment: null, template: null, sections: [], questions: [], responses: [], scores: [], scoreRuns: [], reviews: [], visits: [] };
+  if (ctx) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: assessment.programme_id, action: "read", resource: "assessment", legacyAllowed: true });
+  }
 
   const templateId = (assessment as unknown as ImpactAssessment).template_id;
   const [{ template, sections, questions }, { data: responses }, { data: scores }, { data: scoreRuns }, { data: reviews }, { data: visits }] = await Promise.all([
@@ -2310,6 +2346,7 @@ async function persistAssessmentResponses(ctx: UserContext, assessmentId: string
   requireAssessmentManage(ctx);
   const detail = await getImpactAssessmentDetail(assessmentId, ctx);
   if (!detail.assessment) throw new Error("Assessment not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: detail.assessment.programme_id, action: "write", resource: "assessment", legacyAllowed: true });
   if (detail.assessment.status === "reviewed" || detail.assessment.status === "approved" || detail.assessment.status === "completed") {
     throw new Error("Reviewed or completed assessments cannot be edited.");
   }
@@ -2549,6 +2586,7 @@ export async function createFieldVisit(ctx: UserContext, formData: FormData) {
   if (!programmeId) throw new Error("Select a programme for this field visit.");
   if (!cohortId) throw new Error("Select a beneficiary cohort for this field visit.");
   if (!cohortMemberId) throw new Error("Select a cohort beneficiary for this field visit.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId, action: "write", resource: "monitoring", legacyAllowed: true });
 
   const supabase = await createPrivilegedImpactWriteClient();
   const { data: member, error: memberError } = await supabase
@@ -2685,6 +2723,10 @@ export async function listFieldVisits(ctx?: UserContext, options: ImpactQueryOpt
   if (options.interventionId) query = query.eq("intervention_id", options.interventionId);
   if (options.status) query = query.eq("status", options.status);
   if (options.assignedOfficerId) query = query.eq("assigned_to_user_id", options.assignedOfficerId);
+  if (ctx && ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
 
   const { data, error } = await query;
 
@@ -2709,6 +2751,9 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
 
   throwImpactReadError("get_field_visit_failed", error);
   const fieldVisit = visit as unknown as ImpactFieldVisit | null;
+  if (fieldVisit) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: fieldVisit.programme_id, action: "read", resource: "monitoring", legacyAllowed: true });
+  }
   if (fieldVisit && ctx.role === "field_officer" && fieldVisit.assigned_to_user_id !== ctx.appUserId) {
     throw new Error("You can only access field visits assigned to you.");
   }
@@ -2725,6 +2770,7 @@ export async function getFieldVisit(ctx: UserContext, visitId: string) {
 export async function completeFieldVisit(ctx: UserContext, visitId: string, formData: FormData) {
   const detail = await getFieldVisit(ctx, visitId);
   if (!detail.visit) throw new Error("Field visit not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: detail.visit.programme_id, action: "write", resource: "monitoring", legacyAllowed: true });
   const supabase = await createPrivilegedImpactWriteClient();
   const now = new Date().toISOString();
 
@@ -2814,6 +2860,10 @@ export async function listEvidence(ctx?: UserContext, options: ImpactQueryOption
     if (visitIds.length === 0) return [];
     query = query.in("field_visit_id", visitIds);
   }
+  if (ctx && ctx.role !== "field_officer") {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
+  }
 
   const { data, error } = await query;
   throwImpactReadError("list_evidence_failed", error);
@@ -2828,6 +2878,9 @@ export async function getEvidence(ctx: UserContext, evidenceId: string) {
   ]);
   throwImpactReadError("get_evidence_failed", error);
   const item = evidence ? mapImpactEvidenceRow(evidence) : null;
+  if (item) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: item.programme_id, action: "read", resource: "evidence", legacyAllowed: true });
+  }
   if (item && ctx.role === "field_officer") {
     const visible = item.field_visit_id
       ? await supabase.from("impact_field_visits").select("id").eq("id", item.field_visit_id).eq("assigned_to_user_id", ctx.appUserId ?? "").maybeSingle()

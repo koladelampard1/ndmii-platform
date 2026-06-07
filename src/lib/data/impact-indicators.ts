@@ -1,5 +1,10 @@
 import type { UserContext } from "@/lib/auth/authorization";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import {
+  applyProgrammeScope,
+  getProgrammeScopeFilter,
+  logProgrammeScopeShadowDecision,
+} from "@/lib/impact-intelligence/access-scope";
 
 export const INDICATOR_DEFINITION_STATUSES = ["draft", "active", "archived"] as const;
 export const INDICATOR_DIRECTIONS = ["increase", "decrease", "maintain"] as const;
@@ -8,7 +13,7 @@ export const INDICATOR_SOURCE_TYPES = ["manual", "assessment_score", "field_visi
 export const INDICATOR_VERIFICATION_STATUSES = ["draft", "submitted", "verified", "rejected", "returned"] as const;
 export const INDICATOR_OUTCOME_STATUSES = ["no_baseline", "below_target", "on_track", "achieved", "exceeded", "regressed"] as const;
 
-export const INDICATOR_READ_ROLES = ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
+export const INDICATOR_READ_ROLES = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
 export const INDICATOR_DEFINITION_MANAGE_ROLES = ["admin", "super_admin", "programme_officer"] as const;
 export const INDICATOR_MEASUREMENT_CREATE_ROLES = ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer"] as const;
 export const INDICATOR_MEASUREMENT_VERIFY_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
@@ -298,7 +303,11 @@ export async function listIndicatorDefinitions(ctx: UserContext, filters: Indica
     const scope = await getFieldOfficerScope(ctx);
     if (scope.programmeIds.length === 0) return [];
     query = query.eq("status", "active").in("programme_id", scope.programmeIds);
+  } else {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
   }
+  if (ctx.role === "boi_executive" || ctx.role === "data_analyst") query = query.eq("status", "active");
   const { data, error } = await query;
   if (error) throw new Error(`Indicator definitions unavailable: ${error.message}`);
   return (data ?? []) as unknown as ImpactIndicatorDefinition[];
@@ -312,6 +321,9 @@ export async function getIndicatorDefinition(ctx: UserContext, indicatorDefiniti
   if (data && ctx.role === "field_officer") {
     const scope = await getFieldOfficerScope(ctx);
     if (!data.programme_id || !scope.programmeIds.includes(String(data.programme_id))) throw new Error("You can only access indicators within your assigned scope.");
+  }
+  if (data?.programme_id) {
+    await logProgrammeScopeShadowDecision({ ctx, programmeId: data.programme_id, action: "read", resource: "indicator_definition", legacyAllowed: true });
   }
   return data as unknown as ImpactIndicatorDefinition | null;
 }
@@ -328,6 +340,7 @@ export async function createIndicatorDefinition(ctx: UserContext, formData: Form
   if (!INDICATOR_DIRECTIONS.includes(direction as IndicatorDirection)) throw new Error("Select a valid direction of improvement.");
   if (!INDICATOR_CALCULATION_METHODS.includes(calculationMethod as (typeof INDICATOR_CALCULATION_METHODS)[number])) throw new Error("Select a valid calculation method.");
   if (!INDICATOR_DEFINITION_STATUSES.includes(status as (typeof INDICATOR_DEFINITION_STATUSES)[number])) throw new Error("Select a valid indicator status.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: textValue(formData, "programme_id"), action: "write", resource: "indicator_definition", legacyAllowed: true });
 
   const supabase = await createServiceRoleSupabaseClient();
   const { data, error } = await supabase.from("impact_indicator_definitions").insert({
@@ -374,7 +387,11 @@ export async function listIndicatorMeasurements(ctx: UserContext, filters: Indic
     if (scope.visitIds.length > 0) clauses.push(`field_visit_id.in.(${scope.visitIds.join(",")})`);
     if (scope.memberIds.length > 0) clauses.push(`cohort_member_id.in.(${scope.memberIds.join(",")})`);
     query = query.or(clauses.join(","));
+  } else {
+    await getProgrammeScopeFilter(ctx);
+    query = applyProgrammeScope(query, ctx);
   }
+  if (ctx.role === "data_analyst") query = query.eq("verification_status", "verified");
   const { data, error } = await query;
   if (error) throw new Error(`Indicator measurements unavailable: ${error.message}`);
   return (data ?? []) as unknown as ImpactIndicatorMeasurement[];
@@ -417,6 +434,7 @@ export async function createIndicatorMeasurement(ctx: UserContext, formData: For
   if (!definition || definition.status !== "active") throw new Error("Measurements require an active indicator definition.");
   const programmeId = textValue(formData, "programme_id") ?? definition.programme_id;
   if (!programmeId) throw new Error("Select a programme for this measurement.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId, action: "write", resource: "indicator_measurement", legacyAllowed: true });
   const cohortMemberId = textValue(formData, "cohort_member_id");
   const fieldVisitId = textValue(formData, "field_visit_id");
   await assertFieldOfficerMeasurementScope(ctx, cohortMemberId, fieldVisitId);
@@ -478,11 +496,12 @@ async function transitionMeasurement(ctx: UserContext, measurementId: string, ne
   const supabase = await createServiceRoleSupabaseClient();
   const { data: current, error: currentError } = await supabase
     .from("impact_indicator_measurements")
-    .select("id,cohort_member_id,field_visit_id,verification_status")
+    .select("id,programme_id,cohort_member_id,field_visit_id,verification_status")
     .eq("id", measurementId)
     .maybeSingle();
   if (currentError) throw new Error(currentError.message);
   if (!current) throw new Error("Indicator measurement was not found.");
+  await logProgrammeScopeShadowDecision({ ctx, programmeId: current.programme_id, action: "write", resource: "indicator_measurement", legacyAllowed: true });
 
   if (nextStatus === "submitted") {
     requireRole(ctx, INDICATOR_MEASUREMENT_CREATE_ROLES, "You do not have permission to submit indicator measurements.");
