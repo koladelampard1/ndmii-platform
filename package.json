@@ -11,6 +11,7 @@
     "validate:association-upload": "node scripts/validate-association-member-upload.cjs",
     "smoke:dbin": "node scripts/smoke-dbin.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
+    "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",
     "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs"
   },
   "dependencies": {
