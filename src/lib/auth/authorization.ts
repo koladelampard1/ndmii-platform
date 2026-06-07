@@ -1,4 +1,9 @@
 import type { UserRole } from "@/types/roles";
+import {
+  canAccessRoute as canAccessImpactRoute,
+  getRoutePolicy as getImpactRoutePolicy,
+  logImpactPolicyDrift,
+} from "@/lib/impact-intelligence/permissions";
 
 export type UserContext = {
   authUserId: string | null;
@@ -20,6 +25,7 @@ const KNOWN_ROLES: UserRole[] = [
   "programme_officer",
   "assessment_officer",
   "field_officer",
+  "data_analyst",
   "auditor",
   "fccpc_officer",
   "nrs_officer",
@@ -43,6 +49,9 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   field: "field_officer",
   field_officer: "field_officer",
   fieldofficer: "field_officer",
+  data_analyst: "data_analyst",
+  dataanalyst: "data_analyst",
+  analyst: "data_analyst",
   auditor: "auditor",
   fccpc: "fccpc_officer",
   fccpc_officer: "fccpc_officer",
@@ -63,6 +72,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   programme_officer: "/dashboard/impact-intelligence",
   assessment_officer: "/dashboard/impact-intelligence",
   field_officer: "/dashboard/impact-intelligence/monitoring",
+  data_analyst: "/dashboard/impact-intelligence/analytics",
   auditor: "/dashboard/impact-intelligence",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
@@ -78,7 +88,15 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
   boi_executive: ["/dashboard/impact-intelligence"],
   programme_officer: ["/dashboard/impact-intelligence"],
   assessment_officer: ["/dashboard/impact-intelligence"],
-  field_officer: ["/dashboard/impact-intelligence"],
+  field_officer: [
+    "/dashboard/impact-intelligence",
+    "/dashboard/impact-intelligence/cohorts",
+    "/dashboard/impact-intelligence/monitoring",
+    "/dashboard/impact-intelligence/evidence",
+    "/dashboard/impact-intelligence/intelligence",
+    "/dashboard/impact-intelligence/risk-flags",
+  ],
+  data_analyst: ["/dashboard/impact-intelligence"],
   auditor: ["/dashboard/impact-intelligence"],
   nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews"],
   msme: ["/dashboard/msme"],
@@ -161,21 +179,33 @@ function routeMatchesPrefix(path: string, prefix: string): boolean {
 }
 
 export function canAccessRoute(role: UserRole, path: string): boolean {
-  if (isPublicPath(path)) return true;
-  if (role === "public") return false;
-  if (role === "admin" || role === "super_admin") return routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
-  if (path === "/dashboard") return true;
-  if (role === "field_officer") {
-    if (path === "/dashboard/impact-intelligence") return true;
-    return [
+  let legacyAllowed: boolean;
+  if (isPublicPath(path)) legacyAllowed = true;
+  else if (role === "public") legacyAllowed = false;
+  else if (role === "admin" || role === "super_admin") legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
+  else if (path === "/dashboard") legacyAllowed = true;
+  else if (role === "field_officer") {
+    legacyAllowed = path === "/dashboard/impact-intelligence" || [
       "/dashboard/impact-intelligence/cohorts",
       "/dashboard/impact-intelligence/monitoring",
       "/dashboard/impact-intelligence/evidence",
+      "/dashboard/impact-intelligence/indicators",
       "/dashboard/impact-intelligence/intelligence",
       "/dashboard/impact-intelligence/risk-flags",
     ].some((prefix) => routeMatchesPrefix(path, prefix));
+  } else {
+    legacyAllowed = ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
   }
-  return ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
+
+  if (getImpactRoutePolicy(path)) {
+    logImpactPolicyDrift({
+      role,
+      route: path,
+      legacyAllowed,
+      canonicalAllowed: canAccessImpactRoute(role, path),
+    });
+  }
+  return legacyAllowed;
 }
 
 export type MsmeLikeRecord = {
@@ -310,7 +340,16 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/cohorts", label: "Assigned Beneficiaries" },
     { href: "/dashboard/impact-intelligence/monitoring", label: "Assigned Monitoring" },
     { href: "/dashboard/impact-intelligence/evidence", label: "Evidence" },
+    { href: "/dashboard/impact-intelligence/indicators", label: "Indicators" },
     { href: "/dashboard/impact-intelligence/intelligence", label: "Assigned Alerts" },
+    { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
+  ],
+  data_analyst: [
+    { href: "/dashboard/impact-intelligence", label: "Overview" },
+    { href: "/dashboard/impact-intelligence/analytics", label: "Analytics" },
+    { href: "/dashboard/impact-intelligence/indicators", label: "Indicators" },
+    { href: "/dashboard/impact-intelligence/reports", label: "Reports" },
+    { href: "/dashboard/impact-intelligence/intelligence", label: "Intelligence" },
     { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
   auditor: [
@@ -389,6 +428,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
   programme_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.programme_officer }],
   assessment_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.assessment_officer }],
   field_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.field_officer }],
+  data_analyst: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.data_analyst }],
   auditor: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.auditor }],
   admin: [
     {

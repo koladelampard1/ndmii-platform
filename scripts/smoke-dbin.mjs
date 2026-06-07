@@ -66,6 +66,19 @@ const impactReportExportRoute = read(
   "src/app/api/impact-intelligence/reports/exports/[exportId]/route.ts",
 );
 const authorization = read("src/lib/auth/authorization.ts");
+const roleTypes = read("src/types/roles.ts");
+const impactPermissions = read(
+  "src/lib/impact-intelligence/permissions.ts",
+);
+const impactAccessScope = read(
+  "src/lib/impact-intelligence/access-scope.ts",
+);
+const impactRbacMigration = read(
+  "supabase/migrations/20260607120000_impact_rbac_phase1_programme_assignments.sql",
+);
+const impactAssignmentBackfill = read(
+  "scripts/backfill-impact-programme-assignments.mjs",
+);
 
 check("public raw ID verification is blocked", () => {
   assert(
@@ -352,6 +365,75 @@ check("institutional report routes load defensively", () => {
       impactReportDetailPage.includes("Report Unavailable") &&
       impactReportDetailPage.includes("sourceErrors"),
     "Expected report routes to render unavailable states and isolate source widget failures.",
+  );
+});
+
+check("data analyst is a recognized Impact Intelligence role", () => {
+  assert(
+    roleTypes.includes('| "data_analyst"') &&
+      authorization.includes('"data_analyst"') &&
+      authorization.includes('data_analyst: "/dashboard/impact-intelligence/analytics"'),
+    "Expected data_analyst in role types, normalization, and route-home configuration.",
+  );
+});
+
+check("canonical Impact permission registry covers core role decisions", () => {
+  assert(
+    impactPermissions.includes('export function canRole(') &&
+      impactPermissions.includes('export function getRolePermissions(') &&
+      impactPermissions.includes('export function getRoutePolicy(') &&
+      impactPermissions.includes('export function canAccessRoute(') &&
+      impactPermissions.includes('export function roleHasAny(') &&
+      impactPermissions.includes("programme_officer: [") &&
+      impactPermissions.includes("assessment_officer: [") &&
+      impactPermissions.includes("field_officer: [") &&
+      impactPermissions.includes("data_analyst: [") &&
+      impactPermissions.includes("boi_executive: [") &&
+      impactPermissions.includes("auditor: ["),
+    "Expected a central permission registry with role, route, and any-check helpers.",
+  );
+});
+
+check("legacy route access remains authoritative with policy drift diagnostics", () => {
+  assert(
+    authorization.includes("legacyAllowed") &&
+      authorization.includes("logImpactPolicyDrift") &&
+      authorization.includes("return legacyAllowed"),
+    "Expected shadow-mode route comparison without enforcing canonical denials.",
+  );
+});
+
+check("programme assignment table is constrained and denies direct client access", () => {
+  assert(
+    impactRbacMigration.includes("create table if not exists public.impact_user_programme_assignments") &&
+      impactRbacMigration.includes("impact_user_programme_assignments_status_check") &&
+      impactRbacMigration.includes("impact_user_programme_assignments_role_check") &&
+      impactRbacMigration.includes("idx_impact_user_programme_assignments_unique_active") &&
+      impactRbacMigration.includes("enable row level security") &&
+      impactRbacMigration.includes("revoke all on public.impact_user_programme_assignments from anon, authenticated"),
+    "Expected temporal programme assignments, active uniqueness, RLS, and revoked anonymous/authenticated access.",
+  );
+});
+
+check("scope resolver supports privileged and assigned programme decisions", () => {
+  assert(
+    impactAccessScope.includes('ctx.role === "super_admin"') &&
+      impactAccessScope.includes('ctx.role === "admin"') &&
+      impactAccessScope.includes('mode: "assigned"') &&
+      impactAccessScope.includes("scope.programmeIds.includes(programmeId)") &&
+      impactAccessScope.includes('mode: "legacy_fallback"') &&
+      impactAccessScope.includes("[impact-access-scope]"),
+    "Expected admin/super-admin access, assigned programme checks, legacy fallback, and safe diagnostics.",
+  );
+});
+
+check("programme assignment backfill is dry-run and idempotent", () => {
+  assert(
+    impactAssignmentBackfill.includes('process.argv.includes("--apply")') &&
+      impactAssignmentBackfill.includes("DRY RUN") &&
+      impactAssignmentBackfill.includes("existing.has(key)") &&
+      impactAssignmentBackfill.includes("No programme exists. No assignments will be created."),
+    "Expected an explicit --apply gate, duplicate avoidance, and safe empty-programme behavior.",
   );
 });
 
