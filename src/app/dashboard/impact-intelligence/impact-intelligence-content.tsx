@@ -136,7 +136,7 @@ const LAUNCHER_CARDS: LauncherCard[] = [
     detail: "Review deterministic monitoring risks from existing programme records.",
     icon: Flag,
     lifecycle: "Executive Decisions",
-    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor", "field_officer"],
+    audiences: ["admin", "super_admin", "boi_executive", "programme_officer", "assessment_officer", "data_analyst", "auditor"],
     priority: 3,
   },
   {

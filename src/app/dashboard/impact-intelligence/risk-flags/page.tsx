@@ -12,7 +12,7 @@ function redirectWithRiskError(error: unknown): never {
   redirect(`/dashboard/impact-intelligence/risk-flags?error=${encodeURIComponent(message)}`);
 }
 
-const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "assessment_officer", "data_analyst", "auditor", "field_officer"];
+const INTELLIGENCE_ROLES = ["admin", "super_admin", "boi_executive", "assessment_officer", "data_analyst", "auditor"];
 
 async function generateRiskFlagsAction() {
   "use server";

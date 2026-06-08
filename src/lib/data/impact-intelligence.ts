@@ -3371,6 +3371,7 @@ export async function generateRiskFlags(ctx: UserContext) {
 }
 
 export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQueryOptions = {}) {
+  requireRolePermission(ctx.role, "intelligence", "read", "You do not have permission to read intelligence records.");
   const supabase = await createIntelligenceReadClient(ctx);
   let query = supabase.from("impact_ai_insights").select(insightSelect()).order("generated_at", { ascending: false }).limit(options.limit ?? 100);
   let scopedMsmeIds: string[] | null = null;
@@ -3406,6 +3407,7 @@ export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQuer
 }
 
 export async function getInsightDetail(ctx: UserContext, insightId: string) {
+  requireRolePermission(ctx.role, "intelligence", "read", "You do not have permission to read intelligence records.");
   const supabase = await createIntelligenceReadClient(ctx);
   const [{ data: insight, error }, { data: recommendations }, { data: riskFlags }, { data: anomalies }] = await Promise.all([
     supabase.from("impact_ai_insights").select(insightSelect()).eq("id", insightId).maybeSingle(),

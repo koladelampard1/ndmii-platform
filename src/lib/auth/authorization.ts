@@ -93,8 +93,7 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
     "/dashboard/impact-intelligence/cohorts",
     "/dashboard/impact-intelligence/monitoring",
     "/dashboard/impact-intelligence/evidence",
-    "/dashboard/impact-intelligence/intelligence",
-    "/dashboard/impact-intelligence/risk-flags",
+    "/dashboard/impact-intelligence/indicators",
   ],
   data_analyst: ["/dashboard/impact-intelligence"],
   auditor: ["/dashboard/impact-intelligence"],
@@ -190,8 +189,6 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
       "/dashboard/impact-intelligence/monitoring",
       "/dashboard/impact-intelligence/evidence",
       "/dashboard/impact-intelligence/indicators",
-      "/dashboard/impact-intelligence/intelligence",
-      "/dashboard/impact-intelligence/risk-flags",
     ].some((prefix) => routeMatchesPrefix(path, prefix));
   } else {
     legacyAllowed = ROLE_ROUTE_PREFIXES[role].some((prefix) => routeMatchesPrefix(path, prefix));
@@ -340,8 +337,6 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/monitoring", label: "Assigned Monitoring" },
     { href: "/dashboard/impact-intelligence/evidence", label: "Evidence" },
     { href: "/dashboard/impact-intelligence/indicators", label: "Indicators" },
-    { href: "/dashboard/impact-intelligence/intelligence", label: "Assigned Alerts" },
-    { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
   data_analyst: [
     { href: "/dashboard/impact-intelligence", label: "Overview" },

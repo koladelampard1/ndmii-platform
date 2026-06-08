@@ -86,6 +86,12 @@ const intelligenceDetailRoute = read(
 const riskFlagsRoute = read(
   "src/app/dashboard/impact-intelligence/risk-flags/page.tsx",
 );
+const riskFlagsLayout = read(
+  "src/app/dashboard/impact-intelligence/risk-flags/layout.tsx",
+);
+const impactLauncher = read(
+  "src/app/dashboard/impact-intelligence/impact-intelligence-content.tsx",
+);
 const impactPermissions = read(
   "src/lib/impact-intelligence/permissions.ts",
 );
@@ -451,6 +457,76 @@ check("canonical Impact route access is authoritative with policy drift diagnost
       authorization.includes("return canonicalAllowed") &&
       impactRouteGuards.includes("canAccessRoute(ctx.role, pathname)"),
     "Expected canonical Impact route decisions with legacy drift diagnostics.",
+  );
+});
+
+check("field officer cannot read Risk Flags or Intelligence", () => {
+  const { canAccessRoute, canRole } = impactPermissionsModule;
+  assert(
+    !canRole("field_officer", "risk_flag", "read") &&
+      !canRole("field_officer", "risk_flag", "create") &&
+      !canRole("field_officer", "risk_flag", "update") &&
+      !canRole("field_officer", "intelligence", "read") &&
+      !canAccessRoute("field_officer", "/dashboard/impact-intelligence/risk-flags") &&
+      !canAccessRoute("field_officer", "/dashboard/impact-intelligence/intelligence"),
+    "Expected canonical policy to deny Field Officer Risk Flags and Intelligence access.",
+  );
+});
+
+check("field officer Risk Flags links are absent from sidebar and launcher", () => {
+  const fieldOfficerNavigation = compact(authorization).match(
+    /field_officer: \[(.*?)\], data_analyst:/,
+  )?.[1] ?? "";
+  const riskFlagLauncher = compact(impactLauncher).match(
+    /href: "\/dashboard\/impact-intelligence\/risk-flags",(.*?)priority: 3,/,
+  )?.[1] ?? "";
+  assert(
+    !fieldOfficerNavigation.includes("/dashboard/impact-intelligence/risk-flags") &&
+      !fieldOfficerNavigation.includes("/dashboard/impact-intelligence/intelligence") &&
+      !fieldOfficerNavigation.includes("Risk Flags") &&
+      !riskFlagLauncher.includes('"field_officer"'),
+    "Expected Field Officer sidebar and launcher configuration to exclude Risk Flags and Intelligence.",
+  );
+});
+
+check("field officer Risk Flags direct route is guarded and explicitly denied", () => {
+  const fixture = compact(impactRouteFixture);
+  const fieldOfficerFixture = fixture.match(/field_officer: \{(.*?)\}, data_analyst:/)?.[1] ?? "";
+  assert(
+    riskFlagsLayout.includes('requireImpactRoute("/dashboard/impact-intelligence/risk-flags")') &&
+      !riskFlagsRoute.match(/const INTELLIGENCE_ROLES = \[[^\]]*"field_officer"/) &&
+      fieldOfficerFixture.includes('denied: [') &&
+      fieldOfficerFixture.includes('"/dashboard/impact-intelligence/risk-flags"') &&
+      fieldOfficerFixture.includes('"/dashboard/impact-intelligence/intelligence"') &&
+      !fieldOfficerFixture.match(/allowed: \[[^\]]*"\/dashboard\/impact-intelligence\/risk-flags"/),
+    "Expected guarded direct navigation and explicit Field Officer route denials.",
+  );
+});
+
+check("approved roles retain Risk Flags access", () => {
+  const { canAccessRoute, canRole } = impactPermissionsModule;
+  const retainedRoles = ["assessment_officer", "data_analyst", "auditor", "admin", "super_admin"];
+  assert(
+    retainedRoles.every(
+      (role) =>
+        canRole(role, "risk_flag", "read") &&
+        canAccessRoute(role, "/dashboard/impact-intelligence/risk-flags"),
+    ) &&
+      riskFlagsRoute.includes('"assessment_officer"') &&
+      riskFlagsRoute.includes('"data_analyst"') &&
+      riskFlagsRoute.includes('"auditor"') &&
+      riskFlagsRoute.includes('"admin"') &&
+      riskFlagsRoute.includes('"super_admin"'),
+    "Expected approved Risk Flags roles to retain access.",
+  );
+});
+
+check("intelligence services enforce canonical read permission", () => {
+  const intelligenceReadGuards =
+    impactDataService.match(/requireRolePermission\(ctx\.role, "intelligence", "read"/g) ?? [];
+  assert(
+    intelligenceReadGuards.length >= 2,
+    "Expected Intelligence reads to fail closed before loading embedded Risk Flags.",
   );
 });
 

@@ -158,7 +158,7 @@ const ROLE_PERMISSIONS: Record<ImpactRole, readonly ImpactPermission[]> = {
     ...permissions("export", ["export"]),
   ],
   field_officer: [
-    ...readPermissions(["workspace", "cohort", "beneficiary", "monitoring_visit", "evidence", "indicator", "intelligence", "risk_flag"]),
+    ...readPermissions(["workspace", "cohort", "beneficiary", "monitoring_visit", "evidence", "indicator"]),
     ...permissions("monitoring_visit", ["update", "submit"]),
     ...permissions("evidence", [...CREATE_UPDATE, ...SUBMIT]),
     ...permissions("indicator", [...CREATE_UPDATE, ...SUBMIT]),
