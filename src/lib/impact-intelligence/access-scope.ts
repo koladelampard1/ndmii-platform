@@ -53,6 +53,27 @@ export type ProgrammeScopeDiagnostic = {
   assignmentCount: number;
 };
 
+export type ImpactAccessDenialReason =
+  | "no_active_assignment"
+  | "programme_not_assigned"
+  | "unsupported_scope"
+  | "read_only_role"
+  | "administrative_access"
+  | "global_read_access";
+
+export class ImpactProgrammeReadDeniedError extends Error {
+  readonly code = "IMPACT_PROGRAMME_READ_DENIED";
+
+  constructor(
+    message: string,
+    readonly reason: ImpactAccessDenialReason,
+    readonly programmeId: string,
+  ) {
+    super(message);
+    this.name = "ImpactProgrammeReadDeniedError";
+  }
+}
+
 const programmeScopeFilterCache = new WeakMap<UserContext, ProgrammeScopeFilter>();
 
 function logScopeDiagnostic(
@@ -88,7 +109,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: false,
-      reason: "Super administrator platform scope.",
+      reason: "global_read_access",
     };
   }
   if (ctx.role === "admin") {
@@ -99,7 +120,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: false,
-      reason: "administrative_access: compatibility access retained; operational ownership is not implied.",
+      reason: "administrative_access",
     };
   }
   if (ctx.role === "boi_executive") {
@@ -110,7 +131,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: true,
-      reason: "National aggregate and approved read scope.",
+      reason: "global_read_access",
     };
   }
   if (ctx.role === "auditor") {
@@ -121,7 +142,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: true,
-      reason: "Institutional audit read scope.",
+      reason: "global_read_access",
     };
   }
   if (ctx.role === "data_analyst") {
@@ -132,7 +153,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: true,
-      reason: "Approved and verified operational data scope.",
+      reason: "global_read_access",
     };
   }
   if (ctx.role === "field_officer") {
@@ -143,7 +164,7 @@ function staticScope(ctx: UserContext): ImpactAccessScope | null {
       assignmentCount: 0,
       fallbackToLegacy: false,
       readOnly: false,
-      reason: "Programme access remains delegated to existing beneficiary and visit assignment checks.",
+      reason: "unsupported_scope",
     };
   }
   return null;
@@ -208,7 +229,7 @@ export async function resolveImpactAccessScope(ctx: UserContext): Promise<Impact
           assignmentCount: programmeIds.length,
           fallbackToLegacy: false,
           readOnly: false,
-          reason: "Active programme assignments resolved.",
+          reason: "programme_assignment",
         }
       : {
           role: ctx.role,
@@ -217,9 +238,7 @@ export async function resolveImpactAccessScope(ctx: UserContext): Promise<Impact
           assignmentCount: 0,
           fallbackToLegacy: true,
           readOnly: false,
-          reason: lookupFailed
-            ? "Assignment source unavailable; retaining legacy broad access in shadow mode."
-            : "No active programme assignments; retaining legacy broad access in shadow mode.",
+          reason: lookupFailed ? "unsupported_scope" : "no_active_assignment",
         };
     logScopeDiagnostic(scope.fallbackToLegacy ? "legacy_fallback" : "scope_resolved", scope);
     return scope;
@@ -232,7 +251,7 @@ export async function resolveImpactAccessScope(ctx: UserContext): Promise<Impact
     assignmentCount: 0,
     fallbackToLegacy: false,
     readOnly: true,
-    reason: "Role has no Impact Intelligence programme scope.",
+    reason: "unsupported_scope",
   };
   logScopeDiagnostic("scope_resolved", denied);
   return denied;
@@ -254,17 +273,17 @@ export function decideProgrammeScope(
   programmeId: string,
   action: "read" | "write",
 ): ProgrammeAccessExplanation {
-  const broadRead = ["unrestricted", "administrative", "aggregate", "approved_data", "legacy_fallback"].includes(scope.mode);
+  const broadRead = ["unrestricted", "administrative", "aggregate", "approved_data"].includes(scope.mode);
   const broadWrite = ["unrestricted", "administrative", "legacy_fallback"].includes(scope.mode);
   const assigned = scope.mode === "assigned" && scope.programmeIds.includes(programmeId);
   const allowed = action === "read" ? broadRead || assigned : (broadWrite || assigned) && !scope.readOnly;
   let reason = scope.reason;
   if (scope.mode === "assigned" && !assigned) {
-    reason = "Programme is outside the user's active assignment portfolio.";
+    reason = "programme_not_assigned";
   } else if (action === "write" && scope.readOnly) {
-    reason = "Role has read-only Impact Intelligence scope.";
+    reason = "read_only_role";
   } else if (scope.mode === "delegated_field_scope") {
-    reason = "Field officers do not receive broad programme access; beneficiary and visit assignments remain authoritative.";
+    reason = "unsupported_scope";
   }
   return {
     allowed,
@@ -290,7 +309,7 @@ export async function getProgrammeScopeFilter(ctx: UserContext): Promise<Program
       legacyFallbackUsed: false,
       reason: scope.reason,
     };
-  } else if (scope.mode === "denied" || scope.mode === "delegated_field_scope") {
+  } else if (scope.mode === "denied" || scope.mode === "delegated_field_scope" || scope.mode === "legacy_fallback") {
     filter = {
       mode: "none",
       programmeIds: [],
@@ -339,6 +358,18 @@ export function applyProgrammeScope<T>(
   return query;
 }
 
+export function getProgrammeScopeEmptyMessage(ctx: UserContext) {
+  const filter = programmeScopeFilterCache.get(ctx);
+  if (
+    (ctx.role === "programme_officer" || ctx.role === "assessment_officer")
+    && filter?.mode === "none"
+    && filter.reason === "no_active_assignment"
+  ) {
+    return "No programmes have been assigned to your account yet.";
+  }
+  return null;
+}
+
 export async function explainScopeDecision(
   ctx: UserContext,
   programmeId: string,
@@ -355,6 +386,61 @@ export async function canReadProgrammeResource(ctx: UserContext, programmeId: st
 
 export async function canWriteProgrammeResource(ctx: UserContext, programmeId: string): Promise<boolean> {
   return (await explainScopeDecision(ctx, programmeId, "write")).allowed;
+}
+
+export async function enforceProgrammeReadAccess(params: {
+  ctx: UserContext;
+  programmeId: string | null | undefined;
+  resource: string;
+}) {
+  const programmeId = params.programmeId;
+  if (!programmeId) {
+    const diagnostic: ProgrammeScopeDiagnostic = {
+      role: params.ctx.role,
+      appUserId: params.ctx.appUserId,
+      programmeId: null,
+      action: "read",
+      resource: params.resource,
+      decision: "deny",
+      reason: "unsupported_scope",
+      legacyFallbackUsed: false,
+      assignmentCount: 0,
+    };
+    console.info("[impact-rbac]", diagnostic);
+    throw new ImpactProgrammeReadDeniedError(
+      "You are not assigned to this programme.",
+      "unsupported_scope",
+      "unknown",
+    );
+  }
+
+  const explanation = await explainScopeDecision(params.ctx, programmeId, "read");
+  const diagnostic: ProgrammeScopeDiagnostic = {
+    role: params.ctx.role,
+    appUserId: params.ctx.appUserId,
+    programmeId,
+    action: "read",
+    resource: params.resource,
+    decision: explanation.allowed ? "allow" : "deny",
+    reason: explanation.reason,
+    legacyFallbackUsed: false,
+    assignmentCount: explanation.assignmentCount,
+  };
+  console.info("[impact-rbac]", diagnostic);
+  if (explanation.allowed) return explanation;
+
+  const reason = explanation.reason as ImpactAccessDenialReason;
+  throw new ImpactProgrammeReadDeniedError(
+    reason === "no_active_assignment"
+      ? "No programmes have been assigned to your account yet."
+      : "You are not assigned to this programme.",
+    reason,
+    programmeId,
+  );
+}
+
+export function isImpactProgrammeReadDenied(error: unknown): error is ImpactProgrammeReadDeniedError {
+  return error instanceof ImpactProgrammeReadDeniedError;
 }
 
 export async function logProgrammeScopeShadowDecision(params: {
