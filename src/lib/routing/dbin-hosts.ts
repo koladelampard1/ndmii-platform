@@ -1,10 +1,11 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "unknown";
 
 type HostRoutingConfig = {
   marketingHosts: Set<string>;
   appHosts: Set<string>;
   adminHosts: Set<string>;
   verifyHosts: Set<string>;
+  boiHosts: Set<string>;
   localAppHosts: Set<string>;
 };
 
@@ -35,6 +36,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     appHosts: hostSet(process.env.DBIN_APP_HOSTS, ["app.dbin.ng"]),
     adminHosts: hostSet(process.env.DBIN_ADMIN_HOSTS, ["admin.dbin.ng"]),
     verifyHosts: hostSet(process.env.DBIN_VERIFY_HOSTS, ["verify.dbin.ng"]),
+    boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };
 }
@@ -47,10 +49,13 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.marketingHosts.has(hostname)) return "marketing";
   if (config.adminHosts.has(hostname)) return "admin";
   if (config.verifyHosts.has(hostname)) return "verify";
+  if (config.boiHosts.has(hostname)) return "boi";
   return "unknown";
 }
 
 export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: string) {
+  if (surface === "boi") return "/boi";
+
   if (surface === "admin") {
     if (pathname === "/") return "/admin";
     if (pathname === "/associations" || pathname.startsWith("/associations/")) {

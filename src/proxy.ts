@@ -11,9 +11,10 @@ function createRoutingResponse(request: NextRequest) {
   const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   const surface = resolveDbinHostSurface(requestHost);
   const rewritePath = resolveDbinRewritePath(surface, request.nextUrl.pathname);
-  const response = rewritePath
-    ? NextResponse.rewrite(new URL(rewritePath, request.url))
-    : NextResponse.next();
+  const rewriteUrl = request.nextUrl.clone();
+  if (rewritePath) rewriteUrl.pathname = rewritePath;
+
+  const response = rewritePath ? NextResponse.rewrite(rewriteUrl) : NextResponse.next();
 
   response.headers.set("x-dbin-surface", surface);
   if (rewritePath) response.headers.set("x-dbin-rewrite", rewritePath);

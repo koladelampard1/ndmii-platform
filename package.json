@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test:routing": "node --test scripts/test-dbin-host-routing.mjs",
     "validate:association-upload": "node scripts/validate-association-member-upload.cjs",
     "smoke:dbin": "node scripts/smoke-dbin.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
