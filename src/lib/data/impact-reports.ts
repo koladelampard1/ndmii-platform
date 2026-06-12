@@ -134,6 +134,8 @@ export type InstitutionalReportExport = {
   mime_type: string | null;
   file_size_bytes: number | null;
   checksum_sha256: string | null;
+  requested_at: string | null;
+  completed_at: string | null;
   generated_at: string | null;
   generated_by_user_id: string | null;
 };
@@ -572,6 +574,22 @@ export async function listInstitutionalReports(ctx: UserContext, limit = 100): P
   return reports.map((report) => ({ ...report, latest_version: report.latest_version_id ? byId.get(report.latest_version_id) ?? null : null }));
 }
 
+export async function listInstitutionalReportExports(
+  ctx: UserContext,
+  reportIds: string[],
+): Promise<InstitutionalReportExport[]> {
+  requireRole(ctx, REPORT_READ_ROLES, "You do not have permission to read institutional report exports.");
+  if (reportIds.length === 0) return [];
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data, error } = await supabase
+    .from("impact_report_exports")
+    .select("id,report_id,report_version_id,export_format,export_status,mime_type,file_size_bytes,checksum_sha256,requested_at,completed_at,generated_at,generated_by_user_id")
+    .in("report_id", reportIds)
+    .order("requested_at", { ascending: false });
+  if (error) throw new Error(`Institutional report exports unavailable: ${error.message}`);
+  return (data ?? []) as InstitutionalReportExport[];
+}
+
 export async function getInstitutionalReport(
   ctx: UserContext,
   reportId: string,
@@ -601,7 +619,7 @@ export async function getInstitutionalReport(
   const [evidenceResult, indicatorResult, exportResult] = await Promise.all([
     supabase.from("impact_report_version_evidence_references").select("*").eq("report_version_id", selectedVersionId).order("created_at"),
     supabase.from("impact_report_version_indicator_references").select("*").eq("report_version_id", selectedVersionId).order("measurement_date", { ascending: false }),
-    supabase.from("impact_report_exports").select("id,report_id,report_version_id,export_format,export_status,mime_type,file_size_bytes,checksum_sha256,generated_at,generated_by_user_id").eq("report_id", reportId).order("requested_at", { ascending: false }),
+    supabase.from("impact_report_exports").select("id,report_id,report_version_id,export_format,export_status,mime_type,file_size_bytes,checksum_sha256,requested_at,completed_at,generated_at,generated_by_user_id").eq("report_id", reportId).order("requested_at", { ascending: false }),
   ]);
   return {
     report,
