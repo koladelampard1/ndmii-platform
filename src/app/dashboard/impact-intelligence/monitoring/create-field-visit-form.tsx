@@ -16,6 +16,8 @@ type CreateFieldVisitFormProps = {
   fieldOfficers: UserPickerOption[];
   selectedProgrammeId: string;
   selectedCohortId: string;
+  selectedCohortMemberId?: string;
+  selectedInterventionId?: string;
   defaultChecklist: string;
   action: (formData: FormData) => void | Promise<void>;
 };
@@ -29,6 +31,8 @@ export function CreateFieldVisitForm({
   fieldOfficers,
   selectedProgrammeId,
   selectedCohortId,
+  selectedCohortMemberId = "",
+  selectedInterventionId = "",
   defaultChecklist,
   action,
 }: CreateFieldVisitFormProps) {
@@ -38,8 +42,8 @@ export function CreateFieldVisitForm({
   const [isPending, startTransition] = useTransition();
   const [programmeId, setProgrammeId] = useState(selectedProgrammeId);
   const [cohortId, setCohortId] = useState(selectedCohortId);
-  const [cohortMemberId, setCohortMemberId] = useState("");
-  const [interventionId, setInterventionId] = useState("");
+  const [cohortMemberId, setCohortMemberId] = useState(selectedCohortMemberId);
+  const [interventionId, setInterventionId] = useState(selectedInterventionId);
   const [assessmentId, setAssessmentId] = useState("");
 
   function replaceCreateSelection(nextProgrammeId: string, nextCohortId: string) {

@@ -80,7 +80,13 @@ function formatDate(value: string | null | undefined) {
 export default async function MonitoringPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ create_programme_id?: string; create_cohort_id?: string; error?: string }>;
+  searchParams?: Promise<{
+    create_programme_id?: string;
+    create_cohort_id?: string;
+    create_member_id?: string;
+    create_intervention_id?: string;
+    error?: string;
+  }>;
 }) {
   const filters = (await searchParams) ?? {};
   const ctx = await getCurrentUserContext();
@@ -118,6 +124,14 @@ export default async function MonitoringPage({
   }
   const createProgrammeId = filters.create_programme_id ?? "";
   const createCohortId = filters.create_cohort_id ?? "";
+  const selectedMemberId = cohortMembers.some((member) => member.id === filters.create_member_id)
+    ? filters.create_member_id
+    : "";
+  const selectedInterventionId = interventions.some(
+    (intervention) => intervention.id === filters.create_intervention_id && intervention.cohort_member_id === selectedMemberId,
+  )
+    ? filters.create_intervention_id
+    : "";
   const scopeEmptyMessage = getProgrammeScopeEmptyMessage(ctx);
 
   return (
@@ -158,6 +172,8 @@ export default async function MonitoringPage({
             fieldOfficers={fieldOfficers}
             selectedProgrammeId={createProgrammeId}
             selectedCohortId={createCohortId}
+            selectedCohortMemberId={selectedMemberId}
+            selectedInterventionId={selectedInterventionId}
             defaultChecklist={DEFAULT_CHECKLIST}
             action={createVisitAction}
           />
