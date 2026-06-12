@@ -1016,11 +1016,12 @@ export default async function ImpactIndicatorsPage({
               const latest = item.latestVerified ?? item.latest;
               const verified = item.latestVerified?.verification_status === "verified";
               return (
-                <article
+                <Link
+                  href={`${ROUTE}/${item.definition.id}`}
                   id={`indicator-${item.definition.id}`}
                   key={item.definition.id}
                   className={cn(
-                    "rounded-2xl border p-4 shadow-sm",
+                    "block rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
                     verified ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/50 ring-1 ring-emerald-100" : "border-slate-200 bg-white",
                     item.evidenceSupported === false && "border-amber-200",
                   )}
@@ -1043,7 +1044,7 @@ export default async function ImpactIndicatorsPage({
                     <span className={cn("rounded-full px-2.5 py-1 text-[9px] font-bold ring-1", item.evidenceSupported ? "bg-cyan-50 text-cyan-700 ring-cyan-200" : "bg-amber-50 text-amber-700 ring-amber-200")}>{item.evidenceSupported === null ? UNAVAILABLE : item.evidenceSupported ? "Evidence Supported" : "Evidence Gap"}</span>
                     {item.reportReady === true && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-bold text-indigo-700 ring-1 ring-indigo-200">Report Ready</span>}
                   </div>
-                </article>
+                </Link>
               );
             })}
           </div>
