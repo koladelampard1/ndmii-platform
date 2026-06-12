@@ -5,10 +5,24 @@ import {
   createServerSupabaseClient,
   setSupabaseAuthCookies,
 } from "@/lib/supabase/server";
+import { resolveDbinHostSurface, resolveDbinRewritePath } from "@/lib/routing/dbin-hosts";
 
-export async function middleware(request: NextRequest) {
+function createRoutingResponse(request: NextRequest) {
+  const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const surface = resolveDbinHostSurface(requestHost);
+  const rewritePath = resolveDbinRewritePath(surface, request.nextUrl.pathname);
+  const response = rewritePath
+    ? NextResponse.rewrite(new URL(rewritePath, request.url))
+    : NextResponse.next();
+
+  response.headers.set("x-dbin-surface", surface);
+  if (rewritePath) response.headers.set("x-dbin-rewrite", rewritePath);
+  return response;
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const response = NextResponse.next();
+  const response = createRoutingResponse(request);
   response.headers.set("x-debug-path", pathname);
 
   if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.startsWith("/logout") || pathname.includes(".")) {

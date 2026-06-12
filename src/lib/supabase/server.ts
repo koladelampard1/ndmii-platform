@@ -4,6 +4,7 @@ import type { NextResponse } from "next/server";
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://demo.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "demo-anon-key";
 const isProduction = process.env.NODE_ENV === "production";
+const authCookieDomain = process.env.DBIN_AUTH_COOKIE_DOMAIN?.trim() || undefined;
 
 function getSupabaseProjectRef() {
   try {
@@ -35,6 +36,7 @@ export const supabaseAuthCookieOptions = {
   path: "/",
   sameSite: "lax",
   secure: isProduction,
+  ...(authCookieDomain ? { domain: authCookieDomain } : {}),
 } as const;
 
 export async function createServerSupabaseClient() {
