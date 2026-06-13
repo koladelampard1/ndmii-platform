@@ -503,7 +503,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canCreate && (
-                <Link href="#create-report" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#132d60]">
+                <Link href={`${ROUTE}/new`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#132d60]">
                   <Plus className="h-4 w-4" /> Create Report
                 </Link>
               )}
