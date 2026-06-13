@@ -54,7 +54,7 @@ import {
 import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
 import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "../_components";
+import { EmptyState, UnavailableState as StandardUnavailableState } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
 
 const ROUTE = "/dashboard/impact-intelligence/executive";
@@ -334,7 +334,7 @@ function DistributionBars({
 }
 
 function UnavailableState({ message }: { message: string }) {
-  return <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-xs text-slate-500">{message}</p>;
+  return <StandardUnavailableState title="Executive data unavailable" description={message} />;
 }
 
 export default async function ExecutiveDashboardPage() {

@@ -48,7 +48,7 @@ import {
   type ReportIndicatorReference,
 } from "@/lib/data/impact-reports";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "../../_components";
+import { EmptyState, impactStatusTone } from "../../_components";
 
 type SearchParams = { error?: string; success?: string; version?: string };
 type ReportDetail = {
@@ -182,17 +182,7 @@ function actor(value: string | null | undefined) {
 }
 
 function statusTone(value: string | null | undefined) {
-  const status = value?.toLowerCase() ?? "";
-  if (["healthy", "ready", "approved", "generated", "verified", "complete", "completed"].includes(status)) {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  }
-  if (["review needed", "in_review", "in review", "submitted", "pending", "draft"].includes(status)) {
-    return "bg-blue-50 text-blue-700 ring-blue-200";
-  }
-  if (["blocked", "returned", "rejected", "incomplete", "not ready"].includes(status)) {
-    return "bg-rose-50 text-rose-700 ring-rose-200";
-  }
-  return "bg-slate-100 text-slate-600 ring-slate-200";
+  return impactStatusTone(value);
 }
 
 function StatusPill({ value, dark = false }: { value: string | null | undefined; dark?: boolean }) {

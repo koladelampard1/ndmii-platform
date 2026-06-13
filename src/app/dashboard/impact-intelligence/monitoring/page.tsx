@@ -428,7 +428,6 @@ export default async function MonitoringPage({ searchParams }: PageProps) {
   const [
     programmesSource,
     cohortsSource,
-    interventionsSource,
     evidenceSource,
     assessmentsSource,
     indicatorsSource,
@@ -442,11 +441,6 @@ export default async function MonitoringPage({ searchParams }: PageProps) {
     loadSource(ctx, "monitoring_command_cohorts_load_failed", () => listImpactCohorts(ctx, {
       limit: 2000,
       programmeId: filters.programme_id,
-    }), []),
-    loadSource(ctx, "monitoring_command_interventions_load_failed", () => listImpactInterventions(ctx, {
-      limit: 3000,
-      programmeId: filters.programme_id,
-      cohortId: filters.cohort_id,
     }), []),
     canReadEvidence
       ? loadSource(ctx, "monitoring_command_evidence_load_failed", () => listImpactEvidence(ctx, { limit: 5000 }), [])

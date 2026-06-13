@@ -47,7 +47,7 @@ import {
 } from "@/lib/data/impact-reports";
 import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "../../_components";
+import { EmptyState, impactStatusTone } from "../../_components";
 
 const ROUTE = "/dashboard/impact-intelligence/indicators";
 const UNAVAILABLE = "Unavailable";
@@ -211,20 +211,6 @@ function ratio(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : null;
 }
 
-function statusTone(value: string | null | undefined) {
-  const status = value?.toLowerCase() ?? "";
-  if (["healthy", "ready", "active", "approved", "verified", "achieved", "exceeded", "available"].includes(status)) {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  }
-  if (["watchlist", "submitted", "under review", "on_track", "in progress", "draft"].includes(status)) {
-    return "bg-amber-50 text-amber-700 ring-amber-200";
-  }
-  if (["at risk", "returned", "rejected", "regressed", "below_target", "blocked"].includes(status)) {
-    return "bg-rose-50 text-rose-700 ring-rose-200";
-  }
-  return "bg-slate-100 text-slate-600 ring-slate-200";
-}
-
 function healthFromMeasurement(measurement: ImpactIndicatorMeasurement | null): HealthState {
   if (!measurement || measurement.verification_status !== "verified") return "Unavailable";
   if (["achieved", "exceeded", "on_track"].includes(measurement.outcome_status)) return "Healthy";
@@ -303,7 +289,7 @@ function EmptyPanel({ title, description, icon: Icon = CircleDot }: { title: str
 
 function StatusPill({ value }: { value: string | null | undefined }) {
   return (
-    <span className={cn("inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ring-1", statusTone(value))}>
+    <span className={cn("inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ring-1", impactStatusTone(value))}>
       {humanize(value)}
     </span>
   );

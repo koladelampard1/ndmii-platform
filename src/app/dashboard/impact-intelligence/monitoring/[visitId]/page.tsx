@@ -57,7 +57,7 @@ import {
   type InstitutionalReport,
 } from "@/lib/data/impact-reports";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "../../_components";
+import { EmptyState, impactStatusTone } from "../../_components";
 import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 const ROUTE = "/dashboard/impact-intelligence/monitoring/[visitId]";
@@ -199,17 +199,7 @@ function average(values: Array<number | null>) {
 }
 
 function toneForStatus(value: string | null | undefined) {
-  const status = value?.toLowerCase() ?? "";
-  if (["healthy", "ready", "verified", "reviewed", "completed", "approved", "available"].includes(status)) {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  }
-  if (["watchlist", "assigned", "in progress", "in_progress", "submitted", "under review", "under_review", "pending", "uploaded"].includes(status)) {
-    return "bg-amber-50 text-amber-700 ring-amber-200";
-  }
-  if (["at risk", "rejected", "returned", "blocked", "missing", "needs attention"].includes(status)) {
-    return "bg-rose-50 text-rose-700 ring-rose-200";
-  }
-  return "bg-slate-100 text-slate-600 ring-slate-200";
+  return impactStatusTone(value);
 }
 
 function StatusPill({ value, dark = false }: { value: string | null | undefined; dark?: boolean }) {

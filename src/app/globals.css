@@ -11,3 +11,67 @@ body {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
 }
+/* Impact Intelligence Phase 1 polish: preserve dense desktop layouts while
+   keeping executive content readable and operable on narrow viewports. */
+.impact-intelligence-workspace {
+  --impact-touch-target: 2.5rem;
+}
+
+.impact-intelligence-workspace main {
+  overflow-wrap: anywhere;
+}
+
+.impact-intelligence-workspace main :is(a, button) {
+  max-width: 100%;
+}
+
+.impact-intelligence-workspace main :is(.overflow-x-auto, .impact-table-scroll) {
+  overscroll-behavior-inline: contain;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.impact-intelligence-workspace main :is(.overflow-x-auto, .impact-table-scroll):has(table) {
+  position: relative;
+  border-radius: 0.75rem;
+}
+
+.impact-intelligence-workspace main table th {
+  white-space: nowrap;
+}
+
+.impact-intelligence-workspace main table td {
+  line-height: 1.45;
+}
+
+@media (max-width: 767px) {
+  .impact-intelligence-workspace main .text-\[8px\],
+  .impact-intelligence-workspace main .text-\[9px\] {
+    font-size: 0.625rem;
+  }
+
+  .impact-intelligence-workspace main :is(a, button).h-10 {
+    min-height: var(--impact-touch-target);
+    height: auto;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .impact-intelligence-workspace main form :is(input, select, textarea, button) {
+    min-height: var(--impact-touch-target);
+  }
+}
+
+@media (max-width: 359px) {
+  .impact-intelligence-workspace main .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .impact-intelligence-workspace main :is(.px-5, .p-5) {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}

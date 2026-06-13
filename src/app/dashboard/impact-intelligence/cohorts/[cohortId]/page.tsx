@@ -52,7 +52,7 @@ import {
 } from "@/lib/data/impact-indicators";
 import { listInstitutionalReports } from "@/lib/data/impact-reports";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "../../_components";
+import { EmptyState, impactStatusTone } from "../../_components";
 import { logImpactRouteDiagnostic } from "../../_diagnostics";
 
 type PageProps = {
@@ -157,17 +157,7 @@ function latestByDate<T>(items: T[], getDate: (item: T) => string | null | undef
 }
 
 function toneForStatus(value: string | null | undefined) {
-  const status = value?.toLowerCase() ?? "";
-  if (["healthy", "ready", "active", "approved", "verified", "reviewed", "completed", "achieved", "exceeded"].includes(status)) {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  }
-  if (["watchlist", "in progress", "submitted", "under_review", "pending", "assigned", "in_progress", "on_track"].includes(status)) {
-    return "bg-amber-50 text-amber-700 ring-amber-200";
-  }
-  if (["at risk", "needs attention", "rejected", "returned", "on_hold", "regressed", "below_target", "critical", "high", "dropped", "inactive"].includes(status)) {
-    return "bg-rose-50 text-rose-700 ring-rose-200";
-  }
-  return "bg-slate-100 text-slate-600 ring-slate-200";
+  return impactStatusTone(value);
 }
 
 function StatusPill({ value, dark = false }: { value: string | null | undefined; dark?: boolean }) {
