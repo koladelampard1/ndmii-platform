@@ -68,6 +68,25 @@ const impactReportDetailPage = read(
 const impactReportExportRoute = read(
   "src/app/api/impact-intelligence/reports/exports/[exportId]/route.ts",
 );
+const institutionalReportPdf = read(
+  "src/lib/reports/institutional-report-pdf.ts",
+);
+const institutionalReportPdfModule = (() => {
+  const source = ts.transpileModule(institutionalReportPdf, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  vm.runInNewContext(source, {
+    module: commonJsModule,
+    exports: commonJsModule.exports,
+    console,
+    TextEncoder,
+  });
+  return commonJsModule.exports;
+})();
 const authorization = read("src/lib/auth/authorization.ts");
 const authSession = read("src/lib/auth/session.ts");
 const roleTypes = read("src/types/roles.ts");
@@ -399,6 +418,129 @@ check("institutional report exports are private and file-backed", () => {
       !impactReportExportRoute.includes("getPublicUrl"),
     "Expected private PDF/JSON files, storage verification, generated-file constraints, and authorized signed downloads.",
   );
+});
+
+check("institutional report PDF is executive-grade and source-governed", () => {
+  const generatedAt = "2026-06-13T10:00:00.000Z";
+  const pdfBytes = institutionalReportPdfModule.createInstitutionalReportPdf({
+    reportId: "report-1",
+    title: "MSME Programme Impact Report",
+    summary: "Governed programme delivery and outcome assurance.",
+    reportType: "programme_performance",
+    versionNumber: 2,
+    versionId: "version-2",
+    generatedAt,
+    generatedByUserId: "user-1",
+    sourceCutoffAt: generatedAt,
+    status: "approved",
+    metadata: {
+      reporting_period_start: "2026-01-01",
+      reporting_period_end: "2026-06-30",
+    },
+    scope: {
+      programme_name: "DBIN MSME Growth Programme",
+      cohort_name: "2026 Growth Cohort",
+      intervention_title: "Digital Capability Support",
+    },
+    sourceSummary: {
+      approved_assessments: 1,
+      review_score_runs: 1,
+      reviewed_field_visits: 1,
+      verified_evidence: 1,
+      verified_indicator_measurements: 1,
+    },
+    warnings: [],
+    assessments: [{
+      id: "assessment-1",
+      title: "Readiness Assessment",
+      assessment_type: "readiness",
+      weighted_score: 80,
+      readiness_category: "ready",
+      reviewed_at: generatedAt,
+      score_run_id: "score-run-1",
+    }],
+    scoreRunIds: ["score-run-1"],
+    fieldVisits: [{
+      id: "visit-1",
+      title: "Monitoring Visit",
+      visit_date: "2026-06-01",
+      status: "reviewed",
+      reviewed_at: generatedAt,
+    }],
+    evidence: [{
+      evidence_id: "evidence-1",
+      original_filename: "verified-evidence.pdf",
+      verification_status: "verified",
+      checksum_sha256: "a".repeat(64),
+      mime_type: "application/pdf",
+      file_size_bytes: 1024,
+    }],
+    indicators: [{
+      indicator_definition_id: "indicator-1",
+      indicator_measurement_id: "measurement-1",
+      indicator_name: "MSMEs completing support",
+      unit_of_measure: "MSMEs",
+      baseline_value: 0,
+      target_value: 100,
+      measured_value: 80,
+      progress_percentage: 80,
+      outcome_status: "on_track",
+      measurement_date: "2026-06-01",
+      verification_status: "verified",
+    }],
+    governance: {
+      createdAt: generatedAt,
+      createdByUserId: "user-1",
+      submittedAt: generatedAt,
+      submittedByUserId: "user-1",
+      reviewedAt: generatedAt,
+      reviewedByUserId: "user-2",
+      approvedAt: generatedAt,
+      approvedByUserId: "user-2",
+      returnedReason: null,
+    },
+    versions: [{
+      id: "version-2",
+      versionNumber: 2,
+      generatedAt,
+      generatedByUserId: "user-1",
+      sourceCutoffAt: generatedAt,
+      assessmentCount: 1,
+      fieldVisitCount: 1,
+      evidenceCount: 1,
+      indicatorCount: 1,
+      warningCount: 0,
+    }],
+    exports: [],
+  });
+  const pdf = new TextDecoder().decode(pdfBytes);
+  const requiredSections = [
+    "Executive Intelligence",
+    "Executive Dashboard",
+    "Executive Summary",
+    "Impact Performance",
+    "Theory of Change / Impact Logic",
+    "Nigeria Geographic Impact",
+    "Evidence Assurance",
+    "Indicator & Outcome Performance",
+    "Assessment & Monitoring Assurance",
+    "Assurance & Governance",
+    "Evaluation Matrix",
+    "Risk & Completeness",
+    "Governance & Approval",
+    "Appendix / Source Register",
+  ];
+  assert(pdf.startsWith("%PDF-1.4") && pdf.endsWith("%%EOF"), "Expected a complete PDF 1.4 document.");
+  assert((pdf.match(/\/Type \/Page\b/g) ?? []).length >= 15, "Expected a visual board-report page structure.");
+  assert(requiredSections.every((section) => pdf.includes(section)), "Expected every executive report section.");
+  assert(
+    pdf.includes("EXECUTIVE REPORT HEALTH") &&
+      pdf.includes("OUTCOME ACHIEVEMENT OVERVIEW") &&
+      pdf.includes("GEOGRAPHIC COVERAGE") &&
+      pdf.includes("No state, LGA, or location field was present"),
+    "Expected report health, outcome charting, and conditional Nigeria visualization.",
+  );
+  assert(!pdf.includes("storage_path") && !pdf.includes("impact-reports/"), "Private storage paths must not appear in the PDF.");
 });
 
 check("institutional report routes load defensively", () => {
