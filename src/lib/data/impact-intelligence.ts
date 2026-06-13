@@ -583,11 +583,14 @@ export type ImpactRiskFlag = {
   report_id: string | null;
   msme_id: string | null;
   detected_at: string;
+  resolved_by_user_id: string | null;
+  resolved_at: string | null;
   resolution_note: string | null;
   metadata?: Record<string, unknown> | null;
   impact_programmes?: Pick<ImpactProgramme, "id" | "name" | "programme_code"> | null;
   impact_interventions?: Pick<ImpactIntervention, "id" | "title"> | null;
   msmes?: { id: string; business_name: string | null; msme_id: string | null; state: string | null; sector: string | null } | null;
+  resolved_by?: { id: string; full_name: string | null; email: string | null; role: string | null } | null;
 };
 
 export type ImpactAnomalyEvent = {
@@ -3130,7 +3133,7 @@ function insightSelect() {
 }
 
 function riskSelect() {
-  return "id,source_key,risk_type,severity,status,title,description,programme_id,intervention_id,assessment_id,report_id,msme_id,detected_at,resolution_note,metadata,impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector)";
+  return "id,source_key,risk_type,severity,status,title,description,programme_id,intervention_id,assessment_id,report_id,msme_id,detected_at,resolved_by_user_id,resolved_at,resolution_note,metadata,impact_programmes(id,name,programme_code),impact_interventions(id,title),msmes(id,business_name,msme_id,state,sector),resolved_by:users!impact_risk_flags_resolved_by_user_id_fkey(id,full_name,email,role)";
 }
 
 async function upsertInsight(row: {
@@ -3382,7 +3385,7 @@ export async function listIntelligenceFeed(ctx: UserContext, options: ImpactQuer
     query = query.in("msme_id", scopedMsmeIds);
   }
   let recommendationsQuery = supabase.from("impact_ai_recommendations").select("id,insight_id,source_key,recommendation_type,priority,status,title,recommendation,programme_id,intervention_id,assessment_id,report_id,msme_id,created_at").order("created_at", { ascending: false }).limit(50);
-  let riskQuery = supabase.from("impact_risk_flags").select(riskSelect()).order("detected_at", { ascending: false }).limit(50);
+  let riskQuery = supabase.from("impact_risk_flags").select(riskSelect()).order("detected_at", { ascending: false }).limit(options.limit ?? 50);
   let anomalyQuery = supabase.from("impact_anomaly_events").select("id,source_key,anomaly_type,severity,status,title,description,programme_id,intervention_id,assessment_id,report_id,msme_id,detected_at").order("detected_at", { ascending: false }).limit(50);
   if (scopedMsmeIds) {
     recommendationsQuery = recommendationsQuery.in("msme_id", scopedMsmeIds);
