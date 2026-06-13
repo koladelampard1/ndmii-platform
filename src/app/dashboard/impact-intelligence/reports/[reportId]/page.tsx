@@ -1,10 +1,39 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
-import { AlertTriangle, Download, FileCheck2, FileText, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  CheckCircle2,
+  CircleDot,
+  ClipboardCheck,
+  Clock3,
+  Download,
+  Eye,
+  FileCheck2,
+  FileOutput,
+  FileText,
+  FileWarning,
+  Gauge,
+  History,
+  Layers3,
+  Link2,
+  Network,
+  RotateCcw,
+  Send,
+  ShieldAlert,
+  ShieldCheck,
+  Target,
+  UserRound,
+  XCircle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { isImpactProgrammeReadDenied } from "@/lib/impact-intelligence/access-scope";
-import { canRole } from "@/lib/impact-intelligence/permissions";
+import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import type { UserContext } from "@/lib/auth/authorization";
 import {
   generateInstitutionalReportExport,
@@ -18,7 +47,8 @@ import {
   type ReportEvidenceReference,
   type ReportIndicatorReference,
 } from "@/lib/data/impact-reports";
-import { EmptyState, ImpactPageHeader, MetricTile, SectionCard, StatusBadge } from "../../_components";
+import { cn } from "@/lib/utils";
+import { EmptyState } from "../../_components";
 
 type SearchParams = { error?: string; success?: string; version?: string };
 type ReportDetail = {
@@ -29,14 +59,27 @@ type ReportDetail = {
   exports: InstitutionalReportExport[] | null;
   sourceErrors?: { evidence: string | null; indicators: string | null; exports: string | null };
 };
+type AssuranceState = "Healthy" | "Review Needed" | "Blocked" | "Unavailable";
+type TimelineItem = {
+  id: string;
+  label: string;
+  detail: string;
+  actor: string;
+  date: string;
+  icon: LucideIcon;
+  tone: string;
+};
 
+const ROUTE = "/dashboard/impact-intelligence/reports";
+const UNAVAILABLE = "Unavailable";
 const EXPECTED_ACTION_ERRORS = ["permission", "Only", "required", "Generate", "Legacy", "status changed", "not found", "unavailable", "could not", "failed"];
 
 function isExpectedActionError(error: unknown) {
   return error instanceof Error && EXPECTED_ACTION_ERRORS.some((message) => error.message.includes(message));
 }
+
 function actionRedirect(reportId: string, key: "error" | "success", message: string): never {
-  redirect(`/dashboard/impact-intelligence/reports/${reportId}?${key}=${encodeURIComponent(message)}`);
+  redirect(`${ROUTE}/${reportId}?${key}=${encodeURIComponent(message)}`);
 }
 
 async function generateVersionAction(reportId: string) {
@@ -89,18 +132,144 @@ function isLegacy(report: InstitutionalReport) {
   return report.metadata?.legacy_unverified === true || report.metadata?.report_phase !== "phase1a";
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Not set";
-  return new Date(value).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+function humanize(value: string | null | undefined) {
+  return value
+    ? value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase())
+    : UNAVAILABLE;
 }
 
-function scopeItems(report: InstitutionalReport) {
-  return [
-    ["Programme", report.impact_programmes?.name ?? "Unavailable"],
-    ["Cohort", report.impact_beneficiary_cohorts?.name ?? "All programme cohorts"],
-    ["Beneficiary", report.cohort_member_id ? report.msmes?.business_name ?? "Unavailable" : "All matching beneficiaries"],
-    ["Intervention", report.impact_interventions?.title ?? "All matching interventions"],
-  ];
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return UNAVAILABLE;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return UNAVAILABLE;
+  return date.toLocaleString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return UNAVAILABLE;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return UNAVAILABLE;
+  return date.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatNumber(value: number | null) {
+  return value === null ? UNAVAILABLE : value.toLocaleString("en-NG");
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (typeof value !== "number") return UNAVAILABLE;
+  if (value < 1024) return `${value.toLocaleString("en-NG")} bytes`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024).toLocaleString("en-NG")} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function reportingPeriod(report: InstitutionalReport) {
+  const start = report.metadata?.reporting_period_start;
+  const end = report.metadata?.reporting_period_end;
+  if (typeof start === "string" && typeof end === "string") return `${formatDate(start)} - ${formatDate(end)}`;
+  const period = report.metadata?.reporting_period;
+  return typeof period === "string" && period.trim() ? period : UNAVAILABLE;
+}
+
+function actor(value: string | null | undefined) {
+  return value ?? UNAVAILABLE;
+}
+
+function statusTone(value: string | null | undefined) {
+  const status = value?.toLowerCase() ?? "";
+  if (["healthy", "ready", "approved", "generated", "verified", "complete", "completed"].includes(status)) {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  }
+  if (["review needed", "in_review", "in review", "submitted", "pending", "draft"].includes(status)) {
+    return "bg-blue-50 text-blue-700 ring-blue-200";
+  }
+  if (["blocked", "returned", "rejected", "incomplete", "not ready"].includes(status)) {
+    return "bg-rose-50 text-rose-700 ring-rose-200";
+  }
+  return "bg-slate-100 text-slate-600 ring-slate-200";
+}
+
+function StatusPill({ value, dark = false }: { value: string | null | undefined; dark?: boolean }) {
+  return (
+    <span className={cn(
+      "inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ring-1",
+      dark ? "bg-white/10 text-blue-50 ring-white/15" : statusTone(value),
+    )}>
+      {humanize(value)}
+    </span>
+  );
+}
+
+function Section({
+  title,
+  description,
+  action,
+  children,
+  id,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  id?: string;
+}) {
+  return (
+    <section id={id} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50 sm:p-5">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-bold tracking-tight text-[#0c1733] sm:text-base">{title}</h2>
+          {description && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MetricCard({ label, value, icon: Icon, tone }: { label: string; value: string; icon: LucideIcon; tone: string }) {
+  return (
+    <article className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/40">
+      <div className="flex items-center gap-3">
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", tone)}><Icon className="h-4 w-4" /></span>
+        <div className="min-w-0">
+          <p className="truncate text-lg font-bold tracking-tight text-[#0c1733]">{value}</p>
+          <p className="truncate text-[10px] font-semibold text-slate-500">{label}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DetailItem({ label, value, icon: Icon }: { label: string; value: ReactNode; icon: LucideIcon }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <Icon className="h-4 w-4 text-blue-600" />
+      <dt className="mt-3 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">{label}</dt>
+      <dd className="mt-1 break-words text-xs font-semibold leading-5 text-slate-800">{value}</dd>
+    </div>
+  );
+}
+
+function EmptyPanel({ title, description, icon: Icon = CircleDot }: { title: string; description: string; icon?: LucideIcon }) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center">
+      <Icon className="mx-auto h-5 w-5 text-slate-400" />
+      <p className="mt-2 text-xs font-bold text-slate-700">{title}</p>
+      <p className="mt-1 text-[11px] leading-5 text-slate-500">{description}</p>
+    </div>
+  );
+}
+
+function numericMetadata(report: InstitutionalReport, key: string) {
+  const value = report.metadata?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export default async function ReportDetailPage({
@@ -127,15 +296,30 @@ export default async function ReportDetailPage({
     unstable_rethrow(error);
     accessDenied = isImpactProgrammeReadDenied(error);
     loadError = error instanceof Error ? error.message : "Institutional report is temporarily unavailable.";
-    logImpactReportDiagnostic({ operation: "report_detail_load_failed", role: ctx?.role ?? null, authUserId: ctx?.authUserId ?? null, appUserId: ctx?.appUserId ?? null, reportId, errorMessage: loadError, success: false });
+    logImpactReportDiagnostic({
+      operation: "report_detail_load_failed",
+      role: ctx?.role ?? null,
+      authUserId: ctx?.authUserId ?? null,
+      appUserId: ctx?.appUserId ?? null,
+      reportId,
+      errorMessage: loadError,
+      success: false,
+    });
   }
 
   if (!loadError && !detail?.report) notFound();
-  if (loadError || !detail?.report) {
+  if (loadError || !detail?.report || !ctx) {
     return (
       <section className="space-y-6">
-        <ImpactPageHeader eyebrow="Institutional programme reporting" title="Report Unavailable" description="The report workspace remains available, but this report could not be loaded safely." />
-        <EmptyState title="Report could not load" description={accessDenied ? loadError ?? "You are not assigned to this programme." : "Verify the current session, role assignment, and report data source, then reload this page."} icon={FileText} />
+        <Section title="Report Unavailable">
+          <EmptyState
+            title="Report detail could not load"
+            description={accessDenied
+              ? loadError ?? "You are not assigned to this programme."
+              : "The report is missing or one of its required sources is temporarily unavailable."}
+            icon={FileWarning}
+          />
+        </Section>
       </section>
     );
   }
@@ -151,172 +335,449 @@ export default async function ReportDetailPage({
   const evidenceReferences = detail.evidenceReferences;
   const indicatorReferences = detail.indicatorReferences;
   const exports = detail.exports;
+  const generatedExports = exports?.filter((item) => item.export_status === "generated") ?? null;
   const legacy = isLegacy(report);
-  const canGenerate = Boolean(ctx && canRole(ctx.role, "report", "update") && ["draft", "returned"].includes(report.status) && !legacy);
-  const canSubmit = Boolean(ctx && canRole(ctx.role, "report", "submit") && ["draft", "returned"].includes(report.status) && report.latest_version_id && !legacy);
-  const canReview = Boolean(ctx && canRole(ctx.role, "report", "approve") && report.status === "in_review" && !legacy);
-  const canArchive = Boolean(ctx && canRole(ctx.role, "report", "archive") && ["draft", "returned", "approved"].includes(report.status) && !legacy);
-  const canExport = Boolean(ctx && canRole(ctx.role, "report", "export") && report.status === "approved" && !legacy);
+  const warnings = selectedVersion?.completeness_warnings ?? [];
+  const evidenceCount = evidenceReferences?.length ?? null;
+  const indicatorCount = indicatorReferences?.length ?? null;
+  const assessmentCount = selectedVersion ? selectedVersion.assessment_ids.length : null;
+  const visitCount = selectedVersion ? selectedVersion.field_visit_ids.length : null;
+  const uniqueInterventions = evidenceReferences
+    ? new Set(evidenceReferences.map((item) => item.intervention_id).filter(Boolean)).size
+    : null;
+  const approvalEventCount = [report.submitted_at, report.reviewed_at, report.approved_at].filter(Boolean).length;
+  const evidenceSupported = evidenceCount === null ? null : evidenceCount > 0;
+  const indicatorSupported = indicatorCount === null ? null : indicatorCount > 0;
+  const exportReady = !legacy && report.status === "approved" && Boolean(report.latest_version_id);
+  const executiveReady = exportReady && warnings.length === 0 && evidenceSupported === true && indicatorSupported === true;
+  const reportHealth: AssuranceState = legacy
+    ? "Unavailable"
+    : report.status === "returned" || warnings.length > 0
+      ? "Blocked"
+      : report.status === "in_review"
+        ? "Review Needed"
+        : executiveReady
+          ? "Healthy"
+          : "Review Needed";
+  const assuranceScore = numericMetadata(report, "assurance_score");
+  const canGenerate = canRole(ctx.role, "report", "update") && ["draft", "returned"].includes(report.status) && !legacy;
+  const canSubmit = canRole(ctx.role, "report", "submit") && ["draft", "returned"].includes(report.status) && Boolean(report.latest_version_id) && !legacy;
+  const canReview = canRole(ctx.role, "report", "approve") && report.status === "in_review" && !legacy;
+  const canExport = canRole(ctx.role, "report", "export") && report.status === "approved" && !legacy;
+  const canReadProgramme = canAccessRoute(ctx.role, "/dashboard/impact-intelligence/programmes");
+  const canReadEvidence = canAccessRoute(ctx.role, "/dashboard/impact-intelligence/evidence");
+  const canReadIndicators = canAccessRoute(ctx.role, "/dashboard/impact-intelligence/indicators");
+  const canReadAssessments = canAccessRoute(ctx.role, "/dashboard/impact-intelligence/assessments");
+  const canReadMonitoring = canAccessRoute(ctx.role, "/dashboard/impact-intelligence/monitoring");
+
+  const lifecycle = [
+    { label: "Draft", complete: true },
+    { label: "Version Generated", complete: detail.versions.length > 0 },
+    { label: "Submitted", complete: Boolean(report.submitted_at) },
+    { label: "Under Review", complete: Boolean(report.reviewed_at) || ["in_review", "approved"].includes(report.status) },
+    { label: "Approved", complete: report.status === "approved" || Boolean(report.approved_at) },
+    { label: "Export Generated", complete: Boolean(generatedExports?.length) },
+    { label: "Executive Consumption", complete: report.status === "approved" && Boolean(generatedExports?.length) },
+  ];
+  const currentLifecycleIndex = lifecycle.reduce((current, item, index) => item.complete ? index : current, 0);
+
+  const exceptions = [
+    ...(!selectedVersion ? ["No immutable report version has been generated."] : []),
+    ...(evidenceSupported === false ? ["No verified evidence references support the selected version."] : []),
+    ...(indicatorSupported === false ? ["No verified indicator measurements support the selected version."] : []),
+    ...(report.status === "returned" ? [report.return_reason ?? "The report was returned for correction."] : []),
+    ...warnings,
+    ...(report.status === "approved" && !report.latest_version_id ? ["The approved report has no available latest version."] : []),
+  ];
+
+  const timeline: TimelineItem[] = [
+    {
+      id: "created",
+      label: "Report Created",
+      detail: "Institutional report draft created.",
+      actor: actor(report.generated_by_user_id),
+      date: report.created_at,
+      icon: FileText,
+      tone: "bg-slate-100 text-slate-700",
+    },
+    ...detail.versions.map((version) => ({
+      id: `version-${version.id}`,
+      label: `Version ${version.version_number} Generated`,
+      detail: `Frozen source cutoff ${formatDateTime(version.source_cutoff_at)}.`,
+      actor: actor(version.generated_by_user_id),
+      date: version.generated_at,
+      icon: Layers3,
+      tone: "bg-blue-100 text-blue-700",
+    })),
+    ...(report.submitted_at ? [{
+      id: "submitted",
+      label: "Submitted For Review",
+      detail: "The latest report version entered institutional review.",
+      actor: actor(report.submitted_by_user_id),
+      date: report.submitted_at,
+      icon: Send,
+      tone: "bg-cyan-100 text-cyan-700",
+    }] : []),
+    ...(report.reviewed_at ? [{
+      id: "reviewed",
+      label: report.status === "returned" ? "Review Returned" : "Review Completed",
+      detail: report.status === "returned" ? report.return_reason ?? UNAVAILABLE : "Recorded report review completed.",
+      actor: actor(report.reviewed_by_user_id),
+      date: report.reviewed_at,
+      icon: report.status === "returned" ? RotateCcw : Eye,
+      tone: report.status === "returned" ? "bg-rose-100 text-rose-700" : "bg-violet-100 text-violet-700",
+    }] : []),
+    ...(report.approved_at ? [{
+      id: "approved",
+      label: "Report Approved",
+      detail: "Executive approval state recorded.",
+      actor: actor(report.approved_by_user_id),
+      date: report.approved_at,
+      icon: BadgeCheck,
+      tone: "bg-emerald-100 text-emerald-700",
+    }] : []),
+    ...(generatedExports ?? []).map((item) => ({
+      id: `export-${item.id}`,
+      label: `${item.export_format.toUpperCase()} Export Generated`,
+      detail: `Official export ${item.export_status}.`,
+      actor: actor(item.generated_by_user_id),
+      date: item.generated_at ?? item.completed_at ?? item.requested_at ?? "",
+      icon: FileOutput,
+      tone: "bg-amber-100 text-amber-700",
+    })),
+  ].filter((item) => item.date).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <section className="space-y-6">
-      <ImpactPageHeader
-        eyebrow={report.report_type.replaceAll("_", " ")}
-        title={report.title}
-        description={report.summary ?? "No report summary was provided."}
-        badge={report.status}
-        actions={[{ href: "/dashboard/impact-intelligence/reports", label: "Report library", icon: FileText }]}
-      />
+    <section className="space-y-5 pb-8">
+      <header className="overflow-hidden rounded-2xl bg-[#071a3a] text-white shadow-xl shadow-blue-950/10">
+        <div className="relative p-5 sm:p-7">
+          <div className="absolute right-0 top-0 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Institutional Report Review & Executive Approval War Room</p>
+                <StatusPill value={report.status} dark />
+                <StatusPill value={reportHealth} dark />
+              </div>
+              <h1 className="mt-4 max-w-4xl break-words text-2xl font-bold tracking-tight sm:text-3xl">{report.title}</h1>
+              <p className="mt-2 max-w-3xl text-xs leading-6 text-blue-100/75">
+                {report.summary ?? UNAVAILABLE}
+              </p>
+              <div className="mt-5 grid gap-3 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Report type", humanize(report.report_type)],
+                  ["Programme", report.impact_programmes?.name ?? UNAVAILABLE],
+                  ["Reporting period", reportingPeriod(report)],
+                  ["Current status", humanize(report.status)],
+                  ["Approval state", report.approved_at ? "Approved" : report.status === "returned" ? "Returned" : "Pending"],
+                  ["Latest version", selectedVersion ? `Version ${selectedVersion.version_number}` : UNAVAILABLE],
+                  ["Export readiness", exportReady ? "Ready" : "Not ready"],
+                  ["Source cutoff", formatDateTime(selectedVersion?.source_cutoff_at)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="uppercase tracking-[0.12em] text-blue-200/60">{label}</p>
+                    <p className="mt-1 truncate font-bold text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <span className={cn("rounded-full border px-3 py-1 text-[9px] font-bold", evidenceSupported ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200" : "border-white/10 bg-white/5 text-blue-100/60")}>Verified Evidence</span>
+                <span className={cn("rounded-full border px-3 py-1 text-[9px] font-bold", indicatorSupported ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200" : "border-white/10 bg-white/5 text-blue-100/60")}>Verified Indicators</span>
+                <span className={cn("rounded-full border px-3 py-1 text-[9px] font-bold", exportReady ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200" : "border-white/10 bg-white/5 text-blue-100/60")}>Export Ready</span>
+              </div>
+            </div>
+            <div className="flex max-w-xl flex-wrap gap-2 xl:justify-end">
+              {canGenerate && <form action={generateVersionAction.bind(null, report.id)}><Button type="submit" size="sm"><Layers3 className="h-3.5 w-3.5" /> Generate Version</Button></form>}
+              {canSubmit && <form action={lifecycleAction.bind(null, report.id, "submit")}><Button type="submit" size="sm"><Send className="h-3.5 w-3.5" /> Submit</Button></form>}
+              {canReview && <form action={lifecycleAction.bind(null, report.id, "approve")}><Button type="submit" size="sm"><BadgeCheck className="h-3.5 w-3.5" /> Approve</Button></form>}
+              {canReview && <Link href="#approval-actions" className="inline-flex items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-400/10 px-3 py-2 text-[10px] font-bold text-rose-100"><RotateCcw className="h-3.5 w-3.5" /> Return</Link>}
+              {canExport && <Link href="#export-centre" className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[10px] font-bold text-[#071a3a]"><Download className="h-3.5 w-3.5" /> Export</Link>}
+              <Link href={ROUTE} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-bold text-white"><ArrowRight className="h-3.5 w-3.5 rotate-180" /> Report Library</Link>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
-      {query.success && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{query.success}</div>}
+      {query.error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{query.error}</div>}
+      {query.success && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{query.success}</div>}
+
       {legacy && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-semibold">Legacy unverified report</p>
-          <p className="mt-1">This record predates Phase 1A. Its scope may be unreliable, source references were not captured, and it must not be treated as an official institutional report.</p>
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm">
+          <div className="flex gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Legacy Unverified Report</p><p className="mt-1 leading-6">This record predates Phase 1A. Source references and institutional assurance are unavailable, so it must not be treated as an official report.</p></div></div>
+        </div>
+      )}
+      {report.status === "returned" && (
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-950 shadow-sm">
+          <div className="flex gap-3"><RotateCcw className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Report Returned For Correction</p><p className="mt-1 leading-6">{report.return_reason ?? UNAVAILABLE}</p></div></div>
+        </div>
+      )}
+      {report.status === "approved" && (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950 shadow-sm">
+          <div className="flex gap-3"><BadgeCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Executive-Ready Approval State</p><p className="mt-1 leading-6">The recorded institutional approval is complete. Export and assurance conditions remain visible below.</p></div></div>
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricTile label="Version" value={selectedVersion ? `v${selectedVersion.version_number}` : "None"} detail={selectedVersion ? `Cutoff ${formatDateTime(selectedVersion.source_cutoff_at)}` : "Generate a version to freeze qualified sources."} icon={FileCheck2} />
-        <MetricTile label="Approved assessments" value={Number(selectedVersion?.source_summary?.approved_assessments ?? 0)} icon={ShieldCheck} tone="emerald" />
-        <MetricTile label="Verified evidence" value={Number(selectedVersion?.source_summary?.verified_evidence ?? 0)} icon={FileText} tone="blue" />
-        <MetricTile label="Official indicators" value={Number(selectedVersion?.source_summary?.official_impact_claims ?? 0)} icon={ShieldCheck} tone="emerald" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9">
+        <MetricCard label="Versions" value={formatNumber(detail.versions.length)} icon={Layers3} tone="bg-blue-100 text-blue-700" />
+        <MetricCard label="Evidence Records" value={formatNumber(evidenceCount)} icon={FileCheck2} tone="bg-emerald-100 text-emerald-700" />
+        <MetricCard label="Indicators Included" value={formatNumber(indicatorCount)} icon={Target} tone="bg-cyan-100 text-cyan-700" />
+        <MetricCard label="Assessments Included" value={formatNumber(assessmentCount)} icon={ClipboardCheck} tone="bg-violet-100 text-violet-700" />
+        <MetricCard label="Approval Events" value={formatNumber(approvalEventCount)} icon={History} tone="bg-indigo-100 text-indigo-700" />
+        <MetricCard label="Exports Generated" value={formatNumber(generatedExports?.length ?? null)} icon={FileOutput} tone="bg-amber-100 text-amber-700" />
+        <MetricCard label="Assurance Score" value={assuranceScore === null ? UNAVAILABLE : `${assuranceScore}%`} icon={Gauge} tone="bg-slate-100 text-slate-700" />
+        <MetricCard label="Report Health" value={reportHealth} icon={ShieldCheck} tone="bg-rose-100 text-rose-700" />
+        <MetricCard label="Executive Readiness" value={executiveReady ? "Ready" : "Not ready"} icon={BadgeCheck} tone="bg-emerald-100 text-emerald-700" />
       </div>
 
-      <SectionCard title="Report Scope">
-        <dl className="grid gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
-          {scopeItems(report).map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-medium text-slate-950">{value}</dd></div>)}
-        </dl>
-      </SectionCard>
+      <Section title="Report Lifecycle Journey" description="Recorded progression from report creation to executive consumption.">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          {lifecycle.map((item, index) => (
+            <div key={item.label} className={cn(
+              "rounded-xl border p-3",
+              item.complete
+                ? "border-blue-200 bg-blue-50/70"
+                : index === currentLifecycleIndex + 1
+                  ? "border-amber-200 bg-amber-50/70"
+                  : "border-slate-200 bg-slate-50",
+            )}>
+              <div className="flex items-center gap-2">
+                <span className={cn("grid h-6 w-6 place-items-center rounded-full text-[9px] font-bold", item.complete ? "bg-blue-600 text-white" : "bg-white text-slate-400 ring-1 ring-slate-200")}>{index + 1}</span>
+                <p className="text-[10px] font-bold text-slate-700">{item.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <SectionCard title="Lifecycle and Version Controls">
-          <div className="flex flex-wrap gap-2">
-            {canGenerate && <form action={generateVersionAction.bind(null, report.id)}><Button type="submit">Generate version</Button></form>}
-            {canSubmit && <form action={lifecycleAction.bind(null, report.id, "submit")}><Button type="submit">Submit for review</Button></form>}
-            {canReview && <form action={lifecycleAction.bind(null, report.id, "approve")}><Button type="submit">Approve report</Button></form>}
-            {canArchive && <form action={lifecycleAction.bind(null, report.id, "archive")}><Button type="submit" variant="secondary">Archive</Button></form>}
-          </div>
-          {canReview && (
-            <form action={lifecycleAction.bind(null, report.id, "return")} className="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row">
-              <input required name="return_reason" className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm" placeholder="Correction required before approval" />
-              <Button type="submit" variant="secondary">Return for correction</Button>
-            </form>
-          )}
-          <dl className="mt-5 grid gap-3 text-sm md:grid-cols-2">
-            <div><dt className="text-xs text-slate-500">Submitted</dt><dd className="mt-1">{formatDateTime(report.submitted_at)}<span className="block text-xs text-slate-500">{report.submitted_by_user_id ?? "Actor unavailable"}</span></dd></div>
-            <div><dt className="text-xs text-slate-500">Reviewed</dt><dd className="mt-1">{formatDateTime(report.reviewed_at)}<span className="block text-xs text-slate-500">{report.reviewed_by_user_id ?? "Actor unavailable"}</span></dd></div>
-            <div><dt className="text-xs text-slate-500">Approved</dt><dd className="mt-1">{formatDateTime(report.approved_at)}<span className="block text-xs text-slate-500">{report.approved_by_user_id ?? "Actor unavailable"}</span></dd></div>
-            <div><dt className="text-xs text-slate-500">Return reason</dt><dd className="mt-1">{report.return_reason ?? "None"}</dd></div>
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+        <Section title="Report Content Assurance Centre" description="Frozen source composition and institutional provenance for the selected version.">
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <DetailItem label="Programme" value={canReadProgramme && report.programme_id ? <Link className="text-blue-700" href={`/dashboard/impact-intelligence/programmes/${report.programme_id}`}>{report.impact_programmes?.name ?? UNAVAILABLE}</Link> : report.impact_programmes?.name ?? UNAVAILABLE} icon={Network} />
+            <DetailItem label="Cohort" value={report.impact_beneficiary_cohorts?.name ?? "All programme cohorts"} icon={Layers3} />
+            <DetailItem label="Beneficiary" value={report.cohort_member_id ? report.msmes?.business_name ?? UNAVAILABLE : "All matching beneficiaries"} icon={UserRound} />
+            <DetailItem label="Intervention" value={report.impact_interventions?.title ?? "All matching interventions"} icon={Link2} />
+            <DetailItem label="Source cutoff" value={formatDateTime(selectedVersion?.source_cutoff_at)} icon={Clock3} />
+            <DetailItem label="Version generator" value={actor(selectedVersion?.generated_by_user_id)} icon={UserRound} />
           </dl>
-        </SectionCard>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["Evidence references", evidenceCount],
+              ["Indicator references", indicatorCount],
+              ["Assessment references", assessmentCount],
+              ["Monitoring references", visitCount],
+              ["Intervention references", uniqueInterventions],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-xl bg-slate-50 p-3">
+                <p className="text-lg font-bold text-[#0c1733]">{formatNumber(value as number | null)}</p>
+                <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
 
-        <SectionCard title="Official Exports">
+        <Section title="Evidence & Verification Centre" description="Evidence support frozen into this report version. Private storage paths are never exposed.">
+          <div className={cn("rounded-2xl p-5 text-white", evidenceSupported ? "bg-emerald-700" : "bg-[#0b1e42]")}>
+            <ShieldCheck className="h-6 w-6" />
+            <p className="mt-4 text-lg font-bold">{evidenceSupported ? "Verified evidence support recorded" : evidenceCount === null ? UNAVAILABLE : "No verified evidence support"}</p>
+            <p className="mt-2 text-xs leading-6 text-white/75">Only evidence references captured by the immutable selected version are represented.</p>
+          </div>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+            <DetailItem label="Verified evidence" value={formatNumber(evidenceCount)} icon={BadgeCheck} />
+            <DetailItem label="Pending evidence" value={UNAVAILABLE} icon={Clock3} />
+            <DetailItem label="Returned evidence" value={UNAVAILABLE} icon={RotateCcw} />
+            <DetailItem label="Rejected evidence" value={UNAVAILABLE} icon={XCircle} />
+          </dl>
+          {evidenceReferences === null ? (
+            <p className="mt-3 text-xs font-semibold text-amber-700">Evidence references are temporarily unavailable. Other report sections remain usable.</p>
+          ) : evidenceReferences.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {evidenceReferences.slice(0, 4).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                  <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-800">{item.original_filename}</p><p className="mt-1 text-[10px] text-slate-500">{item.mime_type} · {formatBytes(item.file_size_bytes)}</p></div>
+                  <div className="flex shrink-0 items-center gap-2"><StatusPill value={item.verification_status} />{canReadEvidence && <a href={`/api/impact-intelligence/evidence/${item.evidence_id}?disposition=attachment`} className="text-blue-700"><Download className="h-4 w-4" /></a>}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </Section>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Section title="Outcome Attribution Centre" description="Verified indicator relationships and outcome claims included in the selected version.">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <DetailItem label="Indicators included" value={formatNumber(indicatorCount)} icon={Target} />
+            <DetailItem label="Outcome areas" value={indicatorReferences ? formatNumber(new Set(indicatorReferences.map((item) => item.outcome_status).filter(Boolean)).size) : UNAVAILABLE} icon={Network} />
+            <DetailItem label="Verified measurements" value={indicatorReferences ? formatNumber(indicatorReferences.filter((item) => item.verification_status === "verified").length) : UNAVAILABLE} icon={BadgeCheck} />
+            <DetailItem label="Unsupported measurements" value={UNAVAILABLE} icon={ShieldAlert} />
+          </div>
+          {indicatorReferences === null ? (
+            <p className="mt-4 text-xs font-semibold text-amber-700">Indicator references are temporarily unavailable.</p>
+          ) : indicatorReferences.length === 0 ? (
+            <EmptyPanel title="No verified indicators" description="This selected version contains no official impact claims." icon={Target} />
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {indicatorReferences.map((item) => (
+                <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-[#0c1733]">{item.indicator_name}</p><p className="mt-1 text-[10px] text-slate-500">{item.unit_of_measure} · {formatDate(item.measurement_date)}</p></div><StatusPill value={item.outcome_status} /></div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                    {[["Baseline", item.baseline_value], ["Target", item.target_value], ["Measured", item.measured_value]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-2"><p className="text-xs font-bold text-slate-800">{value === null ? UNAVAILABLE : String(value)}</p><p className="mt-1 text-[8px] uppercase text-slate-400">{label}</p></div>)}
+                  </div>
+                  {canReadIndicators && <Link href={`/dashboard/impact-intelligence/indicators/${item.indicator_definition_id}`} className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700">View indicator <ArrowRight className="h-3 w-3" /></Link>}
+                </article>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Assessment & Monitoring Centre" description="Approved assessments and reviewed monitoring visits contributing to this version.">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <DetailItem label="Contributing assessments" value={formatNumber(assessmentCount)} icon={ClipboardCheck} />
+            <DetailItem label="Monitoring visits" value={formatNumber(visitCount)} icon={Activity} />
+            <DetailItem label="Completion state" value={selectedVersion ? "Frozen in version" : UNAVAILABLE} icon={FileCheck2} />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {assessments.slice(0, 4).map((item) => (
+              <article key={String(item.id)} className="rounded-xl border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-2"><p className="text-xs font-bold text-slate-800">{String(item.title ?? "Assessment")}</p><StatusPill value={String(item.status ?? "approved")} /></div>
+                <p className="mt-2 text-[10px] leading-5 text-slate-500">{humanize(String(item.assessment_type ?? ""))} · Score {item.weighted_score === null || item.weighted_score === undefined ? UNAVAILABLE : String(item.weighted_score)}</p>
+                {canReadAssessments && item.id ? <Link href={`/dashboard/impact-intelligence/assessments/${String(item.id)}`} className="mt-2 inline-flex text-[10px] font-bold text-blue-700">Open assessment</Link> : null}
+              </article>
+            ))}
+            {visits.slice(0, 4).map((item) => (
+              <article key={String(item.id)} className="rounded-xl border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-2"><p className="text-xs font-bold text-slate-800">{String(item.title ?? "Monitoring visit")}</p><StatusPill value={String(item.status ?? "reviewed")} /></div>
+                <p className="mt-2 text-[10px] leading-5 text-slate-500">{formatDate(typeof item.visit_date === "string" ? item.visit_date : null)} · Review outcome {humanize(String(item.status ?? ""))}</p>
+                {canReadMonitoring && item.id ? <Link href={`/dashboard/impact-intelligence/monitoring/${String(item.id)}`} className="mt-2 inline-flex text-[10px] font-bold text-blue-700">Open visit</Link> : null}
+              </article>
+            ))}
+          </div>
+          {assessments.length === 0 && visits.length === 0 && <div className="mt-4"><EmptyPanel title="No contributing records" description="No approved assessments or reviewed visits were included in this version." icon={ClipboardCheck} /></div>}
+        </Section>
+      </div>
+
+      <Section id="approval-actions" title="Version Control & Approval Centre" description="Immutable versions and recorded institutional approval attribution.">
+        {canReview && (
+          <form action={lifecycleAction.bind(null, report.id, "return")} className="mb-5 flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:flex-row">
+            <input required name="return_reason" className="min-w-0 flex-1 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm" placeholder="Correction required before approval" />
+            <Button type="submit" variant="secondary"><RotateCcw className="h-4 w-4" /> Return Report</Button>
+          </form>
+        )}
+        <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
+          <div className="space-y-3">
+            {detail.versions.length === 0 ? <EmptyPanel title="No version history" description="No immutable report version has been generated." icon={Layers3} /> : detail.versions.map((version) => (
+              <article key={version.id} className={cn("rounded-2xl border p-4", version.id === selectedVersion?.id ? "border-blue-300 bg-blue-50/60" : "border-slate-200")}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><p className="text-sm font-bold text-[#0c1733]">Version {version.version_number}{version.id === report.latest_version_id ? " · Latest" : ""}</p><p className="mt-1 text-[10px] text-slate-500">Generated {formatDateTime(version.generated_at)} · Actor {actor(version.generated_by_user_id)}</p></div>
+                  {version.id === selectedVersion?.id ? <StatusPill value="Selected" /> : <Link href={`${ROUTE}/${report.id}?version=${version.id}`} className="text-[10px] font-bold text-blue-700">Inspect version</Link>}
+                </div>
+                <p className="mt-3 text-[11px] text-slate-600">{version.assessment_ids.length} assessments · {version.field_visit_ids.length} visits · {version.evidence_ids.length} evidence · {version.indicator_measurement_ids.length} indicators</p>
+              </article>
+            ))}
+          </div>
+          <div className="space-y-3">
+            {[
+              { label: "Submitted", date: report.submitted_at, actor: report.submitted_by_user_id, tone: "submitted" },
+              { label: report.status === "returned" ? "Returned" : "Reviewed", date: report.reviewed_at, actor: report.reviewed_by_user_id, tone: report.status === "returned" ? "returned" : "in_review" },
+              { label: "Approved", date: report.approved_at, actor: report.approved_by_user_id, tone: "approved" },
+            ].map((item) => (
+              <article key={item.label} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold text-[#0c1733]">{item.label}</p><StatusPill value={item.date ? item.tone : UNAVAILABLE} /></div>
+                <p className="mt-3 text-[10px] text-slate-500">{formatDateTime(item.date)}</p>
+                <p className="mt-1 break-all text-[10px] font-semibold text-slate-700">{actor(item.actor)}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <div className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
+        <Section id="export-centre" title="Export & Distribution Centre" description="Official exports recorded for this report. Private storage locations remain hidden.">
           {canExport && (
-            <form action={exportAction.bind(null, report.id)} className="flex gap-2">
-              <select name="export_format" defaultValue="pdf" className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm">
+            <form action={exportAction.bind(null, report.id)} className="mb-4 flex gap-2">
+              <select name="export_format" defaultValue="pdf" className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm">
                 <option value="pdf">PDF</option>
                 <option value="json">JSON</option>
               </select>
-              <Button type="submit" size="sm">Generate</Button>
+              <Button type="submit" size="sm"><FileOutput className="h-4 w-4" /> Generate</Button>
             </form>
           )}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <DetailItem label="Available formats" value="PDF, JSON" icon={FileOutput} />
+            <DetailItem label="Export readiness" value={exportReady ? "Ready" : "Not ready"} icon={ShieldCheck} />
+            <DetailItem label="Latest export" value={formatDateTime(generatedExports?.[0]?.generated_at)} icon={Clock3} />
+          </div>
           {exports === null ? (
-            <p className="mt-3 text-sm text-amber-800">Export history is temporarily unavailable.</p>
+            <p className="mt-4 text-xs font-semibold text-amber-700">Export history is temporarily unavailable.</p>
           ) : exports.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No real export files have been generated.</p>
+            <div className="mt-4"><EmptyPanel title="No exports generated" description="No official export record exists for this report." icon={FileOutput} /></div>
           ) : (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-2">
               {exports.map((item) => (
-                <Link key={item.id} href={`/api/impact-intelligence/reports/exports/${item.id}`} className="flex items-center justify-between rounded-lg border p-3 text-sm hover:bg-slate-50">
-                  <span><span className="font-medium uppercase">{item.export_format}</span><span className="block text-xs text-slate-500">v{detail.versions.find((version) => version.id === item.report_version_id)?.version_number ?? "?"} · {formatDateTime(item.generated_at)}</span></span>
-                  <Download className="h-4 w-4 text-emerald-700" />
+                <Link key={item.id} href={`/api/impact-intelligence/reports/exports/${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50">
+                  <div><p className="text-xs font-bold uppercase text-slate-800">{item.export_format}</p><p className="mt-1 text-[10px] text-slate-500">{formatDateTime(item.generated_at)} · {formatBytes(item.file_size_bytes)}</p></div>
+                  <div className="flex items-center gap-2"><StatusPill value={item.export_status} /><Download className="h-4 w-4 text-blue-700" /></div>
                 </Link>
               ))}
             </div>
           )}
-        </SectionCard>
+        </Section>
+
+        <Section title="Risks & Exceptions Centre" description="Real completeness conditions and approval or export blockers.">
+          {exceptions.length === 0 ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+              <CheckCircle2 className="h-6 w-6 text-emerald-700" />
+              <p className="mt-3 text-sm font-bold text-emerald-950">No recorded exceptions</p>
+              <p className="mt-1 text-xs leading-6 text-emerald-800">The selected version has no completeness warnings or current workflow blockers.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {exceptions.map((item, index) => (
+                <div key={`${item}-${index}`} className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{item}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
       </div>
 
-      <SectionCard title="Completeness Warnings">
-        {!selectedVersion ? (
-          <p className="text-sm text-slate-600">No generated version exists.</p>
-        ) : selectedVersion.completeness_warnings.length === 0 ? (
-          <p className="text-sm text-emerald-700">No completeness warnings were recorded at the source cutoff.</p>
-        ) : (
-          <div className="space-y-2">
-            {selectedVersion.completeness_warnings.map((warning) => <div key={warning} className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{warning}</div>)}
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Approved Assessments Used">
-        {assessments.length === 0 ? <p className="text-sm text-slate-600">No approved assessments were included.</p> : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {assessments.map((item) => <div key={String(item.id)} className="rounded-lg border p-4 text-sm"><p className="font-medium text-slate-950">{String(item.title ?? "Assessment")}</p><p className="mt-1 text-slate-600">{String(item.assessment_type ?? "Type unavailable")} · score {String(item.weighted_score ?? "unavailable")} · {String(item.readiness_category ?? "unclassified")}</p></div>)}
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Reviewed Monitoring Visits Used">
-        {visits.length === 0 ? <p className="text-sm text-slate-600">No reviewed monitoring visits were included.</p> : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {visits.map((item) => <div key={String(item.id)} className="rounded-lg border p-4 text-sm"><p className="font-medium text-slate-950">{String(item.title ?? "Field visit")}</p><p className="mt-1 text-slate-600">{String(item.visit_date ?? "Date unavailable")} · reviewed</p></div>)}
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Verified Evidence References">
-        {evidenceReferences === null ? (
-          <p className="text-sm text-amber-800">Evidence references are temporarily unavailable. Other report sections remain usable.</p>
-        ) : evidenceReferences.length === 0 ? (
-          <p className="text-sm text-slate-600">No verified evidence references were captured.</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {evidenceReferences.map((item) => (
-              <div key={item.id} className="rounded-lg border p-4 text-sm">
-                <div className="flex items-start justify-between gap-3"><p className="font-medium text-slate-950">{item.original_filename}</p><StatusBadge value={item.verification_status} /></div>
-                <p className="mt-2 text-xs text-slate-500">{item.mime_type} · {item.file_size_bytes.toLocaleString("en-NG")} bytes</p>
-                <p className="mt-1 break-all font-mono text-[11px] text-slate-500">SHA-256 {item.checksum_sha256}</p>
-                <Link href={`/api/impact-intelligence/evidence/${item.evidence_id}?disposition=attachment`} className="mt-3 inline-block text-xs font-semibold text-emerald-700">Secure evidence download</Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Verified Indicator Measurements">
-        {indicatorReferences === null ? (
-          <p className="text-sm text-amber-800">Indicator references are temporarily unavailable. Other report sections remain usable.</p>
-        ) : indicatorReferences.length === 0 ? (
-          <p className="text-sm text-slate-600">No verified indicator measurements were captured. This version makes no official impact claims.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="border-b bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Indicator</th><th className="p-3">Baseline</th><th className="p-3">Target</th><th className="p-3">Current</th><th className="p-3">Progress</th><th className="p-3">Outcome</th><th className="p-3">Date</th></tr></thead>
-              <tbody>{indicatorReferences.map((item) => <tr key={item.id} className="border-b"><td className="p-3 font-medium">{item.indicator_name}<span className="block text-xs font-normal text-slate-500">{item.unit_of_measure}</span></td><td className="p-3">{item.baseline_value ?? "N/A"}</td><td className="p-3">{item.target_value ?? "N/A"}</td><td className="p-3">{item.measured_value}</td><td className="p-3">{item.progress_percentage === null ? "N/A" : `${item.progress_percentage}%`}</td><td className="p-3"><StatusBadge value={item.outcome_status} /></td><td className="p-3">{item.measurement_date}</td></tr>)}</tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Immutable Version History">
-        {detail.versions.length === 0 ? <p className="text-sm text-slate-600">No versions have been generated.</p> : (
+      <Section title="Activity Timeline" description="Recorded report, version, approval, return, and export events only.">
+        {timeline.length === 0 ? <EmptyPanel title="No activity available" description="No report events could be loaded." icon={History} /> : (
           <div className="space-y-3">
-            {detail.versions.map((version) => (
-              <div key={version.id} className={`rounded-lg border p-4 ${version.id === selectedVersion?.id ? "border-emerald-300 bg-emerald-50/40" : ""}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium">Version {version.version_number}{version.id === report.latest_version_id ? " · current" : ""}</p>
-                  <p className="text-xs text-slate-500">{formatDateTime(version.generated_at)}</p>
-                </div>
-                <p className="mt-1 text-sm text-slate-600">Source cutoff {formatDateTime(version.source_cutoff_at)} · {version.assessment_ids.length} assessments · {version.field_visit_ids.length} visits · {version.evidence_ids.length} evidence · {version.indicator_measurement_ids.length} indicators</p>
-                {version.id !== selectedVersion?.id && <Link href={`/dashboard/impact-intelligence/reports/${report.id}?version=${version.id}`} className="mt-2 inline-block text-xs font-semibold text-emerald-700">Inspect frozen sources</Link>}
-              </div>
-            ))}
+            {timeline.map((item) => {
+              const Icon = item.icon;
+              return (
+                <article key={item.id} className="flex gap-3 rounded-2xl border border-slate-200 p-4">
+                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", item.tone)}><Icon className="h-4 w-4" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs font-bold text-[#0c1733]">{item.label}</p><p className="text-[10px] text-slate-400">{formatDateTime(item.date)}</p></div>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-600">{item.detail}</p>
+                    <p className="mt-1 break-all text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-400">Actor · {item.actor}</p>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
-      </SectionCard>
+      </Section>
+
+      <Section title="Executive Assurance Summary" description="At-a-glance institutional readiness based only on loaded report state and frozen source references.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["Report Health", reportHealth, ShieldCheck],
+            ["Approval Readiness", report.status === "approved" ? "Approved" : report.status === "in_review" ? "In Review" : "Not Ready", BadgeCheck],
+            ["Evidence Assurance", evidenceSupported === null ? UNAVAILABLE : evidenceSupported ? "Verified" : "Not Ready", FileCheck2],
+            ["Outcome Assurance", indicatorSupported === null ? UNAVAILABLE : indicatorSupported ? "Verified" : "Not Ready", Target],
+            ["Export Readiness", exportReady ? "Ready" : "Not Ready", FileOutput],
+          ].map(([label, value, Icon]) => (
+            <article key={String(label)} className="rounded-2xl border border-slate-200 p-4">
+              <Icon className="h-5 w-5 text-blue-700" />
+              <p className="mt-4 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">{String(label)}</p>
+              <div className="mt-2"><StatusPill value={String(value)} /></div>
+            </article>
+          ))}
+        </div>
+      </Section>
     </section>
   );
 }
