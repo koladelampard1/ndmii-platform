@@ -8,6 +8,8 @@ import {
   FileChartColumn,
   ShieldCheck,
 } from "lucide-react";
+import { AccountActions } from "@/components/auth/account-actions";
+import { getCurrentUserContext } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "BOI MSME Intelligence Portal | DBIN",
@@ -42,7 +44,10 @@ const portalCapabilities = [
   },
 ];
 
-export default function BoiPortalPage() {
+export default async function BoiPortalPage() {
+  const ctx = await getCurrentUserContext();
+  const isAuthenticated = ctx.role !== "public";
+
   return (
     <main className="min-h-screen bg-[#f4f1e8] text-slate-950">
       <section className="relative isolate overflow-hidden bg-[#082f2b] text-white">
@@ -51,7 +56,7 @@ export default function BoiPortalPage() {
         <div className="absolute -bottom-44 left-1/4 -z-10 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl" />
 
         <div className="mx-auto max-w-7xl px-6 pb-20 pt-6 sm:px-8 lg:px-10 lg:pb-28">
-          <header className="flex items-center justify-between border-b border-white/15 pb-5">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/15 pb-5">
             <div className="flex items-center gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-xl border border-amber-200/30 bg-amber-200/10">
                 <Building2 className="h-6 w-6 text-amber-200" />
@@ -61,9 +66,19 @@ export default function BoiPortalPage() {
                 <p className="text-xs text-emerald-100/75">Institutional access portal</p>
               </div>
             </div>
-            <p className="hidden text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/70 sm:block">
-              Powered by DBIN
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="hidden text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/70 sm:block">
+                Powered by DBIN
+              </p>
+              {isAuthenticated ? <AccountActions dark compact /> : (
+                <Link
+                  href="/login?returnTo=/"
+                  className="rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                >
+                  Sign in
+                </Link>
+              )}
+            </div>
           </header>
 
           <div className="grid gap-12 pt-16 lg:grid-cols-[1.2fr_0.8fr] lg:items-end lg:pt-24">

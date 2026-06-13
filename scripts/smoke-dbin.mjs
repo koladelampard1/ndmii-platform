@@ -30,6 +30,12 @@ const complaintsRoute = read("src/app/api/public-complaints/route.ts");
 const financeRoute = read("src/app/api/msme/finance-readiness/assessments/route.ts");
 const logoRoute = read("src/app/api/msme/provider-logo/route.ts");
 const authSessionRoute = read("src/app/api/auth/session/route.ts");
+const logoutRoute = read("src/app/logout/route.ts");
+const authCookies = read("src/lib/auth/cookies.ts");
+const supabaseServer = read("src/lib/supabase/server.ts");
+const boiPortal = read("src/app/boi/page.tsx");
+const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
+const adminGateway = read("src/app/admin/page.tsx");
 const associationAccess = read("src/lib/associations/access.ts");
 const associationMemberActions = read("src/lib/data/admin-association-member-actions.ts");
 const associationAccessMigration = read("supabase/migrations/20260531170000_association_member_fast_track_access.sql");
@@ -214,6 +220,29 @@ check("auth session derives helper metadata server-side", () => {
       authSessionRoute.includes("role: metadata.role") &&
       authSessionRoute.includes('response.cookies.set("ndmii_role", metadata.role'),
     "Expected auth session POST to derive role/app user metadata from the Supabase token and users table.",
+  );
+});
+
+check("logout clears Supabase and DBIN cookies before returning to login", () => {
+  assert(
+    logoutRoute.includes("supabase.auth.signOut") &&
+      logoutRoute.includes("clearSupabaseAuthCookies(response)") &&
+      logoutRoute.includes("clearDbinAuthCookies(response)") &&
+      logoutRoute.includes('loginUrl.pathname = "/login"') &&
+      authCookies.includes("DBIN_AUTH_COOKIE_DOMAIN") &&
+      authCookies.includes("Clear legacy host-only cookies") &&
+      supabaseServer.includes("response.cookies.set(name, \"\", expiredOptions)") &&
+      supabaseServer.includes("domain: authCookieDomain"),
+    "Expected logout to revoke the Supabase session and clear host-only plus cross-subdomain auth cookies.",
+  );
+});
+
+check("authenticated BOI, Impact Intelligence, and admin surfaces expose account actions", () => {
+  assert(
+    boiPortal.includes("<AccountActions") &&
+      impactShell.includes("<AccountActions") &&
+      adminGateway.includes("<AccountActions"),
+    "Expected authenticated institutional surfaces to expose logout and switch-account actions.",
   );
 });
 

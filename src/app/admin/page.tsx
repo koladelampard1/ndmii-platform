@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Building2, LockKeyhole, ShieldCheck } from "lucide-react";
+import { AccountActions } from "@/components/auth/account-actions";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 export default async function AdminPortalPage() {
@@ -64,6 +65,7 @@ export default async function AdminPortalPage() {
             <Link href="/" className="mt-3 text-center text-sm font-semibold text-slate-500 hover:text-slate-800">
               Return to DBIN
             </Link>
+            {isAdmin ? <AccountActions className="mt-5 justify-center" /> : null}
           </div>
         </div>
       </section>

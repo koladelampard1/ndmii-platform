@@ -1,26 +1,54 @@
-import { NextResponse } from "next/server";
-import { clearSupabaseAuthCookies } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+import { clearDbinAuthCookies } from "@/lib/auth/cookies";
+import {
+  SUPABASE_ACCESS_TOKEN_COOKIE,
+  SUPABASE_REFRESH_TOKEN_COOKIE,
+  clearSupabaseAuthCookies,
+  createServerSupabaseClient,
+} from "@/lib/supabase/server";
 
-const isProduction = process.env.NODE_ENV === "production";
-const authCookieNames = ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"] as const;
-const baseCookieOptions = {
-  httpOnly: false,
-  path: "/",
-  sameSite: "lax",
-  secure: isProduction,
-} as const;
+function getSafeReturnPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  if (value === "/logout" || value.startsWith("/logout?")) return null;
+  return value;
+}
 
-export async function GET(request: Request) {
-  const response = NextResponse.redirect(new URL("/login?message=Signed%20out%20successfully", request.url));
+export async function GET(request: NextRequest) {
+  const accessToken = request.cookies.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value;
+  const refreshToken = request.cookies.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value;
+
+  if (accessToken && refreshToken) {
+    try {
+      const supabase = await createServerSupabaseClient();
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (!sessionError) {
+        await supabase.auth.signOut({ scope: "local" });
+      }
+    } catch (error) {
+      console.warn("[auth-logout] Supabase sign-out failed; local cookies will still be cleared.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+  loginUrl.searchParams.set(
+    "message",
+    request.nextUrl.searchParams.get("switch") === "1"
+      ? "Signed out. Choose another account."
+      : "Signed out successfully.",
+  );
+  loginUrl.searchParams.set("signedOut", "1");
+  const returnTo = getSafeReturnPath(request.nextUrl.searchParams.get("returnTo"));
+  if (returnTo) loginUrl.searchParams.set("returnTo", returnTo);
+
+  const response = NextResponse.redirect(loginUrl);
   clearSupabaseAuthCookies(response);
-
-  authCookieNames.forEach((name) => {
-    response.cookies.set(name, "", {
-      ...baseCookieOptions,
-      expires: new Date(0),
-      maxAge: 0,
-    });
-  });
-
+  clearDbinAuthCookies(response);
   return response;
 }

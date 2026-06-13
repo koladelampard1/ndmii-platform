@@ -21,6 +21,7 @@ import {
   Target,
   UsersRound,
 } from "lucide-react";
+import { AccountActions } from "@/components/auth/account-actions";
 import { canAccessRoute, canRole, type ImpactResource } from "@/lib/impact-intelligence/permissions";
 import type { UserRole } from "@/types/roles";
 
@@ -135,6 +136,8 @@ export function ImpactIntelligenceShell({
           </ul>
         </nav>
 
+        <AccountActions className="border-t border-white/10 p-3 lg:hidden" dark compact />
+
         <div className="hidden p-4 lg:block">
           <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
             <div className="flex items-center gap-3">
@@ -147,6 +150,7 @@ export function ImpactIntelligenceShell({
               </div>
             </div>
             <p className="mt-3 border-t border-white/10 pt-3 text-[10px] font-medium text-slate-300">{roleLabel(role)}</p>
+            <AccountActions className="mt-3 border-t border-white/10 pt-3" dark />
           </div>
         </div>
       </aside>
@@ -159,6 +163,7 @@ export function ImpactIntelligenceShell({
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#0c1733]">{activeItem?.label ?? "Workspace"}</h1>
             </div>
             <div className="flex items-center gap-3">
+              <AccountActions className="hidden sm:flex lg:hidden" compact />
               <button type="button" aria-label="Notifications" className="relative grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-500">
                 <Bell className="h-4 w-4" />
                 <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />

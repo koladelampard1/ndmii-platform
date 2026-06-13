@@ -54,7 +54,17 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
 }
 
 export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: string) {
-  if (surface === "boi") return "/boi";
+  if (surface === "boi") {
+    if (
+      pathname === "/login" ||
+      pathname === "/logout" ||
+      pathname.startsWith("/api/") ||
+      pathname.startsWith("/_next/")
+    ) {
+      return null;
+    }
+    return "/boi";
+  }
 
   if (surface === "admin") {
     if (pathname === "/") return "/admin";
