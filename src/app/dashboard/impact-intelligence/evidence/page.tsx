@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { redirect, unstable_rethrow } from "next/navigation";
+import { unstable_rethrow } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -40,11 +40,8 @@ import {
 import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import {
   type ImpactEvidenceRecord,
-  type ImpactEvidenceUploadOptions,
-  getImpactEvidenceUploadOptions,
   listImpactEvidence,
   logImpactEvidenceDiagnostic,
-  uploadImpactEvidence,
 } from "@/lib/data/impact-evidence";
 import {
   listFieldVisits,
@@ -62,7 +59,6 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState } from "../_components";
 import { logImpactRouteDiagnostic } from "../_diagnostics";
-import { CreateEvidenceForm } from "./create-evidence-form";
 
 const ROUTE = "/dashboard/impact-intelligence/evidence";
 const UNAVAILABLE = "Unavailable";
@@ -74,8 +70,6 @@ type SearchParams = {
   assessment_id?: string;
   field_visit_id?: string;
   status?: string;
-  create_programme_id?: string;
-  create_cohort_id?: string;
   error?: string;
   success?: string;
 };
@@ -98,57 +92,6 @@ type EvidencePortfolioItem = {
   health: HealthState;
   attentionReasons: string[];
 };
-
-const EMPTY_UPLOAD_OPTIONS: ImpactEvidenceUploadOptions = {
-  programmes: [],
-  cohorts: [],
-  members: [],
-  interventions: [],
-  assessments: [],
-  visits: [],
-};
-
-const EXPECTED_UPLOAD_ERRORS = [
-  "Select a programme",
-  "Select a beneficiary cohort",
-  "Select a cohort beneficiary",
-  "Selected evidence",
-  "Choose an evidence file",
-  "Evidence file must be",
-  "Evidence must be",
-  "already uploaded",
-  "assigned visits or beneficiaries",
-  "permission to upload",
-  "storage is unavailable",
-  "upload failed",
-  "could not be saved",
-  "could not be checked",
-  "could not be validated",
-  "links could not be saved",
-];
-
-function isExpectedUploadError(error: unknown) {
-  return error instanceof Error && EXPECTED_UPLOAD_ERRORS.some((message) => error.message.includes(message));
-}
-
-async function uploadEvidenceAction(formData: FormData) {
-  "use server";
-  const ctx = await getCurrentUserContext();
-  try {
-    const evidenceId = await uploadImpactEvidence(ctx, formData);
-    redirect(`${ROUTE}/${evidenceId}?success=Evidence%20uploaded`);
-  } catch (error) {
-    unstable_rethrow(error);
-    if (!isExpectedUploadError(error)) throw error;
-    const params = new URLSearchParams();
-    const programmeId = formData.get("programme_id");
-    const cohortId = formData.get("cohort_id");
-    if (typeof programmeId === "string" && programmeId) params.set("create_programme_id", programmeId);
-    if (typeof cohortId === "string" && cohortId) params.set("create_cohort_id", cohortId);
-    params.set("error", error instanceof Error ? error.message : "Evidence upload could not be completed.");
-    redirect(`${ROUTE}?${params}`);
-  }
-}
 
 function sourceFallback<T>(data: T): SourceState<T> {
   return { data, available: false };
@@ -460,7 +403,6 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
     visitsSource,
     indicatorsSource,
     reportsSource,
-    uploadOptionsSource,
   ] = await Promise.all([
     loadSource(ctx, "evidence_command_centre_programmes_load_failed", () => listImpactProgrammes(ctx, { limit: 1000 }), []),
     loadSource(ctx, "evidence_command_centre_cohorts_load_failed", () => listImpactCohorts(ctx, { limit: 2000 }), []),
@@ -473,12 +415,6 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
     canReadReports
       ? loadSource(ctx, "evidence_command_centre_reports_load_failed", () => listImpactReports(ctx, { limit: 3000 }), [])
       : Promise.resolve(sourceFallback<Awaited<ReturnType<typeof listImpactReports>>>([])),
-    canCreate
-      ? loadSource(ctx, "evidence_command_centre_upload_options_load_failed", () => getImpactEvidenceUploadOptions(ctx, {
-        programmeId: filters.create_programme_id,
-        cohortId: filters.create_cohort_id,
-      }), EMPTY_UPLOAD_OPTIONS)
-      : Promise.resolve(sourceFallback(EMPTY_UPLOAD_OPTIONS)),
   ]);
 
   const indicators = indicatorsSource.data.filter((item) => item.evidence_id && evidenceIds.has(item.evidence_id));
@@ -702,7 +638,7 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canCreate && (
-                <Link href="#upload-evidence" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#132d60]">
+                <Link href={`${ROUTE}/upload`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#132d60]">
                   <Plus className="h-4 w-4" /> Upload Evidence
                 </Link>
               )}
@@ -1129,21 +1065,14 @@ export default async function EvidencePage({ searchParams }: { searchParams?: Pr
 
       {canCreate && (
         <Section
-          id="upload-evidence"
-          title="Upload Evidence"
-          description="Upload remains constrained to existing programme, cohort, beneficiary, intervention, assessment, and visit relationships."
+          title="Evidence Upload Studio"
+          description="Use the dedicated guided workspace for policy-scoped context linking, file preflight, metadata, and chain-of-custody review."
+          action={<Link href={`${ROUTE}/upload`} className="inline-flex items-center gap-2 rounded-xl bg-[#0c1f46] px-4 py-2.5 text-xs font-bold text-white"><Upload className="h-4 w-4" /> Open Upload Studio</Link>}
         >
-          {uploadOptionsSource.available ? (
-            <CreateEvidenceForm
-              key={`${filters.create_programme_id ?? ""}:${filters.create_cohort_id ?? ""}`}
-              options={uploadOptionsSource.data}
-              selectedProgrammeId={filters.create_programme_id ?? ""}
-              selectedCohortId={filters.create_cohort_id ?? ""}
-              action={uploadEvidenceAction}
-            />
-          ) : (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">Upload options are temporarily unavailable. Existing evidence remains visible.</p>
-          )}
+          <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white p-5">
+            <p className="text-xs font-bold text-[#0c1733]">A governed evidence intake workflow</p>
+            <p className="mt-1 text-[11px] leading-5 text-slate-600">Files remain private, checksummed, duplicate-checked, and linked only to programme context available under the current role and assignment policy.</p>
+          </div>
         </Section>
       )}
     </section>
