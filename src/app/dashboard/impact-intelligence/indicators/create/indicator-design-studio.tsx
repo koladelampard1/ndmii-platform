@@ -256,7 +256,21 @@ export function IndicatorDesignStudio({
         </nav>
       </div>
 
-      <form action={action} className="mx-auto grid max-w-[1500px] gap-6 p-4 sm:p-7 xl:grid-cols-[minmax(0,1fr)_360px] xl:p-9">
+      <form id="indicator-design-form" action={action} className="mx-auto grid max-w-[1500px] gap-6 p-4 sm:p-7 xl:grid-cols-[minmax(0,1fr)_360px] xl:p-9">
+        <input type="hidden" name="name" value={name} />
+        <input type="hidden" name="description" value={description} />
+        <input type="hidden" name="programme_id" value={programmeId} />
+        <input type="hidden" name="cohort_id" value={cohortId} />
+        <input type="hidden" name="intervention_id" value={interventionId} />
+        <input type="hidden" name="indicator_type" value={indicatorType} />
+        <input type="hidden" name="unit_of_measure" value={unitOfMeasure} />
+        <input type="hidden" name="direction_of_improvement" value={direction} />
+        <input type="hidden" name="calculation_method" value={calculationMethod} />
+        <input type="hidden" name="measurement_frequency" value={frequency} />
+        <input type="hidden" name="owner_user_id" value={ownerUserId} />
+        <input type="hidden" name="status" value={status} />
+        <input type="hidden" name="baseline_required" value={baselineRequired ? "true" : ""} />
+        <input type="hidden" name="target_required" value={targetRequired ? "true" : ""} />
         {error && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 xl:col-span-2">
             {error}
@@ -275,11 +289,11 @@ export function IndicatorDesignStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Indicator name <span className="text-rose-500">*</span>
-                  <input required name="name" value={name} onChange={(event) => setName(event.target.value)} className={FIELD_CLASS} placeholder="e.g. Jobs sustained after BOI support" />
+                  <input required value={name} onChange={(event) => setName(event.target.value)} className={FIELD_CLASS} placeholder="e.g. Jobs sustained after BOI support" />
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Indicator type
-                  <select name="indicator_type" value={indicatorType} onChange={(event) => setIndicatorType(event.target.value)} className={FIELD_CLASS}>
+                  <select value={indicatorType} onChange={(event) => setIndicatorType(event.target.value)} className={FIELD_CLASS}>
                     <option value="output">Output</option>
                     <option value="outcome">Outcome</option>
                     <option value="impact">Impact</option>
@@ -288,13 +302,13 @@ export function IndicatorDesignStudio({
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Status
-                  <select name="status" value={status} onChange={(event) => setStatus(event.target.value)} className={FIELD_CLASS}>
+                  <select value={status} onChange={(event) => setStatus(event.target.value)} className={FIELD_CLASS}>
                     {INDICATOR_DEFINITION_STATUSES.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Description
-                  <textarea name="description" value={description} onChange={(event) => setDescription(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" placeholder="Describe exactly what is measured and how the unit should be interpreted." />
+                  <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" placeholder="Describe exactly what is measured and how the unit should be interpreted." />
                 </label>
               </div>
             </section>
@@ -306,21 +320,21 @@ export function IndicatorDesignStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Linked programme
-                  <select name="programme_id" value={programmeId} onChange={(event) => changeProgramme(event.target.value)} className={FIELD_CLASS}>
+                  <select value={programmeId} onChange={(event) => changeProgramme(event.target.value)} className={FIELD_CLASS}>
                     <option value="">Portfolio-level</option>
                     {options.programmes.map((item) => <option key={item.id} value={item.id}>{item.name}{item.programme_code ? ` · ${item.programme_code}` : ""}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Linked cohort
-                  <select name="cohort_id" value={cohortId} onChange={(event) => changeCohort(event.target.value)} disabled={!programmeId} className={FIELD_CLASS}>
+                  <select value={cohortId} onChange={(event) => changeCohort(event.target.value)} disabled={!programmeId} className={FIELD_CLASS}>
                     <option value="">{programmeId ? "All programme cohorts" : "Select programme first"}</option>
                     {cohorts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Linked intervention
-                  <select name="intervention_id" value={interventionId} onChange={(event) => setInterventionId(event.target.value)} disabled={!programmeId} className={FIELD_CLASS}>
+                  <select value={interventionId} onChange={(event) => setInterventionId(event.target.value)} disabled={!programmeId} className={FIELD_CLASS}>
                     <option value="">{programmeId ? "All matching interventions" : "Select programme first"}</option>
                     {interventions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
                   </select>
@@ -339,23 +353,23 @@ export function IndicatorDesignStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Unit of measure <span className="text-rose-500">*</span>
-                  <input required name="unit_of_measure" value={unitOfMeasure} onChange={(event) => setUnitOfMeasure(event.target.value)} className={FIELD_CLASS} placeholder="jobs, %, NGN" />
+                  <input required value={unitOfMeasure} onChange={(event) => setUnitOfMeasure(event.target.value)} className={FIELD_CLASS} placeholder="jobs, %, NGN" />
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Direction of improvement
-                  <select name="direction_of_improvement" value={direction} onChange={(event) => setDirection(event.target.value)} className={FIELD_CLASS}>
+                  <select value={direction} onChange={(event) => setDirection(event.target.value)} className={FIELD_CLASS}>
                     {INDICATOR_DIRECTIONS.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Calculation method
-                  <select name="calculation_method" value={calculationMethod} onChange={(event) => setCalculationMethod(event.target.value)} className={FIELD_CLASS}>
+                  <select value={calculationMethod} onChange={(event) => setCalculationMethod(event.target.value)} className={FIELD_CLASS}>
                     {INDICATOR_CALCULATION_METHODS.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Measurement frequency
-                  <input name="measurement_frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)} className={FIELD_CLASS} placeholder="Monthly, quarterly" />
+                  <input value={frequency} onChange={(event) => setFrequency(event.target.value)} className={FIELD_CLASS} placeholder="Monthly, quarterly" />
                 </label>
               </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -372,17 +386,17 @@ export function IndicatorDesignStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Indicator owner
-                  <select name="owner_user_id" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} className={FIELD_CLASS}>
+                  <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} className={FIELD_CLASS}>
                     <option value="">Unassigned</option>
                     {options.users.map((item) => <option key={item.id} value={item.id}>{item.full_name ?? item.email ?? item.id}</option>)}
                   </select>
                 </label>
                 <label className={cn("flex items-start gap-3 rounded-2xl border p-4", baselineRequired ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-slate-50")}>
-                  <input name="baseline_required" type="checkbox" checked={baselineRequired} onChange={(event) => setBaselineRequired(event.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600" />
+                  <input type="checkbox" checked={baselineRequired} onChange={(event) => setBaselineRequired(event.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600" />
                   <span><span className="block text-xs font-bold text-slate-800">Baseline required</span><span className="mt-1 block text-[11px] leading-5 text-slate-500">Future measurements must include a baseline value.</span></span>
                 </label>
                 <label className={cn("flex items-start gap-3 rounded-2xl border p-4", targetRequired ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-slate-50")}>
-                  <input name="target_required" type="checkbox" checked={targetRequired} onChange={(event) => setTargetRequired(event.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600" />
+                  <input type="checkbox" checked={targetRequired} onChange={(event) => setTargetRequired(event.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600" />
                   <span><span className="block text-xs font-bold text-slate-800">Target required</span><span className="mt-1 block text-[11px] leading-5 text-slate-500">Future measurements must include a target value.</span></span>
                 </label>
               </div>

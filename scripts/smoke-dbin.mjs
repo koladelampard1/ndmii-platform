@@ -67,6 +67,9 @@ const impactIndicatorService = read("src/lib/data/impact-indicators.ts");
 const impactIndicatorPage = read(
   "src/app/dashboard/impact-intelligence/indicators/page.tsx",
 );
+const impactIndicatorDesignStudio = read(
+  "src/app/dashboard/impact-intelligence/indicators/create/indicator-design-studio.tsx",
+);
 const impactReportMigration = read(
   "supabase/migrations/20260606170000_impact_reports_phase1a.sql",
 );
@@ -496,6 +499,29 @@ check("report creation studio submits the canonical report payload", () => {
       studio.includes('type="hidden" name="summary" value={summary}') &&
       studio.includes('type="submit"'),
     "Expected the final report generation step to retain every canonical server-action field and a real submit control.",
+  );
+});
+
+check("indicator design studio submits the canonical indicator payload", () => {
+  const studio = compact(impactIndicatorDesignStudio);
+  assert(
+    studio.includes('id="indicator-design-form"') &&
+      studio.includes('type="hidden" name="name" value={name}') &&
+      studio.includes('type="hidden" name="description" value={description}') &&
+      studio.includes('type="hidden" name="programme_id" value={programmeId}') &&
+      studio.includes('type="hidden" name="cohort_id" value={cohortId}') &&
+      studio.includes('type="hidden" name="intervention_id" value={interventionId}') &&
+      studio.includes('type="hidden" name="indicator_type" value={indicatorType}') &&
+      studio.includes('type="hidden" name="unit_of_measure" value={unitOfMeasure}') &&
+      studio.includes('type="hidden" name="direction_of_improvement" value={direction}') &&
+      studio.includes('type="hidden" name="calculation_method" value={calculationMethod}') &&
+      studio.includes('type="hidden" name="measurement_frequency" value={frequency}') &&
+      studio.includes('type="hidden" name="owner_user_id" value={ownerUserId}') &&
+      studio.includes('type="hidden" name="status" value={status}') &&
+      studio.includes('type="hidden" name="baseline_required" value={baselineRequired ? "true" : ""}') &&
+      studio.includes('type="hidden" name="target_required" value={targetRequired ? "true" : ""}') &&
+      studio.includes('type="submit"'),
+    "Expected the final indicator creation step to retain every canonical server-action field and a real submit control.",
   );
 });
 
