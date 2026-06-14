@@ -31,11 +31,7 @@ import { listImpactReports, type ImpactReport } from "@/lib/data/impact-intellig
 import { listImpactEvidence, type ImpactEvidenceRecord } from "@/lib/data/impact-evidence";
 import { cn } from "@/lib/utils";
 import {
-  INDICATOR_CALCULATION_METHODS,
-  INDICATOR_DEFINITION_STATUSES,
-  INDICATOR_DIRECTIONS,
   INDICATOR_SOURCE_TYPES,
-  createIndicatorDefinition,
   createIndicatorMeasurement,
   getIndicatorFormOptions,
   listIndicatorDefinitions,
@@ -316,19 +312,6 @@ function DistributionBars({
   );
 }
 
-async function createDefinitionAction(formData: FormData) {
-  "use server";
-  const ctx = await getCurrentUserContext();
-  try {
-    await createIndicatorDefinition(ctx, formData);
-  } catch (error) {
-    unstable_rethrow(error);
-    if (!isExpectedActionError(error)) throw error;
-    redirectWithResult("error", error instanceof Error ? error.message : "Indicator definition could not be created.");
-  }
-  redirectWithResult("success", "Indicator definition created.");
-}
-
 async function createMeasurementAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
@@ -389,91 +372,6 @@ function formatNumber(value: number | null | undefined, unit?: string | null) {
 function formatDate(value: string | null | undefined) {
   if (!value) return UNAVAILABLE;
   return new Date(value).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
-}
-
-function DefinitionForm({ options }: { options: IndicatorFormOptions }) {
-  return (
-    <form action={createDefinitionAction} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Name
-        <input required name="name" className="w-full rounded-md border px-3 py-2 font-normal" placeholder="Jobs sustained after support" />
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Unit of measure
-        <input required name="unit_of_measure" className="w-full rounded-md border px-3 py-2 font-normal" placeholder="jobs, %, NGN" />
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Programme
-        <select name="programme_id" className="w-full rounded-md border px-3 py-2 font-normal">
-          <option value="">Portfolio-level</option>
-          {options.programmes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Cohort
-        <select name="cohort_id" className="w-full rounded-md border px-3 py-2 font-normal">
-          <option value="">All cohorts</option>
-          {options.cohorts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Intervention
-        <select name="intervention_id" className="w-full rounded-md border px-3 py-2 font-normal">
-          <option value="">All interventions</option>
-          {options.interventions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Indicator type
-        <select name="indicator_type" defaultValue="outcome" className="w-full rounded-md border px-3 py-2 font-normal">
-          <option value="output">Output</option>
-          <option value="outcome">Outcome</option>
-          <option value="impact">Impact</option>
-          <option value="efficiency">Efficiency</option>
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Direction
-        <select name="direction_of_improvement" defaultValue="increase" className="w-full rounded-md border px-3 py-2 font-normal">
-          {INDICATOR_DIRECTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Calculation method
-        <select name="calculation_method" defaultValue="manual" className="w-full rounded-md border px-3 py-2 font-normal">
-          {INDICATOR_CALCULATION_METHODS.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Frequency
-        <input name="measurement_frequency" className="w-full rounded-md border px-3 py-2 font-normal" placeholder="Monthly, quarterly" />
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Owner
-        <select name="owner_user_id" className="w-full rounded-md border px-3 py-2 font-normal">
-          <option value="">Unassigned</option>
-          {options.users.map((item) => <option key={item.id} value={item.id}>{item.full_name ?? item.email ?? item.id}</option>)}
-        </select>
-      </label>
-      <label className="space-y-1 text-sm font-medium text-slate-700">
-        Status
-        <select name="status" defaultValue="active" className="w-full rounded-md border px-3 py-2 font-normal">
-          {INDICATOR_DEFINITION_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </label>
-      <div className="flex flex-wrap items-end gap-4 pb-2 text-sm text-slate-700">
-        <label className="flex items-center gap-2"><input name="baseline_required" type="checkbox" defaultChecked /> Baseline required</label>
-        <label className="flex items-center gap-2"><input name="target_required" type="checkbox" defaultChecked /> Target required</label>
-      </div>
-      <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-4">
-        Definition
-        <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 font-normal" placeholder="Describe exactly what is measured and how the unit should be interpreted." />
-      </label>
-      <div className="flex justify-end md:col-span-2 xl:col-span-4">
-        <Button type="submit" className="gap-2"><Plus className="h-4 w-4" /> Create definition</Button>
-      </div>
-    </form>
-  );
 }
 
 function MeasurementForm({ definitions, options }: { definitions: ImpactIndicatorDefinition[]; options: IndicatorFormOptions }) {
@@ -888,7 +786,7 @@ export default async function ImpactIndicatorsPage({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canCreateDefinitions && !optionsError && (
-                <Link href="#create-indicator" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white hover:bg-[#132d60]">
+                <Link href="/dashboard/impact-intelligence/indicators/create" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0c1f46] px-4 text-xs font-bold text-white hover:bg-[#132d60]">
                   <Plus className="h-4 w-4" /> Create Indicator
                 </Link>
               )}
@@ -1251,12 +1149,6 @@ export default async function ImpactIndicatorsPage({
           })}
         </div>
       </Section>
-
-      {canCreateDefinitions && !optionsError && (
-        <Section id="create-indicator" title="Create Indicator" description="Create a definition within the existing governed programme, cohort, and intervention scope.">
-          <DefinitionForm options={options} />
-        </Section>
-      )}
 
       {canCreateMeasurements && !optionsError && activeDefinitions.length > 0 && (
         <Section id="add-measurement" title="Add Measurement" description="Record a draft measurement using the existing scoped sources and verification workflow.">
