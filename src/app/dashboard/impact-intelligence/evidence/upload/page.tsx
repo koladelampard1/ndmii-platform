@@ -15,8 +15,9 @@ import {
   IMPACT_EVIDENCE_EXTENSIONS,
   IMPACT_EVIDENCE_MAX_FILE_SIZE,
   IMPACT_EVIDENCE_MIME_TYPES,
-  type ImpactEvidenceUploadOptions,
+  EMPTY_IMPACT_EVIDENCE_UPLOAD_OPTIONS,
   getImpactEvidenceUploadOptions,
+  normalizeImpactEvidenceUploadOptions,
   uploadImpactEvidence,
 } from "@/lib/data/impact-evidence";
 import { getProgrammeScopeEmptyMessage } from "@/lib/impact-intelligence/access-scope";
@@ -25,15 +26,6 @@ import { CreateEvidenceForm } from "../create-evidence-form";
 
 const ROUTE = "/dashboard/impact-intelligence/evidence/upload";
 const EVIDENCE_ROUTE = "/dashboard/impact-intelligence/evidence";
-
-const EMPTY_OPTIONS: ImpactEvidenceUploadOptions = {
-  programmes: [],
-  cohorts: [],
-  members: [],
-  interventions: [],
-  assessments: [],
-  visits: [],
-};
 
 const EXPECTED_UPLOAD_ERRORS = [
   "Select a programme",
@@ -68,6 +60,17 @@ function isExpectedUploadError(error: unknown) {
   return error instanceof Error && EXPECTED_UPLOAD_ERRORS.some((message) => error.message.includes(message));
 }
 
+function hasValidUploadOptionCollections(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const options = value as Record<string, unknown>;
+  return Array.isArray(options.programmes)
+    && Array.isArray(options.cohorts)
+    && Array.isArray(options.members)
+    && Array.isArray(options.interventions)
+    && Array.isArray(options.assessments)
+    && Array.isArray(options.visits);
+}
+
 async function uploadEvidenceAction(formData: FormData) {
   "use server";
   const ctx = await requireImpactRoute(ROUTE);
@@ -89,19 +92,28 @@ async function uploadEvidenceAction(formData: FormData) {
 }
 
 export default async function EvidenceUploadPage({ searchParams }: { searchParams: SearchParams }) {
-  const query = await searchParams;
+  const query = await searchParams ?? {};
   const ctx = await requireImpactRoute(ROUTE);
   const canCreate = canRole(ctx.role, "evidence", "create");
-  let options = EMPTY_OPTIONS;
+  let options = EMPTY_IMPACT_EVIDENCE_UPLOAD_OPTIONS;
   let optionsAvailable = false;
   let loadError: string | null = null;
 
   if (canCreate) {
     try {
-      options = await getImpactEvidenceUploadOptions(ctx, {
+      const loadedOptions = await getImpactEvidenceUploadOptions(ctx, {
         programmeId: query.programme_id,
         cohortId: query.cohort_id,
       });
+      if (!hasValidUploadOptionCollections(loadedOptions)) {
+        logImpactRouteDiagnostic({
+          ctx,
+          route: ROUTE,
+          operation: "evidence_upload_studio_options_shape_invalid",
+          error: new Error("Evidence upload options returned an invalid collection shape."),
+        });
+      }
+      options = normalizeImpactEvidenceUploadOptions(loadedOptions);
       optionsAvailable = true;
     } catch (error) {
       unstable_rethrow(error);

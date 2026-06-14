@@ -110,6 +110,35 @@ export type ImpactEvidenceUploadOptions = {
   visits: Array<{ id: string; programme_id: string; cohort_id: string; cohort_member_id: string; intervention_id: string | null; assessment_id: string | null; msme_id: string; title: string | null; status: string | null }>;
 };
 
+export const EMPTY_IMPACT_EVIDENCE_UPLOAD_OPTIONS: ImpactEvidenceUploadOptions = {
+  programmes: [],
+  cohorts: [],
+  members: [],
+  interventions: [],
+  assessments: [],
+  visits: [],
+};
+
+function objectRows<T>(value: unknown): T[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is T => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+export function normalizeImpactEvidenceUploadOptions(value: unknown): ImpactEvidenceUploadOptions {
+  const options = value && typeof value === "object"
+    ? value as Partial<Record<keyof ImpactEvidenceUploadOptions, unknown>>
+    : {};
+  return {
+    programmes: objectRows<ImpactEvidenceUploadOptions["programmes"][number]>(options.programmes),
+    cohorts: objectRows<ImpactEvidenceUploadOptions["cohorts"][number]>(options.cohorts),
+    members: objectRows<ImpactEvidenceUploadOptions["members"][number]>(options.members),
+    interventions: objectRows<ImpactEvidenceUploadOptions["interventions"][number]>(options.interventions),
+    assessments: objectRows<ImpactEvidenceUploadOptions["assessments"][number]>(options.assessments),
+    visits: objectRows<ImpactEvidenceUploadOptions["visits"][number]>(options.visits),
+  };
+}
+
 type EvidenceContext = {
   programmeId: string;
   cohortId: string;
@@ -202,6 +231,28 @@ export function validateImpactEvidenceFile(file: File | null) {
   return { ok: true as const };
 }
 
+async function loadEvidenceOptionRows<T extends Record<string, unknown>>(
+  ctx: UserContext,
+  operation: string,
+  query: PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+): Promise<T[]> {
+  try {
+    const { data, error } = await query;
+    if (error) throw new Error(error.message ?? "Unknown evidence option source error");
+    return objectRows<T>(data);
+  } catch (error) {
+    const detail = safeError(error);
+    logImpactEvidenceDiagnostic({
+      operation,
+      actorRole: ctx.role,
+      errorCode: detail.code,
+      errorMessage: detail.message,
+      success: false,
+    });
+    return [];
+  }
+}
+
 async function ensureImpactEvidenceBucket() {
   const supabase = await createServiceRoleSupabaseClient();
   const { data } = await supabase.storage.getBucket(IMPACT_EVIDENCE_BUCKET);
@@ -218,14 +269,21 @@ async function ensureImpactEvidenceBucket() {
 async function getFieldOfficerScope(ctx: UserContext) {
   if (ctx.role !== "field_officer" || !ctx.appUserId) return { visitIds: [] as string[], memberIds: [] as string[] };
   const supabase = await createServiceRoleSupabaseClient();
-  const [{ data: visits, error: visitError }, { data: members, error: memberError }] = await Promise.all([
-    supabase.from("impact_field_visits").select("id").eq("assigned_to_user_id", ctx.appUserId),
-    supabase.from("impact_cohort_members").select("id").eq("assigned_to_user_id", ctx.appUserId),
+  const [visits, members] = await Promise.all([
+    loadEvidenceOptionRows(
+      ctx,
+      "upload_options_field_officer_visits_load_failed",
+      supabase.from("impact_field_visits").select("id").eq("assigned_to_user_id", ctx.appUserId),
+    ),
+    loadEvidenceOptionRows(
+      ctx,
+      "upload_options_field_officer_members_load_failed",
+      supabase.from("impact_cohort_members").select("id").eq("assigned_to_user_id", ctx.appUserId),
+    ),
   ]);
-  if (visitError || memberError) throw new Error("Assigned evidence scope is temporarily unavailable.");
   return {
-    visitIds: (visits ?? []).map((row) => String(row.id)),
-    memberIds: (members ?? []).map((row) => String(row.id)),
+    visitIds: visits.map((row) => String(row.id)),
+    memberIds: members.map((row) => String(row.id)),
   };
 }
 
@@ -523,11 +581,14 @@ export async function getImpactEvidenceUploadOptions(
   if (scope) {
     const memberIds = new Set(scope.memberIds);
     if (scope.visitIds.length > 0) {
-      const { data: visitMembers, error } = await supabase.from("impact_field_visits").select("cohort_member_id").in("id", scope.visitIds);
-      if (error) throw new Error("Assigned evidence scope is temporarily unavailable.");
-      for (const row of visitMembers ?? []) if (row.cohort_member_id) memberIds.add(String(row.cohort_member_id));
+      const visitMembers = await loadEvidenceOptionRows(
+        ctx,
+        "upload_options_field_officer_visit_members_load_failed",
+        supabase.from("impact_field_visits").select("cohort_member_id").in("id", scope.visitIds),
+      );
+      for (const row of visitMembers) if (row.cohort_member_id) memberIds.add(String(row.cohort_member_id));
     }
-    if (memberIds.size === 0) return { programmes: [], cohorts: [], members: [], interventions: [], assessments: [], visits: [] };
+    if (memberIds.size === 0) return normalizeImpactEvidenceUploadOptions(null);
     memberQuery = memberQuery.in("id", Array.from(memberIds));
   } else {
     await getProgrammeScopeFilter(ctx);
@@ -536,46 +597,63 @@ export async function getImpactEvidenceUploadOptions(
 
   const { data: members, error: memberError } = await memberQuery;
   if (memberError) throw new Error(`Evidence beneficiary options unavailable: ${memberError.message}`);
-  const memberRows = (members ?? []) as unknown as ImpactEvidenceUploadOptions["members"];
+  const memberRows = objectRows<ImpactEvidenceUploadOptions["members"][number]>(members);
   const programmeIds = Array.from(new Set(memberRows.map((row) => row.programme_id)));
   const cohortIds = Array.from(new Set(memberRows.map((row) => row.cohort_id)));
   const memberIds = memberRows.map((row) => row.id);
 
-  if (programmeIds.length === 0) return { programmes: [], cohorts: [], members: [], interventions: [], assessments: [], visits: [] };
+  if (programmeIds.length === 0) return normalizeImpactEvidenceUploadOptions({ members: memberRows });
 
-  const [programmeResult, cohortResult, interventionResult, assessmentResult, visitResult] = await Promise.all([
-    supabase.from("impact_programmes").select("id,name,programme_code").in("id", programmeIds).order("name"),
+  const [programmes, cohorts, interventions, assessments, loadedVisits] = await Promise.all([
+    loadEvidenceOptionRows(
+      ctx,
+      "upload_options_programmes_load_failed",
+      supabase.from("impact_programmes").select("id,name,programme_code").in("id", programmeIds).order("name"),
+    ),
     cohortIds.length > 0
-      ? supabase.from("impact_beneficiary_cohorts").select("id,programme_id,name,current_beneficiaries").in("id", cohortIds).order("name")
-      : Promise.resolve({ data: [], error: null }),
+      ? loadEvidenceOptionRows(
+          ctx,
+          "upload_options_cohorts_load_failed",
+          supabase.from("impact_beneficiary_cohorts").select("id,programme_id,name,current_beneficiaries").in("id", cohortIds).order("name"),
+        )
+      : Promise.resolve([]),
     memberIds.length > 0
-      ? supabase.from("impact_interventions").select("id,programme_id,cohort_id,cohort_member_id,msme_id,title").in("cohort_member_id", memberIds).order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
+      ? loadEvidenceOptionRows(
+          ctx,
+          "upload_options_interventions_load_failed",
+          supabase.from("impact_interventions").select("id,programme_id,cohort_id,cohort_member_id,msme_id,title").in("cohort_member_id", memberIds).order("created_at", { ascending: false }),
+        )
+      : Promise.resolve([]),
     memberIds.length > 0
-      ? supabase.from("impact_assessments").select("id,programme_id,cohort_id,cohort_member_id,intervention_id,msme_id,title,assessment_type").in("cohort_member_id", memberIds).order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
+      ? loadEvidenceOptionRows(
+          ctx,
+          "upload_options_assessments_load_failed",
+          supabase.from("impact_assessments").select("id,programme_id,cohort_id,cohort_member_id,intervention_id,msme_id,title,assessment_type").in("cohort_member_id", memberIds).order("created_at", { ascending: false }),
+        )
+      : Promise.resolve([]),
     memberIds.length > 0
-      ? supabase.from("impact_field_visits").select("id,programme_id,cohort_id,cohort_member_id,intervention_id,assessment_id,msme_id,title,status").in("cohort_member_id", memberIds).order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
+      ? loadEvidenceOptionRows(
+          ctx,
+          "upload_options_visits_load_failed",
+          supabase.from("impact_field_visits").select("id,programme_id,cohort_id,cohort_member_id,intervention_id,assessment_id,msme_id,title,status").in("cohort_member_id", memberIds).order("created_at", { ascending: false }),
+        )
+      : Promise.resolve([]),
   ]);
 
-  const firstError = programmeResult.error || cohortResult.error || interventionResult.error || assessmentResult.error || visitResult.error;
-  if (firstError) throw new Error(`Evidence upload options unavailable: ${firstError.message}`);
-
-  let visits = (visitResult.data ?? []) as ImpactEvidenceUploadOptions["visits"];
+  let visits = loadedVisits as ImpactEvidenceUploadOptions["visits"];
   if (scope) {
     const allowedVisits = new Set(scope.visitIds);
     visits = visits.filter((visit) => allowedVisits.has(visit.id) || scope.memberIds.includes(visit.cohort_member_id));
   }
 
-  return {
-    programmes: (programmeResult.data ?? []) as ImpactEvidenceUploadOptions["programmes"],
-    cohorts: (cohortResult.data ?? []) as ImpactEvidenceUploadOptions["cohorts"],
+  return normalizeImpactEvidenceUploadOptions({
+    programmes,
+    cohorts,
     members: memberRows,
-    interventions: (interventionResult.data ?? []) as ImpactEvidenceUploadOptions["interventions"],
-    assessments: (assessmentResult.data ?? []) as ImpactEvidenceUploadOptions["assessments"],
+    interventions,
+    assessments,
     visits,
-  };
+  });
 }
 
 export async function canAccessImpactEvidence(ctx: UserContext, evidence: Pick<ImpactEvidenceRecord, "programme_id" | "field_visit_id" | "cohort_member_id">) {

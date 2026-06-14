@@ -26,7 +26,10 @@ import type { DragEvent, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EVIDENCE_CATEGORIES } from "@/lib/data/impact-intelligence";
-import type { ImpactEvidenceUploadOptions } from "@/lib/data/impact-evidence";
+import {
+  normalizeImpactEvidenceUploadOptions,
+  type ImpactEvidenceUploadOptions,
+} from "@/lib/data/impact-evidence";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -91,6 +94,9 @@ export function CreateEvidenceForm({
   acceptedMimeTypes,
   acceptedExtensions,
 }: Props) {
+  const safeOptions = useMemo(() => normalizeImpactEvidenceUploadOptions(options), [options]);
+  const safeAcceptedMimeTypes = Array.isArray(acceptedMimeTypes) ? acceptedMimeTypes : [];
+  const safeAcceptedExtensions = Array.isArray(acceptedExtensions) ? acceptedExtensions : [];
   const inputRef = useRef<HTMLInputElement>(null);
   const [programmeId, setProgrammeId] = useState(selectedProgrammeId);
   const [cohortId, setCohortId] = useState(selectedCohortId);
@@ -105,46 +111,46 @@ export function CreateEvidenceForm({
   const [dragging, setDragging] = useState(false);
 
   const cohorts = useMemo(
-    () => options.cohorts.filter((item) => item.programme_id === programmeId),
-    [options.cohorts, programmeId],
+    () => safeOptions.cohorts.filter((item) => item.programme_id === programmeId),
+    [safeOptions.cohorts, programmeId],
   );
   const members = useMemo(
-    () => options.members.filter((item) => item.cohort_id === cohortId),
-    [cohortId, options.members],
+    () => safeOptions.members.filter((item) => item.cohort_id === cohortId),
+    [cohortId, safeOptions.members],
   );
   const interventions = useMemo(
-    () => options.interventions.filter((item) => item.cohort_member_id === memberId),
-    [memberId, options.interventions],
+    () => safeOptions.interventions.filter((item) => item.cohort_member_id === memberId),
+    [memberId, safeOptions.interventions],
   );
   const assessments = useMemo(
-    () => options.assessments.filter((item) => item.cohort_member_id === memberId && (!interventionId || !item.intervention_id || item.intervention_id === interventionId)),
-    [interventionId, memberId, options.assessments],
+    () => safeOptions.assessments.filter((item) => item.cohort_member_id === memberId && (!interventionId || !item.intervention_id || item.intervention_id === interventionId)),
+    [interventionId, memberId, safeOptions.assessments],
   );
   const visits = useMemo(
-    () => options.visits.filter((item) => (
+    () => safeOptions.visits.filter((item) => (
       item.cohort_member_id === memberId
       && (!interventionId || item.intervention_id === interventionId)
       && (!assessmentId || item.assessment_id === assessmentId)
     )),
-    [assessmentId, interventionId, memberId, options.visits],
+    [assessmentId, interventionId, memberId, safeOptions.visits],
   );
 
-  const selectedProgramme = options.programmes.find((item) => item.id === programmeId);
-  const selectedCohort = options.cohorts.find((item) => item.id === cohortId);
-  const selectedMember = options.members.find((item) => item.id === memberId);
-  const selectedIntervention = options.interventions.find((item) => item.id === interventionId);
-  const selectedAssessment = options.assessments.find((item) => item.id === assessmentId);
-  const selectedVisit = options.visits.find((item) => item.id === visitId);
+  const selectedProgramme = safeOptions.programmes.find((item) => item.id === programmeId);
+  const selectedCohort = safeOptions.cohorts.find((item) => item.id === cohortId);
+  const selectedMember = safeOptions.members.find((item) => item.id === memberId);
+  const selectedIntervention = safeOptions.interventions.find((item) => item.id === interventionId);
+  const selectedAssessment = safeOptions.assessments.find((item) => item.id === assessmentId);
+  const selectedVisit = safeOptions.visits.find((item) => item.id === visitId);
 
   const extension = file?.name.split(".").pop()?.toLowerCase() ?? "";
-  const validFormat = file ? acceptedExtensions.includes(extension) && acceptedMimeTypes.includes(file.type.toLowerCase()) : false;
+  const validFormat = file ? safeAcceptedExtensions.includes(extension) && safeAcceptedMimeTypes.includes(file.type.toLowerCase()) : false;
   const validSize = file ? file.size > 0 && file.size <= maxFileSizeBytes : false;
   const contextComplete = Boolean(programmeId && cohortId && memberId);
   const metadataComplete = Boolean(category);
   const ready = Boolean(file && validFormat && validSize && contextComplete && metadataComplete);
   const accept = [
-    ...acceptedExtensions.map((item) => `.${item}`),
-    ...acceptedMimeTypes,
+    ...safeAcceptedExtensions.map((item) => `.${item}`),
+    ...safeAcceptedMimeTypes,
   ].join(",");
 
   function resetDependentContext(level: "programme" | "cohort" | "member") {
@@ -276,7 +282,7 @@ export function CreateEvidenceForm({
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Accepted formats</p><p className="mt-1 text-[11px] font-bold text-slate-700">{acceptedExtensions.map((item) => item.toUpperCase()).join(", ")}</p></div>
+              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Accepted formats</p><p className="mt-1 text-[11px] font-bold text-slate-700">{safeAcceptedExtensions.map((item) => item.toUpperCase()).join(", ")}</p></div>
               <div className="rounded-xl border border-slate-200 p-3"><p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Maximum size</p><p className="mt-1 text-[11px] font-bold text-slate-700">{formatBytes(maxFileSizeBytes)}</p></div>
               <div className="rounded-xl border border-slate-200 p-3"><p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Integrity control</p><p className="mt-1 text-[11px] font-bold text-slate-700">SHA-256 on upload</p></div>
             </div>
@@ -296,8 +302,8 @@ export function CreateEvidenceForm({
               <label>
                 <FieldLabel>Programme</FieldLabel>
                 <select required value={programmeId} onChange={(event) => { setProgrammeId(event.target.value); resetDependentContext("programme"); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                  <option value="">{options.programmes.length ? "Select programme" : UNAVAILABLE}</option>
-                  {options.programmes.map((item) => <option key={item.id} value={item.id}>{item.name}{item.programme_code ? ` · ${item.programme_code}` : ""}</option>)}
+                  <option value="">{safeOptions.programmes.length ? "Select programme" : UNAVAILABLE}</option>
+                  {safeOptions.programmes.map((item) => <option key={item.id} value={item.id}>{item.name}{item.programme_code ? ` · ${item.programme_code}` : ""}</option>)}
                 </select>
               </label>
               <label>
