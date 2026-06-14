@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { normalizeUserRole } from "@/lib/auth/authorization";
+import {
+  clearDbinAuthCookies,
+  dbinAuthCookieNames,
+  dbinAuthCookieOptions,
+} from "@/lib/auth/cookies";
 import { getCredentialedCorsHeaders } from "@/lib/http/cors";
 import {
   clearSupabaseAuthCookies,
@@ -12,13 +17,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const isProduction = process.env.NODE_ENV === "production";
-const authCookieNames = ["ndmii_auth", "ndmii_role", "ndmii_email", "ndmii_auth_user_id", "ndmii_app_user_id"] as const;
-const baseCookieOptions = {
-  httpOnly: true,
-  path: "/",
-  sameSite: "lax",
-  secure: isProduction,
-} as const;
 
 async function resolveSessionMetadata(accessToken: string) {
   const authClient = await createServerSupabaseClient();
@@ -135,7 +133,7 @@ export async function POST(request: Request) {
     appUserId: metadata.appUserId || null,
     authUserId: metadata.authUserId,
     profileMatchedBy: metadata.profileMatchedBy,
-    cookieNamesSet: [...authCookieNames, ...supabaseAuthCookieNames],
+    cookieNamesSet: [...dbinAuthCookieNames, ...supabaseAuthCookieNames],
   }, { headers });
 
   setSupabaseAuthCookies(response, {
@@ -144,11 +142,11 @@ export async function POST(request: Request) {
     expiresAt,
   });
 
-  response.cookies.set("ndmii_auth", "1", baseCookieOptions);
-  response.cookies.set("ndmii_role", metadata.role, baseCookieOptions);
-  response.cookies.set("ndmii_email", metadata.email, baseCookieOptions);
-  response.cookies.set("ndmii_auth_user_id", metadata.authUserId, baseCookieOptions);
-  response.cookies.set("ndmii_app_user_id", metadata.appUserId, baseCookieOptions);
+  response.cookies.set("ndmii_auth", "1", dbinAuthCookieOptions);
+  response.cookies.set("ndmii_role", metadata.role, dbinAuthCookieOptions);
+  response.cookies.set("ndmii_email", metadata.email, dbinAuthCookieOptions);
+  response.cookies.set("ndmii_auth_user_id", metadata.authUserId, dbinAuthCookieOptions);
+  response.cookies.set("ndmii_app_user_id", metadata.appUserId, dbinAuthCookieOptions);
 
   const responseSetCookieHeaders = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie")].filter((value): value is string => Boolean(value));
 
@@ -156,8 +154,8 @@ export async function POST(request: Request) {
     isProduction,
     requestOrigin: request.headers.get("origin"),
     requestHost: request.headers.get("host"),
-    cookieNamesSet: [...authCookieNames, ...supabaseAuthCookieNames],
-    cookieCountBeingSet: authCookieNames.length + supabaseAuthCookieNames.length,
+    cookieNamesSet: [...dbinAuthCookieNames, ...supabaseAuthCookieNames],
+    cookieCountBeingSet: dbinAuthCookieNames.length + supabaseAuthCookieNames.length,
     responseSetCookieHeaders,
     responseHasSetCookieHeader: responseSetCookieHeaders.length > 0,
   });
@@ -177,13 +175,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const response = NextResponse.json({ ok: true }, { headers: getCredentialedCorsHeaders(request, ["POST", "DELETE", "OPTIONS"]) });
   clearSupabaseAuthCookies(response);
-  authCookieNames.forEach((name) => {
-    response.cookies.set(name, "", {
-      ...baseCookieOptions,
-      expires: new Date(0),
-      maxAge: 0,
-    });
-  });
+  clearDbinAuthCookies(response);
   return response;
 }
 

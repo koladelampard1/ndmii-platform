@@ -84,7 +84,7 @@ export function ImpactIntelligenceShell({
   const activeItem = items.find((item) => isActiveRoute(pathname, item.href));
 
   return (
-    <div className="min-h-screen bg-[#eef2f7] lg:flex">
+    <div className="impact-intelligence-workspace min-h-screen bg-[#eef2f7] lg:flex">
       <aside className="bg-[#08162f] text-slate-200 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[244px] lg:shrink-0 lg:flex-col">
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-5 lg:block lg:border-0 lg:px-6 lg:py-7">
           <Link href="/dashboard/impact-intelligence" className="flex items-center gap-3">
@@ -157,10 +157,10 @@ export function ImpactIntelligenceShell({
 
       <div className="min-w-0 flex-1 lg:p-1.5 lg:pl-0">
         <div className="min-h-screen overflow-hidden bg-[#f7f9fc] lg:rounded-l-[24px] lg:border lg:border-slate-200 lg:shadow-xl lg:shadow-slate-300/30">
-          <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-5 lg:px-7">
-            <div>
+          <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-5 sm:py-5 lg:px-7">
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Impact Intelligence</p>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#0c1733]">{activeItem?.label ?? "Workspace"}</h1>
+              <h1 className="mt-1 truncate text-xl font-bold tracking-tight text-[#0c1733] sm:text-2xl">{activeItem?.label ?? "Workspace"}</h1>
             </div>
             <div className="flex items-center gap-3">
               <AccountActions className="hidden sm:flex lg:hidden" compact />

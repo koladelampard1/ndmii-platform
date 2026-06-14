@@ -85,10 +85,21 @@ export function setSupabaseAuthCookies(
 
 export function clearSupabaseAuthCookies(response: NextResponse) {
   supabaseAuthCookieNames.forEach((name) => {
-    response.cookies.set(name, "", {
-      ...supabaseAuthCookieOptions,
+    const expiredOptions = {
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      secure: isProduction,
       expires: new Date(0),
       maxAge: 0,
-    });
+    } as const;
+
+    response.cookies.set(name, "", expiredOptions);
+    if (authCookieDomain) {
+      response.cookies.set(name, "", {
+        ...expiredOptions,
+        domain: authCookieDomain,
+      });
+    }
   });
 }

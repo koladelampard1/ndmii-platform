@@ -704,7 +704,7 @@ export default async function IndicatorDetailPage({
                 <ArrowLeft className="h-4 w-4" /> Portfolio
               </Link>
               {canCreateMeasurement && optionsSource.available && (
-                <Link href="#add-measurement" className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-400 px-3 text-xs font-bold text-[#07152f] hover:bg-emerald-300">
+                <Link href={`${ROUTE}/${indicatorId}/measurement`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-400 px-3 text-xs font-bold text-[#07152f] hover:bg-emerald-300">
                   <Plus className="h-4 w-4" /> Add Measurement
                 </Link>
               )}
