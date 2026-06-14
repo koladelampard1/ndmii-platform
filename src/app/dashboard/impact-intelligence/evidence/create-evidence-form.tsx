@@ -25,8 +25,9 @@ import type { LucideIcon } from "lucide-react";
 import type { DragEvent, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { EVIDENCE_CATEGORIES } from "@/lib/data/impact-intelligence";
 import {
+  IMPACT_EVIDENCE_CATEGORIES,
+  IMPACT_EVIDENCE_UPLOAD_FIELDS,
   normalizeImpactEvidenceUploadOptions,
   type ImpactEvidenceUploadOptions,
 } from "@/lib/data/impact-evidence";
@@ -188,8 +189,8 @@ export function CreateEvidenceForm({
 
   return (
     <form action={action} className="space-y-5">
-      <input type="hidden" name="programme_id" value={programmeId} />
-      <input type="hidden" name="cohort_id" value={cohortId} />
+      <input type="hidden" name={IMPACT_EVIDENCE_UPLOAD_FIELDS.programmeId} value={programmeId} />
+      <input type="hidden" name={IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortId} value={cohortId} />
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4">
@@ -237,7 +238,7 @@ export function CreateEvidenceForm({
               <input
                 ref={inputRef}
                 required
-                name="evidence_file"
+                name={IMPACT_EVIDENCE_UPLOAD_FIELDS.file}
                 type="file"
                 accept={accept}
                 onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
@@ -315,28 +316,28 @@ export function CreateEvidenceForm({
               </label>
               <label className="md:col-span-2">
                 <FieldLabel>Beneficiary / cohort member</FieldLabel>
-                <select required name="cohort_member_id" value={memberId} onChange={(event) => { setMemberId(event.target.value); resetDependentContext("member"); }} disabled={!cohortId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
+                <select required name={IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortMemberId} value={memberId} onChange={(event) => { setMemberId(event.target.value); resetDependentContext("member"); }} disabled={!cohortId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
                   <option value="">{cohortId ? (members.length ? "Select beneficiary" : UNAVAILABLE) : "Select cohort first"}</option>
                   {members.map((item) => <option key={item.id} value={item.id}>{item.msmes?.business_name ?? UNAVAILABLE} · {item.msmes?.msme_id ?? item.member_status}</option>)}
                 </select>
               </label>
               <label>
                 <FieldLabel optional>Intervention</FieldLabel>
-                <select name="intervention_id" value={interventionId} onChange={(event) => { setInterventionId(event.target.value); setAssessmentId(""); setVisitId(""); }} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
+                <select name={IMPACT_EVIDENCE_UPLOAD_FIELDS.interventionId} value={interventionId} onChange={(event) => { setInterventionId(event.target.value); setAssessmentId(""); setVisitId(""); }} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
                   <option value="">{memberId ? (interventions.length ? "No intervention selected" : UNAVAILABLE) : "Select beneficiary first"}</option>
                   {interventions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
                 </select>
               </label>
               <label>
                 <FieldLabel optional>Assessment</FieldLabel>
-                <select name="assessment_id" value={assessmentId} onChange={(event) => { setAssessmentId(event.target.value); setVisitId(""); }} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
+                <select name={IMPACT_EVIDENCE_UPLOAD_FIELDS.assessmentId} value={assessmentId} onChange={(event) => { setAssessmentId(event.target.value); setVisitId(""); }} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
                   <option value="">{memberId ? (assessments.length ? "No assessment selected" : UNAVAILABLE) : "Select beneficiary first"}</option>
                   {assessments.map((item) => <option key={item.id} value={item.id}>{item.title ?? item.assessment_type ?? UNAVAILABLE}</option>)}
                 </select>
               </label>
               <label className="md:col-span-2">
                 <FieldLabel optional>Monitoring visit</FieldLabel>
-                <select name="field_visit_id" value={visitId} onChange={(event) => setVisitId(event.target.value)} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
+                <select name={IMPACT_EVIDENCE_UPLOAD_FIELDS.fieldVisitId} value={visitId} onChange={(event) => setVisitId(event.target.value)} disabled={!memberId} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-400">
                   <option value="">{memberId ? (visits.length ? "No monitoring visit selected" : UNAVAILABLE) : "Select beneficiary first"}</option>
                   {visits.map((item) => <option key={item.id} value={item.id}>{item.title ?? "Field visit"} · {humanize(item.status ?? "pending")}</option>)}
                 </select>
@@ -360,17 +361,17 @@ export function CreateEvidenceForm({
               </div>
               <label>
                 <FieldLabel>Evidence category</FieldLabel>
-                <select name="evidence_category" value={category} onChange={(event) => setCategory(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
-                  {EVIDENCE_CATEGORIES.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}
+                <select required name={IMPACT_EVIDENCE_UPLOAD_FIELDS.category} value={category} onChange={(event) => setCategory(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+                  {IMPACT_EVIDENCE_CATEGORIES.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}
                 </select>
               </label>
               <label>
                 <FieldLabel optional>Source / collection date</FieldLabel>
-                <input name="captured_at" type="datetime-local" value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+                <input name={IMPACT_EVIDENCE_UPLOAD_FIELDS.capturedAt} type="datetime-local" value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
               </label>
               <label className="md:col-span-2">
                 <FieldLabel optional>Context note / description</FieldLabel>
-                <textarea name="description" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" placeholder="What this file demonstrates, where it was collected, and why it supports the programme record." />
+                <textarea name={IMPACT_EVIDENCE_UPLOAD_FIELDS.description} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" placeholder="What this file demonstrates, where it was collected, and why it supports the programme record." />
               </label>
             </div>
           </section>

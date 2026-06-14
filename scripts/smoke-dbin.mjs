@@ -53,6 +53,9 @@ const impactEvidenceAccessRoute = read(
 const impactEvidencePage = read(
   "src/app/dashboard/impact-intelligence/evidence/page.tsx",
 );
+const impactEvidenceUploadStudio = read(
+  "src/app/dashboard/impact-intelligence/evidence/create-evidence-form.tsx",
+);
 const impactDataService = read("src/lib/data/impact-intelligence.ts");
 const impactIndicatorMigration = read(
   "supabase/migrations/20260606140000_impact_indicator_phase1.sql",
@@ -334,6 +337,8 @@ check("evidence storage is private and legacy placeholders remain drafts", () =>
 check("evidence upload hashes files and cleans up failed writes", () => {
   assert(
     impactEvidenceService.includes('createHash("sha256")') &&
+      impactEvidenceService.includes("checksum_sha256: sha256Hash") &&
+      impactEvidenceService.includes("sha256_hash: sha256Hash") &&
       impactEvidenceService.includes("validateEvidenceContext") &&
       impactEvidenceService.includes(".upload(storagePath") &&
       impactEvidenceService.includes(".remove([storagePath])"),
@@ -402,6 +407,29 @@ check("indicator route loads defensively and field officers have scoped access",
       impactIndicatorService.includes('ctx.role === "field_officer"') &&
       impactIndicatorService.includes("assertFieldOfficerMeasurementScope"),
     "Expected defensive indicator loading and explicit field-officer route plus record scoping.",
+  );
+});
+
+check("evidence upload studio submits canonical metadata fields", () => {
+  const studio = compact(impactEvidenceUploadStudio);
+  const service = compact(impactEvidenceService);
+  assert(
+    service.includes('file: "evidence_file"') &&
+      service.includes('programmeId: "programme_id"') &&
+      service.includes('cohortId: "cohort_id"') &&
+      service.includes('cohortMemberId: "cohort_member_id"') &&
+      service.includes('interventionId: "intervention_id"') &&
+      service.includes('assessmentId: "assessment_id"') &&
+      service.includes('fieldVisitId: "field_visit_id"') &&
+      service.includes('category: "evidence_category"') &&
+      service.includes('capturedAt: "captured_at"') &&
+      service.includes('description: "description"') &&
+      studio.includes("name={IMPACT_EVIDENCE_UPLOAD_FIELDS.file}") &&
+      studio.includes("name={IMPACT_EVIDENCE_UPLOAD_FIELDS.programmeId}") &&
+      studio.includes("name={IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortId}") &&
+      studio.includes("name={IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortMemberId}") &&
+      studio.includes("name={IMPACT_EVIDENCE_UPLOAD_FIELDS.category}"),
+    "Expected the evidence Upload Studio and server action to share canonical metadata field names.",
   );
 });
 

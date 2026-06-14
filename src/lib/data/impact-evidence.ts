@@ -15,9 +15,22 @@ export const IMPACT_EVIDENCE_SIGNED_URL_SECONDS = 60 * 5;
 export const IMPACT_EVIDENCE_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 export const IMPACT_EVIDENCE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
 export const IMPACT_EVIDENCE_STATUSES = ["draft", "uploaded", "submitted", "under_review", "verified", "rejected", "returned", "archived"] as const;
+export const IMPACT_EVIDENCE_CATEGORIES = ["business_photo", "facility_photo", "cac_document", "invoice", "monitoring_photo", "beneficiary_document", "signed_form", "compliance_document", "other"] as const;
 export const IMPACT_EVIDENCE_CREATE_ROLES = ["super_admin", "assessment_officer", "field_officer"] as const;
 export const IMPACT_EVIDENCE_REVIEW_ROLES = ["admin", "super_admin", "assessment_officer"] as const;
 export const IMPACT_EVIDENCE_READ_ROLES = ["admin", "super_admin", "boi_executive", "data_analyst", "programme_officer", "assessment_officer", "field_officer", "auditor"] as const;
+export const IMPACT_EVIDENCE_UPLOAD_FIELDS = {
+  file: "evidence_file",
+  programmeId: "programme_id",
+  cohortId: "cohort_id",
+  cohortMemberId: "cohort_member_id",
+  interventionId: "intervention_id",
+  assessmentId: "assessment_id",
+  fieldVisitId: "field_visit_id",
+  category: "evidence_category",
+  capturedAt: "captured_at",
+  description: "description",
+} as const;
 
 export type ImpactEvidenceStatus = (typeof IMPACT_EVIDENCE_STATUSES)[number];
 
@@ -183,11 +196,15 @@ function textValue(formData: FormData, key: string) {
 }
 
 function safeError(error: unknown) {
-  if (!error || typeof error !== "object") return { code: null, message: String(error ?? "unknown_error") };
-  const value = error as { code?: unknown; message?: unknown; name?: unknown };
+  if (!error || typeof error !== "object") {
+    return { code: null, message: String(error ?? "unknown_error"), details: null, hint: null };
+  }
+  const value = error as { code?: unknown; message?: unknown; name?: unknown; details?: unknown; hint?: unknown };
   return {
     code: typeof value.code === "string" ? value.code : typeof value.name === "string" ? value.name : null,
     message: typeof value.message === "string" ? value.message : "unknown_error",
+    details: typeof value.details === "string" ? value.details : null,
+    hint: typeof value.hint === "string" ? value.hint : null,
   };
 }
 
@@ -196,13 +213,22 @@ export function logImpactEvidenceDiagnostic(payload: {
   evidenceId?: string | null;
   programmeId?: string | null;
   cohortId?: string | null;
+  cohortMemberId?: string | null;
+  interventionId?: string | null;
+  assessmentId?: string | null;
   fieldVisitId?: string | null;
   actorRole?: string | null;
+  evidenceTitle?: string | null;
+  evidenceCategory?: string | null;
+  evidenceType?: string | null;
+  normalizedPayloadKeys?: string[];
   fileSize?: number | null;
   mimeType?: string | null;
   success?: boolean;
   errorCode?: string | null;
   errorMessage?: string | null;
+  errorDetails?: string | null;
+  errorHint?: string | null;
 }) {
   console.info("[impact-evidence]", payload);
 }
@@ -288,12 +314,12 @@ async function getFieldOfficerScope(ctx: UserContext) {
 }
 
 async function validateEvidenceContext(ctx: UserContext, formData: FormData): Promise<EvidenceContext> {
-  const programmeId = textValue(formData, "programme_id");
-  const cohortId = textValue(formData, "cohort_id");
-  const cohortMemberId = textValue(formData, "cohort_member_id");
-  const interventionId = textValue(formData, "intervention_id");
-  const assessmentId = textValue(formData, "assessment_id");
-  const fieldVisitId = textValue(formData, "field_visit_id");
+  const programmeId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.programmeId);
+  const cohortId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortId);
+  const cohortMemberId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortMemberId);
+  const interventionId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.interventionId);
+  const assessmentId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.assessmentId);
+  const fieldVisitId = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.fieldVisitId);
   if (!programmeId) throw new Error("Select a programme for this evidence.");
   if (!cohortId) throw new Error("Select a beneficiary cohort for this evidence.");
   if (!cohortMemberId) throw new Error("Select a cohort beneficiary for this evidence.");
@@ -360,7 +386,12 @@ async function validateEvidenceContext(ctx: UserContext, formData: FormData): Pr
   if (ctx.role === "field_officer") {
     const ownsMember = member.assigned_to_user_id === ctx.appUserId;
     const ownsVisit = Boolean(visitResult.data && visitResult.data.assigned_to_user_id === ctx.appUserId);
-    if (!ownsMember && !ownsVisit) throw new Error("You can only upload evidence for assigned visits or beneficiaries.");
+    if (fieldVisitId && !ownsVisit) {
+      throw new Error("The selected field visit is outside your assigned Field Officer scope. Select a visit assigned to you.");
+    }
+    if (!fieldVisitId && !ownsMember) {
+      throw new Error("The selected beneficiary is outside your assigned Field Officer scope. Select an assigned beneficiary or visit.");
+    }
   }
 
   return {
@@ -406,14 +437,23 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
   requireRole(ctx, IMPACT_EVIDENCE_CREATE_ROLES, "You do not have permission to upload impact evidence.");
   const context = await validateEvidenceContext(ctx, formData);
   await logProgrammeScopeShadowDecision({ ctx, programmeId: context.programmeId, action: "write", resource: "evidence", legacyAllowed: true });
-  const fileValue = formData.get("evidence_file");
+  const fileValue = formData.get(IMPACT_EVIDENCE_UPLOAD_FIELDS.file);
   const file = fileValue instanceof File ? fileValue : null;
   const validation = validateImpactEvidenceFile(file);
   if (!validation.ok || !file) throw new Error(validation.message);
+  const evidenceTitle = sanitizeImpactEvidenceFileName(file.name);
+  if (!evidenceTitle) throw new Error("Evidence title could not be derived from the selected file.");
+  const evidenceCategory = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.category);
+  if (!evidenceCategory || !(IMPACT_EVIDENCE_CATEGORIES as readonly string[]).includes(evidenceCategory)) {
+    throw new Error("Select a valid evidence category.");
+  }
+  const capturedAtValue = textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.capturedAt);
+  const capturedAt = capturedAtValue ? new Date(capturedAtValue) : null;
+  if (capturedAt && Number.isNaN(capturedAt.getTime())) throw new Error("Enter a valid evidence collection date.");
 
   const buffer = await file.arrayBuffer();
   const sha256Hash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
-  const safeOriginalName = sanitizeImpactEvidenceFileName(file.name);
+  const safeOriginalName = evidenceTitle;
   const extension = extractExtension(safeOriginalName);
   const evidenceId = randomUUID();
   const storedFilename = `${randomUUID()}.${extension}`;
@@ -455,10 +495,10 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     file_url: null,
     file_type: file.type,
     evidence_type: file.type.startsWith("image/") ? "image" : "pdf",
-    evidence_category: textValue(formData, "evidence_category") ?? "other",
+    evidence_category: evidenceCategory,
     verification_status: "pending",
     status: "uploaded",
-    description: textValue(formData, "description"),
+    description: textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.description),
     storage_bucket: IMPACT_EVIDENCE_BUCKET,
     storage_path: storagePath,
     original_filename: safeOriginalName,
@@ -466,7 +506,9 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     mime_type: file.type,
     file_size_bytes: file.size,
     checksum_sha256: sha256Hash,
-    captured_at: textValue(formData, "captured_at"),
+    // Older deployed evidence triggers still validate this legacy checksum column.
+    sha256_hash: sha256Hash,
+    captured_at: capturedAt?.toISOString() ?? null,
     uploaded_at: now,
     uploaded_by_user_id: ctx.appUserId,
     metadata: { source: "impact_evidence_phase1", legacy_placeholder: false },
@@ -479,17 +521,42 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     .single();
   if (insertError || !inserted) {
     const { error: cleanupError } = await supabase.storage.from(IMPACT_EVIDENCE_BUCKET).remove([storagePath]);
+    const insertErrorInfo = safeError(insertError);
+    const cleanupErrorInfo = safeError(cleanupError);
     logImpactEvidenceDiagnostic({
       operation: cleanupError ? "metadata_insert_rollback_failed" : "metadata_insert_rolled_back",
       evidenceId,
       programmeId: context.programmeId,
       cohortId: context.cohortId,
+      cohortMemberId: context.cohortMemberId,
+      interventionId: context.interventionId,
+      assessmentId: context.assessmentId,
+      fieldVisitId: context.fieldVisitId,
       actorRole: ctx.role,
+      evidenceTitle,
+      evidenceCategory,
+      evidenceType: payload.evidence_type,
+      normalizedPayloadKeys: Object.keys(payload).sort(),
       fileSize: file.size,
       mimeType: file.type,
-      errorMessage: cleanupError?.message ?? insertError?.message ?? "metadata_insert_failed",
+      errorCode: insertErrorInfo.code,
+      errorMessage: insertErrorInfo.message,
+      errorDetails: insertErrorInfo.details,
+      errorHint: insertErrorInfo.hint,
       success: false,
     });
+    if (cleanupError) {
+      logImpactEvidenceDiagnostic({
+        operation: "metadata_insert_storage_cleanup_failed",
+        evidenceId,
+        actorRole: ctx.role,
+        errorCode: cleanupErrorInfo.code,
+        errorMessage: cleanupErrorInfo.message,
+        errorDetails: cleanupErrorInfo.details,
+        errorHint: cleanupErrorInfo.hint,
+        success: false,
+      });
+    }
     throw new Error("Evidence metadata could not be saved. The upload was rolled back.");
   }
 
@@ -506,10 +573,31 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
   };
   const { error: linkError } = await supabase.from("impact_evidence_links").insert(linkPayload);
   if (linkError) {
+    const linkErrorInfo = safeError(linkError);
     const [{ error: rowCleanupError }, { error: fileCleanupError }] = await Promise.all([
       supabase.from("impact_evidence_files").delete().eq("id", evidenceId),
       supabase.storage.from(IMPACT_EVIDENCE_BUCKET).remove([storagePath]),
     ]);
+    logImpactEvidenceDiagnostic({
+      operation: rowCleanupError || fileCleanupError ? "metadata_link_rollback_failed" : "metadata_link_rolled_back",
+      evidenceId,
+      programmeId: context.programmeId,
+      cohortId: context.cohortId,
+      cohortMemberId: context.cohortMemberId,
+      interventionId: context.interventionId,
+      assessmentId: context.assessmentId,
+      fieldVisitId: context.fieldVisitId,
+      actorRole: ctx.role,
+      evidenceTitle,
+      evidenceCategory,
+      evidenceType: payload.evidence_type,
+      normalizedPayloadKeys: Object.keys(linkPayload).sort(),
+      errorCode: linkErrorInfo.code,
+      errorMessage: linkErrorInfo.message,
+      errorDetails: linkErrorInfo.details,
+      errorHint: linkErrorInfo.hint,
+      success: false,
+    });
     if (rowCleanupError || fileCleanupError) {
       await supabase.from("impact_evidence_files").update({
         verification_status: "needs_review",
@@ -525,7 +613,7 @@ export async function uploadImpactEvidence(ctx: UserContext, formData: FormData)
     fromStatus: "draft",
     toStatus: "uploaded",
     ctx,
-    note: textValue(formData, "description"),
+    note: textValue(formData, IMPACT_EVIDENCE_UPLOAD_FIELDS.description),
     metadata: { mime_type: file.type, file_size_bytes: file.size },
   });
   logImpactEvidenceDiagnostic({ operation: "upload_success", evidenceId, programmeId: context.programmeId, cohortId: context.cohortId, fieldVisitId: context.fieldVisitId, actorRole: ctx.role, fileSize: file.size, mimeType: file.type, success: true });
@@ -643,7 +731,7 @@ export async function getImpactEvidenceUploadOptions(
   let visits = loadedVisits as ImpactEvidenceUploadOptions["visits"];
   if (scope) {
     const allowedVisits = new Set(scope.visitIds);
-    visits = visits.filter((visit) => allowedVisits.has(visit.id) || scope.memberIds.includes(visit.cohort_member_id));
+    visits = visits.filter((visit) => allowedVisits.has(visit.id));
   }
 
   return normalizeImpactEvidenceUploadOptions({
