@@ -68,6 +68,9 @@ const impactReportService = read("src/lib/data/impact-reports.ts");
 const impactReportListPage = read(
   "src/app/dashboard/impact-intelligence/reports/page.tsx",
 );
+const impactReportCreationStudio = read(
+  "src/app/dashboard/impact-intelligence/reports/new/report-creation-studio.tsx",
+);
 const impactReportDetailPage = read(
   "src/app/dashboard/impact-intelligence/reports/[reportId]/page.tsx",
 );
@@ -410,6 +413,23 @@ check("institutional reports enforce programme-anchored scope", () => {
       impactReportService.includes("validateReportScope") &&
       impactReportService.includes("applyScope"),
     "Expected programme-anchored report scope fields, database validation, and source query filtering.",
+  );
+});
+
+check("report creation studio submits the canonical report payload", () => {
+  const studio = compact(impactReportCreationStudio);
+  assert(
+    studio.includes('id="report-creation-form"') &&
+      studio.includes('type="hidden" name="title" value={title}') &&
+      studio.includes('type="hidden" name="report_type" value={reportType}') &&
+      studio.includes('type="hidden" name="programme_id" value={programmeId}') &&
+      studio.includes('type="hidden" name="cohort_id" value={cohortId}') &&
+      studio.includes('type="hidden" name="cohort_member_id" value={memberId}') &&
+      studio.includes('type="hidden" name="msme_id" value={selectedMember?.msme_id ?? ""}') &&
+      studio.includes('type="hidden" name="intervention_id" value={interventionId}') &&
+      studio.includes('type="hidden" name="summary" value={summary}') &&
+      studio.includes('type="submit"'),
+    "Expected the final report generation step to retain every canonical server-action field and a real submit control.",
   );
 });
 

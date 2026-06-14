@@ -244,8 +244,14 @@ export function ReportCreationStudio({
         </nav>
       </div>
 
-      <form action={action} className="mx-auto grid max-w-[1500px] gap-6 p-4 sm:p-7 xl:grid-cols-[minmax(0,1fr)_360px] xl:p-9">
+      <form id="report-creation-form" action={action} className="mx-auto grid max-w-[1500px] gap-6 p-4 sm:p-7 xl:grid-cols-[minmax(0,1fr)_360px] xl:p-9">
+        <input type="hidden" name="title" value={title} />
+        <input type="hidden" name="report_type" value={reportType} />
+        <input type="hidden" name="programme_id" value={programmeId} />
+        <input type="hidden" name="cohort_id" value={cohortId} />
+        <input type="hidden" name="cohort_member_id" value={memberId} />
         <input type="hidden" name="msme_id" value={selectedMember?.msme_id ?? ""} />
+        <input type="hidden" name="intervention_id" value={interventionId} />
         <input type="hidden" name="summary" value={summary} />
         {SOURCES.map((source) => (
           <input key={source.key} type="hidden" name="source_preferences" value={sources[source.key] ? source.key : ""} />
@@ -260,11 +266,11 @@ export function ReportCreationStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Report title <span className="text-rose-500">*</span>
-                  <input required name="title" value={title} onChange={(event) => setTitle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" placeholder="e.g. BOI MSME Growth Programme Performance Report" />
+                  <input required value={title} onChange={(event) => setTitle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" placeholder="e.g. BOI MSME Growth Programme Performance Report" />
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Report type
-                  <select name="report_type" value={reportType} onChange={(event) => setReportType(event.target.value as typeof reportType)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10">
+                  <select value={reportType} onChange={(event) => setReportType(event.target.value as typeof reportType)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10">
                     {REPORT_PHASE1A_TYPES.map((type) => <option key={type} value={type}>{titleCase(type)}</option>)}
                   </select>
                 </label>
@@ -296,28 +302,28 @@ export function ReportCreationStudio({
               <div className="mt-7 grid gap-5 md:grid-cols-2">
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Programme <span className="text-rose-500">*</span>
-                  <select required name="programme_id" value={programmeId} onChange={(event) => changeProgramme(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10">
+                  <select required value={programmeId} onChange={(event) => changeProgramme(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10">
                     <option value="">Select an authorised programme</option>
                     {options.programmes.map((item) => <option key={item.id} value={item.id}>{item.name}{item.programme_code ? ` · ${item.programme_code}` : ""}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Beneficiary cohort
-                  <select name="cohort_id" value={cohortId} onChange={(event) => changeCohort(event.target.value)} disabled={!programmeId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                  <select value={cohortId} onChange={(event) => changeCohort(event.target.value)} disabled={!programmeId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                     <option value="">{programmeId ? "All programme cohorts" : "Select programme first"}</option>
                     {cohorts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700">
                   Beneficiary / MSME
-                  <select name="cohort_member_id" value={memberId} onChange={(event) => changeMember(event.target.value)} disabled={!cohortId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                  <select value={memberId} onChange={(event) => changeMember(event.target.value)} disabled={!cohortId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                     <option value="">{cohortId ? "All cohort beneficiaries" : "Select cohort first"}</option>
                     {members.map((item) => <option key={item.id} value={item.id}>{item.msmes?.business_name ?? "Unknown MSME"} ({item.msmes?.msme_id ?? item.member_status})</option>)}
                   </select>
                 </label>
                 <label className="space-y-2 text-xs font-bold text-slate-700 md:col-span-2">
                   Intervention
-                  <select name="intervention_id" value={interventionId} onChange={(event) => setInterventionId(event.target.value)} disabled={!programmeId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                  <select value={interventionId} onChange={(event) => setInterventionId(event.target.value)} disabled={!programmeId} className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium text-slate-800 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                     <option value="">{programmeId ? "All matching interventions" : "Select programme first"}</option>
                     {interventions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
                   </select>
