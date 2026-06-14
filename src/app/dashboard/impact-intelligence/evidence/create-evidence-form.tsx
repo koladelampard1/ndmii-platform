@@ -22,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { DragEvent, ReactNode } from "react";
+import type { DragEvent, FormEvent, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -110,6 +110,9 @@ export function CreateEvidenceForm({
   const [capturedAt, setCapturedAt] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const cohorts = useMemo(
     () => safeOptions.cohorts.filter((item) => item.programme_id === programmeId),
@@ -165,7 +168,16 @@ export function CreateEvidenceForm({
   }
 
   function selectFile(nextFile: File | null) {
+    setSubmitError(null);
+    if (nextFile && nextFile.size > maxFileSizeBytes) {
+      setFile(null);
+      setFileError(`This file is too large. Select a file no larger than ${formatBytes(maxFileSizeBytes)}.`);
+      if (inputRef.current) inputRef.current.value = "";
+      return false;
+    }
+    setFileError(null);
     setFile(nextFile);
+    return true;
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -173,10 +185,34 @@ export function CreateEvidenceForm({
     setDragging(false);
     const nextFile = event.dataTransfer.files[0] ?? null;
     if (!nextFile) return;
+    if (!selectFile(nextFile)) return;
     const transfer = new DataTransfer();
     transfer.items.add(nextFile);
     if (inputRef.current) inputRef.current.files = transfer.files;
-    selectFile(nextFile);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(null);
+    if (!file || file.size > maxFileSizeBytes) {
+      setSubmitError(`Select a file no larger than ${formatBytes(maxFileSizeBytes)} before uploading.`);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await action(new FormData(event.currentTarget));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const bodyLimitExceeded = message.includes("Body exceeded")
+        || message.includes("413")
+        || message.toLowerCase().includes("payload too large");
+      setSubmitError(bodyLimitExceeded
+        ? `The upload request was too large. Select a file no larger than ${formatBytes(maxFileSizeBytes)} and try again.`
+        : "Evidence upload could not be completed. Please check the file and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const steps = [
@@ -188,9 +224,19 @@ export function CreateEvidenceForm({
   ];
 
   return (
-    <form action={action} className="space-y-5">
+    <form action={action} onSubmit={handleSubmit} className="space-y-5">
       <input type="hidden" name={IMPACT_EVIDENCE_UPLOAD_FIELDS.programmeId} value={programmeId} />
       <input type="hidden" name={IMPACT_EVIDENCE_UPLOAD_FIELDS.cohortId} value={cohortId} />
+
+      {(fileError || submitError) && (
+        <div role="alert" aria-live="polite" className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-bold">Upload could not be completed</p>
+            <p className="mt-1 text-xs">{fileError ?? submitError}</p>
+          </div>
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4">
@@ -437,8 +483,8 @@ export function CreateEvidenceForm({
             <p className="mt-2 text-[11px] leading-5 text-slate-600">
               Upload creates an evidence record in <strong>Uploaded</strong> state. Submission for review remains a separate existing action on the evidence detail page.
             </p>
-            <Button type="submit" disabled={!ready} className="mt-4 w-full gap-2">
-              <Upload className="h-4 w-4" /> Upload Evidence
+            <Button type="submit" disabled={!ready || submitting} className="mt-4 w-full gap-2">
+              <Upload className="h-4 w-4" /> {submitting ? "Uploading..." : "Upload Evidence"}
             </Button>
             <p className="mt-3 flex items-start gap-2 text-[10px] leading-4 text-slate-500">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
