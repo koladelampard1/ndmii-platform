@@ -36,6 +36,8 @@ const supabaseServer = read("src/lib/supabase/server.ts");
 const boiPortal = read("src/app/boi/page.tsx");
 const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
 const adminGateway = read("src/app/admin/page.tsx");
+const adminDashboardLayout = read("src/app/dashboard/admin/layout.tsx");
+const adminDashboardPage = read("src/app/dashboard/admin/page.tsx");
 const associationAccess = read("src/lib/associations/access.ts");
 const associationMemberActions = read("src/lib/data/admin-association-member-actions.ts");
 const associationAccessMigration = read("supabase/migrations/20260531170000_association_member_fast_track_access.sql");
@@ -56,6 +58,7 @@ const impactEvidencePage = read(
 const impactEvidenceUploadStudio = read(
   "src/app/dashboard/impact-intelligence/evidence/create-evidence-form.tsx",
 );
+const nextConfig = read("next.config.ts");
 const impactDataService = read("src/lib/data/impact-intelligence.ts");
 const impactIndicatorMigration = read(
   "supabase/migrations/20260606140000_impact_indicator_phase1.sql",
@@ -100,6 +103,30 @@ const institutionalReportPdfModule = (() => {
   return commonJsModule.exports;
 })();
 const authorization = read("src/lib/auth/authorization.ts");
+const authorizationModule = (() => {
+  const source = ts.transpileModule(authorization, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  vm.runInNewContext(source, {
+    module: commonJsModule,
+    exports: commonJsModule.exports,
+    require(moduleName) {
+      if (moduleName === "@/lib/impact-intelligence/permissions") {
+        return {
+          canAccessRoute: () => true,
+          getRoutePolicy: () => null,
+          logImpactPolicyDrift: () => {},
+        };
+      }
+      throw new Error(`Unexpected authorization dependency: ${moduleName}`);
+    },
+  });
+  return commonJsModule.exports;
+})();
 const authSession = read("src/lib/auth/session.ts");
 const roleTypes = read("src/types/roles.ts");
 const analyticsRoute = read(
@@ -343,6 +370,17 @@ check("evidence upload hashes files and cleans up failed writes", () => {
       impactEvidenceService.includes(".upload(storagePath") &&
       impactEvidenceService.includes(".remove([storagePath])"),
     "Expected constrained evidence upload with SHA-256 and storage cleanup.",
+  );
+});
+
+check("evidence Server Action envelope preserves the 10 MiB file validation limit", () => {
+  assert(
+    nextConfig.includes('bodySizeLimit: "11mb"') &&
+      impactEvidenceService.includes("IMPACT_EVIDENCE_MAX_FILE_SIZE = 10 * 1024 * 1024") &&
+      impactEvidenceUploadStudio.includes("nextFile.size > maxFileSizeBytes") &&
+      impactEvidenceUploadStudio.includes("event.preventDefault()") &&
+      impactEvidenceUploadStudio.includes("Body exceeded"),
+    "Expected a multipart-aware Server Action limit with unchanged 10 MiB backend validation and client preflight.",
   );
 });
 
@@ -638,6 +676,40 @@ check("data analyst is a recognized Impact Intelligence role", () => {
       authorization.includes('data_analyst: "/dashboard/impact-intelligence/analytics"') &&
       authSession.includes('"data_analyst"'),
     "Expected data_analyst in role types, normalization, session validation, and route-home configuration.",
+  );
+});
+
+check("super admin resolves a valid post-login admin workspace", () => {
+  const {
+    canAccessRoute,
+    getDefaultDashboardRoute,
+    isPlatformAdmin,
+    normalizeUserRole,
+  } = authorizationModule;
+  const resolvedRole = normalizeUserRole("super_admin");
+  const landingRoute = getDefaultDashboardRoute(resolvedRole);
+
+  assert(
+    resolvedRole === "super_admin" &&
+      normalizeUserRole("superadmin") === "super_admin" &&
+      normalizeUserRole("system_admin") === "super_admin" &&
+      isPlatformAdmin(resolvedRole) &&
+      landingRoute === "/dashboard/admin" &&
+      canAccessRoute(resolvedRole, landingRoute) &&
+      canAccessRoute(resolvedRole, "/dashboard/impact-intelligence") &&
+      canAccessRoute(resolvedRole, "/admin"),
+    "Expected super admin aliases, landing route, and platform/admin route access to resolve consistently.",
+  );
+});
+
+check("super admin login and admin landing guards use the verified platform role", () => {
+  assert(
+    loginPage.includes("const verifiedRole = normalizeUserRole(") &&
+      loginPage.includes("getDefaultDashboardRoute(verifiedRole)") &&
+      adminDashboardLayout.includes("!isPlatformAdmin(ctx.role)") &&
+      adminDashboardPage.includes("!isPlatformAdmin(ctx.role)") &&
+      adminGateway.includes("isPlatformAdmin(ctx.role)"),
+    "Expected the server-verified role and platform-admin guard on the post-login landing chain.",
   );
 });
 

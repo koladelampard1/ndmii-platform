@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAssociationUploadWorkspace } from "@/lib/data/admin-associations";
 import { processAssociationMemberUpload } from "@/lib/data/admin-association-members";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { AssociationMemberFileInput } from "./association-member-file-input";
 
@@ -33,7 +34,7 @@ function formatDate(value: string | null) {
 async function bulkImportAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const associationId = String(formData.get("association_id") ?? "");
   const csvFile = formData.get("csv_file");
@@ -88,7 +89,7 @@ export default async function AssociationBulkUploadPage({
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const workspace = await getAdminAssociationUploadWorkspace(params.import ?? null);
 

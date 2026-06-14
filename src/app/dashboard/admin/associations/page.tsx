@@ -5,6 +5,7 @@ import {
   parseAssociationDirectoryFilters,
   writeAssociationActivityLog,
 } from "@/lib/data/admin-associations";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -88,7 +89,7 @@ async function generateUniqueAssociationSlug(
 async function associationAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServiceRoleSupabaseClient();
   const kind = String(formData.get("kind"));
@@ -237,7 +238,7 @@ export default async function AssociationsPage({
 }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const directory = await getAdminAssociationsDirectory(params);
   const parsedFilters = parseAssociationDirectoryFilters(params);

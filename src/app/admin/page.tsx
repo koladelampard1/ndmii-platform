@@ -2,11 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Building2, LockKeyhole, ShieldCheck } from "lucide-react";
 import { AccountActions } from "@/components/auth/account-actions";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 export default async function AdminPortalPage() {
   const ctx = await getCurrentUserContext();
-  const isAdmin = ctx.role === "admin";
+  const isAdmin = isPlatformAdmin(ctx.role);
 
   if (ctx.role !== "public" && !isAdmin) {
     redirect("/access-denied");

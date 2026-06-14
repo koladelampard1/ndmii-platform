@@ -6,7 +6,7 @@ import {
   createServerSupabaseClient,
   createServiceRoleSupabaseClient,
 } from "@/lib/supabase/server";
-import type { UserContext } from "@/lib/auth/authorization";
+import { normalizeUserRole, type UserContext } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 export type AuthenticatedUser = {
@@ -90,7 +90,8 @@ function logAuthRuntimeDiagnostic(diagnostic: AuthRuntimeDiagnostic) {
 
 function toUserRole(value: string | null | undefined): UserRole | null {
   if (!value) return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]/g, "_");
+  const normalized = normalizeUserRole(value, "public");
+  if (normalized === "public" && value.trim().toLowerCase() !== "public") return null;
   return VALID_USER_ROLES.has(normalized as UserRole) ? (normalized as UserRole) : null;
 }
 

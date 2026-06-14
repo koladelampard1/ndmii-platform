@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { requireWorkspaceRole } from "@/lib/auth/workspace-guards";
 import { AdminCommandShell } from "@/components/admin/admin-command-shell";
 
@@ -22,7 +23,7 @@ export default async function AdminWorkspaceLayout({ children }: { children: Rea
   const pathname = await currentPathname();
   const ctx = await requireWorkspaceRole(["admin", "reviewer", "fccpc_officer", "firs_officer"], pathname);
   const sharedWorkspace = pathname === "/dashboard/admin/msmes" || pathname.startsWith("/dashboard/admin/msmes/") || pathname === "/dashboard/admin/association-members" || pathname.startsWith("/dashboard/admin/association-members/");
-  if (ctx.role !== "admin" && !sharedWorkspace) {
+  if (!isPlatformAdmin(ctx.role) && !sharedWorkspace) {
     redirect("/access-denied");
   }
 

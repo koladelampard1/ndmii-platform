@@ -61,7 +61,9 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   firs_officer: "firs_officer",
   msme: "msme",
   admin: "admin",
+  superadmin: "super_admin",
   super_admin: "super_admin",
+  system_admin: "super_admin",
   public: "public",
 };
 
@@ -173,6 +175,10 @@ export function normalizeUserRole(rawRole: string | null | undefined, fallback: 
   return KNOWN_ROLES.includes(compacted as UserRole) ? (compacted as UserRole) : fallback;
 }
 
+export function isPlatformAdmin(role: UserRole): boolean {
+  return role === "admin" || role === "super_admin";
+}
+
 function routeMatchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
@@ -181,7 +187,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   let legacyAllowed: boolean;
   if (isPublicPath(path)) legacyAllowed = true;
   else if (role === "public") legacyAllowed = false;
-  else if (role === "admin" || role === "super_admin") legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
+  else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
   else if (role === "field_officer") {
     legacyAllowed = path === "/dashboard/impact-intelligence" || [

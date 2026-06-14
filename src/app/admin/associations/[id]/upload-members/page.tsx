@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { UploadMembersClient } from "./upload-members-client";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { processAssociationBulkRows } from "@/lib/associations/onboarding";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -16,7 +17,7 @@ export default async function AdminAssociationUploadMembersPage({
   const { id } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const supabase = await createServerSupabaseClient();
   const [{ data: association }, { data: categories }, { data: locations }] = await Promise.all([
@@ -32,7 +33,7 @@ export default async function AdminAssociationUploadMembersPage({
   async function processUploadAction(formData: FormData) {
     "use server";
     const actionCtx = await getCurrentUserContext();
-    if (actionCtx.role !== "admin") redirect("/access-denied");
+    if (!isPlatformAdmin(actionCtx.role)) redirect("/access-denied");
 
     const validRowsRaw = String(formData.get("valid_rows_json") ?? "[]");
     const fileName = String(formData.get("file_name") ?? "association-members.csv");

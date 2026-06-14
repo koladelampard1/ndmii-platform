@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { computeInviteExpiry, generateInviteToken, sendActivationInvite } from "@/lib/associations/invites";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
@@ -27,7 +28,7 @@ function profileCompletionStatus(msme: {
 async function resendInviteAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const associationId = String(formData.get("association_id") ?? "");
   const memberId = String(formData.get("member_id") ?? "");
@@ -86,7 +87,7 @@ export default async function AdminAssociationMembersPage({
   const { id } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") redirect("/access-denied");
+  if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const statusFilter = query.status?.toUpperCase();
 

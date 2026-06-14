@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canActOnMsme, canViewMsme } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -6,7 +7,7 @@ import type { UserRole } from "@/types/roles";
 
 export async function requireRole(roles: UserRole[]) {
   const ctx = await getCurrentUserContext();
-  if (!roles.includes(ctx.role)) {
+  if (!isPlatformAdmin(ctx.role) && !roles.includes(ctx.role)) {
     redirect("/access-denied");
   }
   return ctx;

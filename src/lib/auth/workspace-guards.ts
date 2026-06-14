@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { SUPABASE_ACCESS_TOKEN_COOKIE, SUPABASE_REFRESH_TOKEN_COOKIE } from "@/lib/supabase/server";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 async function resolveRequestHost() {
@@ -33,7 +34,7 @@ export async function requireWorkspaceRole(allowedRoles: UserRole[], pathname?: 
   const requestHost = await resolveRequestHost();
   const cookieStore = await cookies();
 
-  if (!allowedRoles.includes(ctx.role)) {
+  if (!isPlatformAdmin(ctx.role) && !allowedRoles.includes(ctx.role)) {
     console.info("[workspace-role-guard]", {
       requestHost,
       pathname: currentPathname,

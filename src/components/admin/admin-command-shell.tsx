@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/types/roles";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 
 type AdminCommandShellProps = {
   children: ReactNode;
@@ -86,8 +87,8 @@ function isActive(pathname: string, href?: string) {
 export function AdminCommandShell({ children, notificationCount = 0, adminName, adminRole = "admin" }: AdminCommandShellProps) {
   const pathname = usePathname();
   const displayName = adminName?.trim() || "Admin User";
-  const roleLabel = adminRole === "admin" ? "Super Administrator" : adminRole.replaceAll("_", " ");
-  const visibleGroups = adminRole === "admin"
+  const roleLabel = adminRole === "super_admin" ? "Super Administrator" : adminRole === "admin" ? "Administrator" : adminRole.replaceAll("_", " ");
+  const visibleGroups = isPlatformAdmin(adminRole)
     ? navGroups
     : navGroups
         .map((group) => ({ ...group, items: group.items.filter((item) => item.href === "/dashboard/admin/msmes" || item.href === "/dashboard/admin/verifications") }))

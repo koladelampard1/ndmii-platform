@@ -32,9 +32,22 @@ test("boi.dbin.ng resolves to the BOI surface", () => {
   assert.equal(resolveDbinHostSurface("BOI.DBIN.NG:443"), "boi");
 });
 
-test("all BOI requests rewrite to /boi", () => {
+test("BOI portal requests rewrite to /boi", () => {
   assert.equal(resolveDbinRewritePath("boi", "/"), "/boi");
   assert.equal(resolveDbinRewritePath("boi", "/applications/123"), "/boi");
+});
+
+test("BOI authentication routes remain directly accessible", () => {
+  assert.equal(resolveDbinRewritePath("boi", "/login"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/logout"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/api/auth/session"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/_next/static/chunk.js"), null);
+});
+
+test("BOI authenticated workspaces remain directly accessible", () => {
+  assert.equal(resolveDbinRewritePath("boi", "/dashboard/admin"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/dashboard/impact-intelligence"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/admin"), null);
 });
 
 test("existing DBIN production hosts retain their surfaces", () => {
@@ -42,6 +55,13 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("app.dbin.ng"), "app");
   assert.equal(resolveDbinHostSurface("admin.dbin.ng"), "admin");
   assert.equal(resolveDbinHostSurface("verify.dbin.ng"), "verify");
+});
+
+test("super admin landing route remains direct on app, BOI, and admin surfaces", () => {
+  for (const host of ["app.dbin.ng", "boi.dbin.ng", "admin.dbin.ng"]) {
+    const surface = resolveDbinHostSurface(host);
+    assert.equal(resolveDbinRewritePath(surface, "/dashboard/admin"), null);
+  }
 });
 
 test("existing admin and verify rewrites remain unchanged", () => {

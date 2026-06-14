@@ -58,6 +58,10 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (
       pathname === "/login" ||
       pathname === "/logout" ||
+      pathname === "/dashboard" ||
+      pathname.startsWith("/dashboard/") ||
+      pathname === "/admin" ||
+      pathname.startsWith("/admin/") ||
       pathname.startsWith("/api/") ||
       pathname.startsWith("/_next/")
     ) {

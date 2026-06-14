@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, ShieldUser, Building2, BadgeCheck } from "lucide-react";
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profile";
-import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
+import { canAccessRoute, getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
 function LoginPageContent() {
@@ -22,6 +22,12 @@ function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(searchParams.get("message"));
   const [error, setError] = useState<string | null>(null);
+  const signedOut = searchParams.get("signedOut") === "1";
+
+  useEffect(() => {
+    if (!signedOut) return;
+    void supabase.auth.signOut({ scope: "local" });
+  }, [signedOut, supabase]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,13 +84,29 @@ function LoginPageContent() {
       return;
     }
 
-    console.info("[auth-login:session-sync-success]", { role, sessionDebug });
+    const verifiedRole = normalizeUserRole(
+      typeof sessionDebug?.role === "string" ? sessionDebug.role : role,
+      role,
+    );
+    console.info("[auth-login:session-sync-success]", { role: verifiedRole, sessionDebug });
 
-    const targetRoute = getDefaultDashboardRoute(role);
+    const requestedReturnPath = searchParams.get("returnTo");
+    const safeReturnPath =
+      requestedReturnPath &&
+      requestedReturnPath.startsWith("/") &&
+      !requestedReturnPath.startsWith("//") &&
+      requestedReturnPath !== "/login" &&
+      !requestedReturnPath.startsWith("/login?") &&
+      requestedReturnPath !== "/logout" &&
+      !requestedReturnPath.startsWith("/logout?") &&
+      canAccessRoute(verifiedRole, requestedReturnPath.split("?")[0] || "/")
+        ? requestedReturnPath
+        : null;
+    const targetRoute = safeReturnPath ?? getDefaultDashboardRoute(verifiedRole);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,
-        resolvedRole: role,
+        resolvedRole: verifiedRole,
         authUserId: signInData.user.id,
         appUserId,
         targetRoute,

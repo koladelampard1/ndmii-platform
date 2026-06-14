@@ -18,7 +18,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { getDefaultDashboardRoute } from "@/lib/auth/authorization";
+import { getDefaultDashboardRoute, isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { normalizeReviewStatus } from "@/lib/data/msme-workflow";
@@ -267,10 +267,10 @@ function getTopEntry(rows: [string, number][], emptyLabel: string) {
 
 export default async function DashboardPage() {
   const ctx = await getCurrentUserContext();
-  if (ctx.role !== "admin") {
+  if (!isPlatformAdmin(ctx.role)) {
     console.info("[admin-dashboard-role-guard]", {
       resolvedRole: ctx.role,
-      expectedRole: "admin",
+      expectedRole: "admin,super_admin",
       redirectReason: "admin_dashboard_role_mismatch",
       currentPathname: "/dashboard/admin",
     });
@@ -278,7 +278,7 @@ export default async function DashboardPage() {
   }
   console.info("[admin-dashboard-role-guard]", {
     resolvedRole: ctx.role,
-    expectedRole: "admin",
+    expectedRole: "admin,super_admin",
     redirectReason: null,
     currentPathname: "/dashboard/admin",
   });
