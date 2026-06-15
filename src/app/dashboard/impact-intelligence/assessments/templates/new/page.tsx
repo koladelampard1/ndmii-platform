@@ -1,8 +1,7 @@
 import { redirect, unstable_rethrow } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { canRole } from "@/lib/impact-intelligence/permissions";
+import { canAccessRoute, canRole } from "@/lib/impact-intelligence/permissions";
 import {
   ASSESSMENT_QUESTION_TYPES,
   ASSESSMENT_TEMPLATE_STATUSES,
@@ -11,7 +10,9 @@ import {
 } from "@/lib/data/impact-intelligence";
 import { EmptyState, SectionCard } from "../../../_components";
 import { logImpactRouteDiagnostic } from "../../../_diagnostics";
+import { AssessmentDesignStudio } from "./assessment-design-studio";
 
+const ROUTE = "/dashboard/impact-intelligence/assessments/templates/new";
 const EXPECTED_TEMPLATE_ERRORS = ["required", "invalid", "valid", "blueprint", "scoring", "version", "permission", "already exists"];
 
 const DEFAULT_BLUEPRINT = [
@@ -36,9 +37,9 @@ async function createTemplateAction(formData: FormData) {
     templateId = await createAssessmentTemplate(ctx, formData);
   } catch (error) {
     unstable_rethrow(error);
-    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates/new", operation: "assessment_template_create_failed", error });
+    logImpactRouteDiagnostic({ ctx, route: ROUTE, operation: "assessment_template_create_failed", error });
     if (!(error instanceof Error) || !EXPECTED_TEMPLATE_ERRORS.some((message) => error.message.toLowerCase().includes(message))) throw error;
-    redirect(`/dashboard/impact-intelligence/assessments/templates/new?error=${encodeURIComponent(error.message)}`);
+    redirect(`${ROUTE}?error=${encodeURIComponent(error.message)}`);
   }
   redirect(`/dashboard/impact-intelligence/assessments/templates/${templateId}`);
 }
@@ -53,71 +54,34 @@ export default async function NewAssessmentTemplatePage({ searchParams }: { sear
   } catch (error) {
     unstable_rethrow(error);
     loadError = error instanceof Error ? error.message : "Assessment template creation is temporarily unavailable.";
-    logImpactRouteDiagnostic({ ctx, route: "/dashboard/impact-intelligence/assessments/templates/new", operation: "assessment_template_create_page_load_failed", error });
+    logImpactRouteDiagnostic({ ctx, route: ROUTE, operation: "assessment_template_create_page_load_failed", error });
+  }
+
+  if (!ctx || loadError) {
+    return (
+      <section className="space-y-6">
+        <SectionCard title="Template Creation Unavailable">
+          <EmptyState
+            title="Assessment template creation could not load"
+            description="The current session or assessment source is temporarily unavailable. No template data has been changed."
+            icon={ClipboardCheck}
+          />
+        </SectionCard>
+      </section>
+    );
   }
 
   return (
-    <section className="space-y-6">
-      <header className="rounded-xl border bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Template setup</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">Create Assessment Template</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Define the sections, question order, question types, required flags, and weights used for BOI MSME assessments.</p>
-      </header>
-
-      {loadError ? (
-        <SectionCard title="Template Creation Unavailable">
-          <EmptyState title="Assessment template creation could not load" description="The current session or assessment source is temporarily unavailable." icon={ClipboardCheck} />
-        </SectionCard>
-      ) : (
-      <>
-      {query.error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{query.error}</div>}
-      <form action={createTemplateAction} className="grid gap-4 rounded-xl border bg-white p-5 shadow-sm lg:grid-cols-2">
-        <label className="space-y-1 text-sm font-medium text-slate-700">
-          Template name
-          <input required name="name" className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="BOI MSME Readiness Assessment" />
-        </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700">
-          Assessment type
-          <select name="assessment_type" defaultValue="credit_readiness" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-            {ASSESSMENT_TYPES.map((assessmentType) => (
-              <option key={assessmentType} value={assessmentType}>{assessmentType}</option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700">
-          Version
-          <input required name="version" type="number" min="1" defaultValue="1" className="w-full rounded-md border px-3 py-2 text-sm font-normal" />
-        </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700">
-          Status
-          <select name="status" defaultValue="draft" className="w-full rounded-md border px-3 py-2 text-sm font-normal">
-            {ASSESSMENT_TEMPLATE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-          </select>
-        </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700 lg:col-span-2">
-          Description
-          <textarea name="description" rows={3} className="w-full rounded-md border px-3 py-2 text-sm font-normal" placeholder="Purpose, target MSME segment, and usage notes." />
-        </label>
-        <label className="space-y-2 text-sm font-medium text-slate-700 lg:col-span-2">
-          Scoring bands
-          <textarea name="scoring_bands" rows={5} defaultValue={DEFAULT_SCORING_BANDS} className="w-full rounded-md border px-3 py-2 font-mono text-xs font-normal leading-5" />
-          <span className="block text-xs font-normal leading-5 text-slate-500">
-            JSON array with label, min, and max percent values. Current dashboards support low, moderate, and strong labels.
-          </span>
-        </label>
-        <label className="space-y-2 text-sm font-medium text-slate-700 lg:col-span-2">
-          Question blueprint
-          <textarea required name="question_blueprint" rows={10} defaultValue={DEFAULT_BLUEPRINT} className="w-full rounded-md border px-3 py-2 font-mono text-xs font-normal leading-5" />
-          <span className="block text-xs font-normal leading-5 text-slate-500">
-            One question per line: Section | Question | Type | Category | Weight | Required yes/no | Options comma list | Help text | Optional scoring config JSON. Supported types: {ASSESSMENT_QUESTION_TYPES.join(", ")}.
-          </span>
-        </label>
-        <div className="flex justify-end lg:col-span-2">
-          <Button type="submit">Create template</Button>
-        </div>
-      </form>
-      </>
-      )}
-    </section>
+    <AssessmentDesignStudio
+      action={createTemplateAction}
+      assessmentTypes={ASSESSMENT_TYPES}
+      defaultBlueprint={DEFAULT_BLUEPRINT}
+      defaultScoringBands={DEFAULT_SCORING_BANDS}
+      error={query.error}
+      questionTypes={ASSESSMENT_QUESTION_TYPES}
+      role={ctx.role}
+      statuses={ASSESSMENT_TEMPLATE_STATUSES}
+      canOpenAssessments={canAccessRoute(ctx.role, "/dashboard/impact-intelligence/assessments")}
+    />
   );
 }
