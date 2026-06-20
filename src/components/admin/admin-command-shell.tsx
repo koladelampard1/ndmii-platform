@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   FileClock,
   FileText,
+  Factory,
   Home,
   LayoutDashboard,
   LifeBuoy,
@@ -66,6 +67,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Complaints", href: "/dashboard/admin/complaints", icon: FileClock, pending: true },
       { label: "Impact Intelligence", href: "/dashboard/impact-intelligence", icon: LayoutDashboard },
+      { label: "LCDBO Programme Operations", href: "/dashboard/lcdbo", icon: Factory },
       { label: "Public Verification", href: "/dashboard/admin/public-verification", icon: ShieldCheck, pending: true },
     ],
   },

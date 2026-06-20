@@ -18,6 +18,7 @@ import {
   Wrench,
   Star,
   Landmark,
+  Factory,
   type LucideIcon,
   Menu,
 } from "lucide-react";
@@ -51,6 +52,12 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
       { href: "/dashboard/msme/quotes", label: "Quote Requests", icon: ClipboardList },
       { href: "/dashboard/msme/invoices", label: "Invoices", icon: Receipt },
       { href: "/dashboard/msme/bookkeeping", label: "Bookkeeping", icon: Wallet },
+    ],
+  },
+  {
+    title: "Programmes",
+    links: [
+      { href: "/dashboard/msme/lcdbo", label: "LCDBO Programme", icon: Factory },
     ],
   },
   {

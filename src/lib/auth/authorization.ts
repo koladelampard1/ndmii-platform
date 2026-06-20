@@ -465,6 +465,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+        { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
         { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },
@@ -495,6 +496,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+        { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
         { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },

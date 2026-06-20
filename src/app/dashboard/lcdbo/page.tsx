@@ -67,14 +67,15 @@ async function requireLcdboReviewer() {
     module: { allowed: isPlatformAdmin(ctx.role), status: "fallback", source: "module" as const },
   }));
   if (!ctx.appUserId) redirect("/access-denied");
+  const canManage = isPlatformAdmin(ctx.role) || access.allowed;
   let assignedAccess = false;
-  if (!access.allowed) {
+  if (!canManage) {
     const supabase = await createServiceRoleSupabaseClient();
     const { count } = await supabase.from("cluster_members").select("id,industrial_clusters!inner(programme_id)", { count: "exact", head: true }).eq("assigned_officer_id", ctx.appUserId).eq("industrial_clusters.programme_id", programme.id);
     assignedAccess = (count ?? 0) > 0;
   }
-  if (!access.allowed && !assignedAccess) redirect("/access-denied");
-  return { ctx, programme, access, canManage: access.allowed };
+  if (!canManage && !assignedAccess) redirect("/access-denied");
+  return { ctx, programme, access, canManage };
 }
 
 async function reviewEnrolmentAction(formData: FormData) {
@@ -167,7 +168,10 @@ export default async function LcdboDashboardPage({
               <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">{programmeLabel(programme)}</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Review MSME enrolments, shape cluster participation, and monitor the programme pipeline from one governed workspace.</p>
             </div>
-            <Link href="/lcdbo" className="inline-flex rounded-md border border-white/20 px-4 py-3 text-sm font-black text-white">Public Site</Link>
+            <div className="flex flex-wrap gap-2">
+              {isPlatformAdmin(ctx.role) && <Link href="/dashboard/admin" className="inline-flex rounded-md bg-[#d9a441] px-4 py-3 text-sm font-black text-[#06172f]">Admin Dashboard</Link>}
+              <Link href="/lcdbo" className="inline-flex rounded-md border border-white/20 px-4 py-3 text-sm font-black text-white">Public Site</Link>
+            </div>
           </div>
         </div>
       </section>

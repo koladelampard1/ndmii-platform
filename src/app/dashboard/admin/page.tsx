@@ -11,6 +11,7 @@ import {
   Clock3,
   FileClock,
   FileText,
+  Factory,
   Flag,
   Info,
   LockKeyhole,
@@ -363,6 +364,16 @@ export default async function DashboardPage() {
         <KpiCard title="Open Complaints" value={workQueues.openComplaints.count.toLocaleString()} definition="Require attention" icon={AlertCircle} tone="rose" />
         <KpiCard title="Suspended Credentials" value={workQueues.suspendedCredentials.count.toLocaleString()} definition="Currently suspended" icon={LockKeyhole} tone="violet" />
       </section>
+
+      <Link href="/dashboard/lcdbo" className="group flex flex-col gap-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-950 to-emerald-800 p-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg sm:flex-row sm:items-center">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10 ring-1 ring-white/15"><Factory className="h-6 w-6 text-emerald-200" aria-hidden="true" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Programme Operations</p>
+          <h2 className="mt-1 text-xl font-black">LCDBO Programme Operations</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-emerald-50/85">Review enrolments, manage cluster interests, assign officers, track readiness, request documents and export participation data.</p>
+        </div>
+        <span className="inline-flex items-center gap-2 text-sm font-black text-white">Open workspace <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" aria-hidden="true" /></span>
+      </Link>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
         <div className="flex flex-wrap items-center justify-between gap-3">

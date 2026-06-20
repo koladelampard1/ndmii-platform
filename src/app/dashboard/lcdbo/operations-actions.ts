@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
 import {
@@ -25,10 +26,11 @@ async function requireOperationalAccess(clusterMemberId: string, assignmentOnly 
   const programme = await getLcdboProgramme();
   if (!programme || !ctx.appUserId) redirect("/access-denied");
   const permission = await canUseWorkspaceModule({ ctx, moduleKey: LCDBO_MODULE_KEY, allowedRoles: ["programme_officer", "admin", "super_admin", "institution_admin"], scopeType: "programme", scopeId: programme.id, programmeId: programme.id, institutionId: programme.owning_institution_id }).catch(() => ({ allowed: false }));
+  const canManage = isPlatformAdmin(ctx.role) || permission.allowed;
   const supabase = await createServiceRoleSupabaseClient();
   const { data: member } = await supabase.from("cluster_members").select("id,msme_id,cluster_id,assigned_officer_id,industrial_clusters!inner(programme_id)").eq("id", clusterMemberId).eq("industrial_clusters.programme_id", programme.id).maybeSingle();
-  if (!member || (!permission.allowed && (assignmentOnly || member.assigned_officer_id !== ctx.appUserId))) redirect("/access-denied");
-  return { ctx, programme, supabase, member, canManage: permission.allowed };
+  if (!member || (!canManage && (assignmentOnly || member.assigned_officer_id !== ctx.appUserId))) redirect("/access-denied");
+  return { ctx, programme, supabase, member, canManage };
 }
 
 function done(message: string): never {

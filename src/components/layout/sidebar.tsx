@@ -34,8 +34,15 @@ export async function Sidebar() {
 
   if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/lcdbo"))) {
     const supabase = await createServiceRoleSupabaseClient();
-    const { count } = await supabase.from("cluster_members").select("id", { count: "exact", head: true }).eq("assigned_officer_id", context.appUserId);
-    if ((count ?? 0) > 0) navGroups.push({ label: "Assigned Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Assignments" }] });
+    const [{ count }, { data: programme }] = await Promise.all([
+      supabase.from("cluster_members").select("id", { count: "exact", head: true }).eq("assigned_officer_id", context.appUserId),
+      supabase.from("programmes").select("id").eq("slug", "local-content-development-beyond-oil").maybeSingle(),
+    ]);
+    const { data: scopedRoles } = programme?.id
+      ? await supabase.from("role_assignments").select("id,expires_at").eq("user_id", context.appUserId).eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "institution_admin", "admin", "super_admin"])
+      : { data: [] };
+    const hasActiveScopedRole = (scopedRoles ?? []).some((assignment) => !assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now());
+    if ((count ?? 0) > 0 || hasActiveScopedRole) navGroups.push({ label: "Programme Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" }] });
   }
 
   const allowedGroups = navGroups

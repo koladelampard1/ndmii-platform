@@ -12,6 +12,10 @@ const phase4MigrationPath = resolve("supabase/migrations/20260620160000_lcdbo_cl
 const phase4Sql = readFileSync(phase4MigrationPath, "utf8");
 const phase4DataPath = resolve("src/lib/data/lcdbo-operations.ts");
 const phase4Data = readFileSync(phase4DataPath, "utf8");
+const msmeNavigation = readFileSync(resolve("src/components/msme/msme-workspace-sidebar.tsx"), "utf8");
+const adminNavigation = readFileSync(resolve("src/components/admin/admin-command-shell.tsx"), "utf8");
+const adminDashboard = readFileSync(resolve("src/app/dashboard/admin/page.tsx"), "utf8");
+const lcdboDashboard = readFileSync(resolve("src/app/dashboard/lcdbo/page.tsx"), "utf8");
 
 const requiredTables = [
   "institutions",
@@ -136,6 +140,11 @@ for (const eventType of ["lcdbo.cluster_member.status_updated", "lcdbo.readiness
   assert(phase4Data.includes(`"${eventType}"`), `Missing LCDBO Phase 4 event ${eventType}.`);
 }
 
+assert(msmeNavigation.includes('href: "/dashboard/msme/lcdbo"'), "MSME workspace navigation is missing LCDBO Programme.");
+assert(adminNavigation.includes('href: "/dashboard/lcdbo"'), "Admin command navigation is missing LCDBO Programme Operations.");
+assert(adminDashboard.includes('href="/dashboard/lcdbo"'), "Admin dashboard is missing the LCDBO discovery card.");
+assert(lcdboDashboard.includes('"admin"') && lcdboDashboard.includes("isPlatformAdmin(ctx.role)"), "LCDBO dashboard does not explicitly support regular admin access.");
+
 console.log(JSON.stringify({
   ok: true,
   migration: migrationPath,
@@ -150,4 +159,5 @@ console.log(JSON.stringify({
   clusters: requiredClusters.length,
   phase3: "lcdbo_msme_enrolment_and_cluster_participation",
   phase4: "lcdbo_cluster_placement_and_participation_operations",
+  navigation: "lcdbo_discovery_enabled",
 }, null, 2));

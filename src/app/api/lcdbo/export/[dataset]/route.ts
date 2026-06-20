@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { exportLcdboOperationalData, type LcdboExportDataset } from "@/lib/data/lcdbo-operations";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
@@ -16,7 +17,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ dataset: s
   const programme = await getLcdboProgramme();
   if (!programme || !ctx.appUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const permission = await canUseWorkspaceModule({ ctx, moduleKey: LCDBO_MODULE_KEY, allowedRoles: ["programme_officer", "admin", "super_admin", "institution_admin"], scopeType: "programme", scopeId: programme.id, programmeId: programme.id, institutionId: programme.owning_institution_id });
-  if (!permission.allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!isPlatformAdmin(ctx.role) && !permission.allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const supabase = await createServiceRoleSupabaseClient();
     const result = await exportLcdboOperationalData(dataset as LcdboExportDataset, ctx.appUserId, supabase);
