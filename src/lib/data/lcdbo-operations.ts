@@ -74,14 +74,14 @@ export async function getLcdboOfficers(client?: Client): Promise<LcdboOfficer[]>
   const [{ data, error }, { data: assignments, error: assignmentError }] = await Promise.all([
     supabase.from("users").select("id,full_name,email,role").in("role", ["programme_officer", "field_officer", "assessment_officer", "admin", "super_admin"]).order("full_name"),
     programme
-      ? supabase.from("role_assignments").select("user_id,users(id,full_name,email,role)").eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "field_officer", "assessment_officer"])
+      ? supabase.from("role_assignments").select("user_id,assignee:users!role_assignments_user_id_fkey(id,full_name,email,role)").eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "field_officer", "assessment_officer"])
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (error) throw error;
   if (assignmentError) throw assignmentError;
   const rows = new Map<string, LcdboOfficer>((data ?? []).map((officer) => [officer.id, officer as LcdboOfficer]));
   for (const assignment of assignments ?? []) {
-    const user = one(assignment.users) as LcdboOfficer | null;
+    const user = one(assignment.assignee) as LcdboOfficer | null;
     if (user?.id) rows.set(user.id, user);
   }
   return [...rows.values()].sort((a, b) => String(a.full_name ?? a.email).localeCompare(String(b.full_name ?? b.email)));
