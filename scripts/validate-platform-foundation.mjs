@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 
 const migrationPath = resolve("supabase/migrations/20260620120000_platform_workspace_foundation.sql");
 const sql = readFileSync(migrationPath, "utf8");
+const phase3MigrationPath = resolve("supabase/migrations/20260620143000_lcdbo_msme_enrolment_phase3.sql");
+const phase3Sql = readFileSync(phase3MigrationPath, "utf8");
+const phase3DataPath = resolve("src/lib/data/lcdbo-enrolment.ts");
+const phase3Data = readFileSync(phase3DataPath, "utf8");
 
 const requiredTables = [
   "institutions",
@@ -101,12 +105,32 @@ for (const slug of requiredClusters) {
   assert(sql.includes(`'${slug}'`), `Missing seeded cluster slug ${slug}.`);
 }
 
+for (const status of ["pending_review", "suspended", "interested", "under_review", "accepted", "waitlisted"]) {
+  assert(phase3Sql.includes(`'${status}'`), `Missing LCDBO Phase 3 workflow status ${status}.`);
+}
+
+for (const eventType of [
+  "lcdbo.enrolment.created",
+  "lcdbo.cluster_interest.created",
+]) {
+  assert(
+    phase3Sql.includes(`'${eventType}'`) || phase3Data.includes(`"${eventType}"`),
+    `Missing LCDBO Phase 3 event ${eventType}.`,
+  );
+}
+
+assert(phase3Sql.includes("request_lcdbo_enrolment"), "Missing registration-safe LCDBO enrolment RPC.");
+assert(phase3Sql.includes("registration_context"), "Missing MSME registration context persistence.");
+
 console.log(JSON.stringify({
   ok: true,
   migration: migrationPath,
+  phase3Migration: phase3MigrationPath,
+  phase3DataLayer: phase3DataPath,
   tables: requiredTables.length,
   modules: requiredModuleKeys.length,
   institutions: requiredInstitutions.length,
   programmes: requiredProgrammes.length,
   clusters: requiredClusters.length,
+  phase3: "lcdbo_msme_enrolment_and_cluster_participation",
 }, null, 2));

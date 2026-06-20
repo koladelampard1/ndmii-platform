@@ -17,9 +17,10 @@ type Props = {
   associations: { id: string; name: string }[];
   onSave: (formData: FormData) => void | Promise<void>;
   initialPassportPhotoUrl?: string | null;
+  registrationContext?: { programme?: string; source?: string } | null;
 };
 
-export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl = null }: Props) {
+export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl = null, registrationContext = null }: Props) {
   const [step, setStep] = useState(0);
   const [passportPreview, setPassportPreview] = useState(initialPassportPhotoUrl ?? "");
   const [passportPhotoUrl, setPassportPhotoUrl] = useState(initialPassportPhotoUrl ?? "");
@@ -95,8 +96,15 @@ export function OnboardingWizard({ associations, onSave, initialPassportPhotoUrl
       <input type="hidden" name="currentStep" value={steps[step]} />
       <input type="hidden" name="passport_photo_url" value={passportPhotoUrl} />
       <input type="hidden" name="passport_photo_path" value={passportPhotoPath} />
+      <input type="hidden" name="programme" value={registrationContext?.programme ?? ""} />
+      <input type="hidden" name="source" value={registrationContext?.source ?? ""} />
 
       <div>
+        {registrationContext?.programme === "lcdbo" && (
+          <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+            LCDBO registration context is attached to this business profile.
+          </p>
+        )}
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Complete your MSME profile</p>
         <h2 className="text-2xl font-bold text-slate-900">{steps[step]}</h2>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">

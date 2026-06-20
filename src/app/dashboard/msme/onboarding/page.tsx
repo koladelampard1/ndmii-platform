@@ -4,9 +4,10 @@ import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { createLcdboEnrolment } from "@/lib/data/lcdbo-enrolment";
 
 const ONBOARDING_SAVE_ERROR = "Unable to save profile details. Please refresh and try again.";
-const MSME_EDITABLE_SELECT = "id,msme_id,business_name,owner_name,state,sector,contact_email,contact_phone,lga,address,business_type,nin,bvn,cac_number,tin,passport_photo_url,passport_photo_path,association_id,created_by,source_association_member_id,verification_status,review_status";
+const MSME_EDITABLE_SELECT = "id,msme_id,business_name,owner_name,state,sector,contact_email,contact_phone,lga,address,business_type,nin,bvn,cac_number,tin,passport_photo_url,passport_photo_path,association_id,created_by,source_association_member_id,verification_status,review_status,registration_context";
 
 function calculateConfidence(statuses: string[]) {
   const points = statuses.reduce((acc, status) => {
@@ -91,6 +92,11 @@ async function saveOnboarding(formData: FormData) {
   const businessName = fieldValue("business_name", existing?.business_name ?? "Untitled MSME");
   const ownerName = fieldValue("owner_name", existing?.owner_name ?? fullName ?? "Unknown Owner");
   const sector = fieldValue("sector", existing?.sector ?? "Services");
+  const submittedProgramme = fieldValue("programme", String(existing?.registration_context?.programme ?? ""));
+  const submittedSource = fieldValue("source", String(existing?.registration_context?.source ?? ""));
+  const registrationContext = submittedProgramme === "lcdbo"
+    ? { programme: "lcdbo", source: submittedSource || "lcdbo_public_site" }
+    : existing?.registration_context ?? {};
 
   const kycPayload = {
     NIN: fieldValue("nin", existing?.nin),
@@ -127,6 +133,7 @@ async function saveOnboarding(formData: FormData) {
       review_status: intent === "submit" ? "pending_review" : "draft",
     } : {}),
     created_by: appUserId,
+    registration_context: registrationContext,
   };
 
   const generatedMsmeId = existing?.msme_id ?? generateMsmeId(state);
@@ -159,6 +166,15 @@ async function saveOnboarding(formData: FormData) {
       complianceStatus: intent === "submit" ? "pending" : "draft",
     },
   });
+
+  if (registrationContext.programme === "lcdbo") {
+    await createLcdboEnrolment({
+      msmeId: data.id,
+      actorUserId: appUserId,
+      source: String(registrationContext.source || "lcdbo_public_site"),
+      client: supabase,
+    });
+  }
 
   const nowIso = new Date().toISOString();
   const ninStatus = byProvider.get("NIN")?.status ?? "pending";
@@ -229,7 +245,7 @@ async function saveOnboarding(formData: FormData) {
   redirect(`/dashboard/msme/onboarding?success=${intent}`);
 }
 
-export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string }> }) {
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string; programme?: string; source?: string }> }) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
   const { data: associations } = await supabase.from("associations").select("id,name").order("name");
@@ -237,7 +253,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
 
   const { data: latestMsme } = await supabase
     .from("msmes")
-    .select("id,passport_photo_url")
+    .select("id,passport_photo_url,registration_context")
     .eq("created_by", ctx.appUserId ?? "")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -285,7 +301,15 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
         </article>
       )}
       {params.error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{params.error}</div>}
-      <OnboardingWizard associations={associations ?? []} onSave={saveOnboarding} initialPassportPhotoUrl={latestMsme?.passport_photo_url ?? null} />
+      <OnboardingWizard
+        associations={associations ?? []}
+        onSave={saveOnboarding}
+        initialPassportPhotoUrl={latestMsme?.passport_photo_url ?? null}
+        registrationContext={
+          (latestMsme?.registration_context as { programme?: string; source?: string } | null)
+          ?? (params.programme === "lcdbo" ? { programme: "lcdbo", source: params.source || "lcdbo_public_site" } : null)
+        }
+      />
     </section>
   );
 }

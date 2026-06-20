@@ -191,6 +191,9 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (role === "public") legacyAllowed = false;
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
+  // The page performs programme/module resolution against scoped role assignments.
+  // Let authenticated users reach that guard even when users.role is not programme_officer.
+  else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
   else if (role === "field_officer") {
     legacyAllowed = path === "/dashboard/impact-intelligence" || [
       "/dashboard/impact-intelligence/cohorts",
@@ -373,6 +376,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   ],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
+    { href: "/dashboard/msme/lcdbo", label: "LCDBO Programme" },
     { href: "/dashboard/msme/profile", label: "Profile Overview" },
     { href: "/dashboard/msme/public-profile", label: "Public Profile Preview" },
     { href: "/dashboard/msme/services", label: "Service Catalog" },

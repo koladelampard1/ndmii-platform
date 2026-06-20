@@ -193,6 +193,71 @@ export type IndustrialCluster = {
   updated_at: string;
 };
 
+export type ProgrammeEnrolmentStatus =
+  | "invited"
+  | "pending_review"
+  | "active"
+  | "rejected"
+  | "suspended"
+  | "withdrawn"
+  | "paused"
+  | "completed";
+
+export type ProgrammeEnrolment = {
+  id: string;
+  programme_id: string;
+  msme_id: string | null;
+  institution_id: string | null;
+  enrolment_type: "msme" | "institution" | "cluster" | "project";
+  status: ProgrammeEnrolmentStatus;
+  enrolled_by: string | null;
+  enrolled_at: string;
+  exited_at: string | null;
+  application_note: string | null;
+  review_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClusterInterestStatus =
+  | "invited"
+  | "interested"
+  | "under_review"
+  | "accepted"
+  | "rejected"
+  | "waitlisted"
+  | "withdrawn"
+  | "active"
+  | "paused"
+  | "exited"
+  | "removed";
+
+export type ClusterMember = {
+  id: string;
+  cluster_id: string;
+  msme_id: string | null;
+  institution_id: string | null;
+  member_type: string;
+  role: string | null;
+  status: ClusterInterestStatus;
+  joined_at: string;
+  exited_at: string | null;
+  interest_reason: string | null;
+  capacity_summary: string | null;
+  product_or_service: string | null;
+  current_location: string | null;
+  preferred_support: string[];
+  review_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ConsentRecord = {
   id: string;
   subject_type: "msme" | "business" | "user" | "institution";

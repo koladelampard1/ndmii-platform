@@ -38,6 +38,8 @@ type RegistrationFormValues = {
   tin: string;
   registration_path: RegistrationPath;
   association_id: string;
+  programme: string;
+  source: string;
 };
 
 type ExistingUserByEmail = {
@@ -69,6 +71,8 @@ function RegisterPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const registrationPath = normalizeRegistrationPath(searchParams.get("registration_path") ?? searchParams.get("path"));
+  const programme = searchParams.get("programme")?.trim().toLowerCase() === "lcdbo" ? "lcdbo" : "";
+  const source = programme === "lcdbo" ? searchParams.get("source")?.trim() || "lcdbo_public_site" : "";
   const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +123,8 @@ function RegisterPageClient() {
       tin: String(form.get("tin") ?? "").trim(),
       registration_path: normalizeRegistrationPath(String(form.get("registration_path") ?? "")),
       association_id: String(form.get("association_id") ?? "").trim(),
+      programme: String(form.get("programme") ?? "").trim(),
+      source: String(form.get("source") ?? "").trim(),
     };
 
     const nextFieldErrors: FieldErrors = {};
@@ -161,6 +167,7 @@ function RegisterPageClient() {
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
+      options: { data: { role: "msme", programme: values.programme || null, registration_source: values.source || null } },
     });
 
     if (signUpError) {
@@ -273,6 +280,7 @@ function RegisterPageClient() {
       verification_status: requiresAssociation ? "pending_association_approval" : "pending_dbin_verification",
       review_status: "pending_review",
       created_by: userRow.id,
+      registration_context: values.programme === "lcdbo" ? { programme: "lcdbo", source: values.source || "lcdbo_public_site" } : {},
     };
 
     const { data: existingMsmeRaw } = await supabase
@@ -325,13 +333,25 @@ function RegisterPageClient() {
       checks,
     });
 
+    if (values.programme === "lcdbo") {
+      const { error: enrolmentError } = await (supabase as any).rpc("request_lcdbo_enrolment", {
+        target_msme_id: msme.id,
+        registration_source: values.source || "lcdbo_public_site",
+      });
+      if (enrolmentError) {
+        setLoading(false);
+        setError("Your DBIN profile was created, but LCDBO enrolment could not be queued. Sign in and retry from the LCDBO workspace.");
+        return;
+      }
+    }
+
     const activityLogEntries = [
       {
         actor_user_id: userRow.id,
         action: "msme_registered",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { msme_id: msme.msme_id, source: "canonical_register" },
+        metadata: { msme_id: msme.msme_id, source: values.source || "canonical_register", programme: values.programme || null },
       },
       {
         actor_user_id: userRow.id,
@@ -383,6 +403,11 @@ function RegisterPageClient() {
             <h2 className="text-3xl font-semibold text-slate-900">Create your DBIN profile</h2>
             <p className="mt-2 text-slate-600">Start your business verification and marketplace onboarding.</p>
             <p className="mt-3 text-sm font-medium text-emerald-700">Step 1 of 3 · Business Identity Setup</p>
+            {programme === "lcdbo" && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <strong>LCDBO programme registration:</strong> your programme request will be preserved and sent for review when this DBIN profile is created.
+              </div>
+            )}
             <p className="mt-2 text-sm text-slate-600">
               Registration path:{" "}
               <span className="font-semibold text-slate-900">
@@ -401,6 +426,8 @@ function RegisterPageClient() {
 
           <form className="space-y-5" onSubmit={onSubmit}>
             <input type="hidden" name="registration_path" value={registrationPath} />
+            <input type="hidden" name="programme" value={programme} />
+            <input type="hidden" name="source" value={source} />
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
               <h3 className="mb-4 text-lg font-semibold text-slate-900">1. Account Access</h3>
               <div className="grid gap-4 md:grid-cols-2">

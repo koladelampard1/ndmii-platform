@@ -16,15 +16,17 @@ export default async function RegistrationStatusPage({
 }) {
   const params = await searchParams;
   let currentStatus = params.status ?? "pending_dbin_verification";
+  let lcdboRequested = false;
 
   if (params.msmeId) {
     const supabase = await createServerSupabaseClient();
     const { data: msme } = await supabase
       .from("msmes")
-      .select("verification_status")
+      .select("verification_status,registration_context")
       .eq("msme_id", params.msmeId)
       .maybeSingle();
     currentStatus = msme?.verification_status ?? currentStatus;
+    lcdboRequested = msme?.registration_context?.programme === "lcdbo";
   }
 
   const statusLabel = currentStatus.replaceAll("_", " ");
@@ -44,6 +46,11 @@ export default async function RegistrationStatusPage({
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
           {statusMessage}
         </p>
+        {lcdboRequested && (
+          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            Your LCDBO programme enrolment has also been queued for programme review.
+          </p>
+        )}
         <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-slate-600">
           <li>Review officers validate KYC and compliance profile.</li>
           <li>Approved MSMEs become visible on the public verification portal.</li>

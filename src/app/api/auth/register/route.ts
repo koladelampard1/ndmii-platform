@@ -4,6 +4,7 @@ import { getRegistrationMode, mapRegistrationErrorMessage } from "@/lib/auth/reg
 import { getTableColumns } from "@/lib/data/commercial-ops";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
+import { createLcdboEnrolment } from "@/lib/data/lcdbo-enrolment";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 type RegistrationRequest = {
@@ -23,6 +24,8 @@ type RegistrationRequest = {
   tin?: string;
   registration_path?: string;
   association_id?: string;
+  programme?: string;
+  source?: string;
 };
 
 function normalizeString(value: unknown) {
@@ -35,7 +38,7 @@ function normalizeRegistrationPath(value: unknown) {
   return "independent";
 }
 
-const OPTIONAL_ONBOARDING_COLUMNS = ["registration_path", "association_id", "verification_status"] as const;
+const OPTIONAL_ONBOARDING_COLUMNS = ["registration_path", "association_id", "verification_status", "registration_context"] as const;
 
 function pickSupportedOptionalFields<T extends Record<string, unknown>>(payload: T, columns: Set<string>) {
   return Object.fromEntries(Object.entries(payload).filter(([key]) => columns.has(key)));
@@ -69,6 +72,8 @@ export async function POST(request: Request) {
     const sector = normalizeString(body.sector);
     const registrationPath = normalizeRegistrationPath(body.registration_path);
     const associationId = normalizeString(body.association_id);
+    const programme = normalizeString(body.programme).toLowerCase() === "lcdbo" ? "lcdbo" : "";
+    const source = programme === "lcdbo" ? normalizeString(body.source) || "lcdbo_public_site" : "";
     const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
 
     if (!email || !password || !businessName || !ownerName || !state || !sector) {
@@ -171,6 +176,7 @@ export async function POST(request: Request) {
       registration_path: registrationPath,
       association_id: requiresAssociation ? associationId : null,
       verification_status: intendedVerificationStatus,
+      registration_context: programme ? { programme, source } : {},
     };
 
     const msmeColumns = await getTableColumns(supabase, "msmes");
@@ -257,13 +263,33 @@ export async function POST(request: Request) {
       checks,
     });
 
+    if (programme === "lcdbo") {
+      try {
+        await createLcdboEnrolment({
+          msmeId: msme.id,
+          actorUserId: profile.id,
+          source,
+          client: supabase,
+        });
+      } catch (enrolmentError) {
+        console.error("[register:lcdbo-enrolment-failed]", {
+          msmeId: msme.id,
+          message: enrolmentError instanceof Error ? enrolmentError.message : String(enrolmentError),
+        });
+        return NextResponse.json(
+          { error: "Your DBIN profile was created, but LCDBO enrolment could not be queued. Sign in and use the LCDBO workspace to retry." },
+          { status: 500 },
+        );
+      }
+    }
+
     await supabase.from("activity_logs").insert([
       {
         actor_user_id: profile.id,
         action: "msme_registered",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { msme_id: msme.msme_id, source: "demo_admin_register" },
+        metadata: { msme_id: msme.msme_id, source: source || "demo_admin_register", programme: programme || null },
       },
       {
         actor_user_id: profile.id,
