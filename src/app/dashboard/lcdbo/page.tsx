@@ -17,6 +17,14 @@ import {
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { LCDBO_MODULE_KEY, LCDBO_PROGRAMME_SLUG, programmeLabel } from "@/lib/lcdbo/content";
 import type { ClusterInterestStatus, ProgrammeEnrolmentStatus } from "@/types/platform";
+import { LcdboOperationsPanel } from "@/components/lcdbo/lcdbo-operations-panel";
+import {
+  getAssignedClusterMembers,
+  getDocumentRequestsForMembers,
+  getLcdboOfficers,
+  getLcdboOperationsMetrics,
+  getLatestAssessmentsForMembers,
+} from "@/lib/data/lcdbo-operations";
 
 const REVIEW_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 
@@ -58,13 +66,21 @@ async function requireLcdboReviewer() {
     source: isPlatformAdmin(ctx.role) ? "platform_admin" as const : "denied" as const,
     module: { allowed: isPlatformAdmin(ctx.role), status: "fallback", source: "module" as const },
   }));
-  if (!access.allowed || !ctx.appUserId) redirect("/access-denied");
-  return { ctx, programme, access };
+  if (!ctx.appUserId) redirect("/access-denied");
+  let assignedAccess = false;
+  if (!access.allowed) {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { count } = await supabase.from("cluster_members").select("id,industrial_clusters!inner(programme_id)", { count: "exact", head: true }).eq("assigned_officer_id", ctx.appUserId).eq("industrial_clusters.programme_id", programme.id);
+    assignedAccess = (count ?? 0) > 0;
+  }
+  if (!access.allowed && !assignedAccess) redirect("/access-denied");
+  return { ctx, programme, access, canManage: access.allowed };
 }
 
 async function reviewEnrolmentAction(formData: FormData) {
   "use server";
-  const { ctx, programme } = await requireLcdboReviewer();
+  const { ctx, programme, canManage } = await requireLcdboReviewer();
+  if (!canManage) redirect("/access-denied");
   const enrolmentId = String(formData.get("enrolment_id") ?? "");
   const action = String(formData.get("action") ?? "");
   const reviewNote = String(formData.get("review_note") ?? "").trim();
@@ -87,7 +103,8 @@ async function reviewEnrolmentAction(formData: FormData) {
 
 async function reviewClusterInterestAction(formData: FormData) {
   "use server";
-  const { ctx, programme } = await requireLcdboReviewer();
+  const { ctx, programme, canManage } = await requireLcdboReviewer();
+  if (!canManage) redirect("/access-denied");
   const interestId = String(formData.get("interest_id") ?? "");
   const action = String(formData.get("action") ?? "");
   const reviewNote = String(formData.get("review_note") ?? "").trim();
@@ -115,13 +132,24 @@ export default async function LcdboDashboardPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   const query = await searchParams;
-  const { programme, access } = await requireLcdboReviewer();
+  const { ctx, programme, access, canManage } = await requireLcdboReviewer();
   const supabase = await createServiceRoleSupabaseClient();
-  const [enrolments, interests, clusters] = await Promise.all([
-    getLcdboEnrolmentQueue(supabase),
-    getLcdboClusterInterestQueue(supabase),
+  const [enrolments, interests, clusters, officers] = await Promise.all([
+    canManage ? getLcdboEnrolmentQueue(supabase) : Promise.resolve([]),
+    canManage ? getLcdboClusterInterestQueue(supabase) : Promise.resolve([]),
     listLcdboClusters(supabase),
+    getLcdboOfficers(supabase),
   ]);
+  const operations = canManage
+    ? await getLcdboOperationsMetrics(supabase)
+    : await (async () => {
+        const participants = await getAssignedClusterMembers(ctx.appUserId!, supabase);
+        const ids = participants.map((item) => item.id);
+        const [assessments, documents] = await Promise.all([getLatestAssessmentsForMembers(ids, supabase), getDocumentRequestsForMembers(ids, supabase)]);
+        const readiness = new Map<string, number>();
+        assessments.forEach((item) => readiness.set(item.readiness_level, (readiness.get(item.readiness_level) ?? 0) + 1));
+        return { participants, assessments, documents, workload: participants.length ? [{ officer: participants[0].assignedOfficer!, count: participants.length }] : [], readiness: [...readiness.entries()] as any, active: participants.filter((item) => item.status === "active").length, onboarding: participants.filter((item) => item.status === "onboarding").length, needsDocuments: participants.filter((item) => item.status === "needs_documents").length, placed: participants.filter((item) => item.status === "placed").length };
+      })();
   const recentActivity = await getLcdboRecentActivity(programme.id, clusters.map((cluster) => cluster.id), supabase);
   const pendingEnrolments = enrolments.filter((item) => item.status === "pending_review");
   const activeEnrolments = enrolments.filter((item) => item.status === "active");
@@ -155,7 +183,18 @@ export default async function LcdboDashboardPage({
           <Kpi label="Cluster requests" value={pendingInterests.length} attention />
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.5fr,1fr]">
+        <LcdboOperationsPanel
+          participants={operations.participants}
+          assessments={operations.assessments}
+          documents={operations.documents}
+          officers={officers}
+          workload={operations.workload}
+          readiness={operations.readiness}
+          metrics={{ active: operations.active, onboarding: operations.onboarding, needsDocuments: operations.needsDocuments, placed: operations.placed }}
+          canAssign={canManage}
+        />
+
+        {canManage && <div className="grid gap-5 xl:grid-cols-[1.5fr,1fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3"><div><h2 className="text-xl font-black text-[#06172f]">Enrolment review queue</h2><p className="mt-1 text-sm text-slate-600">New MSME requests awaiting a programme decision.</p></div><Users className="h-5 w-5 text-emerald-700" /></div>
             <div className="mt-5 space-y-3">
@@ -184,9 +223,9 @@ export default async function LcdboDashboardPage({
             <Ranking title="Top sectors" rows={sectorCounts} />
             <Ranking title="Top states" rows={stateCounts} />
           </article>
-        </div>
+        </div>}
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {canManage && <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3"><div><h2 className="text-xl font-black text-[#06172f]">Cluster interest review</h2><p className="mt-1 text-sm text-slate-600">Assess capability and fit for LCDBO industrial clusters.</p></div><Factory className="h-5 w-5 text-emerald-700" /></div>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {pendingInterests.map((item) => (
@@ -209,7 +248,7 @@ export default async function LcdboDashboardPage({
             ))}
             {!pendingInterests.length && <EmptyState text="No cluster interest requests are waiting for review." />}
           </div>
-        </article>
+        </article>}
 
         <div className="grid gap-5 xl:grid-cols-[1fr,1.4fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

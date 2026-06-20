@@ -2,6 +2,7 @@ import { getCurrentUserContext } from "@/lib/auth/session";
 import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, type NavigationGroup } from "@/lib/auth/authorization";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
@@ -22,13 +23,20 @@ const ROLE_LABEL: Record<UserRole, string> = {
 };
 
 export async function Sidebar() {
-  const { role } = await getCurrentUserContext();
+  const context = await getCurrentUserContext();
+  const { role } = context;
   const navGroups: NavigationGroup[] =
     role === "admin" || role === "super_admin"
       ? ROLE_NAV_GROUPS[role] ?? [{ label: "Admin", items: ROLE_NAV_ITEMS[role] }]
       : role === "public"
         ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
         : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];
+
+  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/lcdbo"))) {
+    const supabase = await createServiceRoleSupabaseClient();
+    const { count } = await supabase.from("cluster_members").select("id", { count: "exact", head: true }).eq("assigned_officer_id", context.appUserId);
+    if ((count ?? 0) > 0) navGroups.push({ label: "Assigned Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Assignments" }] });
+  }
 
   const allowedGroups = navGroups
     .map((group) => ({

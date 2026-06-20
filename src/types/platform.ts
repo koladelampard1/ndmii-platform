@@ -227,6 +227,10 @@ export type ClusterInterestStatus =
   | "interested"
   | "under_review"
   | "accepted"
+  | "onboarding"
+  | "needs_documents"
+  | "placed"
+  | "inactive"
   | "rejected"
   | "waitlisted"
   | "withdrawn"
@@ -253,6 +257,10 @@ export type ClusterMember = {
   review_note: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  assigned_officer_id: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
+  assignment_notes: string | null;
   metadata: JsonRecord;
   created_at: string;
   updated_at: string;

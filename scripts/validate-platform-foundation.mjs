@@ -8,6 +8,10 @@ const phase3MigrationPath = resolve("supabase/migrations/20260620143000_lcdbo_ms
 const phase3Sql = readFileSync(phase3MigrationPath, "utf8");
 const phase3DataPath = resolve("src/lib/data/lcdbo-enrolment.ts");
 const phase3Data = readFileSync(phase3DataPath, "utf8");
+const phase4MigrationPath = resolve("supabase/migrations/20260620160000_lcdbo_cluster_operations_phase4.sql");
+const phase4Sql = readFileSync(phase4MigrationPath, "utf8");
+const phase4DataPath = resolve("src/lib/data/lcdbo-operations.ts");
+const phase4Data = readFileSync(phase4DataPath, "utf8");
 
 const requiredTables = [
   "institutions",
@@ -122,15 +126,28 @@ for (const eventType of [
 assert(phase3Sql.includes("request_lcdbo_enrolment"), "Missing registration-safe LCDBO enrolment RPC.");
 assert(phase3Sql.includes("registration_context"), "Missing MSME registration context persistence.");
 
+for (const table of ["lcdbo_cluster_assessments", "lcdbo_document_requests", "lcdbo_document_submissions"]) {
+  assert(phase4Sql.includes(`public.${table}`), `Missing LCDBO Phase 4 table ${table}.`);
+}
+for (const status of ["onboarding", "needs_documents", "placed", "inactive"]) {
+  assert(phase4Sql.includes(`'${status}'`), `Missing LCDBO Phase 4 participation status ${status}.`);
+}
+for (const eventType of ["lcdbo.cluster_member.status_updated", "lcdbo.readiness_assessment.created", "lcdbo.document_request.created", "lcdbo.document_submission.created", "lcdbo.export.generated"]) {
+  assert(phase4Data.includes(`"${eventType}"`), `Missing LCDBO Phase 4 event ${eventType}.`);
+}
+
 console.log(JSON.stringify({
   ok: true,
   migration: migrationPath,
   phase3Migration: phase3MigrationPath,
   phase3DataLayer: phase3DataPath,
+  phase4Migration: phase4MigrationPath,
+  phase4DataLayer: phase4DataPath,
   tables: requiredTables.length,
   modules: requiredModuleKeys.length,
   institutions: requiredInstitutions.length,
   programmes: requiredProgrammes.length,
   clusters: requiredClusters.length,
   phase3: "lcdbo_msme_enrolment_and_cluster_participation",
+  phase4: "lcdbo_cluster_placement_and_participation_operations",
 }, null, 2));

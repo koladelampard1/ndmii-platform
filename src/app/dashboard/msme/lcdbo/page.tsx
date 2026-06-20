@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Building2, CheckCircle2, Factory, MapPin, Target, Users } from "lucide-react";
+import Link from "next/link";
+import { Building2, CheckCircle2, Factory, FileCheck2, Gauge, MapPin, Target, UserRoundCheck, Users } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   createLcdboClusterInterest,
@@ -14,13 +15,15 @@ import {
 } from "@/lib/data/lcdbo-enrolment";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { ClusterInterestStatus, ProgrammeEnrolmentStatus } from "@/types/platform";
+import { getClusterReadinessAssessment, getDocumentRequestsForMsme, PARTICIPATION_STATUSES } from "@/lib/data/lcdbo-operations";
+import { msmeDocumentSubmissionAction } from "@/app/dashboard/lcdbo/operations-actions";
 
 const SUPPORT_OPTIONS = ["Shared facilities", "Standards and certification", "Technical training", "Market access", "Export readiness"];
 
 function statusClass(status: string) {
-  if (["active", "accepted"].includes(status)) return "bg-emerald-100 text-emerald-800";
-  if (["rejected", "suspended"].includes(status)) return "bg-rose-100 text-rose-800";
-  if (["waitlisted", "under_review", "pending_review", "interested"].includes(status)) return "bg-amber-100 text-amber-900";
+  if (["active", "accepted", "placed"].includes(status)) return "bg-emerald-100 text-emerald-800";
+  if (["rejected", "suspended", "inactive"].includes(status)) return "bg-rose-100 text-rose-800";
+  if (["waitlisted", "under_review", "pending_review", "interested", "onboarding", "needs_documents", "submitted"].includes(status)) return "bg-amber-100 text-amber-900";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -120,6 +123,14 @@ export default async function MsmeLcdboPage({
   ]);
   const interestByCluster = new Map(interests.map((interest) => [interest.cluster_id, interest]));
   const canExpressInterest = Boolean(enrolment && ["pending_review", "active"].includes(enrolment.status));
+  const participant = interests.find((interest) => (PARTICIPATION_STATUSES as readonly string[]).includes(interest.status)) ?? null;
+  const [readiness, documentRequests, assignedOfficer] = await Promise.all([
+    participant ? getClusterReadinessAssessment(participant.id, supabase) : Promise.resolve(null),
+    getDocumentRequestsForMsme(msme.id, supabase),
+    participant?.assigned_officer_id
+      ? supabase.from("users").select("id,full_name,email").eq("id", participant.assigned_officer_id).maybeSingle().then(({ data }) => data)
+      : Promise.resolve(null),
+  ]);
 
   return (
     <section className="space-y-6">
@@ -171,6 +182,43 @@ export default async function MsmeLcdboPage({
           </div>
         )}
       </article>
+
+      {participant && (
+        <article className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div><p className="text-xs font-black uppercase tracking-wider text-emerald-700">Cluster Participation</p><h2 className="mt-1 text-2xl font-black text-[#06172f]">Your operational placement</h2></div>
+            <span className={`rounded-full px-3 py-1.5 text-xs font-black capitalize ${statusClass(participant.status)}`}>{labelStatus(participant.status)}</span>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <SummaryCard icon={UserRoundCheck} label="Assigned officer" value={assignedOfficer?.full_name ?? assignedOfficer?.email ?? "Assignment pending"} />
+            <SummaryCard icon={Gauge} label="Readiness" value={readiness ? `${readiness.overall_score}/5 · ${readiness.readiness_level.replaceAll("_", " ")}` : "Assessment pending"} />
+            <SummaryCard icon={FileCheck2} label="Documents outstanding" value={String(documentRequests.filter((request) => ["requested", "rejected"].includes(request.status)).length)} />
+          </div>
+          <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            <p className="font-black text-slate-900">Next steps</p>
+            <p className="mt-1">{participant.status === "needs_documents" ? "Respond to the document requests below so onboarding can continue." : participant.status === "onboarding" ? "Your officer is preparing your business for cluster participation." : participant.status === "placed" ? "Your business has been formally placed into the cluster." : participant.status === "active" ? "Your business is active in the cluster participation programme." : "The LCDBO team will confirm onboarding and placement requirements."}</p>
+            {readiness?.recommended_support?.length ? <p className="mt-2"><strong>Recommended support:</strong> {readiness.recommended_support.join(", ")}</p> : null}
+          </div>
+        </article>
+      )}
+
+      {documentRequests.length > 0 && (
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-black text-[#06172f]">Requested documents and evidence</h2>
+          <p className="mt-1 text-sm text-slate-600">Submit a secure document link or metadata response. Direct LCDBO file upload will follow storage provisioning.</p>
+          <div className="mt-5 space-y-4">
+            {documentRequests.map((request) => {
+              const submission = request.submissions?.[0];
+              return <div key={request.id} className="rounded-xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black">{request.title}</p><p className="mt-1 text-xs capitalize text-slate-500">{request.document_type.replaceAll("_", " ")} · Due {request.due_date ?? "not specified"}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${statusClass(request.status)}`}>{request.status}</span></div>
+                {request.description && <p className="mt-3 text-sm text-slate-600">{request.description}</p>}
+                {submission && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm"><p><strong>Response:</strong> {submission.notes || "Document link supplied"}</p>{submission.file_url && <Link href={submission.file_url} target="_blank" rel="noreferrer" className="mt-1 inline-block font-bold text-blue-700">Open submitted link</Link>}{submission.review_notes && <p className="mt-2"><strong>Review note:</strong> {submission.review_notes}</p>}</div>}
+                {(!submission || submission.status === "rejected") && <form action={msmeDocumentSubmissionAction} className="mt-4 grid gap-2 md:grid-cols-2"><input type="hidden" name="request_id" value={request.id} /><input name="file_url" type="url" placeholder="Secure document URL (optional)" className="rounded-lg border px-3 py-2 text-sm" /><input name="notes" placeholder="Response or evidence notes" className="rounded-lg border px-3 py-2 text-sm" /><button className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-black text-white md:col-span-2">{submission ? "Resubmit response" : "Submit response"}</button></form>}
+              </div>;
+            })}
+          </div>
+        </article>
+      )}
 
       <div>
         <h2 className="text-2xl font-black text-[#06172f]">Available industrial clusters</h2>
