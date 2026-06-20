@@ -38,6 +38,14 @@ export type LcdboDocumentRequest = {
   created_at: string; updated_at: string; submissions?: LcdboDocumentSubmission[];
 };
 
+export type LcdboDocumentSubmissionReviewTarget = {
+  submissionId: string;
+  submissionStatus: LcdboDocumentSubmission["status"];
+  requestId: string;
+  requestStatus: LcdboDocumentRequest["status"];
+  clusterMemberId: string;
+};
+
 function one<T>(value: T | T[] | null | undefined): T | null { return Array.isArray(value) ? value[0] ?? null : value ?? null; }
 async function clientOrService(client?: Client) { return client ?? await createServiceRoleSupabaseClient(); }
 
@@ -181,20 +189,91 @@ export async function submitDocumentRequest(input: { requestId: string; msmeId: 
     const url = new URL(input.fileUrl.trim());
     if (!["https:", "http:"].includes(url.protocol)) throw new Error("Document links must use HTTP or HTTPS.");
   }
+
+  const { data: request, error: requestError } = await supabase
+    .from("lcdbo_document_requests")
+    .select("id,status,cluster_member_id,cluster_members!inner(msme_id,cluster_id)")
+    .eq("id", input.requestId)
+    .maybeSingle();
+  if (requestError || !request) throw requestError ?? new Error("Document request not found.");
+  const member = one(request.cluster_members) as { msme_id: string; cluster_id: string } | null;
+  if (!member || member.msme_id !== input.msmeId) throw new Error("Unauthorized document request submission.");
+  if (!["requested", "rejected"].includes(request.status)) {
+    throw new Error("This document request is not open for submission.");
+  }
+
   const { data, error } = await supabase.from("lcdbo_document_submissions").insert({ request_id: input.requestId, msme_id: input.msmeId, submitted_by: input.submittedBy, file_url: input.fileUrl?.trim() || null, notes: input.notes?.trim() || null, status: "submitted", metadata: { submission_mode: "metadata_first" } }).select("*").single();
   if (error || !data) throw error ?? new Error("Unable to submit document response.");
-  const { data: request } = await supabase.from("lcdbo_document_requests").update({ status: "submitted" }).eq("id", input.requestId).select("cluster_member_id").single();
-  const { data: member } = request ? await supabase.from("cluster_members").select("cluster_id").eq("id", request.cluster_member_id).maybeSingle() : { data: null };
-  await recordPlatformEvent({ actorUserId: input.submittedBy, eventType: "lcdbo.document_submission.created", entityType: "lcdbo_document_submission", entityId: data.id, scopeType: "cluster", scopeId: member?.cluster_id ?? null, metadata: { request_id: input.requestId, msme_id: input.msmeId }, client: supabase });
+
+  const { data: transitionedRequest, error: transitionError } = await supabase
+    .from("lcdbo_document_requests")
+    .update({ status: "submitted" })
+    .eq("id", input.requestId)
+    .in("status", ["requested", "rejected"])
+    .select("id")
+    .maybeSingle();
+  if (transitionError || !transitionedRequest) {
+    await supabase.from("lcdbo_document_submissions").delete().eq("id", data.id);
+    throw transitionError ?? new Error("This document request is no longer open for submission.");
+  }
+
+  await recordPlatformEvent({ actorUserId: input.submittedBy, eventType: "lcdbo.document_submission.created", entityType: "lcdbo_document_submission", entityId: data.id, scopeType: "cluster", scopeId: member.cluster_id, metadata: { request_id: input.requestId, msme_id: input.msmeId }, client: supabase });
   return data as LcdboDocumentSubmission;
 }
 
-export async function reviewDocumentSubmission(input: { submissionId: string; status: "accepted" | "rejected"; reviewedBy: string; reviewNotes?: string | null; client?: Client }) {
+export async function getDocumentSubmissionReviewTarget(submissionId: string, client?: Client): Promise<LcdboDocumentSubmissionReviewTarget> {
+  const supabase = await clientOrService(client);
+  const { data, error } = await supabase
+    .from("lcdbo_document_submissions")
+    .select("id,status,request_id,lcdbo_document_requests!inner(id,status,cluster_member_id)")
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (error || !data) throw error ?? new Error("Document submission not found.");
+  const request = one(data.lcdbo_document_requests) as Pick<LcdboDocumentRequest, "id" | "status" | "cluster_member_id"> | null;
+  if (!request) throw new Error("Document submission request could not be resolved.");
+  return {
+    submissionId: data.id,
+    submissionStatus: data.status as LcdboDocumentSubmission["status"],
+    requestId: request.id,
+    requestStatus: request.status,
+    clusterMemberId: request.cluster_member_id,
+  };
+}
+
+export async function reviewDocumentSubmission(input: { submissionId: string; authorizedClusterMemberId: string; status: "accepted" | "rejected"; reviewedBy: string; reviewNotes?: string | null; client?: Client }) {
   const supabase = await clientOrService(input.client);
-  const { data, error } = await supabase.from("lcdbo_document_submissions").update({ status: input.status, reviewed_by: input.reviewedBy, reviewed_at: new Date().toISOString(), review_notes: input.reviewNotes?.trim() || null }).eq("id", input.submissionId).select("*").single();
+  const target = await getDocumentSubmissionReviewTarget(input.submissionId, supabase);
+  if (target.clusterMemberId !== input.authorizedClusterMemberId) {
+    throw new Error("Unauthorized document submission review target.");
+  }
+  if (target.submissionStatus !== "submitted" || target.requestStatus !== "submitted") {
+    throw new Error("Only submitted document responses can be reviewed.");
+  }
+
+  const { data, error } = await supabase
+    .from("lcdbo_document_submissions")
+    .update({ status: input.status, reviewed_by: input.reviewedBy, reviewed_at: new Date().toISOString(), review_notes: input.reviewNotes?.trim() || null })
+    .eq("id", input.submissionId)
+    .eq("request_id", target.requestId)
+    .eq("status", "submitted")
+    .select("*")
+    .maybeSingle();
   if (error || !data) throw error ?? new Error("Unable to review document submission.");
-  const { data: request } = await supabase.from("lcdbo_document_requests").update({ status: input.status }).eq("id", data.request_id).select("cluster_member_id").single();
-  const { data: member } = request ? await supabase.from("cluster_members").select("cluster_id").eq("id", request.cluster_member_id).maybeSingle() : { data: null };
+
+  const { data: transitionedRequest, error: requestError } = await supabase
+    .from("lcdbo_document_requests")
+    .update({ status: input.status })
+    .eq("id", target.requestId)
+    .eq("cluster_member_id", input.authorizedClusterMemberId)
+    .eq("status", "submitted")
+    .select("cluster_member_id")
+    .maybeSingle();
+  if (requestError || !transitionedRequest) {
+    await supabase.from("lcdbo_document_submissions").update({ status: "submitted", reviewed_by: null, reviewed_at: null, review_notes: null }).eq("id", data.id).eq("reviewed_by", input.reviewedBy);
+    throw requestError ?? new Error("Document request review transition is no longer valid.");
+  }
+
+  const { data: member } = await supabase.from("cluster_members").select("cluster_id").eq("id", transitionedRequest.cluster_member_id).maybeSingle();
   await recordPlatformEvent({ actorUserId: input.reviewedBy, eventType: `lcdbo.document_submission.${input.status}`, entityType: "lcdbo_document_submission", entityId: data.id, scopeType: "cluster", scopeId: member?.cluster_id ?? null, metadata: { request_id: data.request_id, msme_id: data.msme_id, review_notes: input.reviewNotes?.trim() || null }, client: supabase });
   return data as LcdboDocumentSubmission;
 }
@@ -211,7 +290,11 @@ export async function getLcdboOperationsMetrics(client?: Client) {
   return { participants, assessments, documents, workload: [...workload.values()].sort((a, b) => b.count - a.count), readiness: [...readiness.entries()], active: participants.filter((item) => item.status === "active").length, onboarding: participants.filter((item) => item.status === "onboarding").length, needsDocuments: participants.filter((item) => item.status === "needs_documents").length, placed: participants.filter((item) => item.status === "placed").length };
 }
 
-function csvValue(value: unknown) { return `"${String(value ?? "").replace(/"/g, '""')}"`; }
+function csvValue(value: unknown) {
+  const raw = String(value ?? "");
+  const neutralized = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
 function csv(rows: unknown[][]) { return rows.map((row) => row.map(csvValue).join(",")).join("\r\n"); }
 export type LcdboExportDataset = "enrolments" | "cluster-interests" | "cluster-members" | "readiness" | "documents";
 

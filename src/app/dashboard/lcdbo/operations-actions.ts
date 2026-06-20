@@ -11,6 +11,7 @@ import {
   createClusterReadinessAssessment,
   createDocumentRequest,
   DOCUMENT_TYPES,
+  getDocumentSubmissionReviewTarget,
   PARTICIPATION_STATUSES,
   reviewDocumentSubmission,
   submitDocumentRequest,
@@ -86,11 +87,14 @@ export async function documentRequestAction(formData: FormData) {
 }
 
 export async function documentReviewAction(formData: FormData) {
-  const memberId = String(formData.get("cluster_member_id") ?? "");
-  const { ctx, supabase } = await requireOperationalAccess(memberId);
+  const submissionId = String(formData.get("submission_id") ?? "");
+  const lookupClient = await createServiceRoleSupabaseClient();
+  const target = await getDocumentSubmissionReviewTarget(submissionId, lookupClient);
+  const { ctx, supabase, member } = await requireOperationalAccess(target.clusterMemberId);
+  if (member.id !== target.clusterMemberId) throw new Error("Unauthorized document submission review target.");
   const status = String(formData.get("status") ?? "");
   if (!['accepted', 'rejected'].includes(status)) redirect("/dashboard/lcdbo?error=invalid_review_status");
-  await reviewDocumentSubmission({ submissionId: String(formData.get("submission_id") ?? ""), status: status as "accepted" | "rejected", reviewedBy: ctx.appUserId!, reviewNotes: String(formData.get("review_notes") ?? ""), client: supabase });
+  await reviewDocumentSubmission({ submissionId, authorizedClusterMemberId: target.clusterMemberId, status: status as "accepted" | "rejected", reviewedBy: ctx.appUserId!, reviewNotes: String(formData.get("review_notes") ?? ""), client: supabase });
   done(`document_${status}`);
 }
 
@@ -99,8 +103,9 @@ export async function msmeDocumentSubmissionAction(formData: FormData) {
   if (ctx.role !== "msme" || !ctx.appUserId || !ctx.linkedMsmeId) redirect("/access-denied");
   const requestId = String(formData.get("request_id") ?? "");
   const supabase = await createServiceRoleSupabaseClient();
-  const { data: request } = await supabase.from("lcdbo_document_requests").select("id,cluster_member_id,cluster_members!inner(msme_id)").eq("id", requestId).eq("cluster_members.msme_id", ctx.linkedMsmeId).maybeSingle();
+  const { data: request } = await supabase.from("lcdbo_document_requests").select("id,status,cluster_member_id,cluster_members!inner(msme_id)").eq("id", requestId).eq("cluster_members.msme_id", ctx.linkedMsmeId).maybeSingle();
   if (!request) redirect("/access-denied");
+  if (!["requested", "rejected"].includes(request.status)) throw new Error("This document request is not open for submission.");
   await submitDocumentRequest({ requestId, msmeId: ctx.linkedMsmeId, submittedBy: ctx.appUserId, fileUrl: String(formData.get("file_url") ?? ""), notes: String(formData.get("notes") ?? ""), client: supabase });
   revalidatePath("/dashboard/msme/lcdbo");
   revalidatePath("/dashboard/lcdbo");

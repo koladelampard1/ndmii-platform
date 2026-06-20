@@ -209,11 +209,13 @@ export default async function MsmeLcdboPage({
           <div className="mt-5 space-y-4">
             {documentRequests.map((request) => {
               const submission = request.submissions?.[0];
+              const canSubmit = ["requested", "rejected"].includes(request.status)
+                && (!submission || submission.status === "rejected");
               return <div key={request.id} className="rounded-xl border border-slate-200 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black">{request.title}</p><p className="mt-1 text-xs capitalize text-slate-500">{request.document_type.replaceAll("_", " ")} · Due {request.due_date ?? "not specified"}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${statusClass(request.status)}`}>{request.status}</span></div>
                 {request.description && <p className="mt-3 text-sm text-slate-600">{request.description}</p>}
                 {submission && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm"><p><strong>Response:</strong> {submission.notes || "Document link supplied"}</p>{submission.file_url && <Link href={submission.file_url} target="_blank" rel="noreferrer" className="mt-1 inline-block font-bold text-blue-700">Open submitted link</Link>}{submission.review_notes && <p className="mt-2"><strong>Review note:</strong> {submission.review_notes}</p>}</div>}
-                {(!submission || submission.status === "rejected") && <form action={msmeDocumentSubmissionAction} className="mt-4 grid gap-2 md:grid-cols-2"><input type="hidden" name="request_id" value={request.id} /><input name="file_url" type="url" placeholder="Secure document URL (optional)" className="rounded-lg border px-3 py-2 text-sm" /><input name="notes" placeholder="Response or evidence notes" className="rounded-lg border px-3 py-2 text-sm" /><button className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-black text-white md:col-span-2">{submission ? "Resubmit response" : "Submit response"}</button></form>}
+                {canSubmit && <form action={msmeDocumentSubmissionAction} className="mt-4 grid gap-2 md:grid-cols-2"><input type="hidden" name="request_id" value={request.id} /><input name="file_url" type="url" placeholder="Secure document URL (optional)" className="rounded-lg border px-3 py-2 text-sm" /><input name="notes" placeholder="Response or evidence notes" className="rounded-lg border px-3 py-2 text-sm" /><button className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-black text-white md:col-span-2">{submission ? "Resubmit response" : "Submit response"}</button></form>}
               </div>;
             })}
           </div>

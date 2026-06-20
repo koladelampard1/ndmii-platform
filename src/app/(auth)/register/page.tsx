@@ -167,7 +167,14 @@ function RegisterPageClient() {
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
-      options: { data: { role: "msme", programme: values.programme || null, registration_source: values.source || null } },
+      options: {
+        data: {
+          role: "msme",
+          owner_name: values.owner_name,
+          programme: values.programme || null,
+          registration_source: values.source || null,
+        },
+      },
     });
 
     if (signUpError) {
@@ -179,6 +186,23 @@ function RegisterPageClient() {
     if (!signUpData.user) {
       setLoading(false);
       setError("Account created but user session is unavailable. Please sign in after email verification.");
+      return;
+    }
+
+    if (!signUpData.session) {
+      const onboardingParams = new URLSearchParams();
+      if (values.programme === "lcdbo") {
+        onboardingParams.set("programme", "lcdbo");
+        onboardingParams.set("source", values.source || "lcdbo_public_site");
+      }
+      const onboardingPath = `/dashboard/msme/onboarding${onboardingParams.size ? `?${onboardingParams.toString()}` : ""}`;
+      const loginParams = new URLSearchParams({
+        message: "Account created. Verify your email, then sign in to complete MSME onboarding.",
+        returnTo: onboardingPath,
+      });
+      setLoading(false);
+      setSuccess("Account created. Your programme registration context has been saved pending email verification.");
+      router.replace(`/login?${loginParams.toString()}`);
       return;
     }
 

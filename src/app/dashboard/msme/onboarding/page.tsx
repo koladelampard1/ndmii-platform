@@ -248,7 +248,10 @@ async function saveOnboarding(formData: FormData) {
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string; programme?: string; source?: string }> }) {
   const params = await searchParams;
   const supabase = await createServerSupabaseClient();
-  const { data: associations } = await supabase.from("associations").select("id,name").order("name");
+  const [{ data: associations }, { data: authData }] = await Promise.all([
+    supabase.from("associations").select("id,name").order("name"),
+    supabase.auth.getUser(),
+  ]);
   const ctx = await getCurrentUserContext();
 
   const { data: latestMsme } = await supabase
@@ -281,6 +284,14 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     latestValidation = data;
   }
 
+  const metadataProgramme = authData.user?.user_metadata?.programme === "lcdbo" ? "lcdbo" : "";
+  const metadataRegistrationContext = metadataProgramme === "lcdbo"
+    ? {
+        programme: "lcdbo",
+        source: String(authData.user?.user_metadata?.registration_source || "lcdbo_public_site"),
+      }
+    : null;
+
   return (
     <section className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
@@ -308,6 +319,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
         registrationContext={
           (latestMsme?.registration_context as { programme?: string; source?: string } | null)
           ?? (params.programme === "lcdbo" ? { programme: "lcdbo", source: params.source || "lcdbo_public_site" } : null)
+          ?? metadataRegistrationContext
         }
       />
     </section>
