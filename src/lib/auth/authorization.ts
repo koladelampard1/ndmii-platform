@@ -88,7 +88,7 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
   admin: ["/dashboard", "/admin"],
   super_admin: ["/dashboard", "/admin"],
   boi_executive: ["/dashboard/impact-intelligence"],
-  programme_officer: ["/dashboard/impact-intelligence"],
+  programme_officer: ["/dashboard/impact-intelligence", "/dashboard/lcdbo"],
   assessment_officer: ["/dashboard/impact-intelligence"],
   field_officer: [
     "/dashboard/impact-intelligence",
@@ -151,6 +151,8 @@ export function isPublicPath(path: string): boolean {
     path === "/partners" ||
     path === "/resources" ||
     path === "/contact" ||
+    path === "/lcdbo" ||
+    path.startsWith("/lcdbo/") ||
     path === "/sample-id-card" ||
     path.startsWith("/provider/") ||
     path.startsWith("/providers/") ||
@@ -285,6 +287,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   super_admin: [
@@ -297,6 +300,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/association-upload", label: "Bulk Upload" },
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
+    { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   boi_executive: [
@@ -314,6 +318,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
   programme_officer: [
+    { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
     { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },

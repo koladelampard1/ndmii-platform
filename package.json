@@ -13,7 +13,8 @@
     "smoke:dbin": "node scripts/smoke-dbin.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
     "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",
-    "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs"
+    "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs",
+    "validate:platform-foundation": "node scripts/validate-platform-foundation.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",

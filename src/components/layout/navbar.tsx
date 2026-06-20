@@ -20,6 +20,9 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           <Link href="/marketplace" className="text-sm text-emerald-100/90 hover:text-white">
             Marketplace
           </Link>
+          <Link href="/lcdbo" className="text-sm text-emerald-100/90 hover:text-white">
+            LCDBO
+          </Link>
           <Link href="/verify" className="text-sm text-emerald-100/90 hover:text-white">
             Verify Business ID
           </Link>
