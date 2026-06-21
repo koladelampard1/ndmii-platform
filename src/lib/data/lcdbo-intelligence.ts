@@ -6,7 +6,7 @@ import type { IndustrialCluster, Institution, PlatformEvent, Programme } from "@
 type Client = SupabaseClient<any>;
 export type IntelligenceBreakdown = Array<[string, number]>;
 export type IntelligenceAssessment = { id: string; cluster_member_id: string; msme_id: string; overall_score: number; readiness_level: string; created_at: string };
-export type IntelligenceDocumentRequest = { id: string; cluster_member_id: string; status: string; document_type: string; created_at: string; submissions: Array<{ id: string; status: string }> };
+export type IntelligenceDocumentRequest = { id: string; cluster_member_id: string; status: string; document_type: string; due_date: string | null; created_at: string; submissions: Array<{ id: string; status: string }> };
 export type IntelligenceCluster = IndustrialCluster & { stateName: string; lgaName: string; officerCount: number; memberCount: number };
 export type IntelligencePartner = Institution & { partnerRole: string };
 
@@ -53,7 +53,7 @@ export async function getLcdboIntelligenceSnapshot(client?: Client): Promise<Lcd
   const [{ data: clusterRows, error: clusterError }, { data: assessmentRows, error: assessmentError }, { data: documentRows, error: documentError }, { data: partnerRows, error: partnerError }] = await Promise.all([
     clusterIds.length ? supabase.from("industrial_clusters").select("*,states(name),lgas(name)").in("id", clusterIds) : Promise.resolve({ data: [], error: null }),
     memberIds.length ? supabase.from("lcdbo_cluster_assessments").select("id,cluster_member_id,msme_id,overall_score,readiness_level,created_at").in("cluster_member_id", memberIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    memberIds.length ? supabase.from("lcdbo_document_requests").select("id,cluster_member_id,status,document_type,created_at,lcdbo_document_submissions(id,status)").in("cluster_member_id", memberIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    memberIds.length ? supabase.from("lcdbo_document_requests").select("id,cluster_member_id,status,document_type,due_date,created_at,lcdbo_document_submissions(id,status)").in("cluster_member_id", memberIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     supabase.from("programme_partners").select("partner_role,institutions!programme_partners_institution_id_fkey(*)").eq("programme_id", programme.id).eq("status", "active"),
   ]);
   if (clusterError) throw clusterError;

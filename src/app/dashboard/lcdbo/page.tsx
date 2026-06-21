@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Activity, ArrowRight, BarChart3, Building2, CheckCircle2, Factory, FileClock, FileText, Gauge, Landmark, MapPinned, Network, UserRoundCheck, Users } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Building2, CheckCircle2, ClipboardCheck, Factory, FileClock, FileText, Gauge, Landmark, MapPinned, Network, UserRoundCheck, Users } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
@@ -37,6 +37,9 @@ const workspaceCards = [
   { title: "Impact analytics", detail: "Programme indicators, monitoring, and outcome intelligence.", icon: BarChart3, href: "/dashboard/impact-intelligence/analytics" },
   { title: "National intelligence", detail: "Sector, geography, readiness and programme pipeline intelligence.", icon: BarChart3, href: "/dashboard/lcdbo/intelligence" },
   { title: "Executive reports", detail: "National, state, cluster, partner and readiness reporting centre.", icon: FileText, href: "/dashboard/lcdbo/reports" },
+  { title: "Geographic intelligence", detail: "State coverage, participant density and cluster placement intelligence.", icon: MapPinned, href: "/dashboard/lcdbo/geography" },
+  { title: "Data quality", detail: "Governed KPI definitions, programme health, quality exceptions and snapshots.", icon: CheckCircle2, href: "/dashboard/lcdbo/data-quality" },
+  { title: "Decision briefings", detail: "National, state, cluster and partner executive briefing packs.", icon: ClipboardCheck, href: "/dashboard/lcdbo/briefings" },
   { title: "Opportunities", detail: "Published MSME and institutional participation tracks.", icon: Landmark, href: "/lcdbo/opportunities" },
 ];
 

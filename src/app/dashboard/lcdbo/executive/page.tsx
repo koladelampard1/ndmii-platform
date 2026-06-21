@@ -8,6 +8,8 @@ import { getLcdboOperationsMetrics } from "@/lib/data/lcdbo-operations";
 import { LCDBO_MODULE_KEY } from "@/lib/lcdbo/content";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
 import { LcdboExecutiveDashboard } from "@/components/lcdbo/lcdbo-executive-dashboard";
+import { calculateDataQuality, calculateProgrammeHealth, getReportSnapshots } from "@/lib/data/lcdbo-governance";
+import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
 
 const EXECUTIVE_ROLES = ["programme_officer", "admin", "super_admin", "boi_executive", "auditor", "data_analyst", "institution_admin", "executive", "observer"] as const;
 
@@ -19,12 +21,14 @@ export default async function LcdboExecutivePage() {
   if (!isPlatformAdmin(ctx.role) && !access.allowed) redirect("/access-denied");
 
   const supabase = await createServiceRoleSupabaseClient();
-  const [enrolments, interests, clusters, operations, publicData] = await Promise.all([
+  const [enrolments, interests, clusters, operations, publicData, intelligence, reportSnapshots] = await Promise.all([
     getLcdboEnrolmentQueue(supabase),
     getLcdboClusterInterestQueue(supabase),
     listLcdboClusters(supabase),
     getLcdboOperationsMetrics(supabase),
     loadLcdboPublicData(),
+    getLcdboIntelligenceSnapshot(supabase),
+    getReportSnapshots(programme.id, undefined, 5, supabase),
   ]);
   const activity = await getLcdboRecentActivity(programme.id, clusters.map((cluster) => cluster.id), supabase);
   const topSectors = countBy(enrolments.map((item) => item.msme?.sector).filter(Boolean) as string[]);
@@ -49,6 +53,9 @@ export default async function LcdboExecutivePage() {
     topStates={topStates}
     recentActivity={activity}
     partners={partners}
+    quality={calculateDataQuality(intelligence)}
+    health={calculateProgrammeHealth(intelligence)}
+    reportSnapshots={reportSnapshots}
   />;
 }
 

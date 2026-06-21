@@ -17,6 +17,7 @@ import {
   Flag,
   History,
   LayoutDashboard,
+  MapPinned,
   Network,
   Radar,
   Target,
@@ -47,6 +48,9 @@ const WORKSPACE_NAV: WorkspaceLink[] = [
   { label: "LCDBO Operations", href: "/dashboard/lcdbo", icon: Factory },
   { label: "LCDBO Intelligence", href: "/dashboard/lcdbo/intelligence", icon: Radar },
   { label: "LCDBO Reports", href: "/dashboard/lcdbo/reports", icon: FileText },
+  { label: "LCDBO Geography", href: "/dashboard/lcdbo/geography", icon: MapPinned },
+  { label: "LCDBO Data Quality", href: "/dashboard/lcdbo/data-quality", icon: Flag },
+  { label: "LCDBO Briefings", href: "/dashboard/lcdbo/briefings", icon: ClipboardCheck },
   { label: "LCDBO Executive View", href: "/dashboard/lcdbo/executive", icon: ChartNoAxesCombined },
   { label: "Programmes", href: "/dashboard/impact-intelligence/programmes", icon: Building2, resource: "programme" },
   { label: "Cohorts", href: "/dashboard/impact-intelligence/cohorts", icon: UsersRound, resource: "cohort" },
@@ -87,7 +91,7 @@ export function ImpactIntelligenceShell({
   const pathname = usePathname();
   const items = WORKSPACE_NAV.filter((item) => {
     if (item.href === "/dashboard/lcdbo") return canAccessLcdbo;
-    if (item.href === "/dashboard/lcdbo/intelligence" || item.href === "/dashboard/lcdbo/reports") return canAccessLcdboExecutive;
+    if (["/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports", "/dashboard/lcdbo/geography", "/dashboard/lcdbo/data-quality", "/dashboard/lcdbo/briefings"].includes(item.href)) return canAccessLcdboExecutive;
     if (item.href === "/dashboard/lcdbo/executive") return canAccessLcdboExecutive;
     if (!canAccessRoute(role, item.href)) return false;
     if (item.resource === "audit_log" && !canRole(role, "audit_log", "read")) return false;

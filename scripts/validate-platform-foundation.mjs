@@ -12,6 +12,14 @@ const phase4MigrationPath = resolve("supabase/migrations/20260620160000_lcdbo_cl
 const phase4Sql = readFileSync(phase4MigrationPath, "utf8");
 const phase4DataPath = resolve("src/lib/data/lcdbo-operations.ts");
 const phase4Data = readFileSync(phase4DataPath, "utf8");
+const sprintCMigrationPath = resolve("supabase/migrations/20260621120000_lcdbo_governance_sprint_c.sql");
+const sprintCSql = readFileSync(sprintCMigrationPath, "utf8");
+const sprintCGovernancePath = resolve("src/lib/data/lcdbo-governance.ts");
+const sprintCGovernance = readFileSync(sprintCGovernancePath, "utf8");
+const sprintCReportingPath = resolve("src/lib/reports/lcdbo-reporting.ts");
+const sprintCReporting = readFileSync(sprintCReportingPath, "utf8");
+const sprintCSnapshotRoutePath = resolve("src/app/api/lcdbo/snapshots/route.ts");
+const sprintCSnapshotRoute = readFileSync(sprintCSnapshotRoutePath, "utf8");
 const msmeNavigation = readFileSync(resolve("src/components/msme/msme-workspace-sidebar.tsx"), "utf8");
 const adminNavigation = readFileSync(resolve("src/components/admin/admin-command-shell.tsx"), "utf8");
 const adminDashboard = readFileSync(resolve("src/app/dashboard/admin/page.tsx"), "utf8");
@@ -140,6 +148,24 @@ for (const eventType of ["lcdbo.cluster_member.status_updated", "lcdbo.readiness
   assert(phase4Data.includes(`"${eventType}"`), `Missing LCDBO Phase 4 event ${eventType}.`);
 }
 
+for (const table of ["lcdbo_kpi_definitions", "lcdbo_kpi_snapshots", "lcdbo_report_snapshots"]) {
+  assert(sprintCSql.includes(`public.${table}`), `Missing LCDBO Sprint C governance table ${table}.`);
+}
+for (const frequency of ["daily", "weekly", "monthly", "quarterly"]) {
+  assert(sprintCSql.includes(`'${frequency}'`), `Missing LCDBO Sprint C reporting frequency ${frequency}.`);
+}
+for (const helper of ["calculateDataQuality", "calculateProgrammeHealth", "generateKpiSnapshot", "generateReportSnapshot"]) {
+  assert(sprintCGovernance.includes(`function ${helper}`), `Missing LCDBO Sprint C governance helper ${helper}.`);
+}
+for (const reportType of ["national", "state", "cluster", "partner", "readiness", "participation", "executive_briefing"]) {
+  assert(sprintCReporting.includes(`reportType: "${reportType}"`), `Missing LCDBO Sprint C snapshot plan for ${reportType}.`);
+}
+assert(sprintCSnapshotRoute.includes("buildLcdboSnapshotPlans"), "Scheduled snapshot endpoint is not wired to the complete report snapshot plan.");
+assert(sprintCSnapshotRoute.includes("LCDBO_SNAPSHOT_SECRET") && sprintCSnapshotRoute.includes("CRON_SECRET"), "Scheduled snapshot endpoint is missing deployment secret support.");
+for (const route of ["/dashboard/lcdbo/data-quality", "/dashboard/lcdbo/geography", "/dashboard/lcdbo/briefings"]) {
+  assert(adminNavigation.includes(`href: "${route}"`), `Admin navigation is missing Sprint C route ${route}.`);
+}
+
 assert(msmeNavigation.includes('href: "/dashboard/msme/lcdbo"'), "MSME workspace navigation is missing LCDBO Programme.");
 assert(adminNavigation.includes('href: "/dashboard/lcdbo"'), "Admin command navigation is missing LCDBO Programme Operations.");
 assert(adminDashboard.includes('href="/dashboard/lcdbo"'), "Admin dashboard is missing the LCDBO discovery card.");
@@ -152,6 +178,10 @@ console.log(JSON.stringify({
   phase3DataLayer: phase3DataPath,
   phase4Migration: phase4MigrationPath,
   phase4DataLayer: phase4DataPath,
+  sprintCMigration: sprintCMigrationPath,
+  sprintCGovernanceLayer: sprintCGovernancePath,
+  sprintCReportingLayer: sprintCReportingPath,
+  sprintCSnapshotRoute: sprintCSnapshotRoutePath,
   tables: requiredTables.length,
   modules: requiredModuleKeys.length,
   institutions: requiredInstitutions.length,
@@ -159,5 +189,6 @@ console.log(JSON.stringify({
   clusters: requiredClusters.length,
   phase3: "lcdbo_msme_enrolment_and_cluster_participation",
   phase4: "lcdbo_cluster_placement_and_participation_operations",
+  sprintC: "lcdbo_governance_reporting_data_quality_and_geography",
   navigation: "lcdbo_discovery_enabled",
 }, null, 2));
