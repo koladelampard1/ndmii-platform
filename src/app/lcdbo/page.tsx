@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ClusterCard, FlowDiagram, PartnerCard, PillarGrid, StatGrid } from "@/components/lcdbo/lcdbo-cards";
 import { LcdboFinalCta, LcdboHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
-import { ecosystemFlow, lcdboPillars, lcdboStats, programmeLabel } from "@/lib/lcdbo/content";
+import { LcdboSicipTeaser } from "@/components/lcdbo/lcdbo-visuals";
+import { ecosystemFlow, lcdboPillars, lcdboStats, programmeLabel, stakeholderValue } from "@/lib/lcdbo/content";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
 
 export default async function LcdboHomePage() {
@@ -12,23 +13,29 @@ export default async function LcdboHomePage() {
       <LcdboHero />
 
       <LcdboSection
-        eyebrow="National targets"
-        title="A programme workspace for industrial scale, not another disconnected portal."
-        description={`${programmeLabel(data.programme)} runs on DBIN infrastructure: business identity, programme data, partner access, clusters, consent, and future funding workflows in one platform foundation.`}
+        eyebrow="National ambition"
+        title="Programme targets for industrial scale."
+        description={`${programmeLabel(data.programme)} uses DBIN infrastructure to connect identity, programme operations, clusters and institutional partners. All figures below are programme targets unless stated otherwise.`}
       >
         <StatGrid stats={lcdboStats} />
       </LcdboSection>
 
       <LcdboSection
-        eyebrow="Operating model"
-        title="From stakeholders to production, exports, jobs, and growth."
-        description="LCDBO aligns institutions, associations, MSMEs, investors, technical partners, and governments around structured industrial clusters and measurable commercial outcomes."
+        eyebrow="National vision"
+        title="From local economies to national growth."
+        description="A clear operating pathway connects local production capacity to clusters, jobs, exports and wider economic transformation."
       >
         <FlowDiagram items={ecosystemFlow} />
       </LcdboSection>
 
       <LcdboSection eyebrow="Programme pillars" title="Six pillars for beyond-oil industrial transformation.">
         <PillarGrid pillars={lcdboPillars} />
+      </LcdboSection>
+
+      <LcdboSection eyebrow="Stakeholder value" title="One programme ecosystem. Clear value for every participant." description="LCDBO creates distinct participation pathways while preserving one governed national operating picture.">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {stakeholderValue.map((item, index) => <article key={item.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><span className="text-xs font-black text-[#D4A017]">0{index + 1}</span><h3 className="mt-3 text-lg font-black text-[#0B2E59]">{item.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p></article>)}
+        </div>
       </LcdboSection>
 
       <LcdboSection eyebrow="Pilot clusters" title="Featured industrial cluster pilots." description="These cluster records come from the DBIN platform foundation when available, with seeded pilot data as the current baseline.">
@@ -50,6 +57,10 @@ export default async function LcdboHomePage() {
             <PartnerCard key={partner.id} partner={partner} />
           ))}
         </div>
+      </LcdboSection>
+
+      <LcdboSection eyebrow="Investment mobilisation" title="The next programme layer.">
+        <LcdboSicipTeaser />
       </LcdboSection>
 
       <LcdboFinalCta />

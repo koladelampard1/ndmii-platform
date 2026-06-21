@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Activity, ArrowRight, BarChart3, Building2, Factory, FileText, Landmark, Network, Users } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Building2, CheckCircle2, Factory, FileClock, FileText, Gauge, Landmark, MapPinned, Network, UserRoundCheck, Users } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
@@ -25,6 +25,7 @@ import {
   getLcdboOperationsMetrics,
   getLatestAssessmentsForMembers,
 } from "@/lib/data/lcdbo-operations";
+import { LcdboCommandMetricCard, LcdboCoveragePanel, LcdboPipeline } from "@/components/lcdbo/lcdbo-visuals";
 
 const REVIEW_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 
@@ -153,10 +154,22 @@ export default async function LcdboDashboardPage({
       })();
   const recentActivity = await getLcdboRecentActivity(programme.id, clusters.map((cluster) => cluster.id), supabase);
   const pendingEnrolments = enrolments.filter((item) => item.status === "pending_review");
-  const activeEnrolments = enrolments.filter((item) => item.status === "active");
   const pendingInterests = interests.filter((item) => ["interested", "under_review", "waitlisted"].includes(item.status));
   const sectorCounts = countBy(enrolments.map((item) => item.msme?.sector).filter(Boolean) as string[]);
   const stateCounts = countBy(enrolments.map((item) => item.msme?.state).filter(Boolean) as string[]);
+  const documentsPending = operations.documents.filter((item) => ["requested", "submitted", "rejected"].includes(item.status)).length;
+  const readinessCompleted = operations.assessments.size;
+  const statesCovered = new Set(enrolments.map((item) => item.msme?.state).filter(Boolean)).size;
+  const officersAssigned = operations.participants.filter((item) => item.assigned_officer_id).length;
+  const pipeline = [
+    { label: "Applications", value: enrolments.length },
+    { label: "Review", value: pendingEnrolments.length },
+    { label: "Cluster interest", value: interests.length },
+    { label: "Assessment", value: readinessCompleted },
+    { label: "Documents", value: operations.documents.length },
+    { label: "Placement", value: operations.placed },
+    { label: "Active participation", value: operations.active },
+  ];
 
   return (
     <main className="min-h-screen bg-[#eef2f7] text-slate-900">
@@ -164,12 +177,14 @@ export default async function LcdboDashboardPage({
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
           <div className="flex flex-wrap items-start justify-between gap-5">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#f2c76b]">Programme Operations</p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">{programmeLabel(programme)}</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Review MSME enrolments, shape cluster participation, and monitor the programme pipeline from one governed workspace.</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#f2c76b]">National Operations Command Centre</p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">LCDBO Programme Operations</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Monitor enrolments, cluster participation, readiness, document requests and programme delivery.</p>
+              <p className="mt-2 text-xs font-semibold text-slate-400">{programmeLabel(programme)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {isPlatformAdmin(ctx.role) && <Link href="/dashboard/admin" className="inline-flex rounded-md bg-[#d9a441] px-4 py-3 text-sm font-black text-[#06172f]">Admin Dashboard</Link>}
+              {canManage && <Link href="/dashboard/lcdbo/executive" className="inline-flex rounded-md border border-[#d9a441]/50 px-4 py-3 text-sm font-black text-[#f2c76b]">Executive View</Link>}
               <Link href="/lcdbo" className="inline-flex rounded-md border border-white/20 px-4 py-3 text-sm font-black text-white">Public Site</Link>
             </div>
           </div>
@@ -180,12 +195,20 @@ export default async function LcdboDashboardPage({
         {query.success && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">The LCDBO review decision was recorded.</p>}
         {query.error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">A review note is required when rejecting a request.</p>}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Kpi label="Total enrolments" value={enrolments.length} />
-          <Kpi label="Pending review" value={pendingEnrolments.length} attention />
-          <Kpi label="Active MSMEs" value={activeEnrolments.length} />
-          <Kpi label="Cluster requests" value={pendingInterests.length} attention />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <LcdboCommandMetricCard icon={Users} label="Total enrolments" value={enrolments.length} />
+          <LcdboCommandMetricCard icon={FileClock} label="Pending reviews" value={pendingEnrolments.length} attention={pendingEnrolments.length > 0} />
+          <LcdboCommandMetricCard icon={CheckCircle2} label="Active members" value={operations.active} />
+          <LcdboCommandMetricCard icon={Factory} label="Cluster interests" value={interests.length} attention={pendingInterests.length > 0} />
+          <LcdboCommandMetricCard icon={FileText} label="Documents pending" value={documentsPending} attention={documentsPending > 0} />
+          <LcdboCommandMetricCard icon={Gauge} label="Readiness complete" value={readinessCompleted} />
+          <LcdboCommandMetricCard icon={MapPinned} label="States covered" value={statesCovered} />
+          <LcdboCommandMetricCard icon={UserRoundCheck} label="Officers assigned" value={officersAssigned} />
         </div>
+
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Operational pipeline</p><h2 className="mt-1 text-xl font-black text-[#0B2E59]">From application to active participation</h2></div><div className="mt-5"><LcdboPipeline stages={pipeline} /></div></article>
+
+        <LcdboCoveragePanel states={statesCovered} clusters={clusters.length} enrolments={enrolments.length} pending={pendingEnrolments.length + pendingInterests.length + documentsPending} />
 
         <LcdboOperationsPanel
           participants={operations.participants}
@@ -275,10 +298,6 @@ export default async function LcdboDashboardPage({
       </section>
     </main>
   );
-}
-
-function Kpi({ label, value, attention = false }: { label: string; value: number; attention?: boolean }) {
-  return <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>{attention && value > 0 ? <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> : null}</div><p className="mt-2 text-3xl font-black text-[#06172f]">{value.toLocaleString("en-NG")}</p></article>;
 }
 
 function EmptyState({ text }: { text: string }) {

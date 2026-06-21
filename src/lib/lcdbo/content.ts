@@ -33,46 +33,56 @@ export type LcdboPartnerCard = {
 };
 
 export const lcdboStats = [
-  { label: "774 LGAs", value: "774", detail: "Canonical subnational reach" },
-  { label: "36 States + FCT", value: "37", detail: "National industrial footprint" },
-  { label: "5,000 MSMEs Enabled Per LGA", value: "5,000", detail: "Local production density target" },
-  { label: "$100B Investment Mobilisation Target", value: "$100B", detail: "Public-private pipeline ambition" },
-  { label: "Pathway to $1 Trillion Economy", value: "$1T", detail: "Industrial growth trajectory" },
+  { label: "LGAs Targeted", value: "774", detail: "Programme target for nationwide reach" },
+  { label: "States + FCT", value: "36+FCT", detail: "Target national industrial footprint" },
+  { label: "MSMEs Per LGA", value: "5,000", detail: "Programme enablement target" },
+  { label: "Investment Mobilisation", value: "$100B", detail: "Long-term programme target" },
+  { label: "$1 Trillion Economy", value: "$1T", detail: "Industrial growth pathway" },
+  { label: "Strategic Partners", value: "6", detail: "Seed institutional ecosystem" },
 ] as const;
 
 export const lcdboPillars = [
   { title: "Industrial Clusters", detail: "Shared production infrastructure and value-chain concentration." },
   { title: "MSME Enablement", detail: "Business identity, readiness, onboarding, and operational support." },
-  { title: "Funding & Investment", detail: "Bankable pipelines for DFIs, investors, states, and partners." },
-  { title: "Market Access", detail: "Commercialisation pathways into procurement and export markets." },
+  { title: "Funding & Investment Readiness", detail: "Bankable pipelines for DFIs, investors, states, and partners." },
+  { title: "Market Access & Exports", detail: "Commercialisation pathways into procurement and export markets." },
   { title: "Skills & ADC Framework", detail: "Acquire, Demonstrate, Commercialise capability development." },
   { title: "Digital Business Identity", detail: "BIN-backed verification, compliance, and trust infrastructure." },
 ] as const;
 
 export const ecosystemFlow = [
-  "Stakeholders",
-  "LCDBO",
+  "774 LGAs",
   "Industrial Clusters",
-  "Production",
-  "Commercialisation",
-  "Exports",
+  "MSME Growth",
   "Jobs",
-  "Growth",
+  "Exports",
+  "Economic Growth",
 ] as const;
 
 export const adcFramework = [
   { title: "Acquire", detail: "Mobilise MSMEs, assess capability, organise clusters, and define required infrastructure." },
   { title: "Demonstrate", detail: "Validate production capacity, standards readiness, technical support, and market evidence." },
   { title: "Commercialise", detail: "Move businesses into financing, procurement, exports, and measurable job creation." },
+  { title: "Scale", detail: "Expand production, strengthen supply chains, grow exports, and replicate proven cluster models." },
 ] as const;
 
 export const modelSteps = [
-  "Business registration",
-  "BIN identity",
-  "Cluster placement",
-  "Readiness support",
-  "Funding pipeline",
-  "Market access",
+  "Register",
+  "Get BIN",
+  "Join LCDBO",
+  "Select Cluster",
+  "Readiness Assessment",
+  "Support Plan",
+  "Market Access",
+] as const;
+
+export const stakeholderValue = [
+  { title: "MSMEs", detail: "A clear pathway from trusted identity to cluster participation, readiness support, and markets." },
+  { title: "Associations", detail: "Structured mobilisation, member visibility, capability evidence, and value-chain coordination." },
+  { title: "Investors", detail: "A pipeline of organised clusters and increasingly investment-ready enterprises." },
+  { title: "State Governments", detail: "A programme framework for local production, jobs, infrastructure, and industrial priorities." },
+  { title: "Development Partners", detail: "Traceable interventions, measurable readiness, and transparent programme operations." },
+  { title: "Off-takers", detail: "Discoverable production capacity and stronger local supplier development pathways." },
 ] as const;
 
 export const opportunityCards = [

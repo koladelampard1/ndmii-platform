@@ -5,10 +5,10 @@ import { formatNairaCompact } from "@/lib/lcdbo/content";
 
 export function StatGrid({ stats }: { stats: readonly { label: string; value: string; detail: string }[] }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {stats.map((stat) => (
-        <article key={stat.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-3xl font-black tracking-tight text-[#06172f]">{stat.value}</p>
+        <article key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#D4A017]/50 hover:shadow-md">
+          <p className="text-3xl font-black tracking-tight text-[#0B2E59]">{stat.value}</p>
           <h3 className="mt-2 text-sm font-black text-slate-900">{stat.label}</h3>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{stat.detail}</p>
         </article>
@@ -59,6 +59,7 @@ export function ClusterCard({ cluster }: { cluster: LcdboClusterCard }) {
         <span className="rounded-full bg-[#d9a441]/15 px-3 py-1 text-xs font-black capitalize text-[#72520c]">{cluster.status}</span>
       </div>
       <p className="mt-3 text-sm leading-6 text-slate-600">{cluster.description}</p>
+      <p className="mt-3 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{cluster.sector}</p>
       <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-700">
         <MapPin className="h-4 w-4 text-[#1f8a5b]" />
         {cluster.state} / {cluster.lga}
@@ -68,6 +69,7 @@ export function ClusterCard({ cluster }: { cluster: LcdboClusterCard }) {
         <Metric label="MSMEs" value={cluster.msmeTarget?.toLocaleString("en-NG") ?? "TBC"} />
         <Metric label="Jobs" value={cluster.jobsTarget?.toLocaleString("en-NG") ?? "TBC"} />
       </div>
+      <Link href={`/dashboard/msme/lcdbo?cluster=${encodeURIComponent(cluster.id)}`} className="mt-5 inline-flex items-center gap-2 text-sm font-black text-[#008751]">Express interest <ArrowRight className="h-4 w-4" /></Link>
     </article>
   );
 }
@@ -82,9 +84,10 @@ export function Metric({ label, value }: { label: string; value: string }) {
 }
 
 export function PartnerCard({ partner }: { partner: LcdboPartnerCard }) {
+  const initials = partner.name.split(/\s+/).filter(Boolean).slice(0, 3).map((part) => part[0]).join("").toUpperCase();
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.14em] text-[#1f8a5b]">{partner.category}</p>
+      <div className="flex items-start justify-between gap-4"><span className="grid h-12 w-12 place-items-center rounded-xl bg-[#0B2E59] text-xs font-black tracking-wider text-white">{initials}</span><p className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#008751]">{partner.category}</p></div>
       <h3 className="mt-3 text-xl font-black text-[#06172f]">{partner.name}</h3>
       <p className="mt-1 text-xs font-bold capitalize text-slate-500">{partner.institutionType}</p>
       <p className="mt-3 text-sm leading-6 text-slate-600">{partner.description}</p>

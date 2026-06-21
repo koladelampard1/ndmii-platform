@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, CheckCircle2, Factory, FileCheck2, Gauge, MapPin, Target, UserRoundCheck, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Factory, FileCheck2, Gauge, MapPin, UserRoundCheck } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import {
   createLcdboClusterInterest,
@@ -17,6 +17,7 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { ClusterInterestStatus, ProgrammeEnrolmentStatus } from "@/types/platform";
 import { getClusterReadinessAssessment, getDocumentRequestsForMsme, PARTICIPATION_STATUSES } from "@/lib/data/lcdbo-operations";
 import { msmeDocumentSubmissionAction } from "@/app/dashboard/lcdbo/operations-actions";
+import { LcdboCommandMetricCard, LcdboEmptyState, LcdboJourneyFlow, LcdboStatusBadge } from "@/components/lcdbo/lcdbo-visuals";
 
 const SUPPORT_OPTIONS = ["Shared facilities", "Standards and certification", "Technical training", "Market access", "Export readiness"];
 
@@ -131,30 +132,65 @@ export default async function MsmeLcdboPage({
       ? supabase.from("users").select("id,full_name,email").eq("id", participant.assigned_officer_id).maybeSingle().then(({ data }) => data)
       : Promise.resolve(null),
   ]);
+  const openDocumentRequests = documentRequests.filter((request) => ["requested", "rejected"].includes(request.status));
+  const hasSubmittedDocuments = documentRequests.some((request) => request.submissions?.some((submission) => ["submitted", "accepted"].includes(submission.status)));
+  const activeInterest = interests.find((interest) => !["rejected", "withdrawn"].includes(interest.status)) ?? null;
+  const progressSteps = ["Business registered", "LCDBO enrolment", "Cluster interest", "Cluster review", "Readiness assessment", "Document submission", "Cluster placement", "Active participation"] as const;
+  let completedSteps = 1;
+  if (enrolment && !["rejected", "withdrawn"].includes(enrolment.status)) completedSteps = 2;
+  if (activeInterest) completedSteps = 3;
+  if (activeInterest && !["interested", "under_review", "waitlisted"].includes(activeInterest.status)) completedSteps = 4;
+  if (readiness) completedSteps = 5;
+  if (hasSubmittedDocuments || (!documentRequests.length && Boolean(readiness))) completedSteps = 6;
+  if (participant && ["placed", "active"].includes(participant.status)) completedSteps = 7;
+  if (participant?.status === "active") completedSteps = 8;
+  const nextAction = !enrolment || ["rejected", "withdrawn"].includes(enrolment.status)
+    ? { title: "Join LCDBO", detail: "Submit your programme enrolment request to enter the industrial transformation pipeline.", href: "#programme-enrolment" }
+    : enrolment.status === "pending_review"
+      ? { title: "Your enrolment is under review", detail: "The programme team is validating your request. No action is required right now.", href: "#programme-enrolment" }
+      : !activeInterest
+        ? { title: "Select an industrial cluster", detail: "Explore available clusters and express interest where your capabilities align.", href: "#available-clusters" }
+        : openDocumentRequests.length
+          ? { title: "Submit requested evidence", detail: `${openDocumentRequests.length} document request${openDocumentRequests.length === 1 ? " is" : "s are"} waiting for your response.`, href: "#document-requests" }
+          : readiness
+            ? { title: "Review your readiness feedback", detail: `Your latest readiness level is ${readiness.readiness_level.replaceAll("_", " ")}.`, href: "#programme-progress" }
+            : assignedOfficer
+              ? { title: "Continue with your assigned officer", detail: `${assignedOfficer.full_name ?? assignedOfficer.email} is supporting your participation journey.`, href: "#participation-summary" }
+              : { title: "Wait for cluster review", detail: "Your cluster interest is in the programme review pipeline.", href: "#programme-progress" };
 
   return (
     <section className="space-y-6">
-      <header className="overflow-hidden rounded-2xl bg-[#06172f] p-6 text-white shadow-lg sm:p-8">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#f2c76b]">LCDBO Programme</p>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-5">
+      <header className="relative overflow-hidden rounded-3xl bg-[#0B2E59] p-6 text-white shadow-lg sm:p-8">
+        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#008751]/30 blur-3xl" aria-hidden="true" />
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#f2c76b]">{programme?.name ?? "LCDBO Programme"}</p>
+        <div className="relative mt-3 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Build your place in Nigeria&apos;s beyond-oil value chains.</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Join the Local Content Development Beyond Oil programme, then express interest in industrial clusters aligned with your capabilities.</p>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Your LCDBO participation journey</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Track programme enrolment, cluster participation, readiness and evidence requirements for {msme.business_name}.</p>
           </div>
-          {enrolment && <span className={`rounded-full px-3 py-1.5 text-xs font-black capitalize ${statusClass(enrolment.status)}`}>{labelStatus(enrolment.status)}</span>}
+          {enrolment ? <LcdboStatusBadge status={enrolment.status} /> : <LcdboStatusBadge status="not_enrolled" />}
+        </div>
+        <div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[{ label: "Enrolment", value: enrolment ? labelStatus(enrolment.status) : "Not enrolled" }, { label: "Cluster status", value: participant ? labelStatus(participant.status) : activeInterest ? labelStatus(activeInterest.status) : "No cluster selected" }, { label: "Assigned officer", value: assignedOfficer?.full_name ?? assignedOfficer?.email ?? "Awaiting assignment" }, { label: "Readiness", value: readiness ? `${readiness.readiness_level.replaceAll("_", " ")} · ${readiness.overall_score}/5` : "Not assessed" }].map((item) => <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.06] p-3"><p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{item.label}</p><p className="mt-1 text-sm font-bold capitalize text-white">{item.value}</p></div>)}
         </div>
       </header>
 
       {query.success && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">Your LCDBO request has been updated successfully.</p>}
       {query.error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">Complete all required cluster-interest fields and try again.</p>}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard icon={Building2} label="Programme" value={programme?.name ?? "LCDBO"} />
-        <SummaryCard icon={Users} label="Business" value={msme.business_name} />
-        <SummaryCard icon={Target} label="Enrolment" value={enrolment ? labelStatus(enrolment.status) : "Not enrolled"} />
+      <article id="programme-progress" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Programme progress</p><h2 className="mt-1 text-xl font-black text-[#0B2E59]">Eight milestones to active participation</h2></div><span className="text-sm font-black text-[#0B2E59]">{completedSteps}/8 complete</span></div><div className="mt-6"><LcdboJourneyFlow items={progressSteps} completed={completedSteps} /></div></article>
+
+      <article className="overflow-hidden rounded-2xl border border-[#D4A017]/30 bg-amber-50 p-5 shadow-sm sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#D4A017] text-[#0B2E59]"><ArrowRight className="h-5 w-5" /></span><div><p className="text-xs font-black uppercase tracking-[0.14em] text-[#8a650f]">Next best action</p><h2 className="mt-1 text-xl font-black text-[#0B2E59]">{nextAction.title}</h2><p className="mt-1 text-sm leading-6 text-slate-600">{nextAction.detail}</p></div></div><Link href={nextAction.href} className="shrink-0 rounded-xl bg-[#0B2E59] px-4 py-3 text-center text-sm font-black text-white">View next step</Link></div></article>
+
+      <div id="participation-summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <LcdboCommandMetricCard icon={Factory} label="Interested clusters" value={interests.filter((item) => !["rejected", "withdrawn"].includes(item.status)).length} />
+        <LcdboCommandMetricCard icon={CheckCircle2} label="Accepted cluster" value={participant?.cluster_id ? 1 : 0} />
+        <LcdboCommandMetricCard icon={UserRoundCheck} label="Assigned officer" value={assignedOfficer ? 1 : 0} />
+        <LcdboCommandMetricCard icon={FileCheck2} label="Documents open" value={openDocumentRequests.length} attention={openDocumentRequests.length > 0} />
+        <LcdboCommandMetricCard icon={Gauge} label="Readiness score" value={readiness ? `${readiness.overall_score}/5` : "—"} />
       </div>
 
-      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <article id="programme-enrolment" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-black text-[#06172f]">Programme enrolment</h2>
@@ -183,7 +219,7 @@ export default async function MsmeLcdboPage({
         )}
       </article>
 
-      {participant && (
+      {participant ? (
         <article className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="text-xs font-black uppercase tracking-wider text-emerald-700">Cluster Participation</p><h2 className="mt-1 text-2xl font-black text-[#06172f]">Your operational placement</h2></div>
@@ -200,10 +236,10 @@ export default async function MsmeLcdboPage({
             {readiness?.recommended_support?.length ? <p className="mt-2"><strong>Recommended support:</strong> {readiness.recommended_support.join(", ")}</p> : null}
           </div>
         </article>
-      )}
+      ) : <LcdboEmptyState icon={Factory} title="No cluster placement yet" detail="Once a cluster interest is accepted, your participation summary, assigned officer and readiness journey will appear here." />}
 
-      {documentRequests.length > 0 && (
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      {documentRequests.length > 0 ? (
+        <article id="document-requests" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-xl font-black text-[#06172f]">Requested documents and evidence</h2>
           <p className="mt-1 text-sm text-slate-600">Submit a secure document link or metadata response. Direct LCDBO file upload will follow storage provisioning.</p>
           <div className="mt-5 space-y-4">
@@ -220,9 +256,9 @@ export default async function MsmeLcdboPage({
             })}
           </div>
         </article>
-      )}
+      ) : <LcdboEmptyState icon={FileCheck2} title="No document requests" detail="There is nothing to submit right now. Programme officers will request evidence here when it is needed for participation review." />}
 
-      <div>
+      <div id="available-clusters">
         <h2 className="text-2xl font-black text-[#06172f]">Available industrial clusters</h2>
         <p className="mt-1 text-sm text-slate-600">Express interest where your products, services, and growth plans align.</p>
       </div>

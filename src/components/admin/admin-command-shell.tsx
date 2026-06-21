@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
+  BarChart3,
   Bell,
   Building2,
   ChevronDown,
@@ -68,6 +69,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { label: "Complaints", href: "/dashboard/admin/complaints", icon: FileClock, pending: true },
       { label: "Impact Intelligence", href: "/dashboard/impact-intelligence", icon: LayoutDashboard },
       { label: "LCDBO Programme Operations", href: "/dashboard/lcdbo", icon: Factory },
+      { label: "LCDBO Executive View", href: "/dashboard/lcdbo/executive", icon: BarChart3 },
       { label: "Public Verification", href: "/dashboard/admin/public-verification", icon: ShieldCheck, pending: true },
     ],
   },

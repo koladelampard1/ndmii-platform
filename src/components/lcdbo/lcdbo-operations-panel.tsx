@@ -38,6 +38,7 @@ function badge(status: string) {
 
 export function LcdboOperationsPanel({ participants, assessments, documents, officers, workload, readiness, metrics, canAssign }: Props) {
   const memberById = new Map(participants.map((item) => [item.id, item]));
+  const readinessPeak = Math.max(...readiness.map(([, count]) => count), 1);
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -56,7 +57,7 @@ export function LcdboOperationsPanel({ participants, assessments, documents, off
 
       <div className="grid gap-5 xl:grid-cols-[1fr,1fr]">
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="font-black text-[#06172f]">Assigned officer workload</h3><div className="mt-4 space-y-3">{workload.map(({ officer, count }) => <div key={officer.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="font-semibold">{officer.full_name ?? officer.email}</span><span className="font-black">{count}</span></div>)}{!workload.length && <Empty text="No officers have assigned MSMEs." />}</div></article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="font-black text-[#06172f]">Readiness distribution</h3><div className="mt-4 space-y-3">{readiness.map(([level, count]) => <div key={level} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="font-semibold capitalize">{label(level)}</span><span className="font-black">{count}</span></div>)}{!readiness.length && <Empty text="Assessments will populate readiness distribution." />}</div></article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="font-black text-[#06172f]">Readiness distribution</h3><div className="mt-4 space-y-4">{readiness.map(([level, count]) => <div key={level}><div className="flex items-center justify-between text-sm"><span className="font-semibold capitalize text-slate-700">{label(level)}</span><span className="font-black text-[#0B2E59]">{count}</span></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-[#008751] to-emerald-400" style={{ width: `${(count / readinessPeak) * 100}%` }} /></div></div>)}{!readiness.length && <Empty text="Readiness distribution will appear after the first completed assessment." />}</div></article>
       </div>
 
       <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

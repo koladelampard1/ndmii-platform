@@ -1,6 +1,8 @@
 import { ClusterCard, MapPlaceholder } from "@/components/lcdbo/lcdbo-cards";
 import { LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
+import Link from "next/link";
+import { Filter, MapPinned } from "lucide-react";
 
 function clean(value?: string) {
   const trimmed = String(value ?? "").trim();
@@ -34,24 +36,26 @@ export default async function LcdboClustersPage({
     <LcdboShell>
       <LcdboPageHero
         eyebrow="Industrial clusters"
-        title="Cluster registry foundation for LCDBO pilots."
-        description="Pilot cluster records are sourced from the DBIN platform foundation when available and will become the operating base for future LCDBO and SICIP modules."
+        title="Discover Nigeria’s emerging industrial cluster pipeline."
+        description="Explore LCDBO pilot clusters by location, sector, type and programme status, then enter the participation pathway through your DBIN business workspace."
       />
       <LcdboSection title="Pilot footprint" description="A map-style planning view for cluster geography. Full GIS integration is reserved for a later phase.">
         <MapPlaceholder clusters={clusters.length ? clusters : data.clusters} />
       </LcdboSection>
-      <LcdboSection title="Cluster pipeline">
+      <LcdboSection title="Cluster discovery" description={`${clusters.length} cluster${clusters.length === 1 ? "" : "s"} match the current view.`}>
         <form className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-5">
           <Select name="state" label="State" value={state} options={states} />
           <Select name="sector" label="Sector" value={sector} options={sectors} />
           <Select name="clusterType" label="Cluster type" value={clusterType} options={clusterTypes} />
           <Select name="status" label="Status" value={status} options={statuses} />
-          <button className="self-end rounded-md bg-[#06172f] px-4 py-2 text-sm font-black text-white">Apply filters</button>
+          <button className="inline-flex items-center justify-center gap-2 self-end rounded-md bg-[#0B2E59] px-4 py-2 text-sm font-black text-white"><Filter className="h-4 w-4" />Apply filters</button>
         </form>
+        {(state || sector || clusterType || status) && <div className="mb-5 flex justify-end"><Link href="/lcdbo/clusters" className="text-sm font-black text-[#008751]">Clear all filters</Link></div>}
         <div className="grid gap-4 lg:grid-cols-3">
           {clusters.map((cluster) => (
             <ClusterCard key={cluster.id} cluster={cluster} />
           ))}
+          {!clusters.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center lg:col-span-3"><MapPinned className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-4 text-lg font-black text-[#0B2E59]">No clusters match these filters</h2><p className="mt-2 text-sm text-slate-500">Reset the filters to return to the national cluster pipeline.</p></div>}
         </div>
       </LcdboSection>
     </LcdboShell>
