@@ -24,6 +24,7 @@ export type LcdboMsmeSummary = {
   lga: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  registration_context?: Record<string, unknown> | null;
 };
 
 export type LcdboEnrolmentQueueItem = ProgrammeEnrolment & { msme: LcdboMsmeSummary | null };
@@ -170,7 +171,7 @@ export async function getLcdboEnrolmentQueue(client?: Client): Promise<LcdboEnro
   if (!programme) return [];
   const { data, error } = await supabase
     .from("programme_enrolments")
-    .select("*,msmes(id,msme_id,business_name,owner_name,sector,state,lga,contact_email,contact_phone)")
+    .select("*,msmes(id,msme_id,business_name,owner_name,sector,state,lga,contact_email,contact_phone,registration_context)")
     .eq("programme_id", programme.id)
     .eq("enrolment_type", "msme")
     .order("enrolled_at", { ascending: false });
@@ -316,7 +317,7 @@ export async function getLcdboClusterInterestQueue(client?: Client): Promise<Lcd
   if (!clusters.length) return [];
   const { data, error } = await supabase
     .from("cluster_members")
-    .select("*,msmes(id,msme_id,business_name,owner_name,sector,state,lga,contact_email,contact_phone),industrial_clusters(*)")
+    .select("*,msmes(id,msme_id,business_name,owner_name,sector,state,lga,contact_email,contact_phone,registration_context),industrial_clusters(*)")
     .in("cluster_id", clusters.map((cluster) => cluster.id))
     .eq("member_type", "msme")
     .order("joined_at", { ascending: false });

@@ -45,6 +45,8 @@ type WorkspaceLink = {
 const WORKSPACE_NAV: WorkspaceLink[] = [
   { label: "Overview", href: "/dashboard/impact-intelligence", icon: LayoutDashboard, resource: "workspace" },
   { label: "LCDBO Operations", href: "/dashboard/lcdbo", icon: Factory },
+  { label: "LCDBO Intelligence", href: "/dashboard/lcdbo/intelligence", icon: Radar },
+  { label: "LCDBO Reports", href: "/dashboard/lcdbo/reports", icon: FileText },
   { label: "LCDBO Executive View", href: "/dashboard/lcdbo/executive", icon: ChartNoAxesCombined },
   { label: "Programmes", href: "/dashboard/impact-intelligence/programmes", icon: Building2, resource: "programme" },
   { label: "Cohorts", href: "/dashboard/impact-intelligence/cohorts", icon: UsersRound, resource: "cohort" },
@@ -85,6 +87,7 @@ export function ImpactIntelligenceShell({
   const pathname = usePathname();
   const items = WORKSPACE_NAV.filter((item) => {
     if (item.href === "/dashboard/lcdbo") return canAccessLcdbo;
+    if (item.href === "/dashboard/lcdbo/intelligence" || item.href === "/dashboard/lcdbo/reports") return canAccessLcdboExecutive;
     if (item.href === "/dashboard/lcdbo/executive") return canAccessLcdboExecutive;
     if (!canAccessRoute(role, item.href)) return false;
     if (item.resource === "audit_log" && !canRole(role, "audit_log", "read")) return false;

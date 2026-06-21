@@ -69,6 +69,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { label: "Complaints", href: "/dashboard/admin/complaints", icon: FileClock, pending: true },
       { label: "Impact Intelligence", href: "/dashboard/impact-intelligence", icon: LayoutDashboard },
       { label: "LCDBO Programme Operations", href: "/dashboard/lcdbo", icon: Factory },
+      { label: "LCDBO Intelligence", href: "/dashboard/lcdbo/intelligence", icon: BarChart3 },
+      { label: "LCDBO Reports", href: "/dashboard/lcdbo/reports", icon: FileText },
       { label: "LCDBO Executive View", href: "/dashboard/lcdbo/executive", icon: BarChart3 },
       { label: "Public Verification", href: "/dashboard/admin/public-verification", icon: ShieldCheck, pending: true },
     ],

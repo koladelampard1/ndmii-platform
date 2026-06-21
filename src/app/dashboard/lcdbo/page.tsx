@@ -35,6 +35,8 @@ const workspaceCards = [
   { title: "Partner ecosystem", detail: "Institutions supporting delivery across the programme.", icon: Network, href: "/lcdbo/partners" },
   { title: "Impact reports", detail: "Evidence-backed programme reporting and assurance.", icon: FileText, href: "/dashboard/impact-intelligence/reports" },
   { title: "Impact analytics", detail: "Programme indicators, monitoring, and outcome intelligence.", icon: BarChart3, href: "/dashboard/impact-intelligence/analytics" },
+  { title: "National intelligence", detail: "Sector, geography, readiness and programme pipeline intelligence.", icon: BarChart3, href: "/dashboard/lcdbo/intelligence" },
+  { title: "Executive reports", detail: "National, state, cluster, partner and readiness reporting centre.", icon: FileText, href: "/dashboard/lcdbo/reports" },
   { title: "Opportunities", detail: "Published MSME and institutional participation tracks.", icon: Landmark, href: "/lcdbo/opportunities" },
 ];
 
