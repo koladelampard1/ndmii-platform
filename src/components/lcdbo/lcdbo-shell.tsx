@@ -15,14 +15,26 @@ const navItems = [
   { href: "/lcdbo/contact", label: "Contact" },
 ];
 
-export function LcdboShell({ children }: { children: ReactNode }) {
+export function LcdboShell({ children, landing = false }: { children: ReactNode; landing?: boolean }) {
   return (
     <main className="min-h-screen bg-[#F6F8FB] text-[#101828]">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0B2E59]/95 text-white shadow-lg shadow-slate-950/10 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/lcdbo" className="flex items-center gap-3 rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d9a441]">
-            <DbinBrandLogo textClassName="text-white" />
-            <span className="hidden border-l border-white/20 pl-3 text-xs font-bold uppercase tracking-[0.16em] text-[#f2c76b] sm:block">LCDBO</span>
+            {landing ? (
+              <>
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#008751] text-[11px] font-black tracking-[0.08em] text-white shadow-lg shadow-black/20">LC</span>
+                <span>
+                  <span className="block text-lg font-black leading-none tracking-[0.08em] text-white">LCDBO</span>
+                  <span className="mt-1 hidden text-[9px] font-bold uppercase tracking-[0.12em] text-[#f2c76b] sm:block">Local Content Development Beyond Oil</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <DbinBrandLogo textClassName="text-white" />
+                <span className="hidden border-l border-white/20 pl-3 text-xs font-bold uppercase tracking-[0.16em] text-[#f2c76b] sm:block">LCDBO</span>
+              </>
+            )}
           </Link>
           <nav className="hidden items-center gap-4 text-sm font-semibold text-slate-200 xl:flex">
             {navItems.map((item) => (
@@ -36,7 +48,7 @@ export function LcdboShell({ children }: { children: ReactNode }) {
               Register
             </Link>
             <Link href="/dashboard/lcdbo" className="hidden rounded-md border border-white/20 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10 md:inline-flex">
-              Workspace
+              {landing ? "Programme Workspace" : "Workspace"}
             </Link>
             <details className="relative xl:hidden">
               <summary aria-label="Open LCDBO menu" className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-white/20 text-white"><Menu className="h-4 w-4" /></summary>
