@@ -14,7 +14,18 @@ export type InstitutionType =
 
 export type InstitutionStatus = "active" | "inactive" | "suspended" | "archived";
 
-export type ScopeType = "global" | "institution" | "programme" | "cluster" | "association" | "project";
+export type ScopeType =
+  | "global"
+  | "institution"
+  | "programme"
+  | "cluster"
+  | "association"
+  | "project"
+  | "property"
+  | "parcel"
+  | "survey_block"
+  | "state_registry"
+  | "lga_registry";
 
 export type RoleAssignmentStatus = "active" | "inactive" | "revoked" | "expired";
 
@@ -69,7 +80,14 @@ export type PlatformModuleKey =
   | "investor_portal"
   | "funding_hub"
   | "partner_portal"
-  | "export_hub";
+  | "export_hub"
+  | "property_registry"
+  | "property_verification"
+  | "property_documents"
+  | "property_intelligence"
+  | "property_public_explorer"
+  | "property_registry_operations"
+  | "property_gis";
 
 export type PlatformModuleStatus = "active" | "inactive" | "preview" | "archived";
 export type ModuleAccessStatus = "enabled" | "disabled" | "preview" | "suspended";
