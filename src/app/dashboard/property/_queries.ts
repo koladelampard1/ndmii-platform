@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canAccessPropertyRegistrationWorkspace } from "@/lib/data/property-foundation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import type { Property, PropertyAddress, PropertyDocument, PropertyOwner } from "@/types/property";
 
@@ -15,8 +16,8 @@ export async function requirePropertyWorkspaceAccess() {
   const ctx = await getCurrentUserContext();
   if (ctx.role === "public" || !ctx.appUserId) redirect("/access-denied");
   const supabase = await createServiceRoleSupabaseClient();
-  const { data: module } = await supabase.from("platform_modules").select("id,status").eq("module_key", "property_registry").maybeSingle();
-  if (!module || !["active", "preview"].includes(module.status)) redirect("/access-denied");
+  const access = await canAccessPropertyRegistrationWorkspace({ ctx, client: supabase });
+  if (!access.allowed) redirect("/access-denied");
   return { ctx, supabase };
 }
 

@@ -86,6 +86,13 @@ export type PropertyPermissionResult = {
   module?: ModuleAccessCheck;
 };
 
+export type PropertyWorkspaceAccessResult = {
+  allowed: boolean;
+  source: "platform_admin" | "msme" | "scoped_role" | "module_missing" | "module_inactive" | "denied";
+  roles: string[];
+  moduleStatus: string | null;
+};
+
 async function service(client?: Client) {
   return client ?? await createServiceRoleSupabaseClient();
 }
@@ -148,6 +155,50 @@ export async function canAccessPropertyModule(input: {
   });
 }
 
+export async function canAccessPropertyRegistrationWorkspace(input: {
+  ctx: UserContext;
+  client?: Client;
+}): Promise<PropertyWorkspaceAccessResult> {
+  const supabase = await service(input.client);
+  if (!input.ctx.appUserId || input.ctx.role === "public") {
+    return { allowed: false, source: "denied", roles: [input.ctx.role], moduleStatus: null };
+  }
+
+  const { data: module, error: moduleError } = await supabase
+    .from("platform_modules")
+    .select("id,status")
+    .eq("module_key", "property_registry")
+    .maybeSingle();
+  if (moduleError) throw moduleError;
+  if (!module) return { allowed: false, source: "module_missing", roles: [input.ctx.role], moduleStatus: null };
+  if (!["active", "preview"].includes(module.status)) {
+    return { allowed: false, source: "module_inactive", roles: [input.ctx.role], moduleStatus: module.status };
+  }
+
+  if (isPlatformAdmin(input.ctx.role)) {
+    return { allowed: true, source: "platform_admin", roles: [input.ctx.role], moduleStatus: module.status };
+  }
+  if (input.ctx.role === "msme") {
+    return { allowed: true, source: "msme", roles: [input.ctx.role], moduleStatus: module.status };
+  }
+
+  const effective = await resolveEffectiveRoles({
+    userId: input.ctx.appUserId,
+    globalRole: input.ctx.role,
+    client: supabase,
+  });
+  const hasPropertyRole = effective.scopedRoles
+    .filter((assignment) => activeRole(assignment.status, assignment.expires_at))
+    .some((assignment) => PROPERTY_SCOPED_ROLES.includes(assignment.role as PropertyScopedRole));
+
+  return {
+    allowed: hasPropertyRole,
+    source: hasPropertyRole ? "scoped_role" : "denied",
+    roles: effective.roles,
+    moduleStatus: module.status,
+  };
+}
+
 export async function resolvePropertyPermission(input: {
   ctx: UserContext;
   allowedRoles?: readonly PropertyScopedRole[];
@@ -203,6 +254,13 @@ export async function resolvePropertyPermission(input: {
 export async function generatePropertyNpin(stateId: string, client?: Client) {
   const supabase = await service(client);
   const { data, error } = await supabase.rpc("generate_property_npin", { target_state_id: stateId });
+  if (error) throw error;
+  return String(data);
+}
+
+export async function generatePropertyApplicationReference(client?: Client) {
+  const supabase = await service(client);
+  const { data, error } = await supabase.rpc("generate_property_application_reference");
   if (error) throw error;
   return String(data);
 }

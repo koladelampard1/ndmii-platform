@@ -33,8 +33,8 @@ export default async function MyPropertiesPage({
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <PlusCircle className="h-6 w-6 text-[#008751]" />
-          <p className="mt-3 text-2xl font-black text-[#06172f]">{properties.filter((property) => property.npin).length}</p>
-          <p className="mt-1 text-sm text-slate-500">Records with generated NPIN</p>
+          <p className="mt-3 text-2xl font-black text-[#06172f]">{properties.filter((property) => property.application_reference).length}</p>
+          <p className="mt-1 text-sm text-slate-500">Records with application reference</p>
         </div>
       </section>
       <PropertyTable properties={properties} emptyTitle="No submitted property applications" emptyDetail="Submitted property registrations will appear here after you send them for review." />

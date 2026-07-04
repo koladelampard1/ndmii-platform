@@ -52,7 +52,7 @@ export default async function PropertyWorkspacePage() {
               <div key={property.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-black text-[#06172f]">{property.title || property.property_type.replaceAll("_", " ")}</p>
-                  <p className="mt-1 text-xs text-slate-500">{property.npin || "Pending NPIN"} · Updated {new Date(property.updated_at).toLocaleDateString("en-NG")}</p>
+                  <p className="mt-1 text-xs text-slate-500">{property.application_reference || "Draft application"} · Updated {new Date(property.updated_at).toLocaleDateString("en-NG")}</p>
                 </div>
                 <PropertyStatusBadge status={property.status} />
               </div>

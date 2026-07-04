@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, FileText, Home, MapPin, ShieldCheck, UploadCloud, Users } from "lucide-react";
 import { Field, inputClass, PropertyProgress, PropertyWorkspaceHero, textareaClass } from "@/components/property/property-workspace";
+import { PropertyDraftGuard } from "@/components/property/property-draft-guard";
 import { savePropertyRegistrationAction } from "@/app/dashboard/property/actions";
 import { getEditableProperty, getPropertyLookups, requirePropertyWorkspaceAccess } from "@/app/dashboard/property/_queries";
 
@@ -81,8 +82,10 @@ export default async function PropertyRegistrationPage({
 
       <PropertyProgress currentStep={step} />
 
-      <form action={savePropertyRegistrationAction} className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7" encType="multipart/form-data">
+      <form id="property-registration-form" action={savePropertyRegistrationAction} className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7" encType="multipart/form-data">
+        <PropertyDraftGuard formId="property-registration-form" />
         <input type="hidden" name="property_id" value={property?.id ?? ""} />
+        <input type="hidden" name="current_step" value={step} />
         <input type="hidden" name="country_id" value={property?.country_id ?? address?.country_id ?? nigeriaId} />
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-5">
@@ -151,6 +154,7 @@ export default async function PropertyRegistrationPage({
               const owner = owners[index];
               return (
                 <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <input type="hidden" name={`owner_${index}_id`} value={owner?.id ?? ""} />
                   <p className="font-black text-[#06172f]">Owner {index + 1}</p>
                   <div className="mt-3 grid gap-4 md:grid-cols-2">
                     <Select name={`owner_${index}_type`} label="Owner type" defaultValue={owner?.owner_type ?? (index === 0 ? "individual" : "")} options={ownerTypes as unknown as Array<[string, string]>} optional={index > 0} />
@@ -201,15 +205,16 @@ export default async function PropertyRegistrationPage({
             ))}
           </div>
           <div className="mt-5 rounded-2xl bg-slate-50 p-5 text-sm leading-6 text-slate-600">
-            <p><strong className="text-[#06172f]">NPIN:</strong> {property?.npin ?? "Pending NPIN"}</p>
-            <p className="mt-2">Submitting sends this application into the registry pipeline. Approval, verification, GIS review and public verification are not part of Phase 2.</p>
+            <p><strong className="text-[#06172f]">Application reference:</strong> {property?.application_reference ?? "Generated on first submission"}</p>
+            <p className="mt-2"><strong className="text-[#06172f]">NPIN:</strong> {property?.npin ?? "Pending registry approval"}</p>
+            <p className="mt-2">Submitting sends this application into the registry pipeline. Official NPIN issuance, approval, verification, GIS review and public verification are not part of Phase 2.</p>
           </div>
         </div>
 
         <div className="mt-8 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-between">
           <div className="flex gap-2">
             {step > 1 ? <Link href={`/dashboard/property/register${property?.id ? `?property=${property.id}&step=${step - 1}` : `?step=${step - 1}`}`} className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-4 text-sm font-black text-[#06172f]">Previous</Link> : null}
-            {step < 6 ? <Link href={`/dashboard/property/register${property?.id ? `?property=${property.id}&step=${step + 1}` : `?step=${step + 1}`}`} className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-4 text-sm font-black text-[#06172f]">Next</Link> : null}
+            {step < 6 ? <button name="next_step" value={step + 1} className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-4 text-sm font-black text-[#06172f]" type="submit">Save & Continue</button> : null}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button name="intent" value="draft" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-black text-[#06172f]" type="submit">Save Draft</button>

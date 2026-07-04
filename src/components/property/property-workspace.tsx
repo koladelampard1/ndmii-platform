@@ -130,7 +130,7 @@ export function PropertyTable({ properties, emptyTitle, emptyDetail }: { propert
               <th className="px-5 py-4">Property</th>
               <th className="px-5 py-4">Location</th>
               <th className="px-5 py-4">Status</th>
-              <th className="px-5 py-4">Submission</th>
+              <th className="px-5 py-4">Application Ref</th>
               <th className="px-5 py-4">Last updated</th>
               <th className="px-5 py-4">NPIN</th>
               <th className="px-5 py-4">Action</th>
@@ -147,9 +147,9 @@ export function PropertyTable({ properties, emptyTitle, emptyDetail }: { propert
                   {property.primaryAddress?.traditional_description || [property.primaryAddress?.plot, property.primaryAddress?.block, property.primaryAddress?.street].filter(Boolean).join(", ") || "Location pending"}
                 </td>
                 <td className="px-5 py-4"><PropertyStatusBadge status={property.status} /></td>
-                <td className="px-5 py-4 text-slate-600">{property.status === "draft" ? "Not submitted" : formatDate(property.created_at)}</td>
+                <td className="px-5 py-4 text-slate-600">{property.application_reference || (property.status === "draft" ? "Generated on submit" : "Pending reference")}</td>
                 <td className="px-5 py-4 text-slate-600">{formatDate(property.updated_at)}</td>
-                <td className="px-5 py-4 font-bold text-slate-700">{property.npin || "Pending NPIN"}</td>
+                <td className="px-5 py-4 font-bold text-slate-700">{property.npin || "Pending approval"}</td>
                 <td className="px-5 py-4">
                   <Link href={`/dashboard/property/register?property=${property.id}`} className="inline-flex items-center gap-2 rounded-xl bg-[#06172f] px-3 py-2 text-xs font-black text-white">
                     {property.status === "draft" ? "Resume" : "View"}

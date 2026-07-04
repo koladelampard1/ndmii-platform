@@ -164,6 +164,8 @@ export type SurveyBlock = {
 export type Property = {
   id: string;
   npin: string | null;
+  application_reference: string | null;
+  application_submitted_at: string | null;
   parcel_reference: string | null;
   property_category_id: string | null;
   property_type: PropertyType;
@@ -316,6 +318,9 @@ export type PropertyDocument = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_note: string | null;
+  superseded_by: string | null;
+  superseded_at: string | null;
+  superseded_by_user_id: string | null;
   metadata: JsonRecord;
   created_at: string;
   updated_at: string;

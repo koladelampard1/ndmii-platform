@@ -3,6 +3,7 @@ import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, type NavigationGroup }
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { canAccessPropertyRegistrationWorkspace } from "@/lib/data/property-foundation";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
@@ -47,30 +48,8 @@ export async function Sidebar() {
 
   if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property"))) {
     const supabase = await createServiceRoleSupabaseClient();
-    const [{ data: propertyModule }, { data: propertyRoles }] = await Promise.all([
-      supabase.from("platform_modules").select("id,status").eq("module_key", "property_registry").maybeSingle(),
-      supabase
-        .from("role_assignments")
-        .select("id,expires_at")
-        .eq("user_id", context.appUserId)
-        .eq("status", "active")
-        .in("role", [
-          "property_admin",
-          "land_registry_officer",
-          "survey_officer",
-          "gis_officer",
-          "property_reviewer",
-          "valuation_officer",
-          "document_verifier",
-          "title_issuer",
-          "property_data_analyst",
-          "property_auditor",
-          "executive_observer",
-        ]),
-    ]);
-    const hasPropertyModule = propertyModule && ["active", "preview"].includes(propertyModule.status);
-    const hasActivePropertyRole = (propertyRoles ?? []).some((assignment) => !assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now());
-    if (hasPropertyModule && (hasActivePropertyRole || role === "msme")) {
+    const propertyAccess = await canAccessPropertyRegistrationWorkspace({ ctx: context, client: supabase });
+    if (propertyAccess.allowed) {
       navGroups.push({
         label: "Property Workspace",
         items: [
