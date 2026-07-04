@@ -22,7 +22,8 @@ export type PropertyLifecycleStatus =
   | "suspended"
   | "disputed"
   | "archived"
-  | "cancelled";
+  | "cancelled"
+  | "rejected";
 
 export type PropertyOwnerType =
   | "individual"

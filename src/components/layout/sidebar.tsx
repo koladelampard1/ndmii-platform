@@ -45,6 +45,44 @@ export async function Sidebar() {
     if ((count ?? 0) > 0 || hasActiveScopedRole) navGroups.push({ label: "Programme Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" }] });
   }
 
+  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property"))) {
+    const supabase = await createServiceRoleSupabaseClient();
+    const [{ data: propertyModule }, { data: propertyRoles }] = await Promise.all([
+      supabase.from("platform_modules").select("id,status").eq("module_key", "property_registry").maybeSingle(),
+      supabase
+        .from("role_assignments")
+        .select("id,expires_at")
+        .eq("user_id", context.appUserId)
+        .eq("status", "active")
+        .in("role", [
+          "property_admin",
+          "land_registry_officer",
+          "survey_officer",
+          "gis_officer",
+          "property_reviewer",
+          "valuation_officer",
+          "document_verifier",
+          "title_issuer",
+          "property_data_analyst",
+          "property_auditor",
+          "executive_observer",
+        ]),
+    ]);
+    const hasPropertyModule = propertyModule && ["active", "preview"].includes(propertyModule.status);
+    const hasActivePropertyRole = (propertyRoles ?? []).some((assignment) => !assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now());
+    if (hasPropertyModule && (hasActivePropertyRole || role === "msme")) {
+      navGroups.push({
+        label: "Property Workspace",
+        items: [
+          { href: "/dashboard/property", label: "Property Workspace" },
+          { href: "/dashboard/property/register", label: "Register Property" },
+          { href: "/dashboard/property/my-properties", label: "My Properties" },
+          { href: "/dashboard/property/drafts", label: "Drafts" },
+        ],
+      });
+    }
+  }
+
   const allowedGroups = navGroups
     .map((group) => ({
       ...group,

@@ -194,6 +194,9 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   // The page performs programme/module resolution against scoped role assignments.
   // Let authenticated users reach that guard even when users.role is not programme_officer.
   else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
+  // Property workspace performs module/scoped permission checks at page level.
+  // Let authenticated users reach the guard without expanding global users.role.
+  else if (routeMatchesPrefix(path, "/dashboard/property")) legacyAllowed = true;
   else if (role === "field_officer") {
     legacyAllowed = path === "/dashboard/impact-intelligence" || [
       "/dashboard/impact-intelligence/cohorts",
@@ -291,6 +294,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
+    { href: "/dashboard/property", label: "Property Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   super_admin: [
@@ -304,6 +308,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
+    { href: "/dashboard/property", label: "Property Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   boi_executive: [
@@ -466,6 +471,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
+        { href: "/dashboard/property", label: "Property Workspace" },
         { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },
@@ -497,6 +503,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
+        { href: "/dashboard/property", label: "Property Workspace" },
         { href: "/dashboard/admin/public-verification", label: "Public Verification" },
       ],
     },
