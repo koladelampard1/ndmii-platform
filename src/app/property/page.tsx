@@ -6,9 +6,10 @@ import { PrivacyNotice, PropertyCard, PropertyHero, PropertyPublicShell, StatCar
 export const dynamic = "force-dynamic";
 
 export default async function PropertyHomePage() {
+  const fallbackStats = { verified: 0, industrial: 0, agricultural: 0, government: 0, institutional: 0, categories: [], states: [] };
   const [stats, featured] = await Promise.all([
-    getPublicPropertyStats(),
-    searchPublicProperties({ limit: 6 }),
+    getPublicPropertyStats().catch(() => fallbackStats),
+    searchPublicProperties({ limit: 6 }).catch(() => ({ results: [], count: 0, page: 1, limit: 6 })),
   ]);
 
   const categoryCards = [
@@ -70,7 +71,7 @@ export default async function PropertyHomePage() {
           </div>
           {featured.results.length ? (
             <div className="grid gap-5 lg:grid-cols-3">
-              {featured.results.map((property) => <PropertyCard key={property.id} property={property} />)}
+              {featured.results.map((property) => <PropertyCard key={property.npin} property={property} />)}
             </div>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">

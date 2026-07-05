@@ -10,7 +10,8 @@ export default async function PropertyVerifyPage({ searchParams }: { searchParam
   const npin = params.npin?.trim() ?? "";
   const token = params.token?.trim() ?? "";
   const hasLookup = Boolean(npin || token);
-  const result = hasLookup ? await verifyPublicProperty({ npin, token }) : null;
+  const result = hasLookup ? await verifyPublicProperty({ npin, token }).catch(() => null) : null;
+  const lookupFailed = hasLookup && !result;
 
   return (
     <PropertyPublicShell>
@@ -38,7 +39,12 @@ export default async function PropertyVerifyPage({ searchParams }: { searchParam
           <p className="mt-3 text-sm leading-6 text-slate-500">QR verification endpoint preparation uses the same token lookup model. A dedicated QR UI is intentionally not part of this phase.</p>
         </div>
 
-        {result ? (
+        {lookupFailed ? (
+          <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-10 text-center">
+            <h2 className="text-2xl font-black text-[#06172f]">Verification is temporarily unavailable</h2>
+            <p className="mt-2 text-slate-600">Please try again shortly. No private registry details are exposed through public lookup errors.</p>
+          </div>
+        ) : result ? (
           <VerificationPanel result={result} />
         ) : (
           <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">

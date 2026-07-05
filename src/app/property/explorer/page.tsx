@@ -6,7 +6,7 @@ import { PrivacyNotice, PropertyHero, PropertyPublicShell } from "@/components/p
 export const dynamic = "force-dynamic";
 
 export default async function PropertyExplorerPage() {
-  const states = await getPublicStateExplorer();
+  const states = await getPublicStateExplorer().catch(() => []);
   const activeStates = states.filter((state) => state.propertyCount > 0);
 
   return (
@@ -26,7 +26,7 @@ export default async function PropertyExplorerPage() {
 
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {states.map((state) => (
-            <article key={state.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+            <article key={state.name} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">State registry signal</p>
@@ -51,6 +51,14 @@ export default async function PropertyExplorerPage() {
             </article>
           ))}
         </div>
+
+        {!states.length ? (
+          <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
+            <h2 className="text-2xl font-black text-[#06172f]">State explorer is temporarily unavailable</h2>
+            <p className="mt-2 text-slate-500">Public registry coverage can still be searched by NPIN, state or LGA from the property search page.</p>
+            <Link href="/property/search" className="mt-5 inline-flex rounded-xl bg-[#06172f] px-4 py-3 text-sm font-black text-white">Search public records</Link>
+          </div>
+        ) : null}
 
         <PrivacyNotice />
       </section>

@@ -8,7 +8,20 @@ export const dynamic = "force-dynamic";
 
 export default async function PublicPropertyProfilePage({ params }: { params: Promise<{ npin: string }> }) {
   const { npin } = await params;
-  const profile = await getPublicPropertyByNpin(decodeURIComponent(npin));
+  const profile = await getPublicPropertyByNpin(decodeURIComponent(npin)).catch(() => undefined);
+  if (profile === undefined) {
+    return (
+      <PropertyPublicShell>
+        <section className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6">
+          <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-10">
+            <h1 className="text-3xl font-black text-[#06172f]">Public property profile is temporarily unavailable</h1>
+            <p className="mt-3 text-slate-600">Please try the lookup again shortly. Public errors never expose internal registry details.</p>
+            <Link href="/property/search" className="mt-6 inline-flex rounded-xl bg-[#06172f] px-4 py-3 text-sm font-black text-white">Back to search</Link>
+          </div>
+        </section>
+      </PropertyPublicShell>
+    );
+  }
   if (!profile) notFound();
 
   return (

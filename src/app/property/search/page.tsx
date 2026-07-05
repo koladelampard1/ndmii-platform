@@ -12,6 +12,22 @@ function value(params: Params, key: string) {
   return typeof raw === "string" ? raw : "";
 }
 
+function pageHref(params: Params, page: number) {
+  const next = new URLSearchParams();
+  for (const [key, raw] of Object.entries(params)) {
+    if (key === "page") continue;
+    const item = typeof raw === "string" ? raw : "";
+    if (item.trim()) next.set(key, item);
+  }
+  if (page > 1) next.set("page", String(page));
+  return `/property/search${next.size ? `?${next.toString()}` : ""}`;
+}
+
+function pageNumber(params: Params) {
+  const raw = Number(value(params, "page") || 1);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+}
+
 export default async function PropertySearchPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const filters = {
@@ -27,13 +43,20 @@ export default async function PropertySearchPage({ searchParams }: { searchParam
     landUse: value(params, "land_use"),
     registryStatus: value(params, "registry_status"),
     verificationStatus: value(params, "verification_status"),
-    page: Number(value(params, "page") || 1),
+    page: pageNumber(params),
     limit: 18,
   };
+  const fallbackStats = { verified: 0, industrial: 0, agricultural: 0, government: 0, institutional: 0, categories: [], states: [] };
   const [stats, search] = await Promise.all([
-    getPublicPropertyStats(),
-    searchPublicProperties(filters),
+    getPublicPropertyStats().catch(() => fallbackStats),
+    searchPublicProperties(filters).catch(() => ({ results: [], count: 0, page: filters.page, limit: filters.limit })),
   ]);
+  const totalPages = Math.max(Math.ceil(search.count / search.limit), 1);
+  const firstResult = search.count ? (search.page - 1) * search.limit + 1 : 0;
+  const lastResult = Math.min(search.page * search.limit, search.count);
+  const pages = Array.from(
+    new Set([1, search.page - 1, search.page, search.page + 1, totalPages].filter((page) => page >= 1 && page <= totalPages)),
+  );
 
   return (
     <PropertyPublicShell>
@@ -93,8 +116,10 @@ export default async function PropertySearchPage({ searchParams }: { searchParam
         <div className="space-y-6">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-[#008751]">Search results</p>
-            <h1 className="mt-2 text-3xl font-black text-[#06172f]">{search.results.length} public records shown</h1>
-            <p className="mt-2 text-sm text-slate-500">Showing privacy-safe property profiles only. Total matching count: {search.count}.</p>
+            <h1 className="mt-2 text-3xl font-black text-[#06172f]">{search.count} public records found</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              {search.count ? `Showing ${firstResult}–${lastResult} of ${search.count}.` : "No privacy-safe public records match these filters."} Total counts are calculated after filters are applied.
+            </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {POPULAR_PROPERTY_SEARCHES.map((item) => (
                 <Link key={item} href={`/property/search?q=${encodeURIComponent(item)}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{item}</Link>
@@ -104,7 +129,7 @@ export default async function PropertySearchPage({ searchParams }: { searchParam
 
           {search.results.length ? (
             <div className="grid gap-5 xl:grid-cols-2">
-              {search.results.map((property) => <PropertyCard key={property.id} property={property} />)}
+              {search.results.map((property) => <PropertyCard key={property.npin} property={property} />)}
             </div>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
@@ -114,10 +139,37 @@ export default async function PropertySearchPage({ searchParams }: { searchParam
             </div>
           )}
 
+          {search.count > search.limit ? (
+            <nav className="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm" aria-label="Property search pagination">
+              <p className="text-sm font-bold text-slate-600">Page {search.page} of {totalPages}</p>
+              <div className="flex flex-wrap gap-2">
+                <PageLink href={pageHref(params, Math.max(search.page - 1, 1))} disabled={search.page <= 1}>Previous</PageLink>
+                {pages.map((page, index) => (
+                  <span key={page} className="flex items-center gap-2">
+                    {index > 0 && page - pages[index - 1] > 1 ? <span className="px-1 text-slate-400">…</span> : null}
+                    <PageLink href={pageHref(params, page)} active={page === search.page}>{page}</PageLink>
+                  </span>
+                ))}
+                <PageLink href={pageHref(params, Math.min(search.page + 1, totalPages))} disabled={search.page >= totalPages}>Next</PageLink>
+              </div>
+            </nav>
+          ) : null}
+
           <PrivacyNotice />
         </div>
       </section>
     </PropertyPublicShell>
+  );
+}
+
+function PageLink({ href, children, active = false, disabled = false }: { href: string; children: React.ReactNode; active?: boolean; disabled?: boolean }) {
+  if (disabled) {
+    return <span className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-black text-slate-300">{children}</span>;
+  }
+  return (
+    <Link href={href} className={`rounded-xl border px-3 py-2 text-sm font-black transition ${active ? "border-[#06172f] bg-[#06172f] text-white" : "border-slate-200 bg-white text-[#06172f] hover:-translate-y-0.5 hover:shadow-sm"}`}>
+      {children}
+    </Link>
   );
 }
 
