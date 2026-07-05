@@ -63,6 +63,15 @@ export const PROPERTY_INTELLIGENCE_ROLES = [
   "executive_observer",
 ] as const satisfies readonly PropertyScopedRole[];
 
+export const PROPERTY_OPERATION_ROLES = [
+  "property_admin",
+  "land_registry_officer",
+  "survey_officer",
+  "property_reviewer",
+  "document_verifier",
+  "title_issuer",
+] as const satisfies readonly PropertyScopedRole[];
+
 export type PropertyRegistryFoundation = {
   categories: PropertyCategory[];
   wards: PropertyWard[];
@@ -261,6 +270,13 @@ export async function generatePropertyNpin(stateId: string, client?: Client) {
 export async function generatePropertyApplicationReference(client?: Client) {
   const supabase = await service(client);
   const { data, error } = await supabase.rpc("generate_property_application_reference");
+  if (error) throw error;
+  return String(data);
+}
+
+export async function generatePropertyCaseReference(client?: Client) {
+  const supabase = await service(client);
+  const { data, error } = await supabase.rpc("generate_property_case_reference");
   if (error) throw error;
   return String(data);
 }

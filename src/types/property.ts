@@ -16,6 +16,10 @@ export type PropertyLifecycleStatus =
   | "draft"
   | "submitted"
   | "under_review"
+  | "awaiting_documents"
+  | "awaiting_survey"
+  | "awaiting_ownership"
+  | "approved"
   | "verified"
   | "active"
   | "transferred"
@@ -23,7 +27,8 @@ export type PropertyLifecycleStatus =
   | "disputed"
   | "archived"
   | "cancelled"
-  | "rejected";
+  | "rejected"
+  | "returned";
 
 export type PropertyOwnerType =
   | "individual"
@@ -337,4 +342,83 @@ export type PropertyEvent = {
   summary: string | null;
   metadata: JsonRecord;
   created_at: string;
+};
+
+export type PropertyRegistryCaseStatus =
+  | "submitted"
+  | "under_review"
+  | "awaiting_documents"
+  | "awaiting_survey"
+  | "awaiting_ownership"
+  | "approved"
+  | "rejected"
+  | "returned"
+  | "suspended"
+  | "cancelled"
+  | "verified";
+
+export type PropertyRegistryCase = {
+  id: string;
+  case_reference: string;
+  application_reference: string | null;
+  property_id: string;
+  claim_id: string | null;
+  status: PropertyRegistryCaseStatus;
+  priority: "low" | "normal" | "high" | "urgent";
+  assigned_to: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
+  decision: string | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  submitted_at: string | null;
+  completed_at: string | null;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PropertyCaseAssignment = {
+  id: string;
+  case_id: string;
+  property_id: string;
+  assignment_role: "registry_manager" | "land_registry_officer" | "survey_officer" | "document_verifier" | "property_reviewer" | "title_issuer";
+  assigned_to: string | null;
+  assigned_by: string | null;
+  status: "active" | "reassigned" | "completed" | "cancelled";
+  assigned_at: string;
+  unassigned_at: string | null;
+  notes: string | null;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PropertyCaseComment = {
+  id: string;
+  case_id: string;
+  property_id: string;
+  actor_user_id: string | null;
+  comment: string;
+  visibility: "internal" | "applicant_visible";
+  comment_type: "comment" | "decision_note" | "correction_request" | "assignment_note";
+  metadata: JsonRecord;
+  created_at: string;
+};
+
+export type PropertyCertificate = {
+  id: string;
+  case_id: string | null;
+  property_id: string;
+  credential_id: string | null;
+  certificate_reference: string;
+  certificate_type: "property_registration";
+  status: "generated" | "voided" | "superseded";
+  generated_by: string | null;
+  generated_at: string;
+  certificate_payload: JsonRecord;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
 };

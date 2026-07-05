@@ -4,6 +4,7 @@ import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { canAccessPropertyRegistrationWorkspace } from "@/lib/data/property-foundation";
+import { resolvePropertyOperationsAccess } from "@/lib/property/property-operations-service";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   public: "Public",
@@ -57,6 +58,23 @@ export async function Sidebar() {
           { href: "/dashboard/property/register", label: "Register Property" },
           { href: "/dashboard/property/my-properties", label: "My Properties" },
           { href: "/dashboard/property/drafts", label: "Drafts" },
+        ],
+      });
+    }
+  }
+
+  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property/operations"))) {
+    const supabase = await createServiceRoleSupabaseClient();
+    const operationsAccess = await resolvePropertyOperationsAccess({ ctx: context, client: supabase });
+    if (operationsAccess.allowed) {
+      navGroups.push({
+        label: "Registry Operations",
+        items: [
+          { href: "/dashboard/property/operations", label: "Command Centre" },
+          { href: "/dashboard/property/cases", label: "Registry Cases" },
+          { href: "/dashboard/property/assignments", label: "My Assignments" },
+          { href: "/dashboard/property/verification", label: "Verification" },
+          { href: "/dashboard/property/certificates", label: "Certificates" },
         ],
       });
     }
