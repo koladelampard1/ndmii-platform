@@ -20,6 +20,10 @@ export async function savePropertyRegistrationAction(formData: FormData) {
     result = await savePropertyRegistration({ formData, ctx, supabase });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save property registration.";
+    console.error("[property-registration-action:save-failed]", {
+      operation: "savePropertyRegistrationAction",
+      message,
+    });
     redirect(`/dashboard/property/register?error=${encodeURIComponent(message)}`);
   }
 

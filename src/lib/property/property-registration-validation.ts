@@ -76,7 +76,9 @@ function collectOwners(formData: FormData): OwnerInput[] {
     const percentage = numeric(formValue(formData, `owner_${index}_percentage`));
     const notes = nullable(formValue(formData, `owner_${index}_notes`));
     const isPrimary = formData.get(`owner_${index}_primary`) === "on";
-    if (!id && !ownerName && !ownerType && percentage === null && !notes && !isPrimary) continue;
+    const hasMeaningfulOwnerInput = Boolean(id || ownerName || percentage !== null || notes);
+    if (!hasMeaningfulOwnerInput) continue;
+    if (!ownerName) throw new Error("Owner name is required when adding an owner.");
     if (!OWNER_TYPES.has(ownerType)) throw new Error("Invalid owner type.");
     if (percentage !== null && (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100)) {
       throw new Error("Ownership percentage must be between 0 and 100.");

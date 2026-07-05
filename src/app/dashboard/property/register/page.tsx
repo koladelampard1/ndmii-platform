@@ -82,7 +82,7 @@ export default async function PropertyRegistrationPage({
 
       <PropertyProgress currentStep={step} />
 
-      <form id="property-registration-form" action={savePropertyRegistrationAction} className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7" encType="multipart/form-data">
+      <form id="property-registration-form" action={savePropertyRegistrationAction} className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <PropertyDraftGuard formId="property-registration-form" />
         <input type="hidden" name="property_id" value={property?.id ?? ""} />
         <input type="hidden" name="current_step" value={step} />

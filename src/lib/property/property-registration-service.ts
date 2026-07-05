@@ -20,6 +20,35 @@ const PROPERTY_DOCUMENT_BUCKET = "property-documents";
 
 type ExistingProperty = Pick<Property, "id" | "status" | "npin" | "application_reference" | "application_submitted_at" | "registered_by" | "state_id">;
 
+function supabaseErrorInfo(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    message: typeof candidate.message === "string" ? candidate.message : undefined,
+    details: typeof candidate.details === "string" ? candidate.details : undefined,
+    hint: typeof candidate.hint === "string" ? candidate.hint : undefined,
+  };
+}
+
+function logSaveFailure(operation: string, tableOrFunction: string, error: unknown) {
+  const info = supabaseErrorInfo(error);
+  console.error("[property-registration:save-failed]", {
+    operation,
+    tableOrFunction,
+    code: info?.code,
+    message: info?.message ?? (error instanceof Error ? error.message : "Unknown Supabase failure."),
+    details: info?.details,
+    hint: info?.hint,
+  });
+}
+
+function throwSaveFailure(operation: string, tableOrFunction: string, error: unknown, fallback = "Unable to save property registration.") {
+  logSaveFailure(operation, tableOrFunction, error);
+  const info = supabaseErrorInfo(error);
+  throw new Error(`${operation} failed at ${tableOrFunction}: ${info?.message ?? (error instanceof Error ? error.message : fallback)}`);
+}
+
 function safeFilename(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 120) || "property-document";
 }
@@ -53,7 +82,8 @@ async function resolveExistingProperty(input: { propertyId: string | null; actor
     .select("id,status,npin,application_reference,application_submitted_at,registered_by,state_id")
     .eq("id", input.propertyId)
     .maybeSingle();
-  if (error || !data) throw error ?? new Error("Property draft not found.");
+  if (error) throwSaveFailure("resolve existing property draft", "properties", error);
+  if (!data) throw new Error("Property draft not found.");
   if (data.registered_by !== input.actorUserId) throw new Error("You can only update your own property registration.");
   if (!["draft", "submitted"].includes(data.status)) throw new Error("This property registration cannot be edited in the workspace.");
   return data as ExistingProperty;
@@ -77,7 +107,7 @@ async function recordStatusHistory(input: {
     change_reason: input.reason,
     metadata: input.metadata ?? {},
   });
-  if (error) throw error;
+  if (error) throwSaveFailure("record property status history", "property_status_history", error);
 }
 
 async function upsertPrimaryAddress(input: {
@@ -111,11 +141,11 @@ async function upsertPrimaryAddress(input: {
     .eq("property_id", input.propertyId)
     .eq("is_primary", true)
     .maybeSingle();
-  if (lookupError) throw lookupError;
+  if (lookupError) throwSaveFailure("lookup primary property address", "property_addresses", lookupError);
   const result = existing?.id
     ? await input.supabase.from("property_addresses").update(payload).eq("id", existing.id)
     : await input.supabase.from("property_addresses").insert(payload);
-  if (result.error) throw result.error;
+  if (result.error) throwSaveFailure(existing?.id ? "update primary property address" : "insert primary property address", "property_addresses", result.error);
 }
 
 async function recordOwnerHistory(input: {
@@ -138,7 +168,7 @@ async function recordOwnerHistory(input: {
     change_note: input.note,
     metadata: { phase: "dlpi_property_registration_phase25" },
   });
-  if (error) throw error;
+  if (error) throwSaveFailure("record property owner history", "property_owner_history", error);
 }
 
 async function persistOwners(input: {
@@ -153,7 +183,7 @@ async function persistOwners(input: {
     .eq("property_id", input.propertyId)
     .in("verification_status", ["unverified", "pending_review"])
     .order("created_at", { ascending: true });
-  if (error) throw error;
+  if (error) throwSaveFailure("list editable property owners", "property_owners", error);
 
   const existing = (data ?? []) as PropertyOwner[];
   const existingById = new Map(existing.map((owner) => [owner.id, owner]));
@@ -165,7 +195,7 @@ async function persistOwners(input: {
       .update({ is_primary: false })
       .eq("property_id", input.propertyId)
       .in("verification_status", ["unverified", "pending_review"]);
-    if (clearPrimary.error) throw clearPrimary.error;
+    if (clearPrimary.error) throwSaveFailure("clear primary owner flags", "property_owners", clearPrimary.error);
   }
 
   for (const owner of input.owners) {
@@ -185,7 +215,7 @@ async function persistOwners(input: {
     if (previous) {
       retained.add(previous.id);
       const { error: updateError } = await input.supabase.from("property_owners").update(payload).eq("id", previous.id);
-      if (updateError) throw updateError;
+      if (updateError) throwSaveFailure("update property owner", "property_owners", updateError);
       if (!sameOwner(previous, owner)) {
         await recordOwnerHistory({
           propertyId: input.propertyId,
@@ -200,7 +230,8 @@ async function persistOwners(input: {
       }
     } else {
       const { data: inserted, error: insertError } = await input.supabase.from("property_owners").insert(payload).select("*").single();
-      if (insertError || !inserted) throw insertError ?? new Error("Unable to save owner record.");
+      if (insertError) throwSaveFailure("insert property owner", "property_owners", insertError);
+      if (!inserted) throw new Error("Unable to save owner record.");
       retained.add(inserted.id);
       await recordOwnerHistory({
         propertyId: input.propertyId,
@@ -225,7 +256,7 @@ async function persistOwners(input: {
         metadata: { ...(owner.metadata ?? {}), superseded_reason: "removed_from_registration_workspace", phase: "dlpi_property_registration_phase25" },
       })
       .eq("id", owner.id);
-    if (removeError) throw removeError;
+    if (removeError) throwSaveFailure("supersede removed property owner", "property_owners", removeError);
     await recordOwnerHistory({
       propertyId: input.propertyId,
       propertyOwnerId: owner.id,
@@ -255,7 +286,7 @@ async function uploadDocumentFile(input: {
       contentType: input.file.type || "application/octet-stream",
       upsert: false,
     });
-  if (error) throw error;
+  if (error) throwSaveFailure("upload property document file", `storage.${PROPERTY_DOCUMENT_BUCKET}`, error);
   return {
     storage_bucket: PROPERTY_DOCUMENT_BUCKET,
     storage_path: path,
@@ -283,7 +314,7 @@ async function recordDocumentEvent(input: {
     summary: input.summary,
     metadata: input.metadata ?? {},
   });
-  if (error) throw error;
+  if (error) throwSaveFailure("record property document event", "property_document_events", error);
   await recordPropertyEvent({
     propertyId: input.propertyId,
     eventType: input.eventType,
@@ -316,7 +347,7 @@ async function persistDocuments(input: {
       .select("id")
       .eq("document_type_key", documentInput.document_type)
       .maybeSingle();
-    if (typeError) throw typeError;
+    if (typeError) throwSaveFailure("lookup property document type", "property_document_types", typeError);
 
     const { data: document, error: documentError } = await input.supabase
       .from("property_documents")
@@ -333,7 +364,8 @@ async function persistDocuments(input: {
       })
       .select("id")
       .single();
-    if (documentError || !document) throw documentError ?? new Error("Unable to save property document.");
+    if (documentError) throwSaveFailure("insert property document", "property_documents", documentError);
+    if (!document) throw new Error("Unable to save property document.");
 
     const { data: superseded, error: supersedeLookupError } = await input.supabase
       .from("property_documents")
@@ -342,7 +374,7 @@ async function persistDocuments(input: {
       .eq("document_type", documentInput.document_type)
       .in("status", ["pending_review", "rejected"])
       .neq("id", document.id);
-    if (supersedeLookupError) throw supersedeLookupError;
+    if (supersedeLookupError) throwSaveFailure("lookup superseded property documents", "property_documents", supersedeLookupError);
 
     for (const previous of superseded ?? []) {
       const { error: supersedeError } = await input.supabase
@@ -355,7 +387,7 @@ async function persistDocuments(input: {
           metadata: { ...(previous.metadata ?? {}), superseded_reason: "replacement_upload", phase: "dlpi_property_registration_phase25" },
         })
         .eq("id", previous.id);
-      if (supersedeError) throw supersedeError;
+      if (supersedeError) throwSaveFailure("supersede property document", "property_documents", supersedeError);
       await recordDocumentEvent({
         propertyId: input.propertyId,
         documentId: previous.id,
@@ -394,9 +426,14 @@ export async function savePropertyRegistration(input: {
   const now = new Date().toISOString();
   const shouldSubmit = parsed.intent === "submit";
   const newStatus = shouldSubmit ? "submitted" : "draft";
-  const applicationReference = shouldSubmit && !existing?.application_reference
-    ? await generatePropertyApplicationReference(input.supabase)
-    : existing?.application_reference ?? null;
+  let applicationReference = existing?.application_reference ?? null;
+  if (shouldSubmit && !applicationReference) {
+    try {
+      applicationReference = await generatePropertyApplicationReference(input.supabase);
+    } catch (error) {
+      throwSaveFailure("generate property application reference", "rpc.generate_property_application_reference", error);
+    }
+  }
 
   const propertyPayload = {
     npin: existing?.npin ?? null,
@@ -430,7 +467,8 @@ export async function savePropertyRegistration(input: {
   const propertyResult = existing
     ? await input.supabase.from("properties").update(propertyPayload).eq("id", existing.id).select("*").single()
     : await input.supabase.from("properties").insert(propertyPayload).select("*").single();
-  if (propertyResult.error || !propertyResult.data) throw propertyResult.error ?? new Error("Unable to save property registration.");
+  if (propertyResult.error) throwSaveFailure(existing ? "update property registration" : "insert property registration", "properties", propertyResult.error);
+  if (!propertyResult.data) throw new Error("Unable to save property registration.");
   const property = propertyResult.data as Property;
 
   await upsertPrimaryAddress({ propertyId: property.id, parsed, formData: input.formData, supabase: input.supabase });
@@ -466,7 +504,7 @@ export async function savePropertyRegistration(input: {
       .eq("property_id", property.id)
       .eq("claim_type", "registration")
       .maybeSingle();
-    if (claimLookupError) throw claimLookupError;
+    if (claimLookupError) throwSaveFailure("lookup property registration claim", "property_claims", claimLookupError);
     if (!existingClaim) {
       const { error: claimError } = await input.supabase.from("property_claims").insert({
         property_id: property.id,
@@ -480,7 +518,7 @@ export async function savePropertyRegistration(input: {
         submitted_at: now,
         metadata: { phase: "dlpi_property_registration_phase25", application_reference: applicationReference },
       });
-      if (claimError) throw claimError;
+      if (claimError) throwSaveFailure("insert property registration claim", "property_claims", claimError);
     }
   }
 
@@ -516,11 +554,15 @@ export async function savePropertyRegistration(input: {
   });
 
   if (shouldSubmit) {
-    await ensureRegistryCaseForProperty({
-      propertyId: property.id,
-      actorUserId: input.ctx.appUserId,
-      client: input.supabase,
-    });
+    try {
+      await ensureRegistryCaseForProperty({
+        propertyId: property.id,
+        actorUserId: input.ctx.appUserId,
+        client: input.supabase,
+      });
+    } catch (error) {
+      throwSaveFailure("ensure submitted property registry case", "property_registry_cases", error);
+    }
   }
 
   return {
@@ -560,5 +602,5 @@ export async function deletePropertyDraft(input: {
     .eq("id", input.propertyId)
     .eq("registered_by", input.actorUserId)
     .eq("status", "draft");
-  if (error) throw error;
+  if (error) throwSaveFailure("delete property draft", "properties", error);
 }
