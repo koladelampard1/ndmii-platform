@@ -32,6 +32,17 @@ export type PropertyOperationsAccess = {
   roles: string[];
 };
 
+export type PropertyCaseAccessMode = "view" | "operate" | "override";
+
+export type PropertyCaseAccessResult = {
+  canViewCase: boolean;
+  canOperateCase: boolean;
+  canOverrideCase: boolean;
+  source: "platform_admin" | "property_admin" | "scoped_role" | "assigned_officer" | "denied";
+  registryCase: PropertyRegistryCase;
+  property: Property;
+};
+
 export type PropertyCaseListItem = PropertyRegistryCase & {
   property: Property | null;
   assignedUser?: { id: string; full_name: string | null; email: string | null; role: string | null } | null;
@@ -50,7 +61,24 @@ export type PropertyCaseDetail = PropertyRegistryCase & {
   certificates: PropertyCertificate[];
 };
 
-const CASE_COMPLETE_STATUSES = new Set<PropertyRegistryCaseStatus>(["approved", "rejected", "cancelled", "verified"]);
+export const CASE_COMPLETE_STATUSES = new Set<PropertyRegistryCaseStatus>(["approved", "rejected", "cancelled", "verified"]);
+export const CASE_TERMINAL_STATUSES = new Set<PropertyRegistryCaseStatus>(["rejected", "cancelled", "verified"]);
+export const CASE_LOCKED_BY_CREDENTIAL_STATUSES = new Set<PropertyRegistryCaseStatus>(["rejected", "returned", "cancelled"]);
+export const REVIEWABLE_DOCUMENT_STATUSES = new Set<PropertyDocument["status"]>(["pending_review"]);
+export const CERTIFICATE_ACTIVE_STATUSES = new Set<PropertyCertificate["status"]>(["generated"]);
+export const CASE_TRANSITIONS: Record<PropertyRegistryCaseStatus, readonly PropertyRegistryCaseStatus[]> = {
+  submitted: ["under_review", "awaiting_documents", "awaiting_survey", "awaiting_ownership", "approved", "rejected", "returned", "suspended", "cancelled", "verified"],
+  under_review: ["awaiting_documents", "awaiting_survey", "awaiting_ownership", "approved", "rejected", "returned", "suspended", "cancelled", "verified"],
+  awaiting_documents: ["under_review", "approved", "rejected", "returned", "suspended", "cancelled", "verified"],
+  awaiting_survey: ["under_review", "approved", "rejected", "returned", "suspended", "cancelled", "verified"],
+  awaiting_ownership: ["under_review", "approved", "rejected", "returned", "suspended", "cancelled", "verified"],
+  returned: ["under_review", "cancelled"],
+  suspended: ["under_review", "cancelled"],
+  approved: ["verified", "suspended"],
+  rejected: ["under_review"],
+  cancelled: ["under_review"],
+  verified: [],
+};
 const PROPERTY_DECISION_EVENT: Record<string, string> = {
   approved: "property.review.approved",
   rejected: "property.review.rejected",
@@ -63,6 +91,7 @@ const PROPERTY_DECISION_EVENT: Record<string, string> = {
   awaiting_ownership: "property.review.ownership_requested",
   verified: "property.review.verified",
 };
+const PROPERTY_OPERATION_ROLE_SET = new Set<string>(PROPERTY_OPERATION_ROLES);
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -76,6 +105,40 @@ function activeRole(status: string | null | undefined, expiresAt: string | null 
   if (status !== "active") return false;
   if (!expiresAt) return true;
   return new Date(expiresAt).getTime() > Date.now();
+}
+
+function isPropertyAdminRole(role: string | null | undefined) {
+  return role === "property_admin";
+}
+
+function roleAssignmentMatchesProperty(assignment: {
+  role: string | null;
+  scope_type: string | null;
+  scope_id: string | null;
+  institution_id: string | null;
+  status: string | null;
+  expires_at: string | null;
+}, property: Property) {
+  if (!activeRole(assignment.status, assignment.expires_at)) return false;
+  if (!PROPERTY_SCOPED_ROLES.includes(assignment.role as PropertyScopedRole)) return false;
+  if (assignment.scope_type === "global") return true;
+  if (assignment.scope_type === "property" && assignment.scope_id === property.id) return true;
+  if (assignment.scope_type === "institution" && assignment.scope_id && assignment.scope_id === property.registry_institution_id) return true;
+  if (assignment.institution_id && assignment.institution_id === property.registry_institution_id) return true;
+  if (assignment.scope_type === "state_registry" && assignment.scope_id && assignment.scope_id === property.state_id) return true;
+  if (assignment.scope_type === "lga_registry" && assignment.scope_id && assignment.scope_id === property.lga_id) return true;
+  return false;
+}
+
+async function listActivePropertyRoleAssignments(input: { userId: string; client: Client }) {
+  const { data, error } = await input.client
+    .from("role_assignments")
+    .select("role,scope_type,scope_id,institution_id,status,expires_at")
+    .eq("user_id", input.userId)
+    .eq("status", "active")
+    .in("role", [...PROPERTY_SCOPED_ROLES]);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function resolvePropertyOperationsAccess(input: {
@@ -101,6 +164,14 @@ export async function resolvePropertyOperationsAccess(input: {
   const allowed = activeScoped.some((assignment) => PROPERTY_SCOPED_ROLES.includes(assignment.role as PropertyScopedRole));
   const operationRoles = new Set<string>(PROPERTY_OPERATION_ROLES);
   const canMutate = activeScoped.some((assignment) => operationRoles.has(assignment.role));
+  if (!allowed && input.ctx.appUserId) {
+    const { count, error } = await input.client
+      .from("property_registry_cases")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to", input.ctx.appUserId);
+    if (error) throw error;
+    if ((count ?? 0) > 0) return { allowed: true, canMutate: true, roles: effective.roles };
+  }
   return { allowed, canMutate, roles: effective.roles };
 }
 
@@ -195,6 +266,147 @@ async function getCase(caseId: string, client: Client) {
   return data as PropertyRegistryCase;
 }
 
+export async function resolvePropertyCaseAccess(input: {
+  caseId: string;
+  ctx: UserContext;
+  client: Client;
+}): Promise<PropertyCaseAccessResult> {
+  const registryCase = await getCase(input.caseId, input.client);
+  const property = await getProperty(registryCase.property_id, input.client);
+  if (!input.ctx.appUserId || input.ctx.role === "public") {
+    return { canViewCase: false, canOperateCase: false, canOverrideCase: false, source: "denied", registryCase, property };
+  }
+
+  if (isPlatformAdmin(input.ctx.role)) {
+    return { canViewCase: true, canOperateCase: true, canOverrideCase: true, source: "platform_admin", registryCase, property };
+  }
+
+  const assignments = await listActivePropertyRoleAssignments({ userId: input.ctx.appUserId, client: input.client });
+  const matchingAssignments = assignments.filter((assignment) => roleAssignmentMatchesProperty(assignment, property));
+  const hasPropertyAdmin = matchingAssignments.some((assignment) => isPropertyAdminRole(assignment.role));
+  if (hasPropertyAdmin) {
+    return { canViewCase: true, canOperateCase: true, canOverrideCase: true, source: "property_admin", registryCase, property };
+  }
+
+  const hasScopedOperate = matchingAssignments.some((assignment) => PROPERTY_OPERATION_ROLE_SET.has(String(assignment.role)));
+  const hasScopedView = matchingAssignments.some((assignment) => PROPERTY_SCOPED_ROLES.includes(assignment.role as PropertyScopedRole));
+  const assignedOfficer = registryCase.assigned_to === input.ctx.appUserId;
+  const canOperateCase = hasScopedOperate || assignedOfficer;
+  const canViewCase = hasScopedView || assignedOfficer;
+
+  return {
+    canViewCase,
+    canOperateCase,
+    canOverrideCase: false,
+    source: hasScopedView ? "scoped_role" : assignedOfficer ? "assigned_officer" : "denied",
+    registryCase,
+    property,
+  };
+}
+
+export async function requirePropertyCaseAccess(input: {
+  caseId: string;
+  ctx: UserContext;
+  client: Client;
+  mode: PropertyCaseAccessMode;
+}) {
+  const access = await resolvePropertyCaseAccess(input);
+  const allowed = input.mode === "override" ? access.canOverrideCase : input.mode === "operate" ? access.canOperateCase : access.canViewCase;
+  if (!allowed) {
+    throw new Error("You do not have access to this registry case.");
+  }
+  return access;
+}
+
+export function canTransitionPropertyCase(input: {
+  from: PropertyRegistryCaseStatus;
+  to: PropertyRegistryCaseStatus;
+  hasActiveCredential?: boolean;
+  override?: boolean;
+}) {
+  if (input.from === input.to) return true;
+  if (input.hasActiveCredential && CASE_LOCKED_BY_CREDENTIAL_STATUSES.has(input.to)) return false;
+  if (input.hasActiveCredential && input.from === "verified") return false;
+  if (CASE_TERMINAL_STATUSES.has(input.from)) return Boolean(input.override) && !input.hasActiveCredential && CASE_TRANSITIONS[input.from].includes(input.to);
+  return CASE_TRANSITIONS[input.from].includes(input.to);
+}
+
+function assertCanTransitionPropertyCase(input: {
+  from: PropertyRegistryCaseStatus;
+  to: PropertyRegistryCaseStatus;
+  hasActiveCredential: boolean;
+  override: boolean;
+}) {
+  if (!canTransitionPropertyCase(input)) {
+    throw new Error(`Invalid registry transition from ${input.from} to ${input.to}.`);
+  }
+}
+
+export function validateOwnerReadiness(owners: PropertyOwner[]) {
+  const activeOwners = owners.filter((owner) => !owner.effective_to && owner.verification_status !== "superseded");
+  if (!activeOwners.length) throw new Error("Approval requires at least one active owner.");
+  if (!activeOwners.some((owner) => owner.is_primary)) throw new Error("Approval requires a primary owner.");
+  for (const owner of activeOwners) {
+    if (owner.ownership_percentage !== null && (owner.ownership_percentage <= 0 || owner.ownership_percentage > 100)) {
+      throw new Error("Ownership percentages must be greater than 0 and not more than 100.");
+    }
+  }
+  const percentages = activeOwners.map((owner) => owner.ownership_percentage).filter((percentage): percentage is number => percentage !== null);
+  const percentageTotal = percentages.reduce((sum, percentage) => sum + percentage, 0);
+  if (percentageTotal > 100.01) throw new Error("Ownership percentages cannot exceed 100%.");
+  if (activeOwners.length > 1 && percentages.length === activeOwners.length && Math.abs(percentageTotal - 100) > 0.01) {
+    throw new Error("Multi-owner records with percentages must total 100%.");
+  }
+  if (activeOwners.some((owner) => owner.verification_status !== "verified")) {
+    throw new Error("Approval requires active owners to be verified.");
+  }
+}
+
+export function validateDocumentReadiness(documents: PropertyDocument[]) {
+  const activeDocuments = documents.filter((document) => !["superseded", "archived"].includes(document.status));
+  if (!activeDocuments.length) throw new Error("Approval requires at least one supporting document.");
+  if (!activeDocuments.some((document) => document.status === "accepted")) throw new Error("Approval requires at least one accepted supporting document.");
+  const unresolved = activeDocuments.filter((document) => document.status !== "accepted");
+  if (unresolved.length) throw new Error("Approval requires all active supporting documents to be accepted.");
+}
+
+async function assertApprovalReadiness(input: { registryCase: PropertyRegistryCase; client: Client }) {
+  const [owners, documents] = await Promise.all([
+    input.client.from("property_owners").select("*").eq("property_id", input.registryCase.property_id),
+    input.client.from("property_documents").select("*").eq("property_id", input.registryCase.property_id),
+  ]);
+  if (owners.error) throw owners.error;
+  if (documents.error) throw documents.error;
+  validateOwnerReadiness((owners.data ?? []) as PropertyOwner[]);
+  validateDocumentReadiness((documents.data ?? []) as PropertyDocument[]);
+}
+
+export function resolveDocumentReviewStatus(input: { action: string; document: Pick<PropertyDocument, "status" | "superseded_by"> }) {
+  if (!["approve", "reject", "request_replacement", "supersede"].includes(input.action)) {
+    throw new Error("Unsupported document review action.");
+  }
+  if (!REVIEWABLE_DOCUMENT_STATUSES.has(input.document.status)) {
+    throw new Error("This document has already been reviewed and must be moved back to a reviewable state before another decision.");
+  }
+  if (input.action === "supersede" && !input.document.superseded_by) {
+    throw new Error("A document can only be superseded after a replacement document relationship exists.");
+  }
+  if (input.action === "approve") return "accepted" as const;
+  if (input.action === "supersede") return "superseded" as const;
+  return "rejected" as const;
+}
+
+async function hasActiveCredential(input: { propertyId: string; client: Client }) {
+  const { data, error } = await input.client
+    .from("property_identity_credentials")
+    .select("id")
+    .eq("property_id", input.propertyId)
+    .eq("status", "issued")
+    .limit(1);
+  if (error) throw error;
+  return Boolean(data?.length);
+}
+
 export async function ensureRegistryCaseForProperty(input: {
   propertyId: string;
   actorUserId: string;
@@ -247,6 +459,7 @@ export async function ensureRegistryCaseForProperty(input: {
 
 export async function listRegistryCases(input: {
   client: Client;
+  ctx?: UserContext;
   status?: string | null;
   assignedTo?: string | null;
   limit?: number;
@@ -260,15 +473,23 @@ export async function listRegistryCases(input: {
   if (input.assignedTo) query = query.eq("assigned_to", input.assignedTo);
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []).map((row) => {
+  const cases = (data ?? []).map((row) => {
     const property = Array.isArray(row.properties) ? row.properties[0] : row.properties;
     return { ...(row as PropertyRegistryCase), property: (property as Property | null) ?? null };
   }) as PropertyCaseListItem[];
+  if (!input.ctx?.appUserId || isPlatformAdmin(input.ctx.role)) return cases;
+
+  const assignments = await listActivePropertyRoleAssignments({ userId: input.ctx.appUserId, client: input.client });
+  return cases.filter((item) => {
+    if (item.assigned_to === input.ctx?.appUserId) return true;
+    if (!item.property) return false;
+    return assignments.some((assignment) => roleAssignmentMatchesProperty(assignment, item.property!));
+  });
 }
 
-export async function getOperationsDashboard(input: { client: Client }) {
+export async function getOperationsDashboard(input: { client: Client; ctx: UserContext }) {
   const [cases, events, assignments] = await Promise.all([
-    listRegistryCases({ client: input.client, limit: 200 }),
+    listRegistryCases({ client: input.client, ctx: input.ctx, limit: 200 }),
     input.client.from("property_events").select("*").order("created_at", { ascending: false }).limit(12),
     input.client.from("property_case_assignments").select("*, users!property_case_assignments_assigned_to_fkey(id,full_name,email,role)").eq("status", "active").order("assigned_at", { ascending: false }).limit(50),
   ]);
@@ -290,6 +511,14 @@ export async function getOperationsDashboard(input: { client: Client }) {
     regions.set(key, (regions.get(key) ?? 0) + 1);
   }
 
+  const visibleCaseIds = new Set(cases.map((item) => item.id));
+  const visiblePropertyIds = new Set(cases.map((item) => item.property_id));
+  const visibleEvents = (events.data ?? []).filter((event) => {
+    if (event.property_id && visiblePropertyIds.has(event.property_id)) return true;
+    if (event.metadata?.case_id && visibleCaseIds.has(String(event.metadata.case_id))) return true;
+    return false;
+  });
+
   return {
     cases,
     metrics: {
@@ -303,12 +532,13 @@ export async function getOperationsDashboard(input: { client: Client }) {
     },
     workload: [...workload.entries()].map(([name, count]) => ({ name, count })),
     regionalSummary: [...regions.entries()].map(([stateId, count]) => ({ stateId, count })).slice(0, 8),
-    events: events.data ?? [],
+    events: visibleEvents,
   };
 }
 
-export async function getRegistryCaseDetail(input: { caseId: string; client: Client }): Promise<PropertyCaseDetail> {
-  const registryCase = await getCase(input.caseId, input.client);
+export async function getRegistryCaseDetail(input: { caseId: string; client: Client; ctx?: UserContext }): Promise<PropertyCaseDetail> {
+  const access = input.ctx ? await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "view" }) : null;
+  const registryCase = access?.registryCase ?? await getCase(input.caseId, input.client);
   const [property, addresses, owners, documents, assignments, comments, events, statusHistory, credentials, certificates] = await Promise.all([
     input.client.from("properties").select("*").eq("id", registryCase.property_id).single(),
     input.client.from("property_addresses").select("*").eq("property_id", registryCase.property_id).order("is_primary", { ascending: false }),
@@ -358,7 +588,7 @@ export async function listAssignablePropertyUsers(input: { client: Client }) {
 
 export async function addCaseComment(input: { caseId: string; ctx: UserContext; formData: FormData; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
+  const { registryCase } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
   const comment = value(input.formData, "comment");
   const visibility = value(input.formData, "visibility") === "applicant_visible" ? "applicant_visible" : "internal";
   await insertComment({
@@ -383,7 +613,7 @@ export async function addCaseComment(input: { caseId: string; ctx: UserContext; 
 
 export async function assignRegistryCase(input: { caseId: string; ctx: UserContext; formData: FormData; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
+  const { registryCase } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "override" });
   const assignedTo = nullable(value(input.formData, "assigned_to"));
   const assignmentRole = value(input.formData, "assignment_role") || "land_registry_officer";
   const notes = nullable(value(input.formData, "notes"));
@@ -456,10 +686,18 @@ async function updatePropertyStatus(input: {
   actorUserId: string;
   note: string;
   client: Client;
+  override?: boolean;
 }) {
   const property = await getProperty(input.registryCase.property_id, input.client);
   const now = new Date().toISOString();
   const terminal = CASE_COMPLETE_STATUSES.has(input.newStatus);
+  const credentialed = await hasActiveCredential({ propertyId: property.id, client: input.client });
+  assertCanTransitionPropertyCase({
+    from: input.registryCase.status,
+    to: input.newStatus,
+    hasActiveCredential: credentialed,
+    override: Boolean(input.override),
+  });
   const { error: propertyError } = await input.client
     .from("properties")
     .update({ status: input.newStatus, registry_status: input.newStatus })
@@ -502,13 +740,19 @@ async function updatePropertyStatus(input: {
 
 export async function updateCaseDecision(input: { caseId: string; ctx: UserContext; formData: FormData; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
+  const access = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
+  const registryCase = access.registryCase;
   const action = value(input.formData, "decision") as PropertyRegistryCaseStatus;
   const note = value(input.formData, "decision_note") || `Case marked ${action.replaceAll("_", " ")}.`;
   if (!["under_review", "awaiting_documents", "awaiting_survey", "awaiting_ownership", "approved", "rejected", "returned", "suspended", "cancelled", "verified"].includes(action)) {
     throw new Error("Unsupported registry decision.");
   }
-  await updatePropertyStatus({ registryCase, newStatus: action, actorUserId: input.ctx.appUserId, note, client: input.client });
+  const credentialed = await hasActiveCredential({ propertyId: registryCase.property_id, client: input.client });
+  assertCanTransitionPropertyCase({ from: registryCase.status, to: action, hasActiveCredential: credentialed, override: access.canOverrideCase });
+  if (["approved", "verified"].includes(action)) {
+    await assertApprovalReadiness({ registryCase, client: input.client });
+  }
+  await updatePropertyStatus({ registryCase, newStatus: action, actorUserId: input.ctx.appUserId, note, client: input.client, override: access.canOverrideCase });
   await insertComment({
     caseId: registryCase.id,
     propertyId: registryCase.property_id,
@@ -532,14 +776,14 @@ export async function updateCaseDecision(input: { caseId: string; ctx: UserConte
 
 export async function reviewDocument(input: { caseId: string; ctx: UserContext; formData: FormData; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
+  const { registryCase } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
   const documentId = value(input.formData, "document_id");
   const action = value(input.formData, "document_action");
   const note = value(input.formData, "review_note");
-  const status = action === "approve" ? "accepted" : action === "request_replacement" ? "rejected" : action === "supersede" ? "superseded" : "rejected";
   const { data: document, error: lookupError } = await input.client.from("property_documents").select("*").eq("id", documentId).eq("property_id", registryCase.property_id).maybeSingle();
   if (lookupError) throw lookupError;
   if (!document) throw new Error("Document not found for this case.");
+  const status = resolveDocumentReviewStatus({ action, document: document as PropertyDocument });
   const { error } = await input.client
     .from("property_documents")
     .update({ status, reviewed_by: input.ctx.appUserId, reviewed_at: new Date().toISOString(), review_note: note || null })
@@ -580,14 +824,18 @@ export async function reviewDocument(input: { caseId: string; ctx: UserContext; 
 
 export async function reviewOwner(input: { caseId: string; ctx: UserContext; formData: FormData; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
+  const { registryCase } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
   const ownerId = value(input.formData, "owner_id");
   const action = value(input.formData, "owner_action");
   const note = value(input.formData, "review_note");
+  if (!["verify", "clarify", "reject"].includes(action)) throw new Error("Unsupported ownership review action.");
   const status = action === "verify" ? "verified" : action === "clarify" ? "pending_review" : "rejected";
   const { data: owner, error: lookupError } = await input.client.from("property_owners").select("*").eq("id", ownerId).eq("property_id", registryCase.property_id).maybeSingle();
   if (lookupError) throw lookupError;
   if (!owner) throw new Error("Owner not found for this case.");
+  if (["verified", "rejected"].includes(owner.verification_status) && owner.verification_status === status) {
+    throw new Error("This ownership record already has that review decision.");
+  }
   const { error } = await input.client.from("property_owners").update({ verification_status: status }).eq("id", ownerId);
   if (error) throw error;
   const { error: historyError } = await input.client.from("property_owner_history").insert({
@@ -618,9 +866,11 @@ export async function reviewOwner(input: { caseId: string; ctx: UserContext; for
 
 export async function issueNpinAndCredential(input: { caseId: string; ctx: UserContext; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
-  const property = await getProperty(registryCase.property_id, input.client);
-  if (!["approved", "verified"].includes(property.status)) throw new Error("NPIN can only be issued after approval.");
+  const { registryCase, property } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
+  if (!["approved", "verified"].includes(property.status) || !["approved", "verified"].includes(registryCase.status)) throw new Error("NPIN can only be issued after approval or verification.");
+  if (["rejected", "returned", "cancelled"].includes(property.status) || ["rejected", "returned", "cancelled"].includes(registryCase.status)) {
+    throw new Error("NPIN cannot be issued for rejected, returned or cancelled applications.");
+  }
   if (!property.state_id) throw new Error("A state is required to issue an NPIN.");
   const npin = property.npin ?? await generatePropertyNpin(property.state_id, input.client);
   if (!property.npin) {
@@ -710,10 +960,19 @@ export async function issueNpinAndCredential(input: { caseId: string; ctx: UserC
 
 export async function generateCertificate(input: { caseId: string; ctx: UserContext; client: Client }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
-  const registryCase = await getCase(input.caseId, input.client);
-  const detail = await getRegistryCaseDetail({ caseId: input.caseId, client: input.client });
+  const { registryCase } = await requirePropertyCaseAccess({ caseId: input.caseId, ctx: input.ctx, client: input.client, mode: "operate" });
+  const detail = await getRegistryCaseDetail({ caseId: input.caseId, client: input.client, ctx: input.ctx });
   const credential = detail.credentials.find((item) => item.status === "issued");
   if (!credential || !detail.property.npin) throw new Error("Issue an NPIN and credential before generating a certificate.");
+  const { data: existingCertificate, error: existingCertificateError } = await input.client
+    .from("property_certificates")
+    .select("id")
+    .eq("property_id", registryCase.property_id)
+    .eq("credential_id", credential.id)
+    .in("status", [...CERTIFICATE_ACTIVE_STATUSES])
+    .limit(1);
+  if (existingCertificateError) throw existingCertificateError;
+  if (existingCertificate?.length) throw new Error("An active certificate already exists for this property credential.");
   const certificateReference = `PCERT-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
   const payload = {
     certificate_reference: certificateReference,

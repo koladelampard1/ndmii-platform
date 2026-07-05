@@ -12,8 +12,8 @@ export default async function PropertyOperationsPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   const query = await searchParams;
-  const { supabase, access } = await getRegistryOperationsContext();
-  const dashboard = await getOperationsDashboard({ client: supabase });
+  const { ctx, supabase, access } = await getRegistryOperationsContext();
+  const dashboard = await getOperationsDashboard({ client: supabase, ctx });
 
   return (
     <main className="space-y-6">

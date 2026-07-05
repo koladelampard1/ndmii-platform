@@ -5,8 +5,8 @@ import { RegistryCaseTable, RegistryOperationsHero } from "@/components/property
 export const dynamic = "force-dynamic";
 
 export default async function CompletedRegistryCasesPage() {
-  const { supabase } = await getRegistryOperationsContext();
-  const all = await listRegistryCases({ client: supabase, limit: 200 });
+  const { ctx, supabase } = await getRegistryOperationsContext();
+  const all = await listRegistryCases({ client: supabase, ctx, limit: 200 });
   const cases = all.filter((item) => ["approved", "verified", "rejected", "cancelled"].includes(item.status));
 
   return (

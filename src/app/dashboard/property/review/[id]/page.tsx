@@ -10,7 +10,7 @@ import {
   updateCaseDecisionAction,
 } from "@/app/dashboard/property/operations/actions";
 import { getRegistryOperationsContext } from "@/app/dashboard/property/operations/_context";
-import { getRegistryCaseDetail, listAssignablePropertyUsers } from "@/lib/property/property-operations-service";
+import { getRegistryCaseDetail, listAssignablePropertyUsers, resolvePropertyCaseAccess } from "@/lib/property/property-operations-service";
 import { CaseSummaryCards, CertificatePreview, RegistryOperationsHero, Timeline } from "@/components/property/property-operations-workspace";
 import { PropertyStatusBadge, inputClass, textareaClass } from "@/components/property/property-workspace";
 
@@ -46,13 +46,15 @@ export default async function RegistryReviewPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const { supabase, access } = await getRegistryOperationsContext();
-  const [detail, users] = await Promise.all([
-    getRegistryCaseDetail({ caseId: id, client: supabase }),
-    listAssignablePropertyUsers({ client: supabase }),
+  const { ctx, supabase } = await getRegistryOperationsContext();
+  const [detail, caseAccess] = await Promise.all([
+    getRegistryCaseDetail({ caseId: id, client: supabase, ctx }),
+    resolvePropertyCaseAccess({ caseId: id, client: supabase, ctx }),
   ]);
+  const users = caseAccess.canOverrideCase ? await listAssignablePropertyUsers({ client: supabase }) : [];
   const address = detail.addresses[0] ?? null;
-  const canMutate = access.canMutate;
+  const canMutate = caseAccess.canOperateCase;
+  const canOverride = caseAccess.canOverrideCase;
 
   return (
     <main className="space-y-6">
@@ -157,7 +159,7 @@ export default async function RegistryReviewPage({
 
         <aside className="space-y-6">
           <Panel title="Assignment" icon={UserCheck}>
-            {canMutate ? (
+            {canOverride ? (
               <form action={assignRegistryCaseAction} className="space-y-3">
                 <input type="hidden" name="case_id" value={detail.id} />
                 <select name="assigned_to" defaultValue={detail.assigned_to ?? ""} className={inputClass}>

@@ -5,8 +5,8 @@ import { RegistryCaseTable, RegistryOperationsHero } from "@/components/property
 export const dynamic = "force-dynamic";
 
 export default async function RegistryCasesPage() {
-  const { supabase } = await getRegistryOperationsContext();
-  const cases = await listRegistryCases({ client: supabase, limit: 200 });
+  const { ctx, supabase } = await getRegistryOperationsContext();
+  const cases = await listRegistryCases({ client: supabase, ctx, limit: 200 });
 
   return (
     <main className="space-y-6">

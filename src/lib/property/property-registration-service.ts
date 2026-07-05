@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserContext } from "@/lib/auth/authorization";
 import { generatePropertyApplicationReference, recordPropertyEvent } from "@/lib/data/property-foundation";
+import { ensureRegistryCaseForProperty } from "@/lib/property/property-operations-service";
 import type { JsonRecord } from "@/types/platform";
 import type { Property, PropertyDocumentType, PropertyOwner } from "@/types/property";
 import {
@@ -513,6 +514,14 @@ export async function savePropertyRegistration(input: {
     metadata: { application_reference: applicationReference, npin: property.npin ?? null },
     client: input.supabase,
   });
+
+  if (shouldSubmit) {
+    await ensureRegistryCaseForProperty({
+      propertyId: property.id,
+      actorUserId: input.ctx.appUserId,
+      client: input.supabase,
+    });
+  }
 
   return {
     propertyId: property.id,

@@ -15,7 +15,8 @@
     "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",
     "seed:lcdbo-demo": "node scripts/seed-lcdbo-national-demo.mjs",
     "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs",
-    "validate:platform-foundation": "node scripts/validate-platform-foundation.mjs"
+    "validate:platform-foundation": "node scripts/validate-platform-foundation.mjs",
+    "validate:property-phase35": "node scripts/validate-property-phase35.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",

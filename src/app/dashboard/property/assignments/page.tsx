@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RegistryAssignmentsPage() {
   const { ctx, supabase } = await getRegistryOperationsContext();
-  const cases = await listRegistryCases({ client: supabase, assignedTo: ctx.appUserId, limit: 200 });
+  const cases = await listRegistryCases({ client: supabase, ctx, assignedTo: ctx.appUserId, limit: 200 });
 
   return (
     <main className="space-y-6">
