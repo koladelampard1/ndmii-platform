@@ -77,7 +77,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { label: "LCDBO Data Quality", href: "/dashboard/lcdbo/data-quality", icon: ShieldCheck },
       { label: "LCDBO Briefings", href: "/dashboard/lcdbo/briefings", icon: ClipboardCheck },
       { label: "LCDBO Executive View", href: "/dashboard/lcdbo/executive", icon: BarChart3 },
-      { label: "Property Workspace", href: "/dashboard/property", icon: ClipboardPenLine },
+      { label: "Registry Operations", href: "/dashboard/property/operations", icon: ClipboardPenLine },
       { label: "Public Verification", href: "/dashboard/admin/public-verification", icon: ShieldCheck, pending: true },
     ],
   },

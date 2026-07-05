@@ -14,10 +14,29 @@ export type EditableProperty = Property & {
 
 export async function requirePropertyWorkspaceAccess() {
   const ctx = await getCurrentUserContext();
-  if (ctx.role === "public" || !ctx.appUserId) redirect("/access-denied");
+  if (ctx.role === "public" || !ctx.appUserId) {
+    console.info("[property-workspace-access-denied]", {
+      operation: "requirePropertyWorkspaceAccess",
+      reason: !ctx.appUserId ? "missing_app_user" : "public_role",
+      role: ctx.role,
+      authUserId: ctx.authUserId,
+      email: ctx.email,
+    });
+    redirect("/access-denied");
+  }
   const supabase = await createServiceRoleSupabaseClient();
   const access = await canAccessPropertyRegistrationWorkspace({ ctx, client: supabase });
-  if (!access.allowed) redirect("/access-denied");
+  if (!access.allowed) {
+    console.info("[property-workspace-access-denied]", {
+      operation: "requirePropertyWorkspaceAccess",
+      reason: access.source,
+      role: ctx.role,
+      appUserId: ctx.appUserId,
+      moduleStatus: access.moduleStatus,
+      roles: access.roles,
+    });
+    redirect("/access-denied");
+  }
   return { ctx, supabase };
 }
 

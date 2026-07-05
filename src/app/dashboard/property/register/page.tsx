@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AlertCircle, CheckCircle2, FileText, Home, MapPin, ShieldCheck, UploadCloud, Users } from "lucide-react";
 import { Field, inputClass, PropertyProgress, PropertyWorkspaceHero, textareaClass } from "@/components/property/property-workspace";
 import { PropertyDraftGuard } from "@/components/property/property-draft-guard";
@@ -54,6 +55,9 @@ export default async function PropertyRegistrationPage({
     getPropertyLookups(supabase),
     getEditableProperty(supabase, query.property ?? null, ctx.appUserId!),
   ]);
+  if (query.property && !property) {
+    redirect("/dashboard/property/register?error=Property draft could not be loaded for the current workspace.");
+  }
   const step = clampStep(query.step);
   const address = property?.addresses[0] ?? null;
   const owners = property?.owners ?? [];

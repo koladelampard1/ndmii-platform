@@ -22,6 +22,7 @@ export default async function PropertyOperationsPage({
         description="Review property applications, manage officer assignments, verify documents and ownership, issue official NPINs, and maintain complete registry audit history."
         actions={[
           { href: "/dashboard/property/cases", label: "All Cases", primary: true },
+          { href: "/dashboard/property/register", label: "Register Property" },
           { href: "/dashboard/property/pending", label: "Pending" },
           { href: "/dashboard/property/completed", label: "Completed" },
         ]}

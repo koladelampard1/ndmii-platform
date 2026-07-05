@@ -1,5 +1,5 @@
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, type NavigationGroup } from "@/lib/auth/authorization";
+import { ROLE_NAV_GROUPS, ROLE_NAV_ITEMS, canAccessRoute, isPlatformAdmin, type NavigationGroup } from "@/lib/auth/authorization";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import type { UserRole } from "@/types/roles";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -47,14 +47,13 @@ export async function Sidebar() {
     if ((count ?? 0) > 0 || hasActiveScopedRole) navGroups.push({ label: "Programme Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" }] });
   }
 
-  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property"))) {
+  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property/register"))) {
     const supabase = await createServiceRoleSupabaseClient();
     const propertyAccess = await canAccessPropertyRegistrationWorkspace({ ctx: context, client: supabase });
     if (propertyAccess.allowed) {
       navGroups.push({
-        label: "Property Workspace",
+        label: "Property Applications",
         items: [
-          { href: "/dashboard/property", label: "Property Workspace" },
           { href: "/dashboard/property/register", label: "Register Property" },
           { href: "/dashboard/property/my-properties", label: "My Properties" },
           { href: "/dashboard/property/drafts", label: "Drafts" },
@@ -83,7 +82,9 @@ export async function Sidebar() {
   const allowedGroups = navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => canAccessRoute(role, item.href)),
+      items: group.items
+        .filter((item) => !(isPlatformAdmin(role) && item.href === "/dashboard/property"))
+        .filter((item) => canAccessRoute(role, item.href)),
     }))
     .filter((group) => group.items.length > 0);
 
