@@ -1,4 +1,4 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "lands" | "unknown";
 
 type HostRoutingConfig = {
   marketingHosts: Set<string>;
@@ -6,6 +6,7 @@ type HostRoutingConfig = {
   adminHosts: Set<string>;
   verifyHosts: Set<string>;
   boiHosts: Set<string>;
+  landsHosts: Set<string>;
   localAppHosts: Set<string>;
 };
 
@@ -37,6 +38,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     adminHosts: hostSet(process.env.DBIN_ADMIN_HOSTS, ["admin.dbin.ng"]),
     verifyHosts: hostSet(process.env.DBIN_VERIFY_HOSTS, ["verify.dbin.ng"]),
     boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
+    landsHosts: hostSet(process.env.DBIN_LANDS_HOSTS, ["lands.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };
 }
@@ -50,6 +52,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.adminHosts.has(hostname)) return "admin";
   if (config.verifyHosts.has(hostname)) return "verify";
   if (config.boiHosts.has(hostname)) return "boi";
+  if (config.landsHosts.has(hostname)) return "lands";
   return "unknown";
 }
 
@@ -82,6 +85,22 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (pathname === "/c" || pathname.startsWith("/c/")) {
       return `/verify${pathname}`;
     }
+  }
+
+  if (surface === "lands") {
+    if (
+      pathname === "/login" ||
+      pathname === "/logout" ||
+      pathname === "/dashboard" ||
+      pathname.startsWith("/dashboard/") ||
+      pathname.startsWith("/api/") ||
+      pathname.startsWith("/_next/")
+    ) {
+      return null;
+    }
+    if (pathname === "/") return "/property";
+    if (pathname === "/property" || pathname.startsWith("/property/")) return null;
+    return `/property${pathname}`;
   }
 
   return null;

@@ -55,6 +55,7 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("app.dbin.ng"), "app");
   assert.equal(resolveDbinHostSurface("admin.dbin.ng"), "admin");
   assert.equal(resolveDbinHostSurface("verify.dbin.ng"), "verify");
+  assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 
 test("super admin landing route remains direct on app, BOI, and admin surfaces", () => {
@@ -69,6 +70,15 @@ test("existing admin and verify rewrites remain unchanged", () => {
   assert.equal(resolveDbinRewritePath("admin", "/associations/123"), "/admin/associations/123");
   assert.equal(resolveDbinRewritePath("verify", "/"), "/verify");
   assert.equal(resolveDbinRewritePath("verify", "/c/token"), "/verify/c/token");
+});
+
+test("lands host rewrites to the public property explorer", () => {
+  assert.equal(resolveDbinRewritePath("lands", "/"), "/property");
+  assert.equal(resolveDbinRewritePath("lands", "/search"), "/property/search");
+  assert.equal(resolveDbinRewritePath("lands", "/verify"), "/property/verify");
+  assert.equal(resolveDbinRewritePath("lands", "/property/search"), null);
+  assert.equal(resolveDbinRewritePath("lands", "/dashboard/property"), null);
+  assert.equal(resolveDbinRewritePath("lands", "/api/property/verify"), null);
 });
 
 test("localhost development continues to use the app surface", () => {
