@@ -46,7 +46,7 @@ export default async function NrsRevenuePage() {
 
   return (
     <section className="space-y-4">
-      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">NRS Revenue Monitor</h1><p className="text-sm text-slate-600">DBIN invoiced vs paid trends for national marketplace tax analytics. Values are exposure indicators, not official remittance records.</p><p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p></header>
+      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">National Revenue Intelligence</h1><p className="text-sm text-slate-600">DBIN invoiced vs paid trends for national marketplace intelligence. Values are exposure indicators, not official remittance records.</p><p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p></header>
       <div className="grid gap-3 md:grid-cols-4">
         <article className="rounded-xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total invoiced</p><p className="text-2xl font-semibold">{formatNaira(total)}</p></article>
         <article className="rounded-xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total paid</p><p className="text-2xl font-semibold text-emerald-700">{formatNaira(paid)}</p></article>

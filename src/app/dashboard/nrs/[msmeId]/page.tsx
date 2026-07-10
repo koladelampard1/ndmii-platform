@@ -1,8 +1,16 @@
 import { redirect } from "next/navigation";
+import { ArrowRight, BadgeCheck, BookOpenCheck, BriefcaseBusiness, Building2, ClipboardCheck, FileText, Landmark, QrCode, ReceiptText, ShieldCheck, TrendingUp } from "lucide-react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { demoDisclosure, formatNrsStatus, requireNrsWorkspace } from "@/lib/nrs/access";
 import { formatNaira } from "@/lib/data/invoicing";
+
+function opportunityBand(score: number) {
+  if (score >= 80) return "Very High";
+  if (score >= 60) return "High";
+  if (score >= 35) return "Medium";
+  return "Low";
+}
 
 async function updateNrsAction(formData: FormData) {
   "use server";
@@ -109,21 +117,89 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
   const invoiceValue = (invoices ?? []).reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
   const vatExposure = (invoices ?? []).reduce((sum, row) => sum + Number(row.vat_amount ?? 0), 0);
   const paidInvoiceValue = (invoices ?? []).filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+  const complianceScore = Number(tax.compliance_score ?? complianceProfile?.compliance_score ?? 0);
+  const opportunityScore = Math.min(100, Math.round((invoiceValue > 0 ? 35 : 0) + (vatExposure > 0 ? 20 : 0) + (msme.verification_status === "verified" ? 15 : 0) + (msme.tin ? 15 : 0) + Math.min(15, complianceScore / 7)));
+  const revenueOpportunity = opportunityBand(opportunityScore);
+  const journeyStages = [
+    { label: "Discovery", done: true, icon: Building2 },
+    { label: "Registration", done: Boolean(msme.msme_id), icon: FileText },
+    { label: "BIN Issued", done: Boolean(msme.msme_id), icon: BadgeCheck },
+    { label: "Identity Verified", done: msme.verification_status === "verified", icon: ShieldCheck },
+    { label: "TIN Ready", done: Boolean(msme.tin), icon: Landmark },
+    { label: "Business Structured", done: Boolean(tax.tax_category), icon: BriefcaseBusiness },
+    { label: "Digital Bookkeeping", done: (payments ?? []).length > 0 || (invoices ?? []).length > 0, icon: BookOpenCheck },
+    { label: "Invoices Active", done: (invoices ?? []).length > 0, icon: ReceiptText },
+    { label: "Compliance Ready", done: String(tax.compliance_status ?? complianceProfile?.overall_status ?? "").includes("compliant"), icon: ClipboardCheck },
+    { label: "Tax Ready", done: Boolean(msme.tin) && String(tax.compliance_status ?? "").includes("compliant"), icon: Landmark },
+    { label: "Growth Journey", done: invoiceValue > 0 && complianceScore >= 70, icon: TrendingUp },
+  ];
+  const firstIncompleteIndex = journeyStages.findIndex((stage) => !stage.done);
 
   return (
     <section className="space-y-5">
-      <header className="rounded-2xl border bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Nigeria Revenue Service • Taxpayer view</p>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+      <header className="rounded-3xl border bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Nigeria Revenue Service • Business Profile</p>
+        <div className="mt-3 grid gap-5 lg:grid-cols-[1fr_180px]">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-950">{msme.business_name}</h1>
-            <p className="mt-1 text-sm text-slate-600">BIN {msme.msme_id} • {msme.state}{msme.lga ? ` / ${msme.lga}` : ""} • {msme.sector}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{msme.business_name}</h1>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase text-emerald-700">{msme.verification_status === "verified" ? "DBIN Verified" : "Verification Pending"}</span>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">BIN {msme.msme_id} • {msme.state}{msme.lga ? ` / ${msme.lga}` : ""} • {msme.sector}</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {[
+                ["BIN", msme.msme_id ?? "Pending"],
+                ["TIN Linkage", msme.tin ? "Available" : "Pending"],
+                ["Compliance Status", formatNrsStatus(tax.compliance_status)],
+                ["Trust Score", complianceScore ? `${complianceScore}/100` : "Pending"],
+                ["Revenue Opportunity", revenueOpportunity],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border bg-slate-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase text-slate-500">{label}</p>
+                  <p className="mt-1 text-base font-semibold capitalize text-slate-950">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase text-emerald-700">{msme.verification_status === "verified" ? "DBIN Verified" : "Verification Pending"}</span>
+          <div className="flex flex-col items-center justify-center rounded-3xl border bg-slate-950 p-4 text-white">
+            <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-white text-slate-950">
+              <QrCode className="h-14 w-14" />
+            </div>
+            <p className="mt-3 text-center text-xs font-semibold uppercase tracking-wide text-emerald-200">QR Verification</p>
+            <p className="mt-1 text-center text-[11px] text-slate-300">Linked to DBIN public verification infrastructure</p>
+          </div>
         </div>
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p>
       </header>
       {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Action completed: {query.saved}</p>}
+
+      <article className="rounded-3xl border bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Formalisation Journey</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">From discovery to growth readiness</h2>
+            <p className="mt-1 text-sm text-slate-600">Progress is computed from existing DBIN identity, invoice, payment and compliance records. No progress is fabricated.</p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Derived Insight</span>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {journeyStages.map((stage, index) => {
+            const isCurrent = firstIncompleteIndex === index;
+            const Icon = stage.icon;
+            return (
+              <div key={stage.label} className={`rounded-2xl border p-3 ${stage.done ? "border-emerald-200 bg-emerald-50" : isCurrent ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-xl p-2 ${stage.done ? "bg-emerald-600 text-white" : isCurrent ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}`}><Icon className="h-4 w-4" /></span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">{stage.label}</p>
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">{stage.done ? "Completed" : isCurrent ? "Current" : "Future"}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </article>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
@@ -230,6 +306,25 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
             const regulator = Array.isArray(item.compliance_regulators) ? item.compliance_regulators[0] : item.compliance_regulators;
             return <div key={item.id} className="rounded border p-3"><p className="font-medium">{req?.title ?? "Compliance requirement"} <span className="text-xs text-slate-500">({regulator?.code ?? "N/A"})</span></p><p className="text-slate-600 capitalize">{formatNrsStatus(item.status)}</p></div>;
           })}
+        </div>
+      </article>
+
+      <article className="rounded-xl border bg-white p-4">
+        <h2 className="font-semibold">Recommended next actions</h2>
+        <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+          {[
+            !msme.tin ? "Prioritise TIN linkage once NRS integration is activated." : null,
+            (invoices ?? []).length === 0 ? "Enable digital invoicing to improve transaction visibility." : null,
+            !String(tax.compliance_status ?? "").includes("compliant") ? "Request or review compliance evidence before marking tax-ready." : null,
+            Number(tax.outstanding_amount ?? 0) > 0 ? "Follow up outstanding exposure through a compliance notice." : null,
+            revenueOpportunity === "Very High" || revenueOpportunity === "High" ? "Consider this business for structured growth and investment-readiness support." : null,
+            "Maintain monitoring through DBIN identity, invoice and compliance signals.",
+          ].filter(Boolean).map((item) => (
+            <p key={item} className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-emerald-950">
+              <ArrowRight className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{item}</span>
+            </p>
+          ))}
         </div>
       </article>
 
