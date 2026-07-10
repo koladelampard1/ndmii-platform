@@ -1,16 +1,37 @@
-import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira, invoiceStatusClasses } from "@/lib/data/invoicing";
+import { demoDisclosure, requireNrsWorkspace } from "@/lib/nrs/access";
 
 export default async function NrsInvoicesPage({ searchParams }: { searchParams: Promise<{ status?: string; state?: string; category?: string; provider?: string }> }) {
   const params = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (!["nrs_officer", "firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  requireNrsWorkspace(ctx);
 
   const supabase = await createServerSupabaseClient();
+
+  let providerIdsForFilters: string[] | null = null;
+  if (params.state || params.provider || params.category) {
+    let providerQuery = supabase
+      .from("provider_profiles")
+      .select("id,display_name,provider_categories(service_categories(name)),msmes!inner(state)");
+    if (params.state) providerQuery = providerQuery.eq("msmes.state", params.state);
+    if (params.provider) providerQuery = providerQuery.ilike("display_name", `%${params.provider.replace(/[%_]/g, " ")}%`);
+    const { data: filteredProviders } = await providerQuery.limit(500);
+    providerIdsForFilters = (filteredProviders ?? [])
+      .filter((provider: any) => {
+        if (!params.category) return true;
+        return (provider.provider_categories ?? []).some((entry: any) => (entry.service_categories?.name ?? "") === params.category);
+      })
+      .map((provider: any) => provider.id);
+  }
+
   let query = supabase.from("invoices").select("id,provider_profile_id,invoice_number,status,total_amount,vat_amount,created_at").order("created_at", { ascending: false }).limit(400);
   if (params.status) query = query.eq("status", params.status);
+  if (providerIdsForFilters) {
+    if (providerIdsForFilters.length === 0) query = query.eq("provider_profile_id", "00000000-0000-0000-0000-000000000000");
+    else query = query.in("provider_profile_id", providerIdsForFilters);
+  }
   const { data: invoices, error } = await query;
   if (error) throw new Error(error.message);
 
@@ -21,11 +42,7 @@ export default async function NrsInvoicesPage({ searchParams }: { searchParams: 
     .in("id", providerIds);
 
   const providerMap = new Map((providers ?? []).map((p: any) => [p.id, p]));
-  let rows = (invoices ?? []).map((invoice) => ({ invoice, provider: providerMap.get(invoice.provider_profile_id) as any }));
-
-  if (params.state) rows = rows.filter((row) => row.provider?.msmes?.state === params.state);
-  if (params.provider) rows = rows.filter((row) => (row.provider?.display_name ?? "").toLowerCase().includes((params.provider ?? "").toLowerCase()));
-  if (params.category) rows = rows.filter((row) => (row.provider?.provider_categories ?? []).some((entry: any) => (entry.service_categories?.name ?? "") === params.category));
+  const rows = (invoices ?? []).map((invoice) => ({ invoice, provider: providerMap.get(invoice.provider_profile_id) as any }));
 
   const totalInvoices = rows.length;
   const paidCount = rows.filter((row) => row.invoice.status === "paid").length;
@@ -34,7 +51,7 @@ export default async function NrsInvoicesPage({ searchParams }: { searchParams: 
 
   return (
     <section className="space-y-4">
-      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">NRS Invoice Registry</h1><p className="text-sm text-slate-600">Search invoice activity across providers, states, and sectors for tax exposure monitoring.</p></header>
+      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">NRS Invoice Registry</h1><p className="text-sm text-slate-600">Search DBIN invoice activity across providers, states, and sectors for tax exposure monitoring.</p><p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p></header>
       <div className="grid gap-3 md:grid-cols-4">
         <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">Invoices in view</p><p className="text-2xl font-semibold">{totalInvoices}</p></article>
         <article className="rounded-xl border bg-white p-3"><p className="text-xs uppercase text-slate-500">Paid invoices</p><p className="text-2xl font-semibold text-emerald-700">{paidCount}</p></article>

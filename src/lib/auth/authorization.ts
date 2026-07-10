@@ -99,12 +99,12 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
   ],
   data_analyst: ["/dashboard/impact-intelligence"],
   auditor: ["/dashboard/impact-intelligence"],
-  nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews"],
+  nrs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews", "/dashboard/revenue-guides"],
   msme: ["/dashboard/msme"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
   reviewer: ["/dashboard/reviews", "/dashboard/compliance"],
   fccpc_officer: ["/dashboard/fccpc", "/dashboard/reviews"],
-  firs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews"],
+  firs_officer: ["/dashboard/nrs", "/dashboard/firs", "/dashboard/payments", "/dashboard/reviews", "/dashboard/revenue-guides"],
 };
 
 export function isPublicPath(path: string): boolean {
@@ -422,6 +422,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
     { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
     { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
+    { href: "/dashboard/revenue-guides", label: "Revenue Guides" },
     { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
@@ -431,6 +432,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/nrs/invoices", label: "Invoice Registry" },
     { href: "/dashboard/nrs/vat-monitor", label: "VAT Monitor" },
     { href: "/dashboard/nrs/revenue", label: "Revenue Monitor" },
+    { href: "/dashboard/revenue-guides", label: "Revenue Guides" },
     { href: "/dashboard/reviews/compliance", label: "Compliance Reviews" },
     { href: "/dashboard/payments", label: "Tax / VAT" },
     { href: "/verify", label: "Public Verification" },
@@ -469,6 +471,8 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       label: "Operations",
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
+        { href: "/dashboard/nrs", label: "NRS Operations" },
+        { href: "/dashboard/revenue-guides", label: "Revenue Guides" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
         { href: "/dashboard/property", label: "Property Workspace" },
@@ -501,6 +505,8 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       label: "Operations",
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
+        { href: "/dashboard/nrs", label: "NRS Operations" },
+        { href: "/dashboard/revenue-guides", label: "Revenue Guides" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
         { href: "/dashboard/property", label: "Property Workspace" },

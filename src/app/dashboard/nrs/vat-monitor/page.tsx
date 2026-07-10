@@ -1,12 +1,12 @@
-import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
 import { loadRevenueSnapshot } from "@/lib/data/commercial-ops";
+import { demoDisclosure, requireNrsWorkspace } from "@/lib/nrs/access";
 
 export default async function NrsVatMonitorPage() {
   const ctx = await getCurrentUserContext();
-  if (!["nrs_officer", "firs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  requireNrsWorkspace(ctx);
 
   const supabase = await createServerSupabaseClient();
   const { invoices: rows } = await loadRevenueSnapshot(supabase);
@@ -18,7 +18,7 @@ export default async function NrsVatMonitorPage() {
 
   return (
     <section className="space-y-4">
-      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">VAT Exposure Monitor</h1><p className="text-sm text-slate-600">Track taxable invoices, expected VAT, and paid VAT outcomes.</p></header>
+      <header className="rounded-xl border bg-white p-4"><h1 className="text-2xl font-semibold">VAT Exposure Monitor</h1><p className="text-sm text-slate-600">Track taxable DBIN invoices, expected VAT exposure, and paid invoice outcomes. This is not an official VAT remittance ledger.</p><p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p></header>
       <div className="grid gap-3 md:grid-cols-4">
         <article className="rounded-xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Taxable invoices</p><p className="text-2xl font-semibold">{taxable.length}</p></article>
         <article className="rounded-xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Taxable value</p><p className="text-2xl font-semibold">{formatNaira(taxableTotal)}</p></article>

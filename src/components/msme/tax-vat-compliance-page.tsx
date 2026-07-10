@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, CircleDollarSign, CircleHelp, Download, FileSearch, Filter, Receipt, ShieldCheck, ShieldX } from "lucide-react";
+import { Bell, CircleDollarSign, CircleHelp, FileSearch, Filter, Receipt, ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { canAccessNrsWorkspace } from "@/lib/nrs/access";
 
 type TaxProfileRow = {
   msme_id: string;
@@ -42,7 +43,7 @@ async function recordPayment(formData: FormData) {
   const amount = Number(formData.get("amount") ?? 0);
   const receiptRef = `RCP-${Date.now()}`;
 
-  if (!ctx || !["admin", "firs_officer", "nrs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
+  if (!ctx || (ctx.role !== "msme" && !canAccessNrsWorkspace(ctx))) redirect("/access-denied");
   if (ctx.role === "msme" && msmeId !== ctx.linkedMsmeId) redirect("/access-denied");
 
   await supabase.from("payments").insert({
@@ -105,7 +106,7 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
   const supabase = await createServerSupabaseClient();
   const ctx = await getCurrentUserContext();
 
-  if (!ctx || !["admin", "firs_officer", "nrs_officer", "msme"].includes(ctx.role)) redirect("/access-denied");
+  if (!ctx || (ctx.role !== "msme" && !canAccessNrsWorkspace(ctx))) redirect("/access-denied");
   if (msmeOnly && ctx.role !== "msme") redirect("/dashboard/payments");
 
   let profilesQuery = supabase
@@ -204,10 +205,6 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
               <FileSearch className="mr-2 h-4 w-4" />
               Tax Guide
             </Link>
-            <Button className="bg-emerald-700 text-white hover:bg-emerald-800" type="button">
-              <Download className="mr-2 h-4 w-4" />
-              Download Tax Summary
-            </Button>
           </div>
         </div>
       </header>

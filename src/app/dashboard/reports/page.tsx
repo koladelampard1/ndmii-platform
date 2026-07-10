@@ -2,10 +2,7 @@ import { PrintButton } from "@/components/msme/print-button";
 import { redirect } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
-
-function toCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]) {
-  return [headers.join(","), ...rows.map((row) => row.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","))].join("\n");
-}
+import { toCsv } from "@/lib/utils/csv";
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ state?: string; sector?: string; status?: string; from?: string; to?: string }> }) {
   const params = await searchParams;

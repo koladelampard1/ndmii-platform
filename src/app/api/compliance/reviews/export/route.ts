@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { canReviewRegulator, canUseComplianceReviewQueue, recordComplianceReviewExport, type ComplianceReviewStatus } from "@/lib/data/compliance-reviews";
+import { escapeCsvValue } from "@/lib/utils/csv";
 
 type RegulatorRow = {
   id: string;
@@ -24,11 +25,6 @@ const reviewableStatuses = ["submitted", "resubmitted", "under_review", "changes
 function relationOne<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
-}
-
-function csvValue(value: unknown) {
-  const text = String(value ?? "");
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 export async function GET(request: Request) {
@@ -90,7 +86,7 @@ export async function GET(request: Request) {
 
   const header = ["MSME ID", "Business name", "State", "Sector", "Regulator", "Requirement", "Category", "Status", "Submitted at", "Updated at"];
   const csv = [
-    header.map(csvValue).join(","),
+    header.map(escapeCsvValue).join(","),
     ...rows.map((row) => {
       const regulator = relationOne(row.compliance_regulators);
       const requirement = relationOne(row.compliance_requirement_definitions);
@@ -105,7 +101,7 @@ export async function GET(request: Request) {
         row.status,
         row.submitted_at,
         row.updated_at,
-      ].map(csvValue).join(",");
+      ].map(escapeCsvValue).join(",");
     }),
   ].join("\n");
 

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { escapeCsvValue } from "@/lib/utils/csv";
 
 export type AdminMsmeRegistryFilters = {
   q?: string;
@@ -1444,8 +1445,7 @@ export function registryFiltersForDiagnostics(filters: AdminMsmeRegistryFilters)
 }
 
 export function csvValue(value: unknown) {
-  const text = String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return `"${text.replace(/"/g, '""')}"`;
+  return escapeCsvValue(value);
 }
 
 export function buildAdminMsmeRegistryCsv(rows: AdminMsmeRegistryRow[]) {

@@ -1,5 +1,6 @@
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { escapeCsvValue } from "@/lib/utils/csv";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,6 @@ function formatAmountForCsv(value: number | string | null | undefined) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return "0.00";
   return amount.toFixed(2);
-}
-
-function escapeCsvValue(value: string | number | null | undefined) {
-  const normalized = String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return `"${normalized.replace(/"/g, '""')}"`;
 }
 
 function buildCsv(rows: InvoiceExportRow[], requestUrl: string) {

@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
+import { demoDisclosure, formatNrsStatus, requireNrsWorkspace } from "@/lib/nrs/access";
+import { formatNaira } from "@/lib/data/invoicing";
 
 async function updateNrsAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  if (!["firs_officer", "nrs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  requireNrsWorkspace(ctx);
 
   const supabase = await createServerSupabaseClient();
   const taxId = String(formData.get("tax_id"));
@@ -80,16 +82,19 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
   const { msmeId } = await params;
   const query = await searchParams;
   const ctx = await getCurrentUserContext();
-  if (!["firs_officer", "nrs_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
+  requireNrsWorkspace(ctx);
 
   const supabase = await createServerSupabaseClient();
-  const { data: msme } = await supabase.from("msmes").select("id,msme_id,business_name,state,sector").eq("msme_id", msmeId).maybeSingle();
+  const { data: msme } = await supabase.from("msmes").select("id,msme_id,business_name,state,lga,sector,verification_status,tin").eq("msme_id", msmeId).maybeSingle();
   if (!msme) return <div className="rounded border bg-white p-6">MSME tax record not found.</div>;
 
-  const [{ data: tax }, { data: payments }, { data: vatRules }] = await Promise.all([
+  const [{ data: tax }, { data: payments }, { data: vatRules }, { data: invoices }, { data: complianceProfile }, { data: complianceItems }] = await Promise.all([
     supabase.from("tax_profiles").select("id,tax_category,vat_applicable,estimated_monthly_obligation,outstanding_amount,compliance_score,compliance_status,arrears_status").eq("msme_id", msme.id).maybeSingle(),
     supabase.from("payments").select("amount,tax_type,status,payment_date,receipt_reference").eq("msme_id", msme.id).order("payment_date", { ascending: false }),
     supabase.from("vat_rules").select("id,category,vat_percent,applies_to,status,notes").order("updated_at", { ascending: false }),
+    supabase.from("invoices").select("id,invoice_number,status,total_amount,vat_amount,created_at").eq("msme_id", msme.id).order("created_at", { ascending: false }).limit(8),
+    supabase.from("msme_compliance_profiles").select("overall_status,compliance_score,risk_level,next_deadline_at").eq("msme_id", msme.id).maybeSingle(),
+    supabase.from("msme_compliance_items").select("id,status,updated_at,compliance_requirement_definitions(title,category),compliance_regulators(code)").eq("msme_id", msme.id).order("updated_at", { ascending: false }).limit(8),
   ]);
 
   if (!tax) return <div className="rounded border bg-white p-6">No tax profile has been generated for this MSME.</div>;
@@ -101,22 +106,50 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
     .eq("entity_id", tax.id)
     .order("created_at", { ascending: false })
     .limit(10);
+  const invoiceValue = (invoices ?? []).reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+  const vatExposure = (invoices ?? []).reduce((sum, row) => sum + Number(row.vat_amount ?? 0), 0);
+  const paidInvoiceValue = (invoices ?? []).filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
 
   return (
     <section className="space-y-5">
-      <h1 className="text-2xl font-semibold">NRS Tax Profile Detail</h1>
-      {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Action completed: {query.saved}</p>}
-      <article className="rounded-xl border bg-white p-4">
-        <h2 className="font-semibold">{msme.business_name}</h2>
-        <p className="text-xs text-slate-500">{msme.msme_id} • {msme.state} • {msme.sector}</p>
-        <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
-          <p><strong>Tax category:</strong> {tax.tax_category}</p>
-          <p><strong>Outstanding balance:</strong> ₦{Number(tax.outstanding_amount).toLocaleString()}</p>
-          <p><strong>Compliance status:</strong> {tax.compliance_status}</p>
+      <header className="rounded-2xl border bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Nigeria Revenue Service • Taxpayer view</p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-950">{msme.business_name}</h1>
+            <p className="mt-1 text-sm text-slate-600">BIN {msme.msme_id} • {msme.state}{msme.lga ? ` / ${msme.lga}` : ""} • {msme.sector}</p>
+          </div>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase text-emerald-700">{msme.verification_status === "verified" ? "DBIN Verified" : "Verification Pending"}</span>
         </div>
-      </article>
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p>
+      </header>
+      {query.saved && <p className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">Action completed: {query.saved}</p>}
 
-      <div className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["TIN linkage", msme.tin ? "Available" : "Pending", "Pending NRS Integration"],
+          ["Tax category", formatNrsStatus(tax.tax_category), "DBIN readiness"],
+          ["Compliance status", formatNrsStatus(tax.compliance_status), "Evidence-based"],
+          ["Outstanding obligations", formatNaira(tax.outstanding_amount), "DBIN Derived"],
+          ["Invoice activity", (invoices ?? []).length.toLocaleString("en-NG"), "DBIN invoices"],
+          ["Invoice value", formatNaira(invoiceValue), "DBIN Derived"],
+          ["Paid invoice value", formatNaira(paidInvoiceValue), "DBIN Derived"],
+          ["VAT exposure", formatNaira(vatExposure), "Invoice-derived, not remittance"],
+          ["Compliance score", `${tax.compliance_score ?? complianceProfile?.compliance_score ?? "Unavailable"}`, "Demonstration Data"],
+          ["Risk level", formatNrsStatus(complianceProfile?.risk_level), "Evidence-based compliance"],
+        ].map(([label, value, tag]) => (
+          <article key={label} className="rounded-xl border bg-white p-4 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-2 text-xl font-semibold capitalize text-slate-950">{value}</p>
+            <p className="mt-1 text-[11px] text-emerald-700">{tag}</p>
+          </article>
+        ))}
+      </div>
+
+      <details className="rounded-xl border bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-800">Administrative adjustment tools</summary>
+        <p className="mt-1 text-xs text-slate-500">For controlled demo operations only. These actions adjust DBIN demonstration records, not official statutory NRS accounts.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
         <form action={updateNrsAction} className="space-y-2 rounded border p-3">
           <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="set_tax_category" />
           <p className="text-xs font-medium">Set tax category</p>
@@ -143,11 +176,13 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
           <button className="w-full rounded bg-emerald-800 px-2 py-1 text-xs text-white">Mark status</button>
         </form>
       </div>
+      </details>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
           <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="issue_notice" />
-          <p className="text-sm font-medium">Issue simulated notice</p>
+          <p className="text-sm font-medium">Issue Compliance Notice</p>
+          <p className="text-xs text-slate-500">Delivery is simulated in this demonstration environment.</p>
           <div className="grid gap-2 md:grid-cols-4">
             <input name="notice_type" placeholder="Notice type" className="rounded border px-2 py-2 text-sm" defaultValue="compliance_reminder" />
             <input name="message" placeholder="Notice message" className="rounded border px-2 py-2 text-sm md:col-span-2" />
@@ -155,7 +190,9 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
           </div>
         </form>
 
-        <form action={updateNrsAction} className="space-y-2 rounded-xl border bg-white p-4">
+        <details className="rounded-xl border bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold">VAT rule maintenance</summary>
+        <form action={updateNrsAction} className="mt-3 space-y-2">
           <input type="hidden" name="tax_id" value={tax.id} /><input type="hidden" name="msme_id" value={msme.msme_id} /><input type="hidden" name="kind" value="create_vat_rule" />
           <p className="text-sm font-medium">Create VAT rule</p>
           <div className="grid gap-2 md:grid-cols-2">
@@ -167,7 +204,34 @@ export default async function NrsTaxDetailPage({ params, searchParams }: { param
           </div>
           <button className="rounded bg-emerald-800 px-3 py-2 text-sm text-white">Create VAT rule</button>
         </form>
+        </details>
       </div>
+
+      <article className="rounded-xl border bg-white p-4">
+        <h2 className="font-semibold">Invoice and VAT activity</h2>
+        <p className="mt-1 text-xs text-slate-500">DBIN invoice-derived exposure only. Not official statutory VAT remittance.</p>
+        <div className="mt-3 space-y-2 text-sm">
+          {(invoices ?? []).length === 0 && <p className="rounded border border-dashed p-4 text-slate-500">No invoice activity has been recorded for this taxpayer.</p>}
+          {(invoices ?? []).map((invoice) => (
+            <div key={invoice.id} className="flex flex-wrap justify-between gap-2 rounded border p-3">
+              <span className="font-medium">{invoice.invoice_number}</span>
+              <span>{formatNaira(invoice.total_amount)} • VAT {formatNaira(invoice.vat_amount)} • {formatNrsStatus(invoice.status)}</span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="rounded-xl border bg-white p-4">
+        <h2 className="font-semibold">Compliance review state</h2>
+        <div className="mt-3 space-y-2 text-sm">
+          {(complianceItems ?? []).length === 0 && <p className="rounded border border-dashed p-4 text-slate-500">No compliance requirements are currently visible for this taxpayer.</p>}
+          {(complianceItems ?? []).map((item: any) => {
+            const req = Array.isArray(item.compliance_requirement_definitions) ? item.compliance_requirement_definitions[0] : item.compliance_requirement_definitions;
+            const regulator = Array.isArray(item.compliance_regulators) ? item.compliance_regulators[0] : item.compliance_regulators;
+            return <div key={item.id} className="rounded border p-3"><p className="font-medium">{req?.title ?? "Compliance requirement"} <span className="text-xs text-slate-500">({regulator?.code ?? "N/A"})</span></p><p className="text-slate-600 capitalize">{formatNrsStatus(item.status)}</p></div>;
+          })}
+        </div>
+      </article>
 
       <article className="rounded-xl border bg-white p-4">
         <h2 className="font-semibold">VAT rules visible to MSMEs</h2>
