@@ -29,7 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const { data: validation } = await supabase
     .from("validation_results")
     .select("validated_at")
-    .eq("msme_id", detail.msme.id)
+    .eq("msme_id", detail.internalMsmeId)
     .maybeSingle();
 
   const issuedDate = formatDate(detail.digitalId?.issued_at ?? detail.msme.issued_at);

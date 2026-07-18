@@ -2,20 +2,16 @@ import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { hashCredentialToken, recordCredentialEvent, tokenError, verifyCredentialSignature } from "@/lib/data/credential-trust";
 
 export type PublicVerificationRecord = {
-  id: string;
   msme_id: string;
   ndmii_id?: string | null;
   route_id: string;
   business_name: string;
-  owner_name: string;
   state: string;
   sector: string;
   verification_status: string;
   review_status?: string | null;
-  association_id: string | null;
   flagged?: boolean | null;
   suspended?: boolean | null;
-  digital_id_id?: string;
   qr_code_ref?: string | null;
   verify_path?: string | null;
   digital_status?: string | null;
@@ -26,8 +22,15 @@ export type PublicVerificationRecord = {
 
 type VerificationDetail = {
   msme: PublicVerificationRecord;
-  digitalId: any | null;
+  digitalId: {
+    status?: string | null;
+    issued_at?: string | null;
+    approved_at?: string | null;
+    token_expires_at?: string | null;
+  } | null;
   resolvedId: string;
+  internalMsmeId: string;
+  internalAssociationId: string | null;
 };
 
 export type CredentialVerificationResult =
@@ -37,7 +40,7 @@ export type CredentialVerificationResult =
 const normalizeId = (value: string) => value.trim().toUpperCase();
 const isDev = process.env.NODE_ENV !== "production";
 const msmeSelectFields =
-  "id,msme_id,business_name,owner_name,state,sector,verification_status,review_status,association_id,flagged,suspended,issued_at";
+  "id,msme_id,business_name,state,sector,verification_status,review_status,association_id,flagged,suspended,issued_at";
 const digitalIdSelectFields =
   "id,msme_id,ndmii_id,status,issued_at,approved_at,revoked_at,suspended_at,token_expires_at,qr_code_ref,validation_snapshot,public_token_hash,public_signature,signature_version";
 const digitalIdWithMsmeSelectFields = `${digitalIdSelectFields},msmes(${msmeSelectFields})`;
@@ -50,16 +53,37 @@ function logVerificationDebug(stage: string, payload: Record<string, unknown>) {
   });
 }
 
+function normalizePublicSearchTerm(value: string) {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/[,%*_(){}[\]<>`"\\]/g, " ")
+    .replace(/[^\p{L}\p{N}\s.'’&/-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
+}
+
+function toIlikePattern(value: string) {
+  return `%${value.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
 function toPublicRecord(msme: any, digitalId?: any | null): PublicVerificationRecord {
   const msmeId = normalizeId(msme.msme_id);
   const ndmiiId = digitalId?.ndmii_id ? normalizeId(digitalId.ndmii_id) : null;
 
   return {
-    ...msme,
     msme_id: msmeId,
     ndmii_id: ndmiiId,
     route_id: ndmiiId ?? msmeId,
-    digital_id_id: digitalId?.id,
+    business_name: msme.business_name,
+    state: msme.state,
+    sector: msme.sector,
+    verification_status: msme.verification_status,
+    review_status: msme.review_status ?? null,
+    flagged: msme.flagged ?? null,
+    suspended: msme.suspended ?? null,
     qr_code_ref: digitalId?.qr_code_ref ?? null,
     verify_path: digitalId?.qr_code_ref ?? null,
     digital_status: digitalId?.status ?? digitalId?.digital_status ?? null,
@@ -77,7 +101,7 @@ function toPublicRecordFromDigitalRow(row: any): PublicVerificationRecord | null
 }
 
 export async function searchPublicVerificationRecords(query: string): Promise<PublicVerificationRecord[]> {
-  const trimmed = query.trim();
+  const trimmed = normalizePublicSearchTerm(query);
   if (!trimmed) {
     logVerificationDebug("search.empty_query", {
       source: "public.msmes",
@@ -88,14 +112,29 @@ export async function searchPublicVerificationRecords(query: string): Promise<Pu
   }
 
   const supabase = await createServiceRoleSupabaseClient();
+  const searchPattern = toIlikePattern(trimmed);
 
-  const { data: msmeRows, error: msmeError } = await supabase
-    .from("msmes")
-    .select(msmeSelectFields)
-    .or(`msme_id.ilike.%${trimmed}%,business_name.ilike.%${trimmed}%`)
-    .eq("review_status", "approved")
-    .order("issued_at", { ascending: false })
-    .limit(20);
+  const [publicIdLookup, businessNameLookup] = await Promise.all([
+    supabase
+      .from("msmes")
+      .select(msmeSelectFields)
+      .ilike("msme_id", searchPattern)
+      .eq("review_status", "approved")
+      .order("issued_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("msmes")
+      .select(msmeSelectFields)
+      .ilike("business_name", searchPattern)
+      .eq("review_status", "approved")
+      .order("issued_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  const msmeRows = [...(publicIdLookup.data ?? []), ...(businessNameLookup.data ?? [])].filter(
+    (row, index, rows) => rows.findIndex((candidate) => candidate.id === row.id) === index,
+  );
+  const msmeError = publicIdLookup.error ?? businessNameLookup.error;
 
   if (msmeError) {
     logVerificationDebug("search.msmes_error", {
@@ -155,13 +194,13 @@ export async function searchPublicVerificationRecords(query: string): Promise<Pu
     return msmeMatches;
   }
 
-  const seenMsmeIds = new Set(msmeMatches.map((row) => row.id));
+  const seenPublicRoutes = new Set(msmeMatches.map((row) => row.route_id));
   const digitalMatches = ((digitalRows ?? []) as any[])
     .map((row) => toPublicRecordFromDigitalRow(row))
     .filter((row): row is PublicVerificationRecord => Boolean(row))
     .filter((row) => {
-      if (seenMsmeIds.has(row.id)) return false;
-      seenMsmeIds.add(row.id);
+      if (seenPublicRoutes.has(row.route_id)) return false;
+      seenPublicRoutes.add(row.route_id);
       return true;
     });
 
@@ -290,8 +329,15 @@ export async function getPublicCredentialVerificationByToken(token: string): Pro
     ok: true,
     detail: {
       msme,
-      digitalId: digitalRow,
+      digitalId: {
+        status: digitalRow.status ?? null,
+        issued_at: digitalRow.issued_at ?? null,
+        approved_at: digitalRow.approved_at ?? null,
+        token_expires_at: digitalRow.token_expires_at ?? null,
+      },
       resolvedId: msme.route_id,
+      internalMsmeId: digitalRow.msme_id,
+      internalAssociationId: (Array.isArray(digitalRow.msmes) ? digitalRow.msmes[0] : digitalRow.msmes)?.association_id ?? null,
     },
   };
 }

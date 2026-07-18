@@ -3,8 +3,6 @@ import { Bookmark, MapPin, Star } from "lucide-react";
 import { ProviderCard as ProviderCardType } from "@/lib/data/marketplace";
 import { buildProviderProfileHref, buildProviderQuoteHref } from "@/lib/provider-links";
 
-const DEV_MODE = process.env.NODE_ENV !== "production";
-
 export function ProviderCard({ provider }: { provider: ProviderCardType }) {
   const providerHref = buildProviderProfileHref({
     id: provider.id,
@@ -88,23 +86,6 @@ export function ProviderCard({ provider }: { provider: ProviderCardType }) {
           Request quote
         </Link>
       </div>
-
-      {DEV_MODE && (
-        <pre className="sr-only" data-provider-card-debug>
-          {JSON.stringify(
-            {
-              provider_id: provider.id,
-              msme_id: provider.msme_id,
-              public_slug: provider.public_slug,
-              href: providerHref,
-              quote_href: quoteHref,
-              display_name: provider.display_name,
-            },
-            null,
-            2,
-          )}
-        </pre>
-      )}
     </article>
   );
 }

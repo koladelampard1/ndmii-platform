@@ -393,7 +393,7 @@ export default async function SearchPage({
         {providers.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-busy="false">
             {providers.map((provider) => (
-              <ProviderCard key={provider.id} provider={provider} />
+              <ProviderCard key={provider.public_slug} provider={provider} />
             ))}
           </div>
         ) : (

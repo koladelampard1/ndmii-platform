@@ -133,7 +133,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
             {hasSearch && results.length > 0 && (
               <div className="space-y-4">
                 {results.map((row) => (
-                  <article key={`${row.id}-${row.route_id}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <article key={row.route_id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xl font-semibold text-slate-900">{row.business_name}</p>
@@ -154,8 +154,8 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
                         <dd className="mt-1 font-medium text-slate-900">{row.state}</dd>
                       </div>
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-slate-500">Owner / Contact</dt>
-                        <dd className="mt-1 font-medium text-slate-900">{row.owner_name}</dd>
+                        <dt className="text-xs uppercase tracking-wide text-slate-500">Public record scope</dt>
+                        <dd className="mt-1 font-medium text-slate-900">Owner contact details are restricted</dd>
                       </div>
                     </dl>
 

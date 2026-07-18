@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "Terms of Use",
+  description:
+    "Read the DBIN terms for business identity, public verification, marketplace discovery, onboarding workflows and role-based dashboard use.",
+  alternates: { canonical: "/terms" },
+  robots: { index: true, follow: true },
+};
 
 type Section = {
   title: string;

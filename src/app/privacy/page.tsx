@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "Review how DBIN handles business profile data, verification records, marketplace activity, operational logs and role-based access controls.",
+  alternates: { canonical: "/privacy" },
+  robots: { index: true, follow: true },
+};
 
 type Section = {
   title: string;

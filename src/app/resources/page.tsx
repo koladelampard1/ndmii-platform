@@ -1,5 +1,23 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "DBIN Resources",
+  description:
+    "Access DBIN guides for MSME onboarding, public verification, marketplace discovery and digital business credential use.",
+  alternates: { canonical: "/resources" },
+  openGraph: {
+    title: "DBIN Resources",
+    description: "Guides for business identity, public verification, readiness and trusted marketplace participation.",
+    url: "/resources",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DBIN Resources",
+    description: "Practical DBIN guides for MSMEs, buyers, associations and institutions.",
+  },
+};
 
 const RESOURCES = [
   { title: "MSME onboarding guide", body: "Step-by-step guidance for identity registration and profile readiness.", href: "/for-msmes" },

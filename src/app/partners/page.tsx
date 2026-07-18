@@ -1,5 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "Partner with DBIN",
+  description:
+    "Explore DBIN partnership pathways for public institutions, associations, financial institutions, development partners and procurement teams.",
+  alternates: { canonical: "/partners" },
+  openGraph: {
+    title: "Partner with DBIN",
+    description:
+      "Partnership pathways for trusted MSME identity, verification, readiness, programmes and enterprise intelligence.",
+    url: "/partners",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Partner with DBIN",
+    description: "Work with DBIN to support trusted business participation and institution-ready MSME growth.",
+  },
+};
 
 const PARTNER_SEGMENTS = [
   { title: "Associations", description: "Onboard member businesses and coordinate verification at scale.", href: "/for-associations" },

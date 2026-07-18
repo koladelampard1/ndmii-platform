@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "Cookie Notice",
+  description:
+    "Learn how DBIN uses essential cookies and session storage for authentication, security, route protection and platform usability.",
+  alternates: { canonical: "/cookies" },
+  robots: { index: true, follow: true },
+};
 
 type Section = {
   title: string;

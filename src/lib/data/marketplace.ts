@@ -130,7 +130,30 @@ const FALLBACK_CATEGORIES = [
 ];
 
 const DEV_MODE = process.env.NODE_ENV !== "production";
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MARKETPLACE_PROVIDER_SEARCH_SELECT = [
+  "id",
+  "provider_id",
+  "provider_profile_id",
+  "msme_id",
+  "msme_row_id",
+  "public_slug",
+  "display_name",
+  "business_name",
+  "logo_url",
+  "passport_photo_url",
+  "category_name",
+  "sector",
+  "specialization",
+  "state",
+  "lga",
+  "short_description",
+  "long_description",
+  "verification_status",
+  "trust_score",
+  "avg_rating",
+  "review_count",
+  "is_featured",
+].join(",");
 type CategoriesFailureCause =
   | "missing_category_field"
   | "null_values"
@@ -303,7 +326,16 @@ async function attachProviderProfileMetadata(rows: any[]) {
 
 
 function normalizeSearchTerm(value: string | undefined) {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return (value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/[,%*_(){}[\]<>`"\\]/g, " ")
+    .replace(/[^\p{L}\p{N}\s.'’&/-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
 }
 
 function logMarketplaceSearchDebug(payload: {
@@ -470,7 +502,7 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
 
   let query = supabase
     .from("marketplace_provider_search")
-    .select("*")
+    .select(MARKETPLACE_PROVIDER_SEARCH_SELECT)
     .in("verification_status", allowedStatuses)
     .limit(hasSearchTerm ? Math.max(limit * 6, 120) : limit);
 
@@ -486,7 +518,7 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
       section: "public_search",
       stage: "marketplace_provider_search_query_error",
       input_params: { filters, limit },
-      select_fields: ["*"],
+      select_fields: MARKETPLACE_PROVIDER_SEARCH_SELECT.split(","),
       filters: {
         verification_status: allowedStatuses,
         category: filters.category ?? null,
@@ -545,7 +577,7 @@ async function queryMarketplaceProviders(filters: SearchFilters = {}, limit = 24
     section: "public_search",
     stage: "post_filter",
     input_params: { filters, limit },
-    select_fields: ["* + provider_profiles(id, msme_id, public_slug, display_name)"],
+    select_fields: [...MARKETPLACE_PROVIDER_SEARCH_SELECT.split(","), "provider_profiles(id, msme_id, public_slug, display_name)"],
     result_count: sorted.length,
     first_result_sample: sorted[0] ?? null,
   });
@@ -584,7 +616,7 @@ async function getRecentlyTrustedProviders(limit = 6): Promise<ProviderCard[]> {
     const supabase = await createServiceRoleSupabaseClient();
     const { data, error } = await supabase
       .from("marketplace_provider_search")
-      .select("*")
+      .select(MARKETPLACE_PROVIDER_SEARCH_SELECT)
       .in("verification_status", ["verified", "approved"])
       .order("trust_score", { ascending: false })
       .order("review_count", { ascending: false })
@@ -780,7 +812,7 @@ export async function getMarketplaceLandingData(): Promise<MarketplaceLandingDat
   try {
     const supabase = await createServiceRoleSupabaseClient();
     const possibleCategoryFields = ["name", "category_name", "title", "label"];
-    const { data, error } = await supabase.from("service_categories").select("*").eq("is_active", true).limit(200);
+    const { data, error } = await supabase.from("service_categories").select("name,category_name,title,label,is_active").eq("is_active", true).limit(200);
     if (error) {
       if (DEV_MODE) {
         console.warn("[homepage-marketplace] categories query failed", {
@@ -1007,18 +1039,19 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
 
     const { data: row, error } = await supabase
       .from("marketplace_provider_search")
-      .select("*")
+      .select(MARKETPLACE_PROVIDER_SEARCH_SELECT)
       .eq("provider_id", providerId)
       .in("verification_status", ["verified", "approved"])
       .maybeSingle();
 
     if (!error && row) {
+      const providerSearchRow = row as Record<string, any>;
       const [{ gallery, services, reviews }, { data: msme }, { data: metrics }, { count: openComplaintCount }] = await Promise.all([
         loadProviderSectionsFailClosed(providerId),
         supabase
           .from("msmes")
           .select("owner_name,contact_email,contact_phone,review_status,association_id,associations(name)")
-          .eq("id", row.msme_row_id)
+          .eq("id", providerSearchRow.msme_row_id)
           .maybeSingle(),
         supabase
           .from("review_metrics")
@@ -1049,23 +1082,23 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       const associationName = (msmeRow?.associations as { name?: string } | null)?.name ?? null;
       const openCount = openComplaintCount ?? 0;
       const trustScore = calculateTrustScore({
-        verification_status: row.verification_status,
+        verification_status: providerSearchRow.verification_status,
         review_status: msmeRow?.review_status,
-        avg_rating: safeNumber(metricsRow?.avg_rating ?? row.avg_rating),
-        review_count: safeNumber(metricsRow?.review_count ?? row.review_count),
+        avg_rating: safeNumber(metricsRow?.avg_rating ?? providerSearchRow.avg_rating),
+        review_count: safeNumber(metricsRow?.review_count ?? providerSearchRow.review_count),
         open_complaints: openCount,
         association_name: associationName,
       });
 
       const trustFactors: ProviderProfile["trust_factors"] = [
-        { label: "Verification status", value: row.verification_status === "approved" ? "Approved" : "Verified", impact: "positive" },
+        { label: "Verification status", value: providerSearchRow.verification_status === "approved" ? "Approved" : "Verified", impact: "positive" },
         { label: "Validation workflow", value: msmeRow?.review_status ?? "Under review", impact: msmeRow?.review_status === "approved" ? "positive" : "neutral" },
         {
           label: "Public reviews",
-          value: safeNumber(metricsRow?.review_count ?? row.review_count) > 0
-            ? `${safeNumber(metricsRow?.avg_rating ?? row.avg_rating).toFixed(1)} from ${safeNumber(metricsRow?.review_count ?? row.review_count)} reviews`
+          value: safeNumber(metricsRow?.review_count ?? providerSearchRow.review_count) > 0
+            ? `${safeNumber(metricsRow?.avg_rating ?? providerSearchRow.avg_rating).toFixed(1)} from ${safeNumber(metricsRow?.review_count ?? providerSearchRow.review_count)} reviews`
             : "No reviews yet",
-          impact: safeNumber(metricsRow?.review_count ?? row.review_count) > 0 ? "positive" : "neutral",
+          impact: safeNumber(metricsRow?.review_count ?? providerSearchRow.review_count) > 0 ? "positive" : "neutral",
         },
         { label: "Active complaints", value: openCount === 0 ? "No active complaint" : `${openCount} open complaint(s)`, impact: openCount === 0 ? "positive" : "neutral" },
         { label: "Association linkage", value: associationName ?? "Not linked", impact: associationName ? "positive" : "neutral" },
@@ -1074,12 +1107,12 @@ export async function getProviderPublicProfile(providerId: string): Promise<Prov
       return {
         ...base,
         trust_score: trustScore,
-        avg_rating: safeNumber(metricsRow?.avg_rating ?? row.avg_rating),
-        review_count: safeNumber(metricsRow?.review_count ?? row.review_count),
+        avg_rating: safeNumber(metricsRow?.avg_rating ?? providerSearchRow.avg_rating),
+        review_count: safeNumber(metricsRow?.review_count ?? providerSearchRow.review_count),
         owner_name: msmeRow?.owner_name ?? "Verified MSME Owner",
         contact_email: msmeRow?.contact_email ?? null,
         contact_phone: msmeRow?.contact_phone ?? null,
-        long_description: row.long_description ?? `${row.business_name} is a verified NDMII provider serving ${row.state}.`,
+        long_description: providerSearchRow.long_description ?? `${providerSearchRow.business_name} is a verified NDMII provider serving ${providerSearchRow.state}.`,
         gallery,
         services,
         reviews,

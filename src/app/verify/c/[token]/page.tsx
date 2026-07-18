@@ -63,12 +63,12 @@ export default async function VerifyCredentialTokenPage({ params }: { params: Pr
     return <VerificationFailed code={result.error.code} message={result.error.message} />;
   }
 
-  const { msme, digitalId, resolvedId } = result.detail;
+  const { msme, digitalId, resolvedId, internalMsmeId, internalAssociationId } = result.detail;
   const supabase = await createServerSupabaseClient();
 
   const [{ data: association }, { data: validation }] = await Promise.all([
-    supabase.from("associations").select("name").eq("id", msme.association_id ?? "").maybeSingle(),
-    supabase.from("validation_results").select("cac_status,tin_status,validated_at").eq("msme_id", msme.id).maybeSingle(),
+    supabase.from("associations").select("name").eq("id", internalAssociationId ?? "").maybeSingle(),
+    supabase.from("validation_results").select("cac_status,tin_status,validated_at").eq("msme_id", internalMsmeId).maybeSingle(),
   ]);
 
   const verificationUrl = credentialVerifyUrl(token);

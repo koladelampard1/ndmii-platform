@@ -1,4 +1,23 @@
+import type { Metadata } from "next";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "About DBIN",
+  description:
+    "Learn how DBIN supports trusted Nigerian business identity, verification, readiness workflows and institution-ready enterprise participation.",
+  alternates: { canonical: "/about" },
+  openGraph: {
+    title: "About DBIN",
+    description:
+      "DBIN is designed to support trusted business identity, verification, readiness and enterprise participation across Nigeria.",
+    url: "/about",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "About DBIN",
+    description: "Trusted business identity and verification infrastructure for Nigerian MSMEs and institutions.",
+  },
+};
 
 export default function AboutPage() {
   return (

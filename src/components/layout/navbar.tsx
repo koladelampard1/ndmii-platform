@@ -70,7 +70,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           <DbinBrandLogo textClassName="text-white" />
         </Link>
 
-        <nav aria-label="Primary navigation" className="hidden items-center gap-1 text-sm lg:flex">
+        <nav aria-label="Primary navigation" className="hidden items-center gap-1 text-sm xl:flex">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="group relative">
               <button
@@ -107,7 +107,7 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 lg:flex">
+        <div className="hidden items-center gap-2 xl:flex">
           {isAuthenticated ? (
             <>
               {roleLabel ? (
@@ -138,14 +138,14 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           aria-expanded={mobileOpen}
           aria-controls="mobile-public-navigation"
           onClick={() => setMobileOpen((value) => !value)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 lg:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 xl:hidden"
         >
           <span className="sr-only">{mobileOpen ? "Close navigation" : "Open navigation"}</span>
           {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
         </button>
       </div>
       {mobileOpen ? (
-        <div id="mobile-public-navigation" className="border-t border-white/10 bg-emerald-950 px-4 pb-5 lg:hidden">
+        <div id="mobile-public-navigation" className="border-t border-white/10 bg-emerald-950 px-4 pb-5 xl:hidden">
           <nav aria-label="Mobile navigation" className="mx-auto grid max-w-7xl gap-4 pt-4">
             {NAV_GROUPS.map((group) => (
               <section key={group.label} aria-labelledby={`mobile-${group.label.replace(/\s+/g, "-").toLowerCase()}`}>

@@ -1,6 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, QrCode } from "lucide-react";
 import { PublicPageShell } from "@/components/public/public-page-shell";
+
+export const metadata: Metadata = {
+  title: "Sample DBIN Business ID Card",
+  description:
+    "Preview a fictional DBIN digital business identity card and learn how public QR verification supports trusted business participation.",
+  alternates: { canonical: "/sample-id-card" },
+  openGraph: {
+    title: "Sample DBIN Business ID Card",
+    description: "A fictional sample credential showing public verification fields and trust markers.",
+    url: "/sample-id-card",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sample DBIN Business ID Card",
+    description: "Preview how a DBIN digital business credential can be verified safely.",
+  },
+};
 
 export default function SampleIdCardPage() {
   return (

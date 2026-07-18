@@ -154,7 +154,7 @@ const statusStyles: Record<ProductStatus, string> = {
 
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
   return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${statusStyles[status]}`}>
+    <span className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-center text-[11px] font-black uppercase leading-4 tracking-[0.12em] xl:whitespace-nowrap ${statusStyles[status]}`}>
       {status}
     </span>
   );
@@ -193,7 +193,10 @@ export function ProductFrame({
 }) {
   const frameTitle = title ?? previewTitle(kind);
   return (
-    <article className={`overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 ${className}`}>
+    <article
+      aria-label={`${frameTitle}. Fictional product preview using demonstration data.`}
+      className={`min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 ${className}`}
+    >
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-950 px-4 py-3 text-white">
         <div className="flex items-center gap-2" aria-hidden="true">
           <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
@@ -201,7 +204,7 @@ export function ProductFrame({
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
         </div>
         <p className="truncate text-xs font-bold text-slate-300">{frameTitle}</p>
-        {status ? <span className="hidden rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-200 sm:inline">{status}</span> : <span />}
+        {status ? <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-200">{status}</span> : <span />}
       </div>
       <div className="bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_100%)] p-4 sm:p-5">
         {renderPreview(kind)}
@@ -224,7 +227,7 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
             title="See the DBIN ecosystem in action"
             description="Fictional, privacy-safe previews show how the platform feels across business, institutional and programme workflows."
           />
-          <Link href="/platform" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:border-emerald-300">
+          <Link href="/platform" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:border-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
             Explore platform <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -257,7 +260,7 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
             <p className="mt-4 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">{active.eyebrow}</p>
             <h3 className="mt-3 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-4xl">{active.title}</h3>
             <p className="mt-4 text-base leading-7 text-slate-600">{active.description}</p>
-            <Link href={active.cta.href} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-800">
+            <Link href={active.cta.href} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
               {active.cta.label} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -282,7 +285,7 @@ export function CapabilityProofCard({
   icon?: typeof CheckCircle2;
 }) {
   const content = (
-    <article className="h-full rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg">
+    <article className="h-full min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg">
       <div className="flex items-start justify-between gap-4">
         <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
           <Icon className="h-5 w-5" aria-hidden="true" />
@@ -295,7 +298,7 @@ export function CapabilityProofCard({
     </article>
   );
 
-  return href ? <Link href={href}>{content}</Link> : content;
+  return href ? <Link href={href} className="block h-full rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">{content}</Link> : content;
 }
 
 export function BeforeAfterJourney({
