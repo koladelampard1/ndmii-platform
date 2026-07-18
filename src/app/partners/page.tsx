@@ -12,8 +12,8 @@ export default function PartnersPage() {
   return (
     <PublicPageShell
       eyebrow="Partnerships"
-      title="Partner with NDMII to scale trusted MSME outcomes"
-      description="We work with public institutions, private partners, and trade bodies to strengthen verified market participation for Nigerian MSMEs."
+      title="Partner with DBIN to scale trusted business outcomes"
+      description="We work with public institutions, private partners, and trade bodies to strengthen verified market participation, readiness and enterprise intelligence for Nigerian businesses."
       primaryCta={{ label: "Submit partnership interest", href: "/contact?topic=partnership" }}
       secondaryCta={{ label: "Explore resources", href: "/resources" }}
     >

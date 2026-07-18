@@ -12,8 +12,8 @@ export default function ResourcesPage() {
   return (
     <PublicPageShell
       eyebrow="Resources"
-      title="Guides and tools for identity, verification, and discovery"
-      description="Access practical resources for MSMEs, buyers, associations, and institutions using the NDMII platform."
+      title="Guides and tools for identity, verification, readiness, and discovery"
+      description="Access practical resources for MSMEs, buyers, associations, and institutions using the DBIN platform."
       primaryCta={{ label: "Open marketplace", href: "/marketplace" }}
       secondaryCta={{ label: "Contact support", href: "/contact" }}
     >

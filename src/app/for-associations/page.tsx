@@ -5,8 +5,8 @@ export default function ForAssociationsPage() {
     <PublicPageShell
       eyebrow="For Associations"
       title="Digitally onboard members and strengthen market trust"
-      description="Associations can use NDMII to scale member onboarding, improve verification quality, and provide stronger visibility for credible businesses."
-      primaryCta={{ label: "Partner with NDMII", href: "/partners?segment=associations" }}
+      description="Associations can use DBIN to scale member onboarding, improve verification quality, and provide stronger visibility for credible businesses."
+      primaryCta={{ label: "Partner with DBIN", href: "/partners?segment=associations" }}
       secondaryCta={{ label: "Contact onboarding team", href: "/contact?topic=association-onboarding" }}
       highlights={[
         "Bulk-ready onboarding pathways for association member cohorts.",

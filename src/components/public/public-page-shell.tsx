@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
+import { PublicFooter } from "@/components/layout/public-footer";
 
 type PublicPageShellProps = {
   eyebrow: string;
@@ -22,9 +23,9 @@ export function PublicPageShell({
   children,
 }: PublicPageShellProps) {
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <main id="main-content" className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <div className="rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#111827_45%,#064e3b_100%)] p-8 text-white md:p-10">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">{eyebrow}</p>
           <h1 className="mt-3 text-3xl font-semibold md:text-4xl">{title}</h1>
@@ -52,7 +53,8 @@ export function PublicPageShell({
         ) : null}
 
         {children}
-      </section>
-    </main>
+      </main>
+      <PublicFooter />
+    </div>
   );
 }
