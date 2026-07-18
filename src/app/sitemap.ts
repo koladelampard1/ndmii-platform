@@ -2,6 +2,12 @@ import type { MetadataRoute } from "next";
 
 const PUBLIC_ROUTES = [
   "",
+  "/platform",
+  "/platform/business-identity",
+  "/platform/business-tools",
+  "/platform/compliance",
+  "/platform/intelligence",
+  "/programmes",
   "/about",
   "/partners",
   "/resources",

@@ -5,10 +5,11 @@ const FOOTER_LINKS = [
   {
     title: "Platform",
     links: [
-      { label: "Overview", href: "/about" },
+      { label: "Overview", href: "/platform" },
       { label: "Verify", href: "/verify" },
       { label: "Marketplace", href: "/marketplace" },
-      { label: "Business Identity", href: "/for-msmes" },
+      { label: "Business Identity", href: "/platform/business-identity" },
+      { label: "Business Tools", href: "/platform/business-tools" },
     ],
   },
   {
@@ -23,6 +24,7 @@ const FOOTER_LINKS = [
   {
     title: "Programmes",
     links: [
+      { label: "Programme Workspaces", href: "/programmes" },
       { label: "LCDBO", href: "/lcdbo" },
       { label: "Industrial Clusters", href: "/lcdbo/clusters" },
       { label: "Property / DLPI", href: "/property" },

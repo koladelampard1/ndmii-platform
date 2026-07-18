@@ -6,6 +6,8 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: [
         "/",
+        "/platform",
+        "/programmes",
         "/about",
         "/partners",
         "/resources",

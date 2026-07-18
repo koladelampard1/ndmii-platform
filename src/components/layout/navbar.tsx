@@ -15,12 +15,12 @@ const NAV_GROUPS = [
   {
     label: "Platform",
     links: [
-      { label: "Platform Overview", href: "/about", description: "How DBIN connects identity, trust and opportunity." },
-      { label: "Business Identity", href: "/for-msmes", description: "Trusted digital profiles and business credentials." },
+      { label: "Platform Overview", href: "/platform", description: "How DBIN connects identity, trust and opportunity." },
+      { label: "Business Identity", href: "/platform/business-identity", description: "Trusted digital profiles and business credentials." },
       { label: "Verification & Credentials", href: "/verify", description: "Confirm public business identity records." },
-      { label: "Business Tools", href: "/resources", description: "Guides for operating readiness and digitisation." },
-      { label: "Compliance & Tax Readiness", href: "/resources", description: "Resources for evidence, records and readiness." },
-      { label: "Intelligence & Reporting", href: "/partners", description: "Institutional pathways for programme insight." },
+      { label: "Business Tools", href: "/platform/business-tools", description: "Invoices, receipts, records and operating readiness." },
+      { label: "Compliance & Tax Readiness", href: "/platform/compliance", description: "Resources for evidence, records and readiness." },
+      { label: "Intelligence & Reporting", href: "/platform/intelligence", description: "Institutional pathways for programme insight." },
     ],
   },
   {
@@ -37,6 +37,7 @@ const NAV_GROUPS = [
   {
     label: "Programmes",
     links: [
+      { label: "Programme Workspaces", href: "/programmes", description: "Reusable infrastructure for institutional programmes." },
       { label: "LCDBO", href: "/lcdbo", description: "Local Content Development Beyond Oil." },
       { label: "Industrial Clusters", href: "/lcdbo/clusters", description: "Cluster participation and production pathways." },
       { label: "Revenue Guides", href: "/resources", description: "Readiness resources for business and revenue engagement." },

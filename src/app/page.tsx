@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/layout/navbar";
 import { PublicFooter } from "@/components/layout/public-footer";
+import { ProductTabShowcase } from "@/components/public/product-showcase";
 
 export const metadata: Metadata = {
   title: "DBIN | Nigeria’s Digital Business Infrastructure",
@@ -306,6 +307,8 @@ export default function LandingPage() {
             ))}
           </div>
         </section>
+
+        <ProductTabShowcase />
 
         <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
           <div className="max-w-3xl">
