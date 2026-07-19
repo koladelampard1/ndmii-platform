@@ -24,6 +24,7 @@ export default async function PropertyOperationsPage({
           { href: "/dashboard/property/cases", label: "All Cases", primary: true },
           { href: "/dashboard/property/register", label: "Register Property" },
           { href: "/dashboard/property/pending", label: "Pending" },
+          { href: "/dashboard/property/gis", label: "GIS Workbench" },
           { href: "/dashboard/property/completed", label: "Completed" },
         ]}
       />

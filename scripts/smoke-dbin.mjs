@@ -708,6 +708,28 @@ check("data analyst is a recognized Impact Intelligence role", () => {
   );
 });
 
+check("BOI persona aliases resolve to the BOI workspace without LCDBO leakage", () => {
+  const {
+    canAccessRoute,
+    getDefaultDashboardRoute,
+    normalizeUserRole,
+  } = authorizationModule;
+  const impactShellCompact = compact(impactShell);
+
+  assert(
+    normalizeUserRole("boi_officer") === "boi_executive" &&
+      normalizeUserRole("boi_manager") === "boi_executive" &&
+      normalizeUserRole("boi_admin") === "boi_executive" &&
+      getDefaultDashboardRoute(normalizeUserRole("boi_officer")) === "/dashboard/impact-intelligence" &&
+      canAccessRoute("boi_executive", "/dashboard/impact-intelligence") &&
+      !canAccessRoute("boi_executive", "/dashboard/lcdbo") &&
+      impactShellCompact.includes('role === "boi_executive"') &&
+      impactShellCompact.includes('item.href.startsWith("/dashboard/lcdbo")') &&
+      impactShellCompact.includes("BOI_NAV_LABELS"),
+    "Expected BOI officer, manager, and admin aliases to land in BOI Impact Intelligence while excluding LCDBO navigation.",
+  );
+});
+
 check("super admin resolves a valid post-login admin workspace", () => {
   const {
     canAccessRoute,

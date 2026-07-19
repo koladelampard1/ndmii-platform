@@ -5,13 +5,16 @@ import {
   assignRegistryCaseAction,
   generateCertificateAction,
   issueNpinCredentialAction,
+  reviewGeometryAction,
   reviewDocumentAction,
   reviewOwnerAction,
   updateCaseDecisionAction,
 } from "@/app/dashboard/property/operations/actions";
 import { getRegistryOperationsContext } from "@/app/dashboard/property/operations/_context";
 import { getRegistryCaseDetail, listAssignablePropertyUsers, resolvePropertyCaseAccess } from "@/lib/property/property-operations-service";
+import { boxFromRecord, findPotentialGeometryOverlaps, getActivePropertyGeometry, getPropertyGeometryHistory } from "@/lib/property/property-gis-service";
 import { CaseSummaryCards, CertificatePreview, RegistryOperationsHero, Timeline } from "@/components/property/property-operations-workspace";
+import { GeometryHistory, GeometryPreview } from "@/components/property/property-gis-tools";
 import { PropertyStatusBadge, inputClass, textareaClass } from "@/components/property/property-workspace";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +54,11 @@ export default async function RegistryReviewPage({
     getRegistryCaseDetail({ caseId: id, client: supabase, ctx }),
     resolvePropertyCaseAccess({ caseId: id, client: supabase, ctx }),
   ]);
+  const [geometry, geometryEvents] = await Promise.all([
+    getActivePropertyGeometry({ propertyId: detail.property.id, client: supabase }).catch(() => null),
+    getPropertyGeometryHistory({ propertyId: detail.property.id, client: supabase }).catch(() => []),
+  ]);
+  const overlaps = geometry ? await findPotentialGeometryOverlaps({ propertyId: detail.property.id, boundingBox: boxFromRecord(geometry.bounding_box), client: supabase }).catch(() => []) : [];
   const users = caseAccess.canOverrideCase ? await listAssignablePropertyUsers({ client: supabase }) : [];
   const address = detail.addresses[0] ?? null;
   const canMutate = caseAccess.canOperateCase;
@@ -93,6 +101,41 @@ export default async function RegistryReviewPage({
               <Info label="Plot / Block" value={[address?.plot, address?.block].filter(Boolean).join(" / ") || "—"} />
               <Info label="Coordinates" value={address?.centroid_latitude && address?.centroid_longitude ? `${address.centroid_latitude}, ${address.centroid_longitude}` : "—"} />
             </div>
+          </Panel>
+
+          <Panel title="GIS / Boundary Review" icon={MapPin}>
+            <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
+              <GeometryPreview geometry={geometry} />
+              <div className="space-y-3">
+                <Info label="Verification Status" value={geometry?.verification_status?.replaceAll("_", " ") ?? "No geometry"} />
+                <Info label="Source" value={geometry?.source?.replaceAll("_", " ") ?? "—"} />
+                <Info label="Coordinate System" value={geometry?.coordinate_system ?? "—"} />
+                <Info label="Survey Plan" value={geometry?.survey_plan_number ?? "—"} />
+                <Info label="Surveyor" value={geometry?.surveyor_name ?? "—"} />
+                <Info label="Area Estimate" value={[geometry?.area_value, geometry?.area_unit].filter(Boolean).join(" ") || "—"} />
+              </div>
+            </div>
+            {overlaps.length ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+                Potential boundary overlap detected. Registry review required. This is a warning, not a legal determination.
+              </div>
+            ) : null}
+            <div className="mt-5">
+              <p className="mb-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500">Boundary history</p>
+              <GeometryHistory events={geometryEvents} />
+            </div>
+            {canMutate && geometry ? (
+              <form action={reviewGeometryAction} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
+                <input type="hidden" name="case_id" value={detail.id} />
+                <input className={inputClass} name="geometry_note" placeholder="Boundary review note" />
+                <div className="flex flex-wrap gap-2">
+                  <button name="geometry_action" value="verify" className="rounded-xl bg-[#008751] px-3 py-2 text-xs font-black text-white">Verify Boundary</button>
+                  <button name="geometry_action" value="request_correction" className="rounded-xl border border-amber-200 px-3 py-2 text-xs font-black text-amber-800">Request Correction</button>
+                  <button name="geometry_action" value="reject" className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black text-rose-700">Reject</button>
+                </div>
+              </form>
+            ) : null}
+            <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs font-bold leading-5 text-slate-500">Map boundaries are subject to registry verification. This is not a legal survey. Official survey records prevail.</p>
           </Panel>
 
           <Panel title="Ownership Review" icon={Users}>

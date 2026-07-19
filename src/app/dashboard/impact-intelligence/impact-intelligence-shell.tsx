@@ -66,6 +66,21 @@ const WORKSPACE_NAV: WorkspaceLink[] = [
   { label: "Audit Trail", href: "/dashboard/impact-intelligence/reports", icon: History, resource: "audit_log" },
 ];
 
+const BOI_NAV_LABELS: Record<string, string> = {
+  "/dashboard/impact-intelligence": "BOI Overview",
+  "/dashboard/impact-intelligence/programmes": "Funding Programmes",
+  "/dashboard/impact-intelligence/cohorts": "Business Pipeline",
+  "/dashboard/impact-intelligence/interventions": "Funding Pipeline",
+  "/dashboard/impact-intelligence/assessments": "Readiness Assessment",
+  "/dashboard/impact-intelligence/monitoring": "Portfolio Monitoring",
+  "/dashboard/impact-intelligence/evidence": "Supporting Documents",
+  "/dashboard/impact-intelligence/indicators": "Portfolio KPIs",
+  "/dashboard/impact-intelligence/reports": "Institutional Reports",
+  "/dashboard/impact-intelligence/analytics": "Portfolio Intelligence",
+  "/dashboard/impact-intelligence/intelligence": "Risk Signals",
+  "/dashboard/impact-intelligence/risk-flags": "Attention Flags",
+};
+
 function roleLabel(role: UserRole) {
   return role.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
@@ -89,14 +104,21 @@ export function ImpactIntelligenceShell({
   canAccessLcdboExecutive = false,
 }: ImpactIntelligenceShellProps) {
   const pathname = usePathname();
+  const isBoiWorkspace = role === "boi_executive";
+  const workspaceTitle = isBoiWorkspace ? "BOI Institutional Workspace" : "Impact Intelligence";
+  const workspaceEyebrow = isBoiWorkspace ? "BOI Workspace" : "Impact Intelligence";
   const items = WORKSPACE_NAV.filter((item) => {
+    if (isBoiWorkspace && item.href.startsWith("/dashboard/lcdbo")) return false;
     if (item.href === "/dashboard/lcdbo") return canAccessLcdbo;
     if (["/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports", "/dashboard/lcdbo/geography", "/dashboard/lcdbo/data-quality", "/dashboard/lcdbo/briefings"].includes(item.href)) return canAccessLcdboExecutive;
     if (item.href === "/dashboard/lcdbo/executive") return canAccessLcdboExecutive;
     if (!canAccessRoute(role, item.href)) return false;
     if (item.resource === "audit_log" && !canRole(role, "audit_log", "read")) return false;
     return true;
-  });
+  }).map((item) => ({
+    ...item,
+    label: isBoiWorkspace ? (BOI_NAV_LABELS[item.href] ?? item.label) : item.label,
+  }));
   const activeItem = items.find((item) => isActiveRoute(pathname, item.href));
 
   return (
@@ -122,11 +144,11 @@ export function ImpactIntelligenceShell({
         <div className="border-b border-white/5 px-5 py-3 lg:px-6 lg:py-4">
           <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-400">
             <ChartNoAxesCombined className="h-4 w-4" />
-            Impact Intelligence
+            {workspaceTitle}
           </p>
         </div>
 
-        <nav aria-label="Impact Intelligence navigation" className="overflow-x-auto px-3 py-3 lg:flex-1 lg:overflow-y-auto">
+        <nav aria-label={`${workspaceTitle} navigation`} className="overflow-x-auto px-3 py-3 lg:flex-1 lg:overflow-y-auto">
           <ul className="flex min-w-max gap-1 lg:block lg:min-w-0 lg:space-y-1">
             {items.map((item) => {
               const Icon = item.icon;
@@ -175,7 +197,7 @@ export function ImpactIntelligenceShell({
         <div className="min-h-screen overflow-hidden bg-[#f7f9fc] lg:rounded-l-[24px] lg:border lg:border-slate-200 lg:shadow-xl lg:shadow-slate-300/30">
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-5 sm:py-5 lg:px-7">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Impact Intelligence</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">{workspaceEyebrow}</p>
               <h1 className="mt-1 truncate text-xl font-bold tracking-tight text-[#0c1733] sm:text-2xl">{activeItem?.label ?? "Workspace"}</h1>
             </div>
             <div className="flex items-center gap-3">

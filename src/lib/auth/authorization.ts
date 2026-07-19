@@ -40,7 +40,10 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   association_officer: "association_officer",
   reviewer: "reviewer",
   boi: "boi_executive",
+  boi_admin: "boi_executive",
   boi_executive: "boi_executive",
+  boi_manager: "boi_executive",
+  boi_officer: "boi_executive",
   programme: "programme_officer",
   programme_officer: "programme_officer",
   program_officer: "programme_officer",
@@ -192,8 +195,9 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
   // The page performs programme/module resolution against scoped role assignments.
-  // Let authenticated users reach that guard even when users.role is not programme_officer.
-  else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
+  // Let authenticated users reach that guard while keeping BOI-only personas out
+  // of LCDBO programme operations.
+  else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = role !== "boi_executive";
   // Property workspace performs module/scoped permission checks at page level.
   // Let authenticated users reach the guard without expanding global users.role.
   else if (routeMatchesPrefix(path, "/dashboard/property")) legacyAllowed = true;
@@ -312,18 +316,18 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
   boi_executive: [
-    { href: "/dashboard/impact-intelligence", label: "Overview" },
-    { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
-    { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },
-    { href: "/dashboard/impact-intelligence/interventions", label: "Interventions" },
-    { href: "/dashboard/impact-intelligence/assessments", label: "Assessments" },
-    { href: "/dashboard/impact-intelligence/monitoring", label: "Monitoring" },
-    { href: "/dashboard/impact-intelligence/evidence", label: "Evidence" },
+    { href: "/dashboard/impact-intelligence", label: "BOI Overview" },
+    { href: "/dashboard/impact-intelligence/programmes", label: "Funding Programmes" },
+    { href: "/dashboard/impact-intelligence/cohorts", label: "Business Pipeline" },
+    { href: "/dashboard/impact-intelligence/interventions", label: "Funding Pipeline" },
+    { href: "/dashboard/impact-intelligence/assessments", label: "Readiness Assessment" },
+    { href: "/dashboard/impact-intelligence/monitoring", label: "Portfolio Monitoring" },
+    { href: "/dashboard/impact-intelligence/evidence", label: "Supporting Documents" },
     { href: "/dashboard/impact-intelligence/executive", label: "Executive Dashboard" },
-    { href: "/dashboard/impact-intelligence/analytics", label: "Analytics" },
-    { href: "/dashboard/impact-intelligence/reports", label: "Reports" },
-    { href: "/dashboard/impact-intelligence/intelligence", label: "Intelligence" },
-    { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
+    { href: "/dashboard/impact-intelligence/analytics", label: "Portfolio Intelligence" },
+    { href: "/dashboard/impact-intelligence/reports", label: "Institutional Reports" },
+    { href: "/dashboard/impact-intelligence/intelligence", label: "Risk Signals" },
+    { href: "/dashboard/impact-intelligence/risk-flags", label: "Attention Flags" },
   ],
   programme_officer: [
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
@@ -442,7 +446,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
 };
 
 export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, NavigationGroup[]>> = {
-  boi_executive: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.boi_executive }],
+  boi_executive: [{ label: "BOI Workspace", items: ROLE_NAV_ITEMS.boi_executive }],
   programme_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.programme_officer }],
   assessment_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.assessment_officer }],
   field_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.field_officer }],

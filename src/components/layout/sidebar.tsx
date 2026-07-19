@@ -73,6 +73,7 @@ export async function Sidebar() {
           { href: "/dashboard/property/cases", label: "Registry Cases" },
           { href: "/dashboard/property/assignments", label: "My Assignments" },
           { href: "/dashboard/property/verification", label: "Verification" },
+          { href: "/dashboard/property/gis", label: "GIS Workbench" },
           { href: "/dashboard/property/certificates", label: "Certificates" },
         ],
       });

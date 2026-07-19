@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FileText, Landmark, MapPin, ShieldCheck } from "lucide-react";
 import { getPublicPropertyByNpin } from "@/lib/data/public-property-explorer";
+import { PublicPropertyMap } from "@/components/property/property-gis-tools";
 import { PrivacyNotice, PropertyPublicShell } from "@/components/property/public-property-explorer";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +76,29 @@ export default async function PublicPropertyProfilePage({ params }: { params: Pr
               </div>
             ) : (
               <p className="text-sm leading-6 text-slate-500">No documents are marked public for this property. Private evidence and registry documents are never exposed here.</p>
+            )}
+          </Panel>
+
+          <Panel title="Public map preview" icon={MapPin}>
+            {profile.publicGeometry ? (
+              <>
+                <PublicPropertyMap markers={[{
+                  npin: profile.npin,
+                  title: profile.title,
+                  category: profile.category,
+                  state: profile.state,
+                  lga: profile.lga,
+                  registryStatus: profile.registryStatus,
+                  latitude: profile.publicGeometry.latitude,
+                  longitude: profile.publicGeometry.longitude,
+                  profileHref: `/property/${encodeURIComponent(profile.npin)}`,
+                }]} />
+                <p className="mt-3 text-sm leading-6 text-slate-500">This marker is generalized for public use. Official survey records prevail.</p>
+              </>
+            ) : profile.hasPrivateGeometry ? (
+              <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">Boundary details are held by the registry and are not publicly disclosed.</p>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">No public-safe map geometry is available for this property.</p>
             )}
           </Panel>
         </div>

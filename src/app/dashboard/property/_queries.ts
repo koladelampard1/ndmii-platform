@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { canAccessPropertyRegistrationWorkspace } from "@/lib/data/property-foundation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
-import type { Property, PropertyAddress, PropertyDocument, PropertyOwner } from "@/types/property";
+import type { Property, PropertyAddress, PropertyDocument, PropertyGeometry, PropertyOwner } from "@/types/property";
 
 export type PropertyWorkspaceContext = Awaited<ReturnType<typeof requirePropertyWorkspaceAccess>>;
 export type PropertyWithAddress = Property & { primaryAddress?: PropertyAddress | null };
@@ -10,6 +10,7 @@ export type EditableProperty = Property & {
   addresses: PropertyAddress[];
   owners: PropertyOwner[];
   documents: PropertyDocument[];
+  geometries: PropertyGeometry[];
 };
 
 export async function requirePropertyWorkspaceAccess() {
@@ -100,13 +101,14 @@ export async function listMyProperties(supabase: PropertyWorkspaceContext["supab
 
 export async function getEditableProperty(supabase: PropertyWorkspaceContext["supabase"], propertyId: string | null, appUserId: string): Promise<EditableProperty | null> {
   if (!propertyId) return null;
-  const [property, addresses, owners, documents] = await Promise.all([
+  const [property, addresses, owners, documents, geometries] = await Promise.all([
     supabase.from("properties").select("*").eq("id", propertyId).eq("registered_by", appUserId).maybeSingle(),
     supabase.from("property_addresses").select("*").eq("property_id", propertyId).order("is_primary", { ascending: false }),
     supabase.from("property_owners").select("*").eq("property_id", propertyId).order("is_primary", { ascending: false }),
     supabase.from("property_documents").select("*").eq("property_id", propertyId).order("created_at", { ascending: false }),
+    supabase.from("property_geometries").select("*").eq("property_id", propertyId).is("superseded_at", null).order("updated_at", { ascending: false }),
   ]);
-  for (const result of [property, addresses, owners, documents]) {
+  for (const result of [property, addresses, owners, documents, geometries]) {
     if (result.error) throw result.error;
   }
   if (!property.data) return null;
@@ -115,5 +117,6 @@ export async function getEditableProperty(supabase: PropertyWorkspaceContext["su
     addresses: (addresses.data ?? []) as PropertyAddress[],
     owners: (owners.data ?? []) as PropertyOwner[],
     documents: (documents.data ?? []) as PropertyDocument[],
+    geometries: (geometries.data ?? []) as PropertyGeometry[],
   };
 }

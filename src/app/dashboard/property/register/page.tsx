@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertCircle, CheckCircle2, FileText, Home, MapPin, ShieldCheck, UploadCloud, Users } from "lucide-react";
 import { Field, inputClass, PropertyProgress, PropertyWorkspaceHero, textareaClass } from "@/components/property/property-workspace";
+import { PropertyGeometryCapture } from "@/components/property/property-gis-tools";
 import { PropertyDraftGuard } from "@/components/property/property-draft-guard";
 import { savePropertyRegistrationAction } from "@/app/dashboard/property/actions";
 import { getEditableProperty, getPropertyLookups, requirePropertyWorkspaceAccess } from "@/app/dashboard/property/_queries";
@@ -60,6 +61,7 @@ export default async function PropertyRegistrationPage({
   }
   const step = clampStep(query.step);
   const address = property?.addresses[0] ?? null;
+  const geometry = property?.geometries[0] ?? null;
   const owners = property?.owners ?? [];
   const nigeriaId = lookups.countries.find((country) => country.iso2 === "NG")?.id ?? lookups.countries[0]?.id ?? "";
   const validation = [
@@ -134,7 +136,7 @@ export default async function PropertyRegistrationPage({
         </div>
 
         <div className={step === 3 ? "block" : "hidden"}>
-          <SectionIntro icon={MapPin} title="Location" detail="Enter the basic location and optional approximate coordinates. No map or boundary drawing is used in this phase." />
+          <SectionIntro icon={MapPin} title="Location & Boundary" detail="Enter the basic location, set an optional coordinate, and capture optional boundary metadata. Official survey records prevail." />
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <Select name="state_id" label="State" defaultValue={property?.state_id ?? address?.state_id ?? ""} options={lookups.states.map((state) => [state.id, state.name])} />
             <Select name="lga_id" label="LGA" defaultValue={property?.lga_id ?? address?.lga_id ?? ""} options={lookups.lgas.map((lga) => [lga.id, lga.name])} />
@@ -145,10 +147,29 @@ export default async function PropertyRegistrationPage({
             <Field label="Plot"><input className={inputClass} name="plot" defaultValue={address?.plot ?? ""} /></Field>
             <Field label="Block"><input className={inputClass} name="block" defaultValue={address?.block ?? ""} /></Field>
             <Field label="Parcel reference"><input className={inputClass} name="parcel_reference" defaultValue={property?.parcel_reference ?? address?.parcel_reference ?? ""} /></Field>
-            <Field label="Latitude"><input className={inputClass} name="centroid_latitude" type="number" step="0.0000001" defaultValue={address?.centroid_latitude ?? ""} /></Field>
-            <Field label="Longitude"><input className={inputClass} name="centroid_longitude" type="number" step="0.0000001" defaultValue={address?.centroid_longitude ?? ""} /></Field>
           </div>
           <div className="mt-4"><Field label="Traditional description"><textarea className={textareaClass} name="traditional_description" defaultValue={address?.traditional_description ?? ""} /></Field></div>
+          <div className="mt-5">
+            <PropertyGeometryCapture latitude={address?.centroid_latitude} longitude={address?.centroid_longitude} geometry={geometry} />
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Field label="Survey plan number"><input className={inputClass} name="survey_plan_number" defaultValue={geometry?.survey_plan_number ?? ""} /></Field>
+            <Field label="Coordinate system"><input className={inputClass} name="coordinate_system" defaultValue={geometry?.coordinate_system ?? "WGS84"} placeholder="WGS84, Minna Datum..." /></Field>
+            <Field label="Surveyor name"><input className={inputClass} name="surveyor_name" defaultValue={geometry?.surveyor_name ?? ""} /></Field>
+            <Field label="Surveyor registration number"><input className={inputClass} name="surveyor_registration_number" defaultValue={geometry?.surveyor_registration_number ?? ""} /></Field>
+            <Field label="Area estimate"><input className={inputClass} name="geometry_area_value" type="number" min="0" step="0.0001" defaultValue={geometry?.area_value ?? ""} /></Field>
+            <Field label="Area unit"><input className={inputClass} name="geometry_area_unit" defaultValue={geometry?.area_unit ?? ""} placeholder="sqm, hectares, acres" /></Field>
+            <Select name="geometry_source" label="Geometry source" defaultValue={geometry?.source ?? "manual"} options={[["manual", "Manual"], ["gps", "GPS"], ["survey_plan", "Survey Plan"], ["imported", "Imported"], ["satellite_reference", "Satellite Reference"]]} />
+            <Select name="privacy_visibility" label="Privacy visibility" defaultValue={geometry?.privacy_visibility ?? "registry_only"} options={[["private", "Private"], ["registry_only", "Registry Only"], ["public_generalized", "Public Generalized"]]} />
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <Field label="Boundary notes"><textarea className={textareaClass} name="geometry_notes" defaultValue={geometry?.notes ?? ""} /></Field>
+            <label className="flex h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-[#06172f]">
+              <input type="checkbox" name="submit_geometry" defaultChecked={geometry?.verification_status === "submitted"} />
+              Submit geometry for review
+            </label>
+          </div>
+          <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900">Map boundaries are subject to registry verification. This is not a legal survey. Official survey records prevail.</p>
         </div>
 
         <div className={step === 4 ? "block" : "hidden"}>

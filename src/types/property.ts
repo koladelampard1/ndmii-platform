@@ -45,6 +45,10 @@ export type PropertyOwnerVerificationStatus = "unverified" | "pending_review" | 
 export type PropertyClaimType = "registration" | "ownership" | "transfer" | "correction" | "dispute" | "verification";
 export type PropertyClaimStatus = "draft" | "submitted" | "under_review" | "verified" | "approved" | "rejected" | "withdrawn" | "cancelled";
 export type PropertyCredentialStatus = "issued" | "revoked" | "superseded" | "suspended";
+export type PropertyGeometryType = "point" | "polygon" | "multipolygon" | "line";
+export type PropertyGeometryStatus = "draft" | "submitted" | "verified" | "rejected" | "correction_requested" | "superseded";
+export type PropertyGeometrySource = "manual" | "gps" | "survey_plan" | "imported" | "satellite_reference";
+export type PropertyGeometryPrivacy = "private" | "registry_only" | "public_generalized";
 
 export type PropertyDocumentType =
   | "survey_plan"
@@ -218,6 +222,53 @@ export type PropertyAddress = {
   metadata: JsonRecord;
   created_at: string;
   updated_at: string;
+};
+
+export type PropertyGeometry = {
+  id: string;
+  property_id: string;
+  geometry_type: PropertyGeometryType;
+  geojson: JsonRecord;
+  centroid_latitude: number | null;
+  centroid_longitude: number | null;
+  bounding_box: JsonRecord;
+  area_value: number | null;
+  area_unit: string | null;
+  coordinate_system: string;
+  survey_plan_number: string | null;
+  surveyor_name: string | null;
+  surveyor_registration_number: string | null;
+  captured_by: string | null;
+  captured_at: string;
+  verification_status: PropertyGeometryStatus;
+  verified_by: string | null;
+  verified_at: string | null;
+  source: PropertyGeometrySource;
+  privacy_visibility: PropertyGeometryPrivacy;
+  notes: string | null;
+  superseded_at: string | null;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PropertyGeometryEvent = {
+  id: string;
+  property_id: string;
+  geometry_id: string | null;
+  event_type:
+    | "geometry.created"
+    | "geometry.updated"
+    | "geometry.submitted"
+    | "geometry.verified"
+    | "geometry.rejected"
+    | "geometry.correction_requested"
+    | "geometry.superseded"
+    | "geometry.privacy_changed";
+  actor_user_id: string | null;
+  summary: string | null;
+  metadata: JsonRecord;
+  created_at: string;
 };
 
 export type PropertyClaim = {

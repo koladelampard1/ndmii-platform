@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { ArrowRight, BarChart3, Building2, MapPin, ShieldCheck } from "lucide-react";
 import { getPublicStateExplorer } from "@/lib/data/public-property-explorer";
+import { getPublicPropertyMapMarkers } from "@/lib/property/property-gis-service";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { PublicPropertyMap } from "@/components/property/property-gis-tools";
 import { PrivacyNotice, PropertyHero, PropertyPublicShell } from "@/components/property/public-property-explorer";
 
 export const dynamic = "force-dynamic";
 
-export default async function PropertyExplorerPage() {
+export default async function PropertyExplorerPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const [{ view }, supabase] = await Promise.all([searchParams, createServiceRoleSupabaseClient()]);
   const states = await getPublicStateExplorer().catch(() => []);
+  const markers = await getPublicPropertyMapMarkers({ client: supabase }).catch(() => []);
   const activeStates = states.filter((state) => state.propertyCount > 0);
+  const showMap = view === "map";
 
   return (
     <PropertyPublicShell>
@@ -24,6 +30,20 @@ export default async function PropertyExplorerPage() {
           <Metric label="Explorer mode" value="No map" icon={BarChart3} />
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Explorer mode</p>
+            <p className="text-sm font-semibold text-slate-600">Switch between state list and privacy-safe map markers.</p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/property/explorer" className={`rounded-xl px-4 py-2 text-sm font-black ${!showMap ? "bg-[#06172f] text-white" : "border border-slate-200 text-[#06172f]"}`}>List</Link>
+            <Link href="/property/explorer?view=map" className={`rounded-xl px-4 py-2 text-sm font-black ${showMap ? "bg-[#06172f] text-white" : "border border-slate-200 text-[#06172f]"}`}>Map</Link>
+          </div>
+        </div>
+
+        {showMap ? (
+          <PublicPropertyMap markers={markers} />
+        ) : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {states.map((state) => (
             <article key={state.name} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
@@ -51,8 +71,9 @@ export default async function PropertyExplorerPage() {
             </article>
           ))}
         </div>
+        )}
 
-        {!states.length ? (
+        {!states.length && !showMap ? (
           <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
             <h2 className="text-2xl font-black text-[#06172f]">State explorer is temporarily unavailable</h2>
             <p className="mt-2 text-slate-500">Public registry coverage can still be searched by NPIN, state or LGA from the property search page.</p>

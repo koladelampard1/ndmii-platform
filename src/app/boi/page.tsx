@@ -12,34 +12,34 @@ import { AccountActions } from "@/components/auth/account-actions";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
-  title: "BOI MSME Intelligence Portal | DBIN",
+  title: "BOI MSME Investment Intelligence | DBIN",
   description:
-    "Programme intelligence, MSME verification, impact reporting, and analytics for authorized Bank of Industry stakeholders.",
+    "Investment readiness, verified MSME intelligence, portfolio monitoring, and institutional reporting for authorized Bank of Industry stakeholders.",
 };
 
 const portalCapabilities = [
   {
-    title: "Programme Intelligence",
+    title: "Investment Readiness",
     description:
-      "Monitor programme delivery, portfolio performance, geographic reach, and intervention outcomes.",
+      "Assess enterprise readiness, sector strength, verification signals, and evidence for funding decisions.",
     icon: ChartNoAxesCombined,
   },
   {
-    title: "MSME Verification",
+    title: "Business Verification",
     description:
-      "Review trusted digital business identity and verification signals across supported MSME cohorts.",
+      "Review trusted digital business identity and verification signals across the business pipeline.",
     icon: ShieldCheck,
   },
   {
-    title: "Impact Reports",
+    title: "Portfolio Reports",
     description:
-      "Access structured programme evidence and decision-ready reports for institutional stakeholders.",
+      "Access structured evidence and decision-ready reports for portfolio oversight and capital deployment.",
     icon: FileChartColumn,
   },
   {
-    title: "Analytics",
+    title: "Risk & Sector Intelligence",
     description:
-      "Explore aggregated trends, performance indicators, and portfolio insights through role-scoped dashboards.",
+      "Explore aggregated trends, sector patterns, risk signals, and portfolio performance through role-scoped dashboards.",
     icon: BarChart3,
   },
 ];
@@ -88,11 +88,11 @@ export default async function BoiPortalPage() {
               </p>
               <h1 className="mt-7 max-w-4xl text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
                 BOI MSME
-                <span className="block text-amber-200">Intelligence Portal</span>
+                <span className="block text-amber-200">Investment Intelligence</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-7 text-emerald-50/80 sm:text-lg">
-                A secure institutional gateway for programme oversight, verified MSME intelligence,
-                impact evidence, and portfolio analytics.
+                A secure institutional gateway for investment readiness, verified MSME intelligence,
+                credit signals, and portfolio analytics.
               </p>
             </div>
 
@@ -100,10 +100,10 @@ export default async function BoiPortalPage() {
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-200">
                 Authorized access
               </p>
-              <p className="mt-3 text-xl font-bold">Open the impact intelligence workspace</p>
+              <p className="mt-3 text-xl font-bold">Open the BOI institutional workspace</p>
               <p className="mt-2 text-sm leading-6 text-emerald-50/70">
-                Existing authentication and role permissions remain in force for all programme data
-                and reports.
+                Existing authentication and role permissions remain in force for all business pipeline,
+                readiness, portfolio, and reporting data.
               </p>
               <Link
                 href="https://app.dbin.ng/dashboard/impact-intelligence"
@@ -123,11 +123,11 @@ export default async function BoiPortalPage() {
             Institutional intelligence
           </p>
           <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-            Decision support for measurable MSME outcomes
+            Decision support for investable MSME growth
           </h2>
           <p className="mt-4 leading-7 text-slate-600">
-            The portal brings trusted identity infrastructure and programme evidence into a focused
-            view for authorized Bank of Industry stakeholders.
+            The portal brings trusted identity infrastructure, readiness evidence, and portfolio signals
+            into a focused view for authorized Bank of Industry stakeholders.
           </p>
         </div>
 
@@ -152,7 +152,7 @@ export default async function BoiPortalPage() {
 
       <footer className="border-t border-emerald-950/10 bg-[#ece7da]">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-7 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
-          <p className="font-semibold text-slate-800">BOI MSME Intelligence Portal</p>
+          <p className="font-semibold text-slate-800">BOI MSME Investment Intelligence</p>
           <p>Digital Business Identity Network</p>
         </div>
       </footer>

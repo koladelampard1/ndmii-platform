@@ -63,6 +63,13 @@ export type PublicPropertyProfile = PublicPropertySummary & {
     issuedAt: string | null;
     issuer: string | null;
   }>;
+  publicGeometry: {
+    latitude: number;
+    longitude: number;
+    source: string;
+    verificationStatus: string;
+  } | null;
+  hasPrivateGeometry: boolean;
   disclaimer: string;
 };
 
@@ -403,6 +410,25 @@ export async function getPublicPropertyByNpin(npin: string, client?: Client): Pr
     .eq("status", "accepted")
     .order("created_at", { ascending: false });
   if (documentError) throw documentError;
+  const { data: geometry, error: geometryError } = await supabase
+    .from("property_geometries")
+    .select("centroid_latitude,centroid_longitude,source,verification_status,privacy_visibility")
+    .eq("property_id", property.id)
+    .is("superseded_at", null)
+    .neq("verification_status", "superseded")
+    .maybeSingle();
+  const safeGeometry = geometryError ? null : geometry;
+  const publicGeometry = safeGeometry?.privacy_visibility === "public_generalized"
+    && safeGeometry.verification_status === "verified"
+    && safeGeometry.centroid_latitude !== null
+    && safeGeometry.centroid_longitude !== null
+    ? {
+        latitude: Number(Number(safeGeometry.centroid_latitude).toFixed(2)),
+        longitude: Number(Number(safeGeometry.centroid_longitude).toFixed(2)),
+        source: humanize(safeGeometry.source),
+        verificationStatus: humanize(safeGeometry.verification_status),
+      }
+    : null;
 
   return {
     ...summary,
@@ -413,6 +439,8 @@ export async function getPublicPropertyByNpin(npin: string, client?: Client): Pr
       issuedAt: document.issued_at,
       issuer: sanitizePublicText(document.issuer),
     })),
+    publicGeometry,
+    hasPrivateGeometry: Boolean(safeGeometry && !publicGeometry),
     disclaimer: REGISTRY_DISCLAIMER,
   };
 }

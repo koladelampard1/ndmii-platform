@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserContext } from "@/lib/auth/authorization";
 import { generatePropertyApplicationReference, recordPropertyEvent } from "@/lib/data/property-foundation";
+import { upsertPropertyGeometryFromForm } from "@/lib/property/property-gis-service";
 import { ensureRegistryCaseForProperty } from "@/lib/property/property-operations-service";
 import type { JsonRecord } from "@/types/platform";
 import type { Property, PropertyDocumentType, PropertyOwner } from "@/types/property";
@@ -472,6 +473,12 @@ export async function savePropertyRegistration(input: {
   const property = propertyResult.data as Property;
 
   await upsertPrimaryAddress({ propertyId: property.id, parsed, formData: input.formData, supabase: input.supabase });
+  await upsertPropertyGeometryFromForm({
+    propertyId: property.id,
+    actorUserId: input.ctx.appUserId,
+    formData: input.formData,
+    client: input.supabase,
+  });
   await persistOwners({ propertyId: property.id, owners: parsed.owners, actorUserId: input.ctx.appUserId, supabase: input.supabase });
 
   if (shouldSubmit) {

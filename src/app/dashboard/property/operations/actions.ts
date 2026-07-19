@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRegistryOperationsContext } from "@/app/dashboard/property/operations/_context";
+import { reviewPropertyGeometry } from "@/lib/property/property-gis-service";
 import {
   addCaseComment,
   assignRegistryCase,
@@ -132,4 +133,17 @@ export async function generateCertificateAction(formData: FormData) {
   }
   revalidateCase(caseId);
   redirectToCase(caseId, "certificate_generated");
+}
+
+export async function reviewGeometryAction(formData: FormData) {
+  const caseId = value(formData, "case_id");
+  const { ctx, supabase } = await requireRegistryOperationsContext(true);
+  try {
+    await reviewPropertyGeometry({ caseId, ctx, formData, client: supabase });
+  } catch (error) {
+    redirectToCaseError(caseId, error);
+  }
+  revalidateCase(caseId);
+  revalidatePath("/dashboard/property/gis");
+  redirectToCase(caseId, "geometry_reviewed");
 }

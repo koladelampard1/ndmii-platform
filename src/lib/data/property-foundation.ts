@@ -67,6 +67,7 @@ export const PROPERTY_OPERATION_ROLES = [
   "property_admin",
   "land_registry_officer",
   "survey_officer",
+  "gis_officer",
   "property_reviewer",
   "document_verifier",
   "title_issuer",
