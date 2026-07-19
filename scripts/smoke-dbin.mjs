@@ -106,6 +106,9 @@ const institutionalReportPdfModule = (() => {
   return commonJsModule.exports;
 })();
 const authorization = read("src/lib/auth/authorization.ts");
+const taxVatCompliancePage = read("src/components/msme/tax-vat-compliance-page.tsx");
+const reportsDashboardPage = read("src/app/dashboard/reports/page.tsx");
+const authProfile = read("src/lib/auth/profile.ts");
 const authorizationModule = (() => {
   const source = ts.transpileModule(authorization, {
     compilerOptions: {
@@ -736,6 +739,72 @@ check("super admin login and admin landing guards use the verified platform role
       adminDashboardPage.includes("!isPlatformAdmin(ctx.role)") &&
       adminGateway.includes("isPlatformAdmin(ctx.role)"),
     "Expected the server-verified role and platform-admin guard on the post-login landing chain.",
+  );
+});
+
+check("NRS/FIRS workspace route access is presentation-ready", () => {
+  const { canAccessRoute } = authorizationModule;
+  const nrsRoutes = [
+    "/dashboard/nrs",
+    "/dashboard/nrs/invoices",
+    "/dashboard/nrs/invoice-registry",
+    "/dashboard/nrs/vat-monitor",
+    "/dashboard/nrs/revenue",
+    "/dashboard/firs",
+    "/dashboard/payments",
+    "/dashboard/revenue-guides",
+    "/dashboard/reviews/compliance",
+    "/dashboard/reports",
+  ];
+  const restrictedRoutes = ["/dashboard/msme", "/dashboard/msme/compliance", "/dashboard/associations"];
+
+  assert(
+    ["nrs_officer", "firs_officer", "admin", "super_admin"].every((role) => nrsRoutes.every((route) => canAccessRoute(role, route))) &&
+      ["nrs_officer", "firs_officer"].every((role) => restrictedRoutes.every((route) => !canAccessRoute(role, route))),
+    "Expected NRS/FIRS/admin roles to access intended revenue workspace routes while MSME/association surfaces remain restricted.",
+  );
+});
+
+check("NRS/FIRS navigation and route fixture stay aligned", () => {
+  const fixture = compact(impactRouteFixture);
+  const nrsFixture = fixture.match(/nrs_officer: \{(.*?)\}, firs_officer:/)?.[1] ?? "";
+  const firsFixture = fixture.match(/firs_officer: \{(.*?)\},? \};/)?.[1] ?? "";
+  const requiredRoutes = [
+    "/dashboard/nrs/invoices",
+    "/dashboard/nrs/vat-monitor",
+    "/dashboard/nrs/revenue",
+    "/dashboard/revenue-guides",
+    "/dashboard/reviews/compliance",
+    "/dashboard/payments",
+    "/dashboard/reports",
+  ];
+
+  assert(
+    requiredRoutes.every((route) => authorization.includes(`{ href: "${route}"`) && nrsFixture.includes(route) && firsFixture.includes(route)) &&
+      nrsFixture.includes('denied: ["/dashboard/associations", "/dashboard/msme"]') &&
+      firsFixture.includes('denied: ["/dashboard/associations", "/dashboard/msme"]'),
+    "Expected visible NRS/FIRS navigation, direct route access fixture, and restricted route denials to stay aligned.",
+  );
+});
+
+check("NRS Tax/VAT workspace does not link officers into MSME-only compliance pages", () => {
+  assert(
+    taxVatCompliancePage.includes('const complianceHref = isMsmeView ? "/dashboard/msme/compliance" : "/dashboard/reviews/compliance"') &&
+      taxVatCompliancePage.includes('const workspaceHref = isMsmeView ? "/dashboard/msme/payments" : "/dashboard/payments"') &&
+      taxVatCompliancePage.includes('!isMsmeView && msmeMap.get(profile.msme_id)?.msme_id') &&
+      taxVatCompliancePage.includes('DBIN-derived readiness and transaction signals'),
+    "Expected the shared Tax/VAT page to render NRS-safe destinations, institutional wording, and taxpayer profile links.",
+  );
+});
+
+check("NRS report workspace allows revenue roles and keeps institutional disclosure", () => {
+  assert(
+    reportsDashboardPage.includes("canAccessNrsWorkspace(ctx)") &&
+      reportsDashboardPage.includes('"super_admin"') &&
+      reportsDashboardPage.includes("NRS Reporting & Export Centre") &&
+      reportsDashboardPage.includes("demoDisclosure()") &&
+      authProfile.includes('"officer@firs.gov.ng": "firs_officer"'),
+    "Expected NRS/FIRS report access and legacy FIRS demo account role inference to be configured.",
   );
 });
 

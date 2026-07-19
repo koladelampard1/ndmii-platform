@@ -94,11 +94,11 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/reviews", "/dashboard/payments"],
   },
   nrs_officer: {
-    allowed: ["/dashboard/nrs", "/dashboard/payments", "/dashboard/revenue-guides"],
-    denied: ["/dashboard/reviews", "/dashboard/associations"],
+    allowed: ["/dashboard/nrs", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs", "/dashboard/payments", "/dashboard/revenue-guides", "/dashboard/reviews/compliance", "/dashboard/reports"],
+    denied: ["/dashboard/associations", "/dashboard/msme"],
   },
   firs_officer: {
-    allowed: ["/dashboard/nrs", "/dashboard/payments", "/dashboard/revenue-guides"],
-    denied: ["/dashboard/reviews", "/dashboard/associations"],
+    allowed: ["/dashboard/nrs", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs", "/dashboard/payments", "/dashboard/revenue-guides", "/dashboard/reviews/compliance", "/dashboard/reports"],
+    denied: ["/dashboard/associations", "/dashboard/msme"],
   },
 };

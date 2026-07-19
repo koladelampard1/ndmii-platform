@@ -61,7 +61,7 @@ async function recordPayment(formData: FormData) {
     metadata: { msmeId, amount, receiptRef },
   });
 
-  redirect(`/dashboard/msme/payments?receipt=${receiptRef}`);
+  redirect(ctx.role === "msme" ? `/dashboard/msme/payments?receipt=${receiptRef}` : `/dashboard/payments?receipt=${receiptRef}`);
 }
 
 function formatCurrency(value: number) {
@@ -108,6 +108,12 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
 
   if (!ctx || (ctx.role !== "msme" && !canAccessNrsWorkspace(ctx))) redirect("/access-denied");
   if (msmeOnly && ctx.role !== "msme") redirect("/dashboard/payments");
+  const isMsmeView = ctx.role === "msme";
+  const workspaceHref = isMsmeView ? "/dashboard/msme/payments" : "/dashboard/payments";
+  const complianceHref = isMsmeView ? "/dashboard/msme/compliance" : "/dashboard/reviews/compliance";
+  const complianceLinkLabel = isMsmeView ? "Tax Guide" : "Compliance Review Queue";
+  const guidanceLinkLabel = isMsmeView ? "Learn more about tax compliance" : "Open compliance review queue";
+  const resourceLinkLabel = isMsmeView ? "View Tax Guide" : "Open Review Queue";
 
   let profilesQuery = supabase
     .from("tax_profiles")
@@ -181,10 +187,18 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
   const noticesPreview = typedNotices.slice(0, 5);
 
   const badge = complianceIsHealthy
-    ? { title: "You are Tax Compliant", body: "Great! You have no outstanding tax obligations at the moment.", className: "border-emerald-200 bg-emerald-50" }
+    ? {
+        title: isMsmeView ? "You are Tax Compliant" : "Records in view are compliance-ready",
+        body: isMsmeView
+          ? "Great! You have no outstanding tax obligations at the moment."
+          : "The current DBIN-derived tax/VAT view has no outstanding obligations requiring immediate follow-up.",
+        className: "border-emerald-200 bg-emerald-50",
+      }
     : {
-        title: "Action required on tax compliance",
-        body: `You currently have ${formatCurrency(totalOutstanding)} outstanding across ${rows.length} obligation record${rows.length === 1 ? "" : "s"}.`,
+        title: isMsmeView ? "Action required on tax compliance" : "Follow-up required on tax compliance",
+        body: isMsmeView
+          ? `You currently have ${formatCurrency(totalOutstanding)} outstanding across ${rows.length} obligation record${rows.length === 1 ? "" : "s"}.`
+          : `${formatCurrency(totalOutstanding)} in DBIN-derived outstanding obligations appears across ${rows.length} record${rows.length === 1 ? "" : "s"} in this view.`,
         className: "border-amber-200 bg-amber-50",
       };
 
@@ -193,17 +207,21 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">My Tax / VAT Compliance</h1>
-            <p className="mt-1 text-sm text-slate-600">View your tax obligations, payments, and compliance status.</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">{isMsmeView ? "My Tax / VAT Compliance" : "Tax / VAT Compliance Intelligence"}</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              {isMsmeView
+                ? "View your tax obligations, payments, and compliance status."
+                : "Monitor DBIN-derived tax obligations, payment signals, notices, and compliance status across participating businesses."}
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/dashboard/msme/compliance"
+              href={complianceHref}
               className="inline-flex h-10 items-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <FileSearch className="mr-2 h-4 w-4" />
-              Tax Guide
+              {complianceLinkLabel}
             </Link>
           </div>
         </div>
@@ -226,7 +244,7 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
             {complianceIsHealthy ? <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-700" /> : <ShieldX className="mt-0.5 h-5 w-5 text-amber-700" />}
             <div><h2 className="text-base font-semibold text-slate-900">{badge.title}</h2><p className="text-sm text-slate-700">{badge.body}</p></div>
           </div>
-          <Link href="/dashboard/msme/compliance" className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Learn more about tax compliance</Link>
+          <Link href={complianceHref} className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">{guidanceLinkLabel}</Link>
         </div>
       </article>
 
@@ -236,43 +254,43 @@ export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: {
           <div><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Tax Type</label><select name="taxType" defaultValue={params.taxType ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All tax types</option>{taxTypes.map((taxType) => (<option key={taxType} value={taxType}>{formatTaxType(taxType)}</option>))}</select></div>
           <div><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Compliance Status</label><select name="compliance" defaultValue={params.compliance ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All statuses</option><option value="compliant">Compliant</option><option value="due">Due</option><option value="overdue">Overdue</option><option value="pending">Pending</option></select></div>
           <div><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Tax Year</label><select name="taxYear" defaultValue={params.taxYear ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All years</option>{taxYears.map((year) => (<option key={year} value={year}>{year}</option>))}</select></div>
-          <div className="flex items-end gap-2"><Button className="flex-1 bg-emerald-700 hover:bg-emerald-800"><Filter className="mr-1.5 h-4 w-4" />Apply Filters</Button><Link href={msmeOnly ? "/dashboard/msme/payments" : "/dashboard/payments"} className="inline-flex h-10 items-center px-2 text-sm text-slate-600 hover:text-slate-800">Reset</Link></div>
+          <div className="flex items-end gap-2"><Button className="flex-1 bg-emerald-700 hover:bg-emerald-800"><Filter className="mr-1.5 h-4 w-4" />Apply Filters</Button><Link href={workspaceHref} className="inline-flex h-10 items-center px-2 text-sm text-slate-600 hover:text-slate-800">Reset</Link></div>
         </div>
       </form>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr),minmax(320px,1fr)]">
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold text-slate-900">Tax Obligations</h2><p className="text-sm text-slate-600">Overview of your tax/VAT obligations.</p></div><Bell className="h-5 w-5 text-slate-400" /></div>
+          <div className="mb-3 flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold text-slate-900">Tax Obligations</h2><p className="text-sm text-slate-600">{isMsmeView ? "Overview of your tax/VAT obligations." : "Overview of DBIN-derived taxpayer obligations in this view."}</p></div><Bell className="h-5 w-5 text-slate-400" /></div>
           {rows.length > 0 ? (
             <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="border-y border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="px-3 py-2">Tax Type</th><th className="px-3 py-2">Tax Year</th><th className="px-3 py-2">Period</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Amount (₦)</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Action</th></tr></thead><tbody>{rows.map((profile) => {
               const obligationStatus = statusLabel(profile.compliance_status ?? profile.arrears_status);
               const period = profile.vat_applicable ? "Monthly VAT Cycle" : "Tax Filing Cycle";
               return (
-                <tr key={profile.msme_id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium text-slate-700">{formatTaxType(profile.tax_category)}</td><td className="px-3 py-3 text-slate-600">{profile.last_reviewed_at ? new Date(profile.last_reviewed_at).getFullYear() : "—"}</td><td className="px-3 py-3 text-slate-600">{period}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${obligationStatus.className}`}>{obligationStatus.label}</span></td><td className="px-3 py-3 text-slate-600">{formatCurrency(Number(profile.outstanding_amount ?? 0))}</td><td className="px-3 py-3 text-slate-600">{formatDate(profile.last_reviewed_at)}</td><td className="px-3 py-3">{Number(profile.outstanding_amount ?? 0) > 0 ? (<form action={recordPayment} className="flex items-center gap-2"><input type="hidden" name="msme_id" value={profile.msme_id} /><input type="hidden" name="amount" value={Number(profile.outstanding_amount ?? 0)} /><Button size="sm" className="bg-emerald-700 hover:bg-emerald-800">Pay now</Button></form>) : (<span className="text-xs text-slate-500">No action</span>)}</td></tr>
+                <tr key={profile.msme_id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium text-slate-700">{formatTaxType(profile.tax_category)}</td><td className="px-3 py-3 text-slate-600">{profile.last_reviewed_at ? new Date(profile.last_reviewed_at).getFullYear() : "—"}</td><td className="px-3 py-3 text-slate-600">{period}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${obligationStatus.className}`}>{obligationStatus.label}</span></td><td className="px-3 py-3 text-slate-600">{formatCurrency(Number(profile.outstanding_amount ?? 0))}</td><td className="px-3 py-3 text-slate-600">{formatDate(profile.last_reviewed_at)}</td><td className="px-3 py-3">{isMsmeView && Number(profile.outstanding_amount ?? 0) > 0 ? (<form action={recordPayment} className="flex items-center gap-2"><input type="hidden" name="msme_id" value={profile.msme_id} /><input type="hidden" name="amount" value={Number(profile.outstanding_amount ?? 0)} /><Button size="sm" className="bg-emerald-700 hover:bg-emerald-800">Pay now</Button></form>) : !isMsmeView && msmeMap.get(profile.msme_id)?.msme_id ? (<Link href={`/dashboard/nrs/${msmeMap.get(profile.msme_id)?.msme_id}`} className="text-xs font-semibold text-emerald-700 hover:underline">Open profile</Link>) : (<span className="text-xs text-slate-500">No action</span>)}</td></tr>
               );
             })}</tbody></table></div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center"><Receipt className="h-12 w-12 text-slate-400" /><h3 className="mt-3 text-lg font-semibold text-slate-900">No tax obligations</h3><p className="mt-1 max-w-md text-sm text-slate-600">You have no tax obligations for the selected filters.</p><Link href={msmeOnly ? "/dashboard/msme/payments" : "/dashboard/payments"} className="mt-4 inline-flex h-10 items-center rounded-md bg-emerald-700 px-4 text-sm font-medium text-white transition hover:bg-emerald-800">View All Years</Link></div>
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center"><Receipt className="h-12 w-12 text-slate-400" /><h3 className="mt-3 text-lg font-semibold text-slate-900">No tax obligations</h3><p className="mt-1 max-w-md text-sm text-slate-600">{isMsmeView ? "You have no tax obligations for the selected filters." : "No DBIN-derived obligations match the selected filters."}</p><Link href={workspaceHref} className="mt-4 inline-flex h-10 items-center rounded-md bg-emerald-700 px-4 text-sm font-medium text-white transition hover:bg-emerald-800">View All Years</Link></div>
           )}
         </article>
 
         <aside className="space-y-4">
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-2 flex items-start justify-between gap-2"><div><h3 className="text-lg font-semibold text-slate-900">Recent Payments</h3><p className="text-sm text-slate-600">Your recent tax/VAT payments.</p></div><Link href={msmeOnly ? "/dashboard/msme/payments" : "/dashboard/payments"} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">View All</Link></div>
-            {paymentsPreview.length > 0 ? (<div className="space-y-2">{paymentsPreview.map((payment) => {const paymentStatus = statusLabel(payment.status);return (<div key={payment.id} className="rounded-xl border border-slate-200 p-2.5"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-900">{formatCurrency(Number(payment.amount ?? 0))}</p><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${paymentStatus.className}`}>{paymentStatus.label}</span></div><p className="text-xs text-slate-600">{formatDate(payment.payment_date)} • {formatTaxType(payment.tax_type)}</p><p className="truncate text-xs text-slate-500">Ref: {payment.receipt_reference ?? "Not available"}</p></div>);})}</div>) : (<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center"><CircleDollarSign className="mx-auto h-9 w-9 text-slate-400" /><h4 className="mt-2 text-sm font-semibold text-slate-900">No payments yet</h4><p className="mt-1 text-xs text-slate-600">Your tax payment history will appear here once you make a payment.</p></div>)}
+            <div className="mb-2 flex items-start justify-between gap-2"><div><h3 className="text-lg font-semibold text-slate-900">Recent Payments</h3><p className="text-sm text-slate-600">{isMsmeView ? "Your recent tax/VAT payments." : "Recent DBIN payment records visible to the revenue workspace."}</p></div><Link href={workspaceHref} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">View All</Link></div>
+            {paymentsPreview.length > 0 ? (<div className="space-y-2">{paymentsPreview.map((payment) => {const paymentStatus = statusLabel(payment.status);return (<div key={payment.id} className="rounded-xl border border-slate-200 p-2.5"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-900">{formatCurrency(Number(payment.amount ?? 0))}</p><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${paymentStatus.className}`}>{paymentStatus.label}</span></div><p className="text-xs text-slate-600">{formatDate(payment.payment_date)} • {formatTaxType(payment.tax_type)}</p><p className="truncate text-xs text-slate-500">Ref: {payment.receipt_reference ?? "Not available"}</p></div>);})}</div>) : (<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center"><CircleDollarSign className="mx-auto h-9 w-9 text-slate-400" /><h4 className="mt-2 text-sm font-semibold text-slate-900">No payments yet</h4><p className="mt-1 text-xs text-slate-600">{isMsmeView ? "Your tax payment history will appear here once you make a payment." : "DBIN payment records will appear here as participating businesses record transactions."}</p></div>)}
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h3 className="text-lg font-semibold text-slate-900">Important Notices</h3>{noticesPreview.length > 0 ? (<div className="mt-3 space-y-2">{noticesPreview.map((notice, idx) => {const metadata = notice.metadata ?? {};const title = String(metadata.notice_type ?? "Regulatory Notice");const message = String(metadata.message ?? "Please review this notice and take action where required.");const noticeStatus = String(metadata.status ?? "Notice");return (<div key={`${notice.created_at}-${idx}`} className="rounded-xl border border-slate-200 p-2.5"><p className="text-xs font-semibold uppercase text-amber-700">{noticeStatus}</p><p className="text-sm font-semibold text-slate-900">{title}</p><p className="line-clamp-2 text-xs text-slate-600">{message}</p><p className="mt-1 text-xs text-slate-500">{formatDate(notice.created_at)}</p></div>);})}</div>) : (<div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><h4 className="text-sm font-semibold text-slate-900">No notices at the moment</h4><p className="mt-1 text-xs text-slate-600">You’re all caught up! We’ll notify you if anything requires your attention.</p></div>)}</article>
+          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h3 className="text-lg font-semibold text-slate-900">Important Notices</h3>{noticesPreview.length > 0 ? (<div className="mt-3 space-y-2">{noticesPreview.map((notice, idx) => {const metadata = notice.metadata ?? {};const title = String(metadata.notice_type ?? "Regulatory Notice");const message = String(metadata.message ?? "Please review this notice and take action where required.");const noticeStatus = String(metadata.status ?? "Notice");return (<div key={`${notice.created_at}-${idx}`} className="rounded-xl border border-slate-200 p-2.5"><p className="text-xs font-semibold uppercase text-amber-700">{noticeStatus}</p><p className="text-sm font-semibold text-slate-900">{title}</p><p className="line-clamp-2 text-xs text-slate-600">{message}</p><p className="mt-1 text-xs text-slate-500">{formatDate(notice.created_at)}</p></div>);})}</div>) : (<div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><h4 className="text-sm font-semibold text-slate-900">No notices at the moment</h4><p className="mt-1 text-xs text-slate-600">{isMsmeView ? "You’re all caught up! We’ll notify you if anything requires your attention." : "No NRS notices have been issued for the current DBIN-derived view."}</p></div>)}</article>
         </aside>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Stay Compliant</h3><ul className="mt-2 space-y-1.5 text-sm text-slate-700"><li>• File your returns on time</li><li>• Keep accurate records</li><li>• Pay outstanding obligations</li><li>• Request reliefs where eligible</li><li>• Stay updated on tax regulations</li></ul></article>
-        <article className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Need Help?</h3><p className="mt-2 text-sm text-slate-700">Our support team is here to help you understand your tax obligations and compliance requirements.</p><Button className="mt-4 border border-sky-200 bg-white text-sky-700 hover:bg-sky-100" type="button"><CircleHelp className="mr-1.5 h-4 w-4" />Contact Support</Button></article>
-        <article className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">Tax Guides &amp; Resources</h3><p className="mt-2 text-sm text-slate-700">Access helpful guides, FAQs, and resources to manage your taxes with ease.</p><Link href="/dashboard/msme/compliance" className="mt-4 inline-flex h-10 items-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-100">View Tax Guide</Link></article>
+        <article className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">{isMsmeView ? "Stay Compliant" : "Compliance Follow-up"}</h3><ul className="mt-2 space-y-1.5 text-sm text-slate-700">{isMsmeView ? (<><li>• File your returns on time</li><li>• Keep accurate records</li><li>• Pay outstanding obligations</li><li>• Request reliefs where eligible</li><li>• Stay updated on tax regulations</li></>) : (<><li>• Prioritise businesses with outstanding obligations</li><li>• Review compliance evidence before decisions</li><li>• Use notices for clear taxpayer follow-up</li><li>• Treat invoice values as DBIN-derived exposure indicators</li></>)}</ul></article>
+        <article className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">{isMsmeView ? "Need Help?" : "Operational Guidance"}</h3><p className="mt-2 text-sm text-slate-700">{isMsmeView ? "Our support team is here to help you understand your tax obligations and compliance requirements." : "Use the NRS operations centre to open taxpayer profiles and review the underlying DBIN business context."}</p><Link href={isMsmeView ? "/contact" : "/dashboard/nrs"} className="mt-4 inline-flex h-10 items-center rounded-md border border-sky-200 bg-white px-4 text-sm font-medium text-sky-700 hover:bg-sky-100"><CircleHelp className="mr-1.5 h-4 w-4" />{isMsmeView ? "Contact Support" : "Open NRS Centre"}</Link></article>
+        <article className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4"><h3 className="text-lg font-semibold text-slate-900">{isMsmeView ? "Tax Guides & Resources" : "Review Resources"}</h3><p className="mt-2 text-sm text-slate-700">{isMsmeView ? "Access helpful guides, FAQs, and resources to manage your taxes with ease." : "Open the compliance review queue for evidence-led decisions and regulator-specific follow-up."}</p><Link href={complianceHref} className="mt-4 inline-flex h-10 items-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-100">{resourceLinkLabel}</Link></article>
       </section>
 
-      <footer className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800"><p>Your tax information is secure and encrypted. We follow strict security measures to protect your data.</p></footer>
+      <footer className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800"><p>{isMsmeView ? "Your tax information is secure and encrypted. We follow strict security measures to protect your data." : "This workspace presents DBIN-derived readiness and transaction signals for institutional review; it does not represent live statutory filing or remittance."}</p></footer>
     </section>
   );
 }
