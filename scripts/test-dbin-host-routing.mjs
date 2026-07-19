@@ -45,6 +45,7 @@ test("BOI authentication routes remain directly accessible", () => {
 });
 
 test("BOI authenticated workspaces remain directly accessible", () => {
+  assert.equal(resolveDbinRewritePath("boi", "/dashboard/boi"), null);
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/admin"), null);
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/impact-intelligence"), null);
   assert.equal(resolveDbinRewritePath("boi", "/admin"), null);

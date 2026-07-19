@@ -34,7 +34,13 @@ const logoutRoute = read("src/app/logout/route.ts");
 const authCookies = read("src/lib/auth/cookies.ts");
 const supabaseServer = read("src/lib/supabase/server.ts");
 const boiPortal = read("src/app/boi/page.tsx");
+const boiWorkspacePage = read("src/app/dashboard/boi/page.tsx");
+const boiWorkspaceLayout = read("src/app/dashboard/boi/layout.tsx");
+const boiWorkspaceSectionPage = read("src/app/dashboard/boi/[section]/page.tsx");
 const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
+const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
+const workspaceLanguage = read("src/lib/workspaces/workspace-language.ts");
+const workspaceShell = read("src/components/workspace/workspace-shell.tsx");
 const adminGateway = read("src/app/admin/page.tsx");
 const adminDashboardLayout = read("src/app/dashboard/admin/layout.tsx");
 const adminDashboardPage = read("src/app/dashboard/admin/page.tsx");
@@ -279,6 +285,8 @@ check("logout clears Supabase and DBIN cookies before returning to login", () =>
 check("authenticated BOI, Impact Intelligence, and admin surfaces expose account actions", () => {
   assert(
     boiPortal.includes("<AccountActions") &&
+      boiWorkspaceLayout.includes("<WorkspaceShell") &&
+      boiWorkspaceLayout.includes('getWorkspaceDefinition("boi")') &&
       impactShell.includes("<AccountActions") &&
       adminGateway.includes("<AccountActions"),
     "Expected authenticated institutional surfaces to expose logout and switch-account actions.",
@@ -720,13 +728,47 @@ check("BOI persona aliases resolve to the BOI workspace without LCDBO leakage", 
     normalizeUserRole("boi_officer") === "boi_executive" &&
       normalizeUserRole("boi_manager") === "boi_executive" &&
       normalizeUserRole("boi_admin") === "boi_executive" &&
-      getDefaultDashboardRoute(normalizeUserRole("boi_officer")) === "/dashboard/impact-intelligence" &&
+      getDefaultDashboardRoute(normalizeUserRole("boi_officer")) === "/dashboard/boi" &&
+      canAccessRoute("boi_executive", "/dashboard/boi") &&
+      canAccessRoute("boi_executive", "/dashboard/boi/business-pipeline") &&
       canAccessRoute("boi_executive", "/dashboard/impact-intelligence") &&
       !canAccessRoute("boi_executive", "/dashboard/lcdbo") &&
       impactShellCompact.includes('role === "boi_executive"') &&
       impactShellCompact.includes('item.href.startsWith("/dashboard/lcdbo")') &&
       impactShellCompact.includes("BOI_NAV_LABELS"),
     "Expected BOI officer, manager, and admin aliases to land in BOI Impact Intelligence while excluding LCDBO navigation.",
+  );
+});
+
+check("workspace registry establishes product-specific DPI workspaces", () => {
+  assert(
+    workspaceRegistry.includes('id: "boi"') &&
+      workspaceRegistry.includes('homepage: "/dashboard/boi"') &&
+      workspaceRegistry.includes("Business Pipeline") &&
+      workspaceRegistry.includes("Investment Readiness") &&
+      workspaceRegistry.includes('id: "nrs"') &&
+      workspaceRegistry.includes('id: "fccpc"') &&
+      workspaceRegistry.includes('id: "lcdbo"') &&
+      workspaceRegistry.includes('id: "property"') &&
+      workspaceRegistry.includes('id: "msme"') &&
+      workspaceRegistry.includes('id: "association"') &&
+      workspaceRegistry.includes('id: "admin"') &&
+      workspaceLanguage.includes("workspaceTerm") &&
+      workspaceShell.includes("WorkspaceShell"),
+    "Expected a central registry, terminology layer, and reusable workspace shell for institutional workspaces.",
+  );
+});
+
+check("BOI product routes bridge to proven Impact Intelligence workflows", () => {
+  assert(
+    boiPortal.includes("https://app.dbin.ng/dashboard/boi") &&
+      boiWorkspacePage.includes("BOI investment intelligence") &&
+      boiWorkspacePage.includes("No LCDBO workspace leakage") &&
+      boiWorkspaceSectionPage.includes('"business-pipeline": "/dashboard/impact-intelligence/cohorts"') &&
+      boiWorkspaceSectionPage.includes('"funding-pipeline": "/dashboard/impact-intelligence/interventions"') &&
+      boiWorkspaceSectionPage.includes('"investment-readiness": "/dashboard/impact-intelligence/assessments"') &&
+      boiWorkspaceSectionPage.includes('"risk-signals": "/dashboard/impact-intelligence/risk-flags"'),
+    "Expected /dashboard/boi product routes and compatibility bridges for existing BOI workflows.",
   );
 });
 

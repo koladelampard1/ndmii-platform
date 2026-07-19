@@ -58,8 +58,8 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/nrs", "/dashboard/associations"],
   },
   boi_executive: {
-    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
-    denied: ["/dashboard/msme", "/dashboard/admin"],
+    allowed: ["/dashboard/boi", "/dashboard/boi/business-pipeline", "/dashboard/boi/investment-readiness", "/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
+    denied: ["/dashboard/lcdbo", "/dashboard/msme", "/dashboard/admin"],
   },
   programme_officer: {
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports"],
