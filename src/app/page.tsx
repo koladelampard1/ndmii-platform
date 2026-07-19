@@ -141,7 +141,7 @@ function PrimaryLink({ href, children }: { href: string; children: React.ReactNo
   return (
     <Link
       href={href}
-      className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-300 px-5 text-sm font-black text-emerald-950 transition hover:-translate-y-0.5 hover:bg-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
+      className="inline-flex min-h-12 items-center justify-center whitespace-nowrap rounded-full bg-emerald-300 px-5 text-sm font-black leading-none text-emerald-950 transition hover:-translate-y-0.5 hover:bg-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100"
     >
       {children}
     </Link>
@@ -152,7 +152,7 @@ function QuietLink({ href, children, inverse = false }: { href: string; children
   return (
     <Link
       href={href}
-      className={`group inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 ${
+      className={`group inline-flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-sm font-black leading-none transition focus-visible:outline-none focus-visible:ring-2 ${
         inverse
           ? "border border-white/25 text-white hover:bg-white/10 focus-visible:ring-emerald-100"
           : "border border-slate-200 bg-white text-slate-950 hover:border-emerald-300 hover:shadow-sm focus-visible:ring-emerald-700"
@@ -188,7 +188,7 @@ export default function LandingPage() {
       <main id="main-content">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
 
-        <section className="relative min-h-[calc(100svh-4rem)] overflow-hidden bg-slate-950 text-white">
+        <section className="relative overflow-hidden bg-slate-950 text-white lg:min-h-[calc(100svh-4.25rem)]">
           <Image
             src="/images/lcdbo/nigerian-manufacturing-hero.jpg"
             alt="Nigerian manufacturing team and production activity"
@@ -198,14 +198,14 @@ export default function LandingPage() {
             className="object-cover opacity-45"
           />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.38),transparent_32%),linear-gradient(90deg,rgba(2,6,23,0.96)_0%,rgba(2,6,23,0.82)_46%,rgba(2,6,23,0.42)_100%)]" />
-          <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:py-20">
+          <div className="relative mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:py-14 xl:gap-10 xl:py-16">
             <div>
               <SectionLabel inverse>Digital Business Identity Network</SectionLabel>
-              <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.98] tracking-[-0.06em] sm:text-6xl lg:text-7xl">
+              <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[1.02] tracking-[-0.055em] min-[390px]:text-5xl sm:text-6xl lg:text-6xl xl:text-7xl">
                 The infrastructure powering trusted businesses.
               </h1>
               <p className="mt-6 max-w-xl text-base leading-8 text-emerald-50/90">Identity, records, verification, markets and programmes.</p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:flex-wrap">
                 <PrimaryLink href="/register">Register Business</PrimaryLink>
                 <QuietLink href="/platform" inverse>Explore Platform</QuietLink>
                 <QuietLink href="#journey" inverse>Watch Platform Journey</QuietLink>
@@ -213,25 +213,25 @@ export default function LandingPage() {
             </div>
 
             <div className="relative">
-              <div className="absolute -inset-8 rounded-[3rem] bg-emerald-300/20 blur-3xl" />
+              <div className="absolute -inset-5 rounded-[3rem] bg-emerald-300/20 blur-3xl sm:-inset-8" />
               <div className="relative rounded-[2rem] border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-xl">
-                <div className="rounded-[1.5rem] bg-slate-950/80 p-4">
-                  <div className="mb-4 flex items-center justify-between gap-4 text-xs font-bold text-slate-400">
+                <div className="rounded-[1.5rem] bg-slate-950/80 p-3.5 sm:p-4">
+                  <div className="mb-3 flex min-w-0 items-center justify-between gap-3 text-[11px] font-bold text-slate-400 sm:mb-4 sm:text-xs">
                     <span>DBIN journey</span>
-                    <span>platform experience</span>
+                    <span className="whitespace-nowrap">platform experience</span>
                   </div>
-                  <ol className="grid gap-3">
+                  <ol className="grid gap-2.5 sm:gap-3">
                     {HERO_STEPS.map((step, index) => (
                       <li
                         key={step}
-                        className="dbin-journey-step flex items-center gap-3 rounded-2xl border border-white/10 bg-white/8 p-3"
+                        className="dbin-journey-step flex min-h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/8 px-3 py-2.5"
                         style={{ animationDelay: `${index * 0.55}s` }}
                       >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-300 text-xs font-black text-emerald-950">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-xs font-black text-emerald-950 sm:h-8 sm:w-8">
                           {index + 1}
                         </span>
-                        <span className="text-sm font-black text-white">{step}</span>
-                        <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-200" aria-hidden="true" />
+                        <span className="min-w-0 text-sm font-black leading-5 text-white">{step}</span>
+                        <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-emerald-200" aria-hidden="true" />
                       </li>
                     ))}
                   </ol>
@@ -244,8 +244,8 @@ export default function LandingPage() {
         <section className="bg-white py-16" aria-labelledby="product-experience">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="mb-8 max-w-2xl">
-                <SectionLabel>Product experience</SectionLabel>
-                <h2 id="product-experience" className="mt-3 text-4xl font-black tracking-[-0.045em] sm:text-5xl">
+              <SectionLabel>Product experience</SectionLabel>
+              <h2 id="product-experience" className="mt-3 text-4xl font-black tracking-[-0.045em] sm:text-5xl">
                 Feel DBIN.
               </h2>
             </div>

@@ -195,14 +195,14 @@ export function ProductFrame({
       aria-label={`${frameTitle}. Illustrative product experience using fictional business data.`}
       className={`min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 ${className}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-950 px-4 py-3 text-white">
-        <div className="flex items-center gap-2" aria-hidden="true">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-slate-200 bg-slate-950 px-3 py-3 text-white sm:gap-3 sm:px-4">
+        <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
           <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
         </div>
-        <p className="truncate text-xs font-bold text-slate-300">{frameTitle}</p>
-        {status ? <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-200">{status}</span> : <span />}
+        <p className="min-w-0 truncate text-xs font-bold text-slate-300">{frameTitle}</p>
+        {status ? <span className="max-w-[8.5rem] shrink-0 truncate rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold leading-none text-slate-200 sm:max-w-none">{status}</span> : <span />}
       </div>
       <div className="bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_100%)] p-4 sm:p-5">
         {renderExperience(kind)}
@@ -225,7 +225,7 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
             title="See the DBIN ecosystem in action"
             description="Fictional, privacy-safe product experiences show how the platform feels across business, institutional and programme workflows."
           />
-          <Link href="/platform" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:border-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+          <Link href="/platform" className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 px-4 py-3 text-sm font-black leading-none text-slate-950 transition hover:border-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
             Explore platform <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -239,7 +239,7 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
               aria-controls={`product-panel-${item.id}`}
               id={`product-tab-${item.id}`}
               onClick={() => setActiveId(item.id)}
-              className={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+              className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-bold leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                 active.id === item.id ? "border-emerald-700 bg-emerald-700 text-white" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50"
               }`}
             >
@@ -258,7 +258,7 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
             <p className="mt-4 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">{active.eyebrow}</p>
             <h3 className="mt-3 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-4xl">{active.title}</h3>
             <p className="mt-4 text-base leading-7 text-slate-600">{active.description}</p>
-            <Link href={active.cta.href} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <Link href={active.cta.href} className="mt-6 inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-emerald-700 px-5 py-3 text-sm font-black leading-none text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
               {active.cta.label} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -292,7 +292,7 @@ export function CapabilityProofCard({
       </div>
       <h3 className="mt-5 text-lg font-black text-slate-950">{title}</h3>
       <p className="mt-3 text-sm leading-6 text-slate-600">{text}</p>
-      {href ? <p className="mt-4 inline-flex items-center gap-2 text-sm font-black text-emerald-700">Learn more <ArrowRight className="h-4 w-4" /></p> : null}
+      {href ? <p className="mt-4 inline-flex items-center gap-2 whitespace-nowrap text-sm font-black text-emerald-700">Learn more <ArrowRight className="h-4 w-4" /></p> : null}
     </article>
   );
 
@@ -336,7 +336,7 @@ export function CaseStudyProof({
             <div><dt className="font-black text-slate-900">Next stage</dt><dd className="text-slate-600">{item.next}</dd></div>
           </dl>
           {item.href ? (
-            <Link href={item.href} className="mt-5 inline-flex items-center gap-2 text-sm font-black text-emerald-700">
+            <Link href={item.href} className="mt-5 inline-flex items-center gap-2 whitespace-nowrap text-sm font-black text-emerald-700">
               Explore <ArrowRight className="h-4 w-4" />
             </Link>
           ) : null}
@@ -381,7 +381,7 @@ function IdentityPreview() {
       <div className="rounded-2xl border border-emerald-200 bg-white p-4">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Verified business credential</p>
         <h3 className="mt-3 text-2xl font-black text-slate-950">Eko Fresh Foods Ltd</h3>
-        <p className="mt-1 text-sm text-slate-600">Food Processing • Lagos • DBIN-LAG-2048</p>
+        <p className="mt-1 break-words text-sm text-slate-600">Food Processing • Lagos • DBIN-LAG-2048</p>
         <div className="mt-4 grid gap-2 text-sm">
           {["Profile complete", "Credential issued", "Public verification enabled"].map((item) => (
             <p key={item} className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 font-bold text-emerald-800">

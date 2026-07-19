@@ -78,18 +78,18 @@ export function DbinProductExperience() {
   const ActiveIcon = active.icon;
 
   return (
-    <div className="overflow-hidden rounded-[2rem] bg-slate-950 p-3 shadow-2xl shadow-emerald-950/20 ring-1 ring-slate-900/10">
+    <div className="min-w-0 overflow-hidden rounded-[2rem] bg-slate-950 p-2.5 shadow-2xl shadow-emerald-950/20 ring-1 ring-slate-900/10 sm:p-3">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3 text-white">
         <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
         <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-        <span className="ml-auto text-xs font-bold text-slate-400">workspace.dbin.ng</span>
+        <span className="ml-auto truncate text-xs font-bold text-slate-400">workspace.dbin.ng</span>
       </div>
 
-      <div className="grid min-h-[34rem] bg-white lg:grid-cols-[15rem_1fr]">
-        <aside className="border-b border-slate-200 bg-slate-50 p-4 lg:border-b-0 lg:border-r">
+      <div className="grid bg-white lg:min-h-[32rem] lg:grid-cols-[14rem_1fr] xl:grid-cols-[15rem_1fr]">
+        <aside className="min-w-0 border-b border-slate-200 bg-slate-50 p-3.5 lg:border-b-0 lg:border-r lg:p-4">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">DBIN Workspace</p>
-          <div className="mt-5 grid gap-2">
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] lg:mt-5 lg:grid lg:overflow-visible lg:pb-0">
             {PRODUCT_TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = tab.id === active.id;
@@ -98,7 +98,7 @@ export function DbinProductExperience() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveId(tab.id)}
-                  className={`flex min-h-11 items-center gap-3 rounded-2xl px-3 text-left text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                  className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-3 rounded-2xl px-3 text-left text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 lg:justify-start ${
                     isActive ? "bg-emerald-700 text-white shadow-lg shadow-emerald-200" : "text-slate-600 hover:bg-white hover:text-slate-950"
                   }`}
                   aria-pressed={isActive}
@@ -111,13 +111,13 @@ export function DbinProductExperience() {
           </div>
         </aside>
 
-        <section className="bg-[radial-gradient(circle_at_top_right,#dcfce7,transparent_36%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-5 sm:p-7">
+        <section className="min-w-0 bg-[radial-gradient(circle_at_top_right,#dcfce7,transparent_36%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-4 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Eko Fresh</p>
               <h3 className="mt-2 text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">{active.headline}</h3>
             </div>
-            <div className="rounded-3xl bg-slate-950 p-4 text-white shadow-xl">
+            <div className="shrink-0 rounded-3xl bg-slate-950 p-4 text-white shadow-xl">
               <ActiveIcon className="h-6 w-6 text-emerald-300" aria-hidden="true" />
               <p className="mt-3 text-2xl font-black">{active.metric}</p>
             </div>
@@ -141,7 +141,7 @@ export function DbinProductExperience() {
                   </div>
                 ))}
               </div>
-              <button className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
+              <button className="mt-6 inline-flex min-h-11 items-center whitespace-nowrap rounded-xl bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
                 {active.action}
               </button>
             </div>

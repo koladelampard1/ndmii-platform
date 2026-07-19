@@ -64,20 +64,24 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
       >
         Skip to content
       </a>
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-        <Link href="/" className="rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
-          <DbinBrandLogo textClassName="text-white" />
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 min-[1420px]:gap-4">
+        <Link href="/" className="min-w-0 flex-shrink-0 rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+          <DbinBrandLogo
+            className="min-w-0"
+            iconClassName="h-9 w-14 sm:h-10 sm:w-16"
+            textClassName="max-w-[10.75rem] truncate text-white min-[1536px]:max-w-none"
+          />
         </Link>
 
-        <nav aria-label="Primary navigation" className="hidden items-center gap-1 text-sm xl:flex">
+        <nav aria-label="Primary navigation" className="hidden items-center gap-0.5 text-[13px] min-[1420px]:flex min-[1536px]:gap-1 min-[1536px]:text-sm">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="group relative">
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full px-3 py-2 font-medium text-emerald-50/90 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-full px-2.5 font-medium leading-none text-emerald-50/90 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 min-[1536px]:px-3"
               >
                 {group.label}
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               </button>
               <div className="invisible absolute left-0 top-full w-[24rem] translate-y-2 rounded-2xl border border-emerald-100/15 bg-white p-3 text-slate-900 opacity-0 shadow-2xl transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
                 <div className="grid gap-1">
@@ -99,34 +103,34 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-full px-3 py-2 font-medium text-emerald-50/90 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              className="inline-flex h-10 items-center whitespace-nowrap rounded-full px-2.5 font-medium leading-none text-emerald-50/90 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 min-[1536px]:px-3"
             >
               {link.label}
             </Link>
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 xl:flex">
+        <div className="hidden shrink-0 items-center gap-2 min-[1420px]:flex">
           {isAuthenticated ? (
             <>
               {roleLabel ? (
-                <span className="rounded bg-emerald-900/80 px-2 py-1 text-xs uppercase tracking-wide text-emerald-100">
+                <span className="whitespace-nowrap rounded bg-emerald-900/80 px-2 py-1 text-xs uppercase tracking-wide text-emerald-100">
                   {roleLabel}
                 </span>
               ) : null}
-              <Link href="/logout">
-                <Button size="sm" variant="secondary">
+              <Link href="/logout" className="whitespace-nowrap">
+                <Button size="sm" variant="secondary" className="min-w-[5.75rem] whitespace-nowrap px-3.5 leading-none">
                   Sign out
                 </Button>
               </Link>
             </>
           ) : (
             <>
-              <Link href="/login">
-                <Button size="sm" variant="secondary">Sign in</Button>
+              <Link href="/login" className="whitespace-nowrap">
+                <Button size="sm" variant="secondary" className="min-w-[5.5rem] whitespace-nowrap px-3.5 leading-none">Sign in</Button>
               </Link>
-              <Link href="/register" className="sm:ml-1">
-                <Button size="sm" className="bg-emerald-500 text-emerald-950 hover:bg-emerald-400">Register</Button>
+              <Link href="/register" className="whitespace-nowrap">
+                <Button size="sm" className="min-w-[5.75rem] whitespace-nowrap bg-emerald-500 px-3.5 leading-none text-emerald-950 hover:bg-emerald-400">Register</Button>
               </Link>
             </>
           )}
@@ -137,14 +141,14 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
           aria-expanded={mobileOpen}
           aria-controls="mobile-public-navigation"
           onClick={() => setMobileOpen((value) => !value)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 xl:hidden"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 min-[1420px]:hidden"
         >
           <span className="sr-only">{mobileOpen ? "Close navigation" : "Open navigation"}</span>
           {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
         </button>
       </div>
       {mobileOpen ? (
-        <div id="mobile-public-navigation" className="border-t border-white/10 bg-emerald-950 px-4 pb-5 xl:hidden">
+        <div id="mobile-public-navigation" className="max-h-[calc(100svh-4.25rem)] overflow-y-auto border-t border-white/10 bg-emerald-950 px-4 pb-5 min-[1420px]:hidden">
           <nav aria-label="Mobile navigation" className="mx-auto grid max-w-7xl gap-4 pt-4">
             {NAV_GROUPS.map((group) => (
               <section key={group.label} aria-labelledby={`mobile-${group.label.replace(/\s+/g, "-").toLowerCase()}`}>
@@ -169,15 +173,15 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
             </div>
             <div className="grid gap-2 pt-2 sm:grid-cols-2">
               {isAuthenticated ? (
-                <Link href="/logout" onClick={() => setMobileOpen(false)} className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-emerald-950">
+                <Link href="/logout" onClick={() => setMobileOpen(false)} className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-md bg-white px-4 text-sm font-semibold text-emerald-950">
                   Sign out
                 </Link>
               ) : (
                 <>
-                  <Link href="/login" onClick={() => setMobileOpen(false)} className="inline-flex h-10 items-center justify-center rounded-md border border-white/30 px-4 text-sm font-semibold text-white">
+                  <Link href="/login" onClick={() => setMobileOpen(false)} className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-md border border-white/30 px-4 text-sm font-semibold text-white">
                     Sign in
                   </Link>
-                  <Link href="/register" onClick={() => setMobileOpen(false)} className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950">
+                  <Link href="/register" onClick={() => setMobileOpen(false)} className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-md bg-emerald-400 px-4 text-sm font-semibold text-emerald-950">
                     Register
                   </Link>
                 </>

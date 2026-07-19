@@ -49,7 +49,7 @@ export function DbinBrandLogo({
         </svg>
       </span>
       {showText ? (
-        <span className={cn("text-sm font-semibold leading-tight", compactOnMobile ? "hidden sm:inline" : "inline", textClassName)}>
+        <span className={cn("whitespace-nowrap text-sm font-semibold leading-tight", compactOnMobile ? "hidden sm:inline-block" : "inline-block", textClassName)}>
           Digital Business Identity Network (DBIN)
         </span>
       ) : null}
