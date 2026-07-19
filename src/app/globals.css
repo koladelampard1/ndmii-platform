@@ -23,6 +23,39 @@ body {
   }
 }
 
+.dbin-journey-step {
+  animation: dbin-journey-pulse 4.6s ease-in-out infinite;
+}
+
+.dbin-logo-wall {
+  animation: dbin-logo-scroll 34s linear infinite;
+}
+
+@keyframes dbin-journey-pulse {
+  0%,
+  78%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(0);
+  }
+  12%,
+  26% {
+    border-color: rgba(110, 231, 183, 0.62);
+    background: rgba(16, 185, 129, 0.18);
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes dbin-logo-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 /* Impact Intelligence Phase 1 polish: preserve dense desktop layouts while
    keeping executive content readable and operable on narrow viewports. */
 .impact-intelligence-workspace {
