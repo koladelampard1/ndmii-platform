@@ -12,13 +12,13 @@ export default function ForMsmesPage() {
     >
       <section className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div>
-          <ProductStatusBadge status="Live" />
+          <ProductStatusBadge status="Operational" />
           <h2 className="mt-4 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-5xl">A practical journey, not just a certificate.</h2>
           <p className="mt-4 text-base leading-7 text-slate-600">
             Register once, build useful records, become easier to verify and prepare for opportunities that require trust and evidence.
           </p>
         </div>
-        <ProductFrame kind="identity" status="Live" />
+        <ProductFrame kind="identity" status="Operational" />
       </section>
 
       <section className="mt-14">
@@ -41,16 +41,16 @@ export default function ForMsmesPage() {
 
       <section className="mt-14 grid gap-5 lg:grid-cols-3">
         <ProductFrame kind="operations" status="Available" />
-        <ProductFrame kind="compliance" status="Pilot" />
-        <ProductFrame kind="finance" status="Programme capability" />
+        <ProductFrame kind="compliance" status="Available" />
+        <ProductFrame kind="finance" status="Platform Capability" />
       </section>
 
       <section className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <CapabilityProofCard title="Business identity" text="A trusted profile for verification and discovery." status="Live" href="/platform/business-identity" />
+        <CapabilityProofCard title="Business identity" text="A trusted profile for verification and discovery." status="Operational" href="/platform/business-identity" />
         <CapabilityProofCard title="Invoice workspace" text="Operating records that show commercial activity." status="Available" href="/platform/business-tools" />
-        <CapabilityProofCard title="Compliance checklist" text="Evidence and readiness workflows for better preparation." status="Pilot" href="/platform/compliance" />
-        <CapabilityProofCard title="Marketplace visibility" text="A pathway to verified buyer discovery." status="Live" href="/marketplace" />
-        <CapabilityProofCard title="Finance readiness" text="Evidence-backed readiness, not guaranteed finance access." status="Programme capability" href="/for-financial-institutions" />
+        <CapabilityProofCard title="Compliance checklist" text="Evidence and readiness workflows for better preparation." status="Available" href="/platform/compliance" />
+        <CapabilityProofCard title="Marketplace visibility" text="A pathway to verified buyer discovery." status="Operational" href="/marketplace" />
+        <CapabilityProofCard title="Finance readiness" text="Evidence-backed readiness, not guaranteed finance access." status="Platform Capability" href="/for-financial-institutions" />
       </section>
     </PublicPageShell>
   );

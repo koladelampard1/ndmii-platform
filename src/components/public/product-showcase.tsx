@@ -12,15 +12,14 @@ import {
 } from "lucide-react";
 
 export type ProductStatus =
-  | "Live"
   | "Available"
-  | "Pilot"
-  | "Controlled demonstration"
-  | "Programme capability"
-  | "Public verification surface"
-  | "Coming soon";
+  | "Operational"
+  | "Institutional Capability"
+  | "Platform Capability"
+  | "Business Verification"
+  | "Coming Soon";
 
-export type ProductPreviewKind =
+export type ProductExperienceKind =
   | "identity"
   | "operations"
   | "compliance"
@@ -40,7 +39,7 @@ export type ProductShowcaseItem = {
   status: ProductStatus;
   description: string;
   cta: { label: string; href: string };
-  kind: ProductPreviewKind;
+  kind: ProductExperienceKind;
 };
 
 export const FICTIONAL_BUSINESSES = [
@@ -58,7 +57,7 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Business Identity",
     title: "A trusted profile a business can carry across the ecosystem.",
     eyebrow: "Digital identity",
-    status: "Live",
+    status: "Operational",
     description: "DBIN turns onboarding information into a structured business profile, credential-ready record and public verification pathway.",
     cta: { label: "Explore business identity", href: "/platform/business-identity" },
     kind: "identity",
@@ -78,7 +77,7 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Compliance & Tax",
     title: "Readiness workflows before official regulatory integration.",
     eyebrow: "Evidence and readiness",
-    status: "Pilot",
+    status: "Available",
     description: "DBIN supports compliance checklists, evidence submission, reminders and tax-readiness visibility without claiming official filing or remittance.",
     cta: { label: "Explore compliance", href: "/platform/compliance" },
     kind: "compliance",
@@ -87,9 +86,9 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     id: "revenue",
     tab: "Revenue Intelligence",
     title: "Revenue visibility from business activity signals.",
-    eyebrow: "Controlled demonstration",
-    status: "Controlled demonstration",
-    description: "NRS-oriented previews show how invoice-derived exposure, VAT signals and readiness indicators can support public-sector intelligence.",
+    eyebrow: "Institutional intelligence",
+    status: "Institutional Capability",
+    description: "NRS-oriented experiences show how invoice-derived exposure, VAT signals and readiness indicators can support public-sector intelligence.",
     cta: { label: "Explore intelligence", href: "/platform/intelligence" },
     kind: "revenue",
   },
@@ -98,8 +97,8 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Revenue Guides",
     title: "Field support for formalisation and readiness engagement.",
     eyebrow: "Operating model",
-    status: "Programme capability",
-    description: "Revenue Guide previews demonstrate how cohorts, follow-ups and readiness journeys can be coordinated through DBIN.",
+    status: "Platform Capability",
+    description: "Revenue Guide workspaces show how cohorts, follow-ups and readiness journeys can be coordinated through DBIN.",
     cta: { label: "View programmes", href: "/programmes" },
     kind: "guides",
   },
@@ -108,8 +107,8 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Impact Intelligence",
     title: "Programme evidence, risk and executive reporting in one view.",
     eyebrow: "Programme intelligence",
-    status: "Programme capability",
-    description: "Impact previews show how interventions, KPIs, evidence, risks and executive dashboards can be organised for institutional programmes.",
+    status: "Platform Capability",
+    description: "Impact workspaces show how interventions, KPIs, evidence, risks and executive dashboards can be organised for institutional programmes.",
     cta: { label: "Explore intelligence", href: "/platform/intelligence" },
     kind: "impact",
   },
@@ -118,8 +117,8 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Industrial Programmes",
     title: "Cluster participation and productive-sector readiness.",
     eyebrow: "LCDBO and clusters",
-    status: "Pilot",
-    description: "LCDBO and cluster previews show MSME enrolment, cluster interest, readiness and participation workflows powered by DBIN.",
+    status: "Available",
+    description: "LCDBO and cluster workspaces show MSME enrolment, cluster interest, readiness and participation workflows powered by DBIN.",
     cta: { label: "Explore LCDBO", href: "/lcdbo" },
     kind: "clusters",
   },
@@ -128,8 +127,8 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
     tab: "Property Intelligence",
     title: "Privacy-safe public verification for property credentials.",
     eyebrow: "DLPI public surface",
-    status: "Public verification surface",
-    description: "The property layer demonstrates how DBIN principles extend to physical assets through public NPIN verification and safe public records.",
+    status: "Business Verification",
+    description: "The property layer shows how DBIN principles extend to physical assets through public NPIN verification and safe public records.",
     cta: { label: "Explore property verification", href: "/property" },
     kind: "property",
   },
@@ -138,18 +137,17 @@ export const HOMEPAGE_SHOWCASE: ProductShowcaseItem[] = [
 export const PRODUCT_AUDIT_NOTES = [
   "Public verification, sample credential, marketplace, LCDBO and property public routes are safe to show directly.",
   "MSME workspace, invoices, compliance, payments and dashboards are safe only as fictional/redacted product frames.",
-  "NRS, Revenue Guides, Impact Intelligence and Risk Flags are private or controlled workspaces; public storytelling must use stylised previews only.",
-  "No public product preview should fetch dashboard data, internal UUIDs, personal identifiers, real tax identifiers or invoice recipient details.",
+  "NRS, Revenue Guides, Impact Intelligence and Risk Flags are private or governed workspaces; public storytelling must use stylised product experiences only.",
+  "No public product experience should fetch dashboard data, internal UUIDs, personal identifiers, real tax identifiers or invoice recipient details.",
 ];
 
 const statusStyles: Record<ProductStatus, string> = {
-  Live: "border-emerald-200 bg-emerald-50 text-emerald-800",
   Available: "border-teal-200 bg-teal-50 text-teal-800",
-  Pilot: "border-amber-200 bg-amber-50 text-amber-900",
-  "Controlled demonstration": "border-blue-200 bg-blue-50 text-blue-800",
-  "Programme capability": "border-violet-200 bg-violet-50 text-violet-800",
-  "Public verification surface": "border-cyan-200 bg-cyan-50 text-cyan-800",
-  "Coming soon": "border-slate-200 bg-slate-100 text-slate-700",
+  Operational: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  "Institutional Capability": "border-blue-200 bg-blue-50 text-blue-800",
+  "Platform Capability": "border-violet-200 bg-violet-50 text-violet-800",
+  "Business Verification": "border-cyan-200 bg-cyan-50 text-cyan-800",
+  "Coming Soon": "border-slate-200 bg-slate-100 text-slate-700",
 };
 
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
@@ -186,15 +184,15 @@ export function ProductFrame({
   status,
   className = "",
 }: {
-  kind: ProductPreviewKind;
+  kind: ProductExperienceKind;
   title?: string;
   status?: ProductStatus;
   className?: string;
 }) {
-  const frameTitle = title ?? previewTitle(kind);
+  const frameTitle = title ?? experienceTitle(kind);
   return (
     <article
-      aria-label={`${frameTitle}. Fictional product preview using demonstration data.`}
+      aria-label={`${frameTitle}. Illustrative product experience using fictional business data.`}
       className={`min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 ${className}`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-950 px-4 py-3 text-white">
@@ -207,7 +205,7 @@ export function ProductFrame({
         {status ? <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-200">{status}</span> : <span />}
       </div>
       <div className="bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_100%)] p-4 sm:p-5">
-        {renderPreview(kind)}
+        {renderExperience(kind)}
       </div>
     </article>
   );
@@ -225,13 +223,13 @@ export function ProductTabShowcase({ items = HOMEPAGE_SHOWCASE }: { items?: Prod
           <SectionHeading
             eyebrow="Product showcase"
             title="See the DBIN ecosystem in action"
-            description="Fictional, privacy-safe previews show how the platform feels across business, institutional and programme workflows."
+            description="Fictional, privacy-safe product experiences show how the platform feels across business, institutional and programme workflows."
           />
           <Link href="/platform" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:border-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
             Explore platform <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="mt-7 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="DBIN product previews">
+        <div className="mt-7 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="DBIN product experiences">
           {items.map((item) => (
             <button
               key={item.id}
@@ -323,7 +321,7 @@ export function BeforeAfterJourney({
 export function CaseStudyProof({
   items,
 }: {
-  items: Array<{ label: string; challenge: string; capability: string; demonstrates: string; next: string; status: ProductStatus; href?: string }>;
+  items: Array<{ label: string; challenge: string; capability: string; outcome: string; next: string; status: ProductStatus; href?: string }>;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -334,12 +332,12 @@ export function CaseStudyProof({
           <dl className="mt-4 space-y-3 text-sm leading-6">
             <div><dt className="font-black text-slate-900">Challenge</dt><dd className="text-slate-600">{item.challenge}</dd></div>
             <div><dt className="font-black text-slate-900">DBIN capability</dt><dd className="text-slate-600">{item.capability}</dd></div>
-            <div><dt className="font-black text-slate-900">Demonstrates</dt><dd className="text-slate-600">{item.demonstrates}</dd></div>
+            <div><dt className="font-black text-slate-900">Outcome</dt><dd className="text-slate-600">{item.outcome}</dd></div>
             <div><dt className="font-black text-slate-900">Next stage</dt><dd className="text-slate-600">{item.next}</dd></div>
           </dl>
           {item.href ? (
             <Link href={item.href} className="mt-5 inline-flex items-center gap-2 text-sm font-black text-emerald-700">
-              Open example <ArrowRight className="h-4 w-4" />
+              Explore <ArrowRight className="h-4 w-4" />
             </Link>
           ) : null}
         </article>
@@ -348,8 +346,8 @@ export function CaseStudyProof({
   );
 }
 
-function previewTitle(kind: ProductPreviewKind) {
-  const titles: Record<ProductPreviewKind, string> = {
+function experienceTitle(kind: ProductExperienceKind) {
+  const titles: Record<ProductExperienceKind, string> = {
     identity: "DBIN Business Identity",
     operations: "MSME Operations Workspace",
     compliance: "Compliance Readiness Centre",
@@ -357,14 +355,14 @@ function previewTitle(kind: ProductPreviewKind) {
     guides: "Revenue Guide Operations",
     impact: "Impact Intelligence",
     clusters: "LCDBO Cluster Workspace",
-    property: "Property Verification Surface",
+    property: "Property Verification",
     association: "Association Member Portfolio",
     finance: "Finance Readiness View",
   };
   return titles[kind];
 }
 
-function renderPreview(kind: ProductPreviewKind) {
+function renderExperience(kind: ProductExperienceKind) {
   if (kind === "identity") return <IdentityPreview />;
   if (kind === "operations") return <OperationsPreview />;
   if (kind === "compliance") return <CompliancePreview />;
@@ -383,7 +381,7 @@ function IdentityPreview() {
       <div className="rounded-2xl border border-emerald-200 bg-white p-4">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Verified business credential</p>
         <h3 className="mt-3 text-2xl font-black text-slate-950">Eko Fresh Foods Ltd</h3>
-        <p className="mt-1 text-sm text-slate-600">Food Processing • Lagos • DBIN-DEMO-LAG-2048</p>
+        <p className="mt-1 text-sm text-slate-600">Food Processing • Lagos • DBIN-LAG-2048</p>
         <div className="mt-4 grid gap-2 text-sm">
           {["Profile complete", "Credential issued", "Public verification enabled"].map((item) => (
             <p key={item} className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 font-bold text-emerald-800">
@@ -420,9 +418,9 @@ function OperationsPreview() {
           <span>Invoice</span><span>Status</span><span>Amount</span>
         </div>
         {[
-          ["INV-DEMO-2041", "Paid", "₦480,000"],
-          ["INV-DEMO-2042", "Outstanding", "₦320,000"],
-          ["INV-DEMO-2043", "Draft", "₦145,000"],
+          ["INV-2041", "Paid", "₦480,000"],
+          ["INV-2042", "Outstanding", "₦320,000"],
+          ["INV-2043", "Draft", "₦145,000"],
         ].map(([invoice, status, amount]) => (
           <div key={invoice} className="grid grid-cols-3 gap-2 border-b border-slate-100 py-3 text-sm last:border-b-0">
             <span className="font-bold text-slate-900">{invoice}</span>
@@ -441,7 +439,7 @@ function CompliancePreview() {
       <div className="rounded-2xl bg-emerald-700 p-5 text-white">
         <p className="text-xs font-bold uppercase text-emerald-100">Readiness score</p>
         <p className="mt-3 text-5xl font-black">74%</p>
-        <p className="mt-2 text-sm text-emerald-50">Demo readiness, not an official compliance rating.</p>
+        <p className="mt-2 text-sm text-emerald-50">Readiness signal, not an official compliance rating.</p>
       </div>
       <div className="space-y-2">
         {[
@@ -537,7 +535,7 @@ function ClustersPreview() {
     <div className="grid gap-3 sm:grid-cols-3">
       {[
         ["Southwest Leather Hub", "750 MSME target", "Baseline mapping"],
-        ["Agro Processing Pilot", "1,200 MSME target", "Concept"],
+        ["Agro Processing Hub", "1,200 MSME target", "Concept"],
         ["Technology Park", "900 MSME target", "Concept"],
       ].map(([name, target, status]) => (
         <div key={name} className="rounded-2xl bg-white p-4 shadow-sm">
@@ -557,7 +555,7 @@ function PropertyPreview() {
       <div className="rounded-2xl bg-slate-950 p-5 text-white">
         <MapPinned className="h-7 w-7 text-emerald-300" />
         <p className="mt-4 text-sm font-bold uppercase text-slate-300">Public NPIN lookup</p>
-        <p className="mt-2 text-2xl font-black">NPIN-DEMO-24001</p>
+        <p className="mt-2 text-2xl font-black">NPIN-24001</p>
         <p className="mt-2 text-sm text-slate-300">Verified • Public-safe profile</p>
       </div>
       <div className="space-y-2">

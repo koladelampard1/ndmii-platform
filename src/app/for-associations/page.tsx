@@ -39,10 +39,10 @@ export default function ForAssociationsPage() {
 
       <section className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <CapabilityProofCard title="Member onboarding" text="Coordinate member records in structured workflows." status="Available" />
-        <CapabilityProofCard title="Member verification" text="Improve credibility and trust visibility." status="Live" />
+        <CapabilityProofCard title="Member verification" text="Improve credibility and trust visibility." status="Operational" />
         <CapabilityProofCard title="Collective visibility" text="Present members as a more discoverable ecosystem." status="Available" />
-        <CapabilityProofCard title="Programme onboarding" text="Prepare members for LCDBO and cluster participation." status="Pilot" href="/lcdbo" />
-        <CapabilityProofCard title="Readiness support" text="Support compliance and evidence preparation." status="Pilot" href="/platform/compliance" />
+        <CapabilityProofCard title="Programme onboarding" text="Prepare members for LCDBO and cluster participation." status="Available" href="/lcdbo" />
+        <CapabilityProofCard title="Readiness support" text="Support compliance and evidence preparation." status="Available" href="/platform/compliance" />
       </section>
     </PublicPageShell>
   );

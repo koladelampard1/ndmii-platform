@@ -3,28 +3,28 @@ import { CapabilityProofCard, CaseStudyProof, ProductFrame, ProductStatusBadge, 
 
 const proof = [
   {
-    label: "Revenue intelligence demonstration",
+    label: "Revenue Intelligence",
     challenge: "Revenue teams need visibility without treating platform data as official remittance.",
-    capability: "Controlled previews of invoice-derived exposure, VAT signals and readiness.",
-    demonstrates: "How DBIN can support planning and guide operations.",
+    capability: "Governed views of invoice-derived exposure, VAT signals and readiness.",
+    outcome: "Planning and guide operations supported by trusted signals.",
     next: "Institution-specific governance and validated integration scope.",
-    status: "Controlled demonstration" as const,
+    status: "Institutional Capability" as const,
   },
   {
     label: "Impact Intelligence workspace",
     challenge: "Programmes need evidence, data quality and executive reporting.",
     capability: "KPI governance, snapshots, risk flags and briefings.",
-    demonstrates: "How programme monitoring can be structured on DBIN.",
+    outcome: "Programme monitoring structured on DBIN.",
     next: "Partner-specific indicators and verified source pipelines.",
-    status: "Programme capability" as const,
+    status: "Platform Capability" as const,
   },
   {
     label: "Property public verification",
     challenge: "Asset credentials need public trust and privacy-safe disclosure.",
     capability: "NPIN lookup and sanitized public profile views.",
-    demonstrates: "How registry verification can be public without exposing private ownership data.",
+    outcome: "Registry verification made public without exposing private ownership data.",
     next: "Future GIS and boundary intelligence after public safety guardrails.",
-    status: "Public verification surface" as const,
+    status: "Business Verification" as const,
     href: "/property",
   },
 ];
@@ -39,9 +39,9 @@ export default function ForGovernmentPage() {
       secondaryCta={{ label: "Explore platform", href: "/platform" }}
     >
       <section className="mt-10 grid gap-5 lg:grid-cols-3">
-        <ProductFrame kind="revenue" status="Controlled demonstration" />
-        <ProductFrame kind="impact" status="Programme capability" />
-        <ProductFrame kind="property" status="Public verification surface" />
+        <ProductFrame kind="revenue" status="Institutional Capability" />
+        <ProductFrame kind="impact" status="Platform Capability" />
+        <ProductFrame kind="property" status="Business Verification" />
       </section>
 
       <section className="mt-14">
@@ -51,26 +51,26 @@ export default function ForGovernmentPage() {
           description="DBIN can help institutions see readiness and participation signals. Official adoption, tax remittance, registry status or regulatory determinations require separate authority and governance."
         />
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <CapabilityProofCard title="Formalisation programmes" text="Coordinate identity, onboarding and readiness pathways." status="Programme capability" />
-          <CapabilityProofCard title="Regulator workspaces" text="Designed for controlled review and evidence workflows." status="Programme capability" />
-          <CapabilityProofCard title="Compliance operations" text="Track readiness, evidence and renewal signals." status="Pilot" href="/platform/compliance" />
-          <CapabilityProofCard title="Revenue readiness" text="Show derived exposure and readiness signals as controlled demonstrations." status="Controlled demonstration" href="/platform/intelligence" />
-          <CapabilityProofCard title="Revenue Guide networks" text="Coordinate local field support and business follow-up." status="Controlled demonstration" />
-          <CapabilityProofCard title="Industrial cluster coordination" text="Support LCDBO and cluster participation workflows." status="Pilot" href="/lcdbo" />
-          <CapabilityProofCard title="Impact monitoring" text="Use KPI, snapshot and executive reporting infrastructure." status="Programme capability" href="/platform/intelligence" />
-          <CapabilityProofCard title="Property and asset intelligence" text="Connect public verification to privacy-safe property records." status="Public verification surface" href="/property" />
+          <CapabilityProofCard title="Formalisation programmes" text="Coordinate identity, onboarding and readiness pathways." status="Platform Capability" />
+          <CapabilityProofCard title="Regulator workspaces" text="Designed for governed review and evidence workflows." status="Platform Capability" />
+          <CapabilityProofCard title="Compliance operations" text="Track readiness, evidence and renewal signals." status="Available" href="/platform/compliance" />
+          <CapabilityProofCard title="Revenue readiness" text="Show derived exposure and readiness signals under appropriate governance." status="Institutional Capability" href="/platform/intelligence" />
+          <CapabilityProofCard title="Revenue Guide networks" text="Coordinate local field support and business follow-up." status="Institutional Capability" />
+          <CapabilityProofCard title="Industrial cluster coordination" text="Support LCDBO and cluster participation workflows." status="Available" href="/lcdbo" />
+          <CapabilityProofCard title="Impact monitoring" text="Use KPI, snapshot and executive reporting infrastructure." status="Platform Capability" href="/platform/intelligence" />
+          <CapabilityProofCard title="Property and asset intelligence" text="Connect public verification to privacy-safe property records." status="Business Verification" href="/property" />
         </div>
       </section>
 
       <section className="mt-14">
-        <SectionHeading eyebrow="Product proof" title="Implementation examples with safe labels." />
+        <SectionHeading eyebrow="Product proof" title="Institutional use cases with safe labels." />
         <div className="mt-8">
           <CaseStudyProof items={proof} />
         </div>
       </section>
 
       <section className="mt-14 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
-        <ProductStatusBadge status="Controlled demonstration" />
+        <ProductStatusBadge status="Institutional Capability" />
         <h2 className="mt-4 text-xl font-black">Important governance boundary</h2>
         <p className="mt-2 text-sm leading-6">
           This page describes DBIN-powered programme and institutional capability. It does not imply formal adoption by NRS, BOI, any state government or regulator unless separately documented.

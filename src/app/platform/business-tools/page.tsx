@@ -24,7 +24,7 @@ export default function BusinessToolsPage() {
           <ProductStatusBadge status="Available" />
           <h2 className="mt-4 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-5xl">Operating records become trust signals.</h2>
           <p className="mt-4 text-base leading-7 text-slate-600">
-            Fictional previews show how MSMEs can organise invoices, receipts, customer records and business planning evidence without exposing private customer data.
+            Fictional product experiences show how MSMEs can organise invoices, receipts, customer records and business planning evidence without exposing private customer data.
           </p>
         </div>
         <ProductFrame kind="operations" status="Available" />
@@ -50,7 +50,7 @@ export default function BusinessToolsPage() {
         <CapabilityProofCard title="Invoices and receipts" text="Structured records help MSMEs prove operating activity." status="Available" />
         <CapabilityProofCard title="Quote workflows" text="Business opportunities can move through a cleaner request path." status="Available" />
         <CapabilityProofCard title="Bookkeeping support" text="Basic record organisation supports visibility and readiness." status="Available" />
-        <CapabilityProofCard title="Finance readiness" text="Evidence-backed readiness is not a credit score, but can reduce information asymmetry." status="Programme capability" />
+        <CapabilityProofCard title="Finance readiness" text="Evidence-backed readiness is not a credit score, but can reduce information asymmetry." status="Platform Capability" />
       </section>
 
       <section className="mt-14 rounded-[2rem] bg-slate-950 p-6 text-white sm:p-8">

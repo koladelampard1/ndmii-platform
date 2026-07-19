@@ -65,7 +65,7 @@ export default async function ContactPage({
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-800">
             Email address
-            <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" placeholder="you@example.com" type="email" autoComplete="email" />
+            <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" placeholder="you@organisation.ng" type="email" autoComplete="email" />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-800 md:col-span-2">
             Request intent
@@ -93,7 +93,7 @@ export default async function ContactPage({
           Privacy note: send only information necessary to route your enquiry. Sensitive personal identifiers, passwords, private documents and payment data should not be submitted through public contact forms.
         </p>
         <div id="contact-routing-note" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          DBIN live contact channels are being expanded. For immediate access to core DBIN services, use the routes below.
+          DBIN contact channels are being expanded. For immediate access to core DBIN services, use the routes below.
           <div className="mt-2 flex flex-wrap gap-3">
             <Link href="/marketplace" className="font-medium">Browse marketplace</Link>
             <Link href="/verify" className="font-medium">Verify Business Identity Number</Link>

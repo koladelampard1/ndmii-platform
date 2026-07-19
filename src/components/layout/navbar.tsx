@@ -48,7 +48,7 @@ const NAV_GROUPS = [
 
 const DIRECT_LINKS = [
   { label: "Marketplace", href: "/marketplace" },
-  { label: "Verify", href: "/verify" },
+  { label: "Verification", href: "/verify" },
   { label: "Resources", href: "/resources" },
   { label: "About", href: "/about" },
 ];

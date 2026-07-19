@@ -52,7 +52,7 @@ const HERO_STEPS = [
 
 const JOURNEY = ["Register", "Verify", "Operate", "Comply", "Markets", "Finance", "Programmes", "Grow"];
 
-const PREVIEWS = [
+const WORKSPACE_EXPERIENCES = [
   { title: "Business profile", kind: "identity" as const },
   { title: "Invoice record", kind: "operations" as const },
   { title: "Marketplace profile", kind: "finance" as const },
@@ -126,7 +126,7 @@ const TRUST_PILLARS: Array<{ title: string; icon: LucideIcon }> = [
   { title: "Role-based Access", icon: ShieldCheck },
 ];
 
-const PARTNER_PLACEHOLDERS = [
+const PARTNER_CATEGORIES = [
   "Federal Agencies",
   "State Governments",
   "Banks",
@@ -218,7 +218,7 @@ export default function LandingPage() {
                 <div className="rounded-[1.5rem] bg-slate-950/80 p-4">
                   <div className="mb-4 flex items-center justify-between gap-4 text-xs font-bold text-slate-400">
                     <span>DBIN journey</span>
-                    <span>live demo preview</span>
+                    <span>platform experience</span>
                   </div>
                   <ol className="grid gap-3">
                     {HERO_STEPS.map((step, index) => (
@@ -270,25 +270,25 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="py-16" aria-labelledby="real-previews">
+        <section className="py-16" aria-labelledby="platform-experiences">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div>
-                <SectionLabel>Previews</SectionLabel>
-                <h2 id="real-previews" className="mt-3 max-w-3xl text-4xl font-black tracking-[-0.045em] sm:text-5xl">
+                <SectionLabel>Workspaces</SectionLabel>
+                <h2 id="platform-experiences" className="mt-3 max-w-3xl text-4xl font-black tracking-[-0.045em] sm:text-5xl">
                   The platform in motion.
                 </h2>
               </div>
                   <QuietLink href="/platform">Explore</QuietLink>
             </div>
             <div className="grid gap-6">
-              {PREVIEWS.map((preview, index) => (
-                <article key={preview.title} className="grid gap-5 rounded-[2rem] bg-white p-4 shadow-sm lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:p-6">
+              {WORKSPACE_EXPERIENCES.map((experience, index) => (
+                <article key={experience.title} className="grid gap-5 rounded-[2rem] bg-white p-4 shadow-sm lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:p-6">
                   <div>
                     <span className="text-xs font-black text-emerald-700">0{index + 1}</span>
-                    <h3 className="mt-3 text-3xl font-black tracking-[-0.04em]">{preview.title}</h3>
+                    <h3 className="mt-3 text-3xl font-black tracking-[-0.04em]">{experience.title}</h3>
                   </div>
-                  <ProductFrame kind={preview.kind} title={preview.title} className="shadow-2xl" />
+                  <ProductFrame kind={experience.kind} title={experience.title} className="shadow-2xl" />
                 </article>
               ))}
             </div>
@@ -406,11 +406,10 @@ export default function LandingPage() {
           </div>
           <div className="mt-10 flex gap-4 overflow-hidden">
             <div className="dbin-logo-wall flex min-w-full gap-4">
-              {PARTNER_PLACEHOLDERS.map((partner) => (
+              {PARTNER_CATEGORIES.map((partner) => (
                 <div key={partner} className="min-w-[15rem] rounded-2xl border border-white/10 bg-white/10 p-5 text-center">
                   <Handshake className="mx-auto h-5 w-5 text-emerald-300" aria-hidden="true" />
                   <p className="mt-3 text-sm font-black">{partner}</p>
-                  <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Placeholder</p>
                 </div>
               ))}
             </div>

@@ -48,8 +48,8 @@ const PRODUCT_TABS: ProductTab[] = [
     label: "Marketplace",
     icon: Store,
     headline: "Discoverable.",
-    microcopy: "Live",
-    metric: "Live",
+    microcopy: "Open",
+    metric: "Active",
     action: "Open",
   },
   {

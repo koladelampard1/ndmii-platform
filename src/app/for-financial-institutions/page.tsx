@@ -12,13 +12,13 @@ export default function ForFinancialInstitutionsPage() {
     >
       <section className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div>
-          <ProductStatusBadge status="Programme capability" />
+          <ProductStatusBadge status="Platform Capability" />
           <h2 className="mt-4 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-5xl">Better records before better capital deployment.</h2>
           <p className="mt-4 text-base leading-7 text-slate-600">
             DBIN can support consented diligence and pipeline visibility through identity, operating records, compliance evidence and programme participation signals.
           </p>
         </div>
-        <ProductFrame kind="finance" status="Programme capability" />
+        <ProductFrame kind="finance" status="Platform Capability" />
       </section>
 
       <section className="mt-14">
@@ -38,12 +38,12 @@ export default function ForFinancialInstitutionsPage() {
       </section>
 
       <section className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <CapabilityProofCard title="Verified business identity" text="Reduce onboarding uncertainty with public trust signals." status="Live" href="/platform/business-identity" />
+        <CapabilityProofCard title="Verified business identity" text="Reduce onboarding uncertainty with public trust signals." status="Operational" href="/platform/business-identity" />
         <CapabilityProofCard title="Invoice visibility" text="Operating evidence can support a clearer business picture where consented." status="Available" href="/platform/business-tools" />
-        <CapabilityProofCard title="Compliance evidence" text="Readiness information helps partners understand documentation posture." status="Pilot" href="/platform/compliance" />
-        <CapabilityProofCard title="Consented insights" text="Institutional use should remain controlled and permission-aware." status="Programme capability" />
-        <CapabilityProofCard title="Portfolio intelligence" text="Aggregate sector and geographic patterns can support MSME portfolio design." status="Controlled demonstration" href="/platform/intelligence" />
-        <CapabilityProofCard title="Investment readiness" text="DBIN can help create better-prepared MSME pipelines." status="Programme capability" href="/programmes" />
+        <CapabilityProofCard title="Compliance evidence" text="Readiness information helps partners understand documentation posture." status="Available" href="/platform/compliance" />
+        <CapabilityProofCard title="Consented insights" text="Institutional use should remain governed and permission-aware." status="Platform Capability" />
+        <CapabilityProofCard title="Portfolio intelligence" text="Aggregate sector and geographic patterns can support MSME portfolio design." status="Institutional Capability" href="/platform/intelligence" />
+        <CapabilityProofCard title="Investment readiness" text="DBIN can help create better-prepared MSME pipelines." status="Platform Capability" href="/programmes" />
       </section>
     </PublicPageShell>
   );

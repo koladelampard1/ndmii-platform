@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 const programmes = [
   {
     title: "LCDBO",
-    status: "Live public surface" as const,
-    normalizedStatus: "Pilot" as const,
+    status: "Available" as const,
+    normalizedStatus: "Available" as const,
     audience: "MSMEs, industrial partners, government and programme officers",
     objective: "Support non-oil local content, MSME capability and value-chain development.",
     uses: ["Business identity", "MSME enrolment", "Cluster interest", "Readiness review"],
@@ -23,8 +23,8 @@ const programmes = [
   },
   {
     title: "Industrial Clusters",
-    status: "Programme capability" as const,
-    normalizedStatus: "Programme capability" as const,
+    status: "Platform Capability" as const,
+    normalizedStatus: "Platform Capability" as const,
     audience: "MSMEs, cluster operators, state partners and investors",
     objective: "Coordinate participation, placement, documents, assessments and production-readiness pathways.",
     uses: ["Cluster registry", "Participation review", "Officer assignment", "Readiness assessment"],
@@ -33,18 +33,18 @@ const programmes = [
   },
   {
     title: "Revenue Guides",
-    status: "Controlled demonstration" as const,
-    normalizedStatus: "Controlled demonstration" as const,
+    status: "Institutional Capability" as const,
+    normalizedStatus: "Institutional Capability" as const,
     audience: "Revenue teams, state operators and field-support coordinators",
-    objective: "Demonstrate a human operating model for readiness, follow-up and formalisation support.",
+    objective: "Provide a human operating model for readiness, follow-up and formalisation support.",
     uses: ["Guide desks", "Readiness cohorts", "Follow-up queues", "Local insight"],
     href: "/platform/intelligence",
     kind: "guides" as const,
   },
   {
     title: "NRS / Revenue Intelligence",
-    status: "Controlled demonstration" as const,
-    normalizedStatus: "Controlled demonstration" as const,
+    status: "Institutional Capability" as const,
+    normalizedStatus: "Institutional Capability" as const,
     audience: "Revenue leaders and institutional stakeholders",
     objective: "Show how DBIN-derived business activity signals can support planning, not official remittance.",
     uses: ["Invoice exposure", "VAT signal", "Compliance readiness", "Executive view"],
@@ -53,8 +53,8 @@ const programmes = [
   },
   {
     title: "Impact Intelligence",
-    status: "Programme capability" as const,
-    normalizedStatus: "Programme capability" as const,
+    status: "Platform Capability" as const,
+    normalizedStatus: "Platform Capability" as const,
     audience: "Development partners, programme teams and executives",
     objective: "Track evidence, KPIs, risks, data quality and executive reporting across programmes.",
     uses: ["KPI governance", "Snapshots", "Risk flags", "Executive briefings"],
@@ -63,8 +63,8 @@ const programmes = [
   },
   {
     title: "DLPI / Property Intelligence",
-    status: "Public verification surface" as const,
-    normalizedStatus: "Public verification surface" as const,
+    status: "Business Verification" as const,
+    normalizedStatus: "Business Verification" as const,
     audience: "Public users, registries, state governments and asset stakeholders",
     objective: "Provide privacy-safe public property verification and registry-profile discovery.",
     uses: ["NPIN verification", "Public-safe profiles", "Registry search", "Credential status"],
@@ -73,10 +73,10 @@ const programmes = [
   },
   {
     title: "SICIP",
-    status: "Coming soon" as const,
-    normalizedStatus: "Coming soon" as const,
+    status: "Coming Soon" as const,
+    normalizedStatus: "Coming Soon" as const,
     audience: "Investors, DFIs, industrial partners and programme secretariats",
-    objective: "Future investment programme capability for structured cluster opportunity pipelines.",
+    objective: "Future investment workspace for structured cluster opportunity pipelines.",
     uses: ["Investment readiness", "Cluster pipelines", "Partner workspaces", "Impact reporting"],
     href: "/programmes",
     kind: "finance" as const,
@@ -88,27 +88,27 @@ const proof = [
     label: "LCDBO programme infrastructure",
     challenge: "MSMEs need a way to join programme and cluster workflows.",
     capability: "Enrolment, cluster interest, review queues and operational dashboards.",
-    demonstrates: "How DBIN can support real programme participation.",
+    outcome: "Real programme participation through a reusable workspace.",
     next: "Deeper partner onboarding and validated programme reporting.",
-    status: "Pilot" as const,
+    status: "Available" as const,
     href: "/lcdbo",
   },
   {
     label: "Property public verification",
     challenge: "Property credentials need public trust without exposing private ownership data.",
     capability: "NPIN lookup and privacy-safe public profiles.",
-    demonstrates: "How DBIN can extend verification principles to assets.",
+    outcome: "Verification principles extended to assets.",
     next: "Future GIS readiness after hardening.",
-    status: "Public verification surface" as const,
+    status: "Business Verification" as const,
     href: "/property",
   },
   {
     label: "Impact Intelligence workspace",
     challenge: "Programmes need evidence, risk and executive reporting.",
     capability: "KPI governance, snapshots, data-quality centre and briefings.",
-    demonstrates: "How DBIN can organise programme accountability.",
+    outcome: "Programme accountability organised around evidence.",
     next: "Partner-specific reporting packs and source validation.",
-    status: "Programme capability" as const,
+    status: "Platform Capability" as const,
     href: "/platform/intelligence",
   },
 ];
@@ -126,7 +126,7 @@ export default function ProgrammesPage() {
     <PublicPageShell
       eyebrow="Programme Workspaces"
       title="Reusable infrastructure for national and institutional programmes."
-      description="DBIN powers programme surfaces through identity, verification, operating records, readiness evidence, participation workflows and intelligence—without presenting controlled demonstrations as national adoption."
+      description="DBIN powers programme workspaces through identity, verification, operating records, readiness evidence, participation workflows and intelligence—without overstating national adoption."
       primaryCta={{ label: "Explore LCDBO", href: "/lcdbo" }}
       secondaryCta={{ label: "Partner with DBIN", href: "/partners" }}
     >
@@ -134,7 +134,7 @@ export default function ProgrammesPage() {
         <SectionHeading
           eyebrow="Programme architecture"
           title="One infrastructure layer, multiple programme models."
-          description="Each programme uses a different combination of DBIN capabilities. Status labels make clear what is public, pilot, controlled or future-facing."
+          description="Each programme uses a different combination of DBIN capabilities. Status labels make clear what is available, operational or future-facing."
         />
         <div className="mt-8 grid gap-5 lg:grid-cols-2">
           {programmes.map((programme) => (
@@ -182,7 +182,7 @@ export default function ProgrammesPage() {
       </section>
 
       <section className="mt-14">
-        <SectionHeading eyebrow="Implementation proof" title="Examples framed with the right governance labels." />
+        <SectionHeading eyebrow="Implementation proof" title="Programme models framed with the right governance labels." />
         <div className="mt-8">
           <CaseStudyProof items={proof} />
         </div>

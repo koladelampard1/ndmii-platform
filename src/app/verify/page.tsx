@@ -95,7 +95,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
               />
               <button className="h-12 rounded-xl bg-emerald-700 px-6 font-medium text-white transition hover:bg-emerald-600">Verify Credential</button>
             </form>
-            <p className="mt-3 text-sm text-slate-500">Example: NDMII-LAG-108168205 or Kado Engine Works</p>
+            <p className="mt-3 text-sm text-slate-500">Try: NDMII-LAG-108168205 or Kado Engine Works</p>
           </div>
 
           <section>
@@ -104,7 +104,7 @@ export default async function VerifySearchPage({ searchParams }: { searchParams:
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5">
                   <p className="text-sm font-semibold text-emerald-900">Digital Business Identity Network (DBIN)</p>
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Credential preview</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Credential view</p>
                     <p className="mt-2 text-base font-semibold text-slate-900">Sample Business Ltd.</p>
                     <p className="mt-1 text-xs text-slate-500">DBIN ID • NDMII-LAG-108168205</p>
                   </div>

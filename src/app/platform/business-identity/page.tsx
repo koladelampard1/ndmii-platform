@@ -21,13 +21,13 @@ export default function BusinessIdentityPage() {
     >
       <section className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div>
-          <ProductStatusBadge status="Live" />
+          <ProductStatusBadge status="Operational" />
           <h2 className="mt-4 text-3xl font-black tracking-[-0.03em] text-slate-950 md:text-5xl">From informal presence to trusted profile.</h2>
           <p className="mt-4 text-base leading-7 text-slate-600">
             A DBIN identity connects business profile, verification state, public credential, marketplace visibility and programme participation using safe, reusable records.
           </p>
         </div>
-        <ProductFrame kind="identity" status="Live" />
+        <ProductFrame kind="identity" status="Operational" />
       </section>
 
       <section className="mt-14">
@@ -47,10 +47,10 @@ export default function BusinessIdentityPage() {
       </section>
 
       <section className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <CapabilityProofCard title="Unique business profile" text="Structured public and private fields support safer business discovery." status="Live" />
-        <CapabilityProofCard title="QR verification" text="Credential previews show how public verification confirms status." status="Live" href="/sample-id-card" />
-        <CapabilityProofCard title="Trust and discoverability" text="Verified businesses can become easier to find and evaluate." status="Live" href="/marketplace" />
-        <CapabilityProofCard title="Programme participation" text="Business identity creates a foundation for LCDBO and future programme workflows." status="Pilot" href="/lcdbo" />
+        <CapabilityProofCard title="Unique business profile" text="Structured public and private fields support safer business discovery." status="Operational" />
+        <CapabilityProofCard title="QR verification" text="Credential experiences show how public verification confirms status." status="Operational" href="/sample-id-card" />
+        <CapabilityProofCard title="Trust and discoverability" text="Verified businesses can become easier to find and evaluate." status="Operational" href="/marketplace" />
+        <CapabilityProofCard title="Programme participation" text="Business identity creates a foundation for LCDBO and future programme workflows." status="Available" href="/lcdbo" />
       </section>
 
       <section className="mt-14 rounded-[2rem] bg-emerald-700 p-6 text-white sm:p-8">
