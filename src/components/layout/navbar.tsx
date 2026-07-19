@@ -24,12 +24,12 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Who We Serve",
+    label: "Solutions",
     links: [
-      { label: "MSMEs", href: "/for-msmes", description: "Register, verify and grow with trusted records." },
-      { label: "Associations & Cooperatives", href: "/for-associations", description: "Coordinate member onboarding and visibility." },
-      { label: "Government & Regulators", href: "/for-government", description: "Support formalisation, oversight and service delivery." },
+      { label: "Businesses", href: "/for-msmes", description: "Register, verify and grow with trusted records." },
+      { label: "Government", href: "/for-government", description: "Support formalisation, oversight and service delivery." },
       { label: "Financial Institutions", href: "/for-financial-institutions", description: "Use verifiable signals for MSME enablement." },
+      { label: "Associations & Cooperatives", href: "/for-associations", description: "Coordinate member onboarding and visibility." },
       { label: "Development Partners", href: "/partners", description: "Partner around measurable enterprise outcomes." },
       { label: "Procurement Teams", href: "/marketplace", description: "Find and verify credible providers." },
     ],
@@ -50,7 +50,6 @@ const DIRECT_LINKS = [
   { label: "Marketplace", href: "/marketplace" },
   { label: "Verify", href: "/verify" },
   { label: "Resources", href: "/resources" },
-  { label: "Partners", href: "/partners" },
   { label: "About", href: "/about" },
 ];
 

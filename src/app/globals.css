@@ -11,6 +11,18 @@ body {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Impact Intelligence Phase 1 polish: preserve dense desktop layouts while
    keeping executive content readable and operable on narrow viewports. */
 .impact-intelligence-workspace {
