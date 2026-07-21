@@ -13,8 +13,12 @@ function createRoutingResponse(request: NextRequest) {
   const rewritePath = resolveDbinRewritePath(surface, request.nextUrl.pathname);
   const rewriteUrl = request.nextUrl.clone();
   if (rewritePath) rewriteUrl.pathname = rewritePath;
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-dbin-pathname", request.nextUrl.pathname);
 
-  const response = rewritePath ? NextResponse.rewrite(rewriteUrl) : NextResponse.next();
+  const response = rewritePath
+    ? NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } })
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
   response.headers.set("x-dbin-surface", surface);
   if (rewritePath) response.headers.set("x-dbin-rewrite", rewritePath);

@@ -11,11 +11,10 @@ export function requireNrsWorkspace(ctx: Pick<UserContext, "role">) {
   if (!canAccessNrsWorkspace(ctx)) redirect("/access-denied");
 }
 
-export function demoDisclosure() {
-  return "DBIN-derived demonstration data. Official filing, assessment and remittance integrations remain pending NRS activation.";
+export function nrsWorkspaceDisclosure() {
+  return "DBIN readiness view. Official filing, assessment and remittance remain in NRS or approved partner systems.";
 }
 
 export function formatNrsStatus(value: string | null | undefined) {
   return String(value ?? "unavailable").replace(/[_-]/g, " ");
 }
-

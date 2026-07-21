@@ -3,7 +3,7 @@ import { AlertTriangle, BadgeCheck, BookOpenCheck, CalendarClock, ClipboardList,
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
-import { demoDisclosure, formatNrsStatus, requireNrsWorkspace } from "@/lib/nrs/access";
+import { formatNrsStatus, nrsWorkspaceDisclosure, requireNrsWorkspace } from "@/lib/nrs/access";
 
 type MsmeRow = {
   id: string;
@@ -155,7 +155,7 @@ export default async function RevenueGuidesPage() {
           </div>
           <Link href="/dashboard/nrs" className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20">Back to Intelligence Centre</Link>
         </div>
-        <p className="mt-4 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-emerald-50">{demoDisclosure()} Revenue Guide assignments are derived from DBIN demo records and do not represent payroll, commission or official field-force management.</p>
+        <p className="mt-4 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-emerald-50">{nrsWorkspaceDisclosure()} Revenue Guide assignments are derived from DBIN formalisation records and do not represent payroll, commission or official field-force management.</p>
       </header>
 
       <div className="grid gap-3 md:grid-cols-4">

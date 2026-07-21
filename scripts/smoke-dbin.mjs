@@ -39,6 +39,8 @@ const boiWorkspaceLayout = read("src/app/dashboard/boi/layout.tsx");
 const boiWorkspaceSectionPage = read("src/app/dashboard/boi/[section]/page.tsx");
 const boiWorkspaceData = read("src/lib/data/boi-workspace.ts");
 const boiNativePages = read("src/components/boi/boi-native-pages.tsx");
+const dashboardLayout = read("src/app/dashboard/layout.tsx");
+const proxyFile = read("src/proxy.ts");
 const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const workspaceLanguage = read("src/lib/workspaces/workspace-language.ts");
@@ -872,6 +874,24 @@ check("NRS/FIRS navigation and route fixture stay aligned to formalisation works
       nrsFixture.includes('"/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"') &&
       firsFixture.includes('"/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"'),
     "Expected visible NRS/FIRS navigation, direct route access fixture, and restricted route denials to stay aligned to the formalisation boundary.",
+  );
+});
+
+check("NRS workspace bypasses the legacy dashboard shell", () => {
+  assert(
+    proxyFile.includes('requestHeaders.set("x-dbin-pathname", request.nextUrl.pathname)') &&
+      dashboardLayout.includes('headerStore.get("x-dbin-pathname")') &&
+      dashboardLayout.includes('pathname.startsWith("/dashboard/nrs") || pathname.startsWith("/dashboard/firs")') &&
+      dashboardLayout.includes('return <div className="min-h-screen bg-slate-100">{children}</div>') &&
+      nrsWorkspaceLayout.includes("<WorkspaceShell") &&
+      workspaceShell.includes("hidden lg:sticky lg:top-0 lg:flex") &&
+      workspaceShell.includes("mobileNavOpen") &&
+      workspaceShell.includes("role=\"dialog\"") &&
+      !nrsWorkspaceLayout.includes("<Sidebar") &&
+      !nrsWorkspaceComponent.includes("NRS Officer Portal") &&
+      !nrsWorkspaceComponent.includes("Core Workflows") &&
+      !nrsWorkspaceComponent.includes("Operational Modules"),
+    "Expected NRS/FIRS routes to bypass the legacy dashboard shell and render only the unified workspace shell.",
   );
 });
 

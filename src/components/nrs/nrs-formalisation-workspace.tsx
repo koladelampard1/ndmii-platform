@@ -14,7 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { NationalRevenueMap } from "@/components/nrs/national-revenue-map";
-import { demoDisclosure } from "@/lib/nrs/access";
+import { nrsWorkspaceDisclosure } from "@/lib/nrs/access";
 import type { NrsBusinessSummary, NrsFilters, NrsFormalisationWorkspace, NrsSection } from "@/lib/data/nrs-formalisation";
 import { paginateNrsItems } from "@/lib/data/nrs-formalisation";
 
@@ -105,7 +105,7 @@ function Hero({ section }: { section: NrsSection }) {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">Nigeria Revenue Service • DBIN Formalisation Layer</p>
       <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight md:text-4xl">{copy.title}</h1>
       <p className="mt-3 max-w-4xl text-sm leading-6 text-emerald-50/90">{copy.description}</p>
-      <p className="mt-5 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-xs text-emerald-50">{demoDisclosure()}</p>
+      <p className="mt-5 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-xs text-emerald-50">{nrsWorkspaceDisclosure()}</p>
     </header>
   );
 }

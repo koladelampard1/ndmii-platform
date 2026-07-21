@@ -2,7 +2,7 @@ import { PrintButton } from "@/components/msme/print-button";
 import { redirect } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { canAccessNrsWorkspace, demoDisclosure } from "@/lib/nrs/access";
+import { canAccessNrsWorkspace, nrsWorkspaceDisclosure } from "@/lib/nrs/access";
 import { toCsv } from "@/lib/utils/csv";
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ state?: string; sector?: string; status?: string; from?: string; to?: string }> }) {
@@ -39,7 +39,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     <section className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold">{isNrsOfficerView ? "NRS Reporting & Export Centre" : "Reporting & Export Center"}</h1>
-        {isNrsOfficerView ? <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{demoDisclosure()}</p> : null}
+        {isNrsOfficerView ? <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{nrsWorkspaceDisclosure()}</p> : null}
       </div>
       <form className="grid gap-2 rounded-xl border bg-white p-4 md:grid-cols-5 print:hidden">
         <input name="state" defaultValue={params.state} placeholder="state" className="rounded border px-2 py-2 text-sm" />
