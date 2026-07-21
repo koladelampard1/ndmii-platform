@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clearDbinAuthCookies } from "@/lib/auth/cookies";
+import { resolveDbinHostSurface } from "@/lib/routing/dbin-hosts";
 import {
   SUPABASE_ACCESS_TOKEN_COOKIE,
   SUPABASE_REFRESH_TOKEN_COOKIE,
@@ -34,18 +35,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const surface = resolveDbinHostSurface(requestHost);
   const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = "/login";
+  loginUrl.pathname = surface === "nrs" ? "/" : "/login";
   loginUrl.search = "";
-  loginUrl.searchParams.set(
-    "message",
-    request.nextUrl.searchParams.get("switch") === "1"
-      ? "Signed out. Choose another account."
-      : "Signed out successfully.",
-  );
-  loginUrl.searchParams.set("signedOut", "1");
+  if (surface !== "nrs") {
+    loginUrl.searchParams.set(
+      "message",
+      request.nextUrl.searchParams.get("switch") === "1"
+        ? "Signed out. Choose another account."
+        : "Signed out successfully.",
+    );
+    loginUrl.searchParams.set("signedOut", "1");
+  }
   const returnTo = getSafeReturnPath(request.nextUrl.searchParams.get("returnTo"));
-  if (returnTo) loginUrl.searchParams.set("returnTo", returnTo);
+  if (returnTo && surface !== "nrs") loginUrl.searchParams.set("returnTo", returnTo);
 
   const response = NextResponse.redirect(loginUrl);
   clearSupabaseAuthCookies(response);

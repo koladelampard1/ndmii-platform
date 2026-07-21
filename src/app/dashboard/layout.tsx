@@ -24,11 +24,15 @@ async function getDashboardPathname() {
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const [ctx, pathname] = await Promise.all([getCurrentUserContext(), getDashboardPathname()]);
+  const isNrsWorkspace = pathname.startsWith("/dashboard/nrs") || pathname.startsWith("/dashboard/firs");
   if (ctx.role === "public") {
+    if (isNrsWorkspace) {
+      const nextPath = pathname || "/dashboard/nrs";
+      redirect(`/login?workspace=nrs&next=${encodeURIComponent(nextPath)}`);
+    }
     redirect("/login");
   }
 
-  const isNrsWorkspace = pathname.startsWith("/dashboard/nrs") || pathname.startsWith("/dashboard/firs");
   if (isNrsWorkspace) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
   }

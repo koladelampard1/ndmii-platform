@@ -8,7 +8,7 @@ import { getWorkspaceDefinition } from "@/lib/workspaces/workspace-registry";
 
 export default async function NrsWorkspaceLayout({ children }: { children: ReactNode }) {
   const ctx = await requireWorkspaceRole([...NRS_ACCESS_ROLES], "/dashboard/nrs");
-  if (!canAccessRoute(ctx.role, "/dashboard/nrs")) redirect("/access-denied");
+  if (!canAccessRoute(ctx.role, "/dashboard/nrs")) redirect("/access-denied?workspace=nrs");
   const workspace = getWorkspaceDefinition("nrs");
 
   return (

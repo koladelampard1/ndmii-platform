@@ -11,6 +11,19 @@ import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profi
 import { canAccessRoute, getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
 
+const NRS_LOGIN_ROLES: UserRole[] = ["nrs_officer", "firs_officer", "admin", "super_admin"];
+
+function getSafeRelativePath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  if (value === "/login" || value.startsWith("/login?")) return null;
+  if (value === "/logout" || value.startsWith("/logout?")) return null;
+  return value;
+}
+
+function canUseNrsWorkspace(role: UserRole) {
+  return NRS_LOGIN_ROLES.includes(role);
+}
+
 function LoginPageContent() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -23,6 +36,9 @@ function LoginPageContent() {
   const [message, setMessage] = useState<string | null>(searchParams.get("message"));
   const [error, setError] = useState<string | null>(null);
   const signedOut = searchParams.get("signedOut") === "1";
+  const requestedWorkspace = searchParams.get("workspace");
+  const isNrsLogin = requestedWorkspace === "nrs";
+  const requestedNextPath = getSafeRelativePath(searchParams.get("next"));
 
   useEffect(() => {
     if (!signedOut) return;
@@ -90,19 +106,23 @@ function LoginPageContent() {
     );
     console.info("[auth-login:session-sync-success]", { role: verifiedRole, sessionDebug });
 
-    const requestedReturnPath = searchParams.get("returnTo");
+    const requestedReturnPath = getSafeRelativePath(searchParams.get("returnTo"));
     const safeReturnPath =
       requestedReturnPath &&
-      requestedReturnPath.startsWith("/") &&
-      !requestedReturnPath.startsWith("//") &&
-      requestedReturnPath !== "/login" &&
-      !requestedReturnPath.startsWith("/login?") &&
-      requestedReturnPath !== "/logout" &&
-      !requestedReturnPath.startsWith("/logout?") &&
       canAccessRoute(verifiedRole, requestedReturnPath.split("?")[0] || "/")
         ? requestedReturnPath
         : null;
-    const targetRoute = safeReturnPath ?? getDefaultDashboardRoute(verifiedRole);
+    const safeNextPath =
+      requestedNextPath &&
+      canAccessRoute(verifiedRole, requestedNextPath.split("?")[0] || "/")
+        ? requestedNextPath
+        : null;
+    const nrsTargetRoute = isNrsLogin
+      ? canUseNrsWorkspace(verifiedRole)
+        ? safeNextPath ?? "/dashboard/nrs"
+        : `/access-denied?workspace=nrs&returnTo=${encodeURIComponent(getDefaultDashboardRoute(verifiedRole))}`
+      : null;
+    const targetRoute = nrsTargetRoute ?? safeReturnPath ?? safeNextPath ?? getDefaultDashboardRoute(verifiedRole);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,
@@ -149,12 +169,13 @@ function LoginPageContent() {
             <div>
               <DbinBrandLogo showText={false} iconClassName="h-9 w-14 rounded-lg" />
               <h1 className="mt-2 text-2xl font-semibold leading-tight sm:text-3xl">
-                Welcome to
-                {" "}
-                <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span>
+                {isNrsLogin ? "NRS Formalisation Workspace" : "Welcome to "}
+                {!isNrsLogin ? <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span> : null}
               </h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-emerald-100/90 sm:text-base">
-                Your trusted platform for business identity verification, secure participation, and compliance-ready growth across Nigeria.
+                {isNrsLogin
+                  ? "Sign in to access business formalisation, Revenue Guide operations, readiness intelligence and institutional reports."
+                  : "Your trusted platform for business identity verification, secure participation, and compliance-ready growth across Nigeria."}
               </p>
             </div>
 

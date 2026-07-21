@@ -30,6 +30,9 @@ async function resolveCurrentPathname() {
 export async function requireWorkspaceRole(allowedRoles: UserRole[], pathname?: string) {
   const ctx = await getCurrentUserContext();
   const currentPathname = pathname ?? await resolveCurrentPathname();
+  const deniedPath = currentPathname.startsWith("/dashboard/nrs") || currentPathname.startsWith("/dashboard/firs")
+    ? "/access-denied?workspace=nrs"
+    : "/access-denied";
   const expectedRole = allowedRoles.join(",");
   const requestHost = await resolveRequestHost();
   const cookieStore = await cookies();
@@ -56,7 +59,7 @@ export async function requireWorkspaceRole(allowedRoles: UserRole[], pathname?: 
       redirectReason: "workspace_role_not_allowed",
       failureReason: "workspace_role_not_allowed",
     });
-    redirect("/access-denied");
+    redirect(deniedPath);
   }
 
   console.info("[workspace-role-guard]", {

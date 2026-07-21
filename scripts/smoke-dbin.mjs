@@ -41,6 +41,7 @@ const boiWorkspaceData = read("src/lib/data/boi-workspace.ts");
 const boiNativePages = read("src/components/boi/boi-native-pages.tsx");
 const dashboardLayout = read("src/app/dashboard/layout.tsx");
 const proxyFile = read("src/proxy.ts");
+const dbinHosts = read("src/lib/routing/dbin-hosts.ts");
 const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const workspaceLanguage = read("src/lib/workspaces/workspace-language.ts");
@@ -120,12 +121,31 @@ const nrsWorkspaceLayout = read("src/app/dashboard/nrs/layout.tsx");
 const nrsWorkspacePage = read("src/app/dashboard/nrs/page.tsx");
 const nrsWorkspaceData = read("src/lib/data/nrs-formalisation.ts");
 const nrsWorkspaceComponent = read("src/components/nrs/nrs-formalisation-workspace.tsx");
+const nrsPublicLanding = read("src/app/nrs/page.tsx");
 const nrsBusinessProfilePage = read("src/app/dashboard/nrs/businesses/[businessId]/page.tsx");
 const nrsLegacyInvoicesPage = read("src/app/dashboard/nrs/invoices/page.tsx");
 const nrsLegacyInvoiceRegistryPage = read("src/app/dashboard/nrs/invoice-registry/page.tsx");
 const nrsLegacyVatMonitorPage = read("src/app/dashboard/nrs/vat-monitor/page.tsx");
 const nrsLegacyRevenuePage = read("src/app/dashboard/nrs/revenue/page.tsx");
 const authProfile = read("src/lib/auth/profile.ts");
+const accessDeniedPage = read("src/app/access-denied/page.tsx");
+const workspaceGuards = read("src/lib/auth/workspace-guards.ts");
+const dbinHostsModule = (() => {
+  const source = ts.transpileModule(dbinHosts, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  vm.runInNewContext(source, {
+    module: commonJsModule,
+    exports: commonJsModule.exports,
+    process,
+    Set,
+  });
+  return commonJsModule.exports;
+})();
 const authorizationModule = (() => {
   const source = ts.transpileModule(authorization, {
     compilerOptions: {
@@ -279,17 +299,17 @@ check("auth session derives helper metadata server-side", () => {
   );
 });
 
-check("logout clears Supabase and DBIN cookies before returning to login", () => {
+check("logout clears Supabase and DBIN cookies before returning safely", () => {
   assert(
     logoutRoute.includes("supabase.auth.signOut") &&
       logoutRoute.includes("clearSupabaseAuthCookies(response)") &&
       logoutRoute.includes("clearDbinAuthCookies(response)") &&
-      logoutRoute.includes('loginUrl.pathname = "/login"') &&
+      logoutRoute.includes('surface === "nrs" ? "/" : "/login"') &&
       authCookies.includes("DBIN_AUTH_COOKIE_DOMAIN") &&
       authCookies.includes("Clear legacy host-only cookies") &&
       supabaseServer.includes("response.cookies.set(name, \"\", expiredOptions)") &&
       supabaseServer.includes("domain: authCookieDomain"),
-    "Expected logout to revoke the Supabase session and clear host-only plus cross-subdomain auth cookies.",
+    "Expected logout to revoke the Supabase session, clear host-only plus cross-subdomain auth cookies, and preserve dedicated host return behaviour.",
   );
 });
 
@@ -919,6 +939,54 @@ check("NRS formalisation workspace removes private transaction and liability exp
       !nrsWorkspaceComponent.includes("Revenue Opportunity") &&
       !nrsWorkspaceComponent.includes("Outstanding Exposure"),
     "Expected NRS formalisation loaders and pages to avoid invoices, payments, VAT exposure, revenue opportunity and liability fields.",
+  );
+});
+
+check("NRS dedicated host resolves to the formalisation landing and workspace", () => {
+  const { resolveDbinHostSurface, resolveDbinRewritePath } = dbinHostsModule;
+  assert(
+    resolveDbinHostSurface("nrs.dbin.ng") === "nrs" &&
+      resolveDbinHostSurface("nrs.localhost:3000") === "nrs" &&
+      resolveDbinRewritePath("nrs", "/") === "/nrs" &&
+      resolveDbinRewritePath("nrs", "/nrs") === null &&
+      resolveDbinRewritePath("nrs", "/dashboard/nrs") === null &&
+      resolveDbinRewritePath("nrs", "/login") === null &&
+      resolveDbinRewritePath("nrs", "/logout") === null &&
+      resolveDbinRewritePath("nrs", "/") !== "/boi",
+    "Expected nrs.dbin.ng to resolve to the NRS public entry while keeping auth and workspace paths host-relative.",
+  );
+});
+
+check("NRS public landing is institutional, public and metadata-ready", () => {
+  assert(
+    authorization.includes('path === "/nrs"') &&
+      nrsPublicLanding.includes('title: "NRS Business Formalisation & Readiness | DBIN"') &&
+      nrsPublicLanding.includes('canonical: "https://nrs.dbin.ng/"') &&
+      nrsPublicLanding.includes("Formalising businesses. Expanding participation. Building a stronger economy.") &&
+      nrsPublicLanding.includes('/login?workspace=nrs&next=/dashboard/nrs') &&
+      nrsPublicLanding.includes("No private invoice visibility") &&
+      nrsPublicLanding.includes("Tax-specific systems remain systems of record") &&
+      !nrsPublicLanding.includes("Invoice Monitoring") &&
+      !nrsPublicLanding.includes("VAT Exposure") &&
+      !nrsPublicLanding.includes("Revenue Opportunity"),
+    "Expected /nrs to be a public, SEO-ready, formalisation-focused landing page without retired transaction positioning.",
+  );
+});
+
+check("NRS sign-in, denied and logout flows preserve workspace context safely", () => {
+  assert(
+      loginPage.includes('searchParams.get("workspace")') &&
+      loginPage.includes('searchParams.get("next")') &&
+      loginPage.includes('"/dashboard/nrs"') &&
+      loginPage.includes('/access-denied?workspace=nrs') &&
+      loginPage.includes("canAccessRoute(verifiedRole") &&
+      dashboardLayout.includes('/login?workspace=nrs&next=') &&
+      workspaceGuards.includes('"/access-denied?workspace=nrs"') &&
+      accessDeniedPage.includes("This account does not have access to the NRS workspace.") &&
+      logoutRoute.includes('surface === "nrs" ? "/" : "/login"') &&
+      !loginPage.includes("http://") &&
+      !loginPage.includes("https://www.dbin.ng"),
+    "Expected NRS login to preserve a sanitized workspace destination, denied access to render a polished NRS state, and logout to return to the NRS host root.",
   );
 });
 

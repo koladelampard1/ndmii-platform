@@ -44,6 +44,38 @@ test("BOI authentication routes remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/_next/static/chunk.js"), null);
 });
 
+test("nrs.dbin.ng resolves to the NRS surface", () => {
+  assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
+  assert.equal(resolveDbinHostSurface("NRS.DBIN.NG:443"), "nrs");
+  assert.equal(resolveDbinHostSurface("nrs.localhost:3000"), "nrs");
+  assert.equal(resolveDbinHostSurface("nrs.dbin.local:3000"), "nrs");
+});
+
+test("NRS host requests resolve to the public NRS entry without BOI leakage", () => {
+  assert.equal(resolveDbinRewritePath("nrs", "/"), "/nrs");
+  assert.equal(resolveDbinRewritePath("nrs", "/nrs"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/about"), "/nrs");
+  assert.notEqual(resolveDbinRewritePath("nrs", "/"), "/boi");
+});
+
+test("NRS authentication and workspace routes remain host-relative", () => {
+  assert.equal(resolveDbinRewritePath("nrs", "/login"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/logout"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/auth/callback"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/update-password"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/dashboard/nrs"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/dashboard/firs"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/api/auth/session"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/_next/static/chunk.js"), null);
+});
+
+test("NRS host keeps intentional public support routes direct", () => {
+  assert.equal(resolveDbinRewritePath("nrs", "/verification"), "/verify");
+  assert.equal(resolveDbinRewritePath("nrs", "/verify"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/register"), null);
+  assert.equal(resolveDbinRewritePath("nrs", "/contact"), null);
+});
+
 test("BOI authenticated workspaces remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/boi"), null);
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/admin"), null);
@@ -56,11 +88,12 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("app.dbin.ng"), "app");
   assert.equal(resolveDbinHostSurface("admin.dbin.ng"), "admin");
   assert.equal(resolveDbinHostSurface("verify.dbin.ng"), "verify");
+  assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
   assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 
 test("super admin landing route remains direct on app, BOI, and admin surfaces", () => {
-  for (const host of ["app.dbin.ng", "boi.dbin.ng", "admin.dbin.ng"]) {
+  for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "admin.dbin.ng"]) {
     const surface = resolveDbinHostSurface(host);
     assert.equal(resolveDbinRewritePath(surface, "/dashboard/admin"), null);
   }
@@ -91,4 +124,5 @@ test("localhost development continues to use the app surface", () => {
 
 test("the first forwarded hostname is used", () => {
   assert.equal(resolveDbinHostSurface("boi.dbin.ng, proxy.internal"), "boi");
+  assert.equal(resolveDbinHostSurface("nrs.dbin.ng, proxy.internal"), "nrs");
 });

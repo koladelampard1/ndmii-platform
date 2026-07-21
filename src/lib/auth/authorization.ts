@@ -154,6 +154,8 @@ export function isPublicPath(path: string): boolean {
     path === "/partners" ||
     path === "/resources" ||
     path === "/contact" ||
+    path === "/nrs" ||
+    path.startsWith("/nrs/") ||
     path === "/lcdbo" ||
     path.startsWith("/lcdbo/") ||
     path === "/sample-id-card" ||
