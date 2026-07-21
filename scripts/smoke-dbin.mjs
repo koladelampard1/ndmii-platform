@@ -960,16 +960,28 @@ check("NRS dedicated host resolves to the formalisation landing and workspace", 
 check("NRS public landing is institutional, public and metadata-ready", () => {
   assert(
     authorization.includes('path === "/nrs"') &&
-      nrsPublicLanding.includes('title: "NRS Business Formalisation & Readiness | DBIN"') &&
+      nrsPublicLanding.includes('title: "Nigeria Revenue Service Business Formalisation Platform | DBIN"') &&
       nrsPublicLanding.includes('canonical: "https://nrs.dbin.ng/"') &&
+      nrsPublicLanding.includes("Nigeria Revenue Service") &&
+      nrsPublicLanding.includes("Business Formalisation Platform") &&
+      nrsPublicLanding.includes("Powered by DBIN") &&
       nrsPublicLanding.includes("Formalising businesses. Expanding participation. Building a stronger economy.") &&
       nrsPublicLanding.includes('/login?workspace=nrs&next=/dashboard/nrs') &&
-      nrsPublicLanding.includes("No private invoice visibility") &&
-      nrsPublicLanding.includes("Tax-specific systems remain systems of record") &&
+      nrsPublicLanding.includes("Access Authorized Portal") &&
+      nrsPublicLanding.includes("No private revenue surveillance") &&
+      nrsPublicLanding.includes("How DBIN fits into the revenue ecosystem.") &&
+      nrsPublicLanding.includes("DBIN prepares and connects businesses.") &&
+      nrsPublicLanding.includes("Private invoices") &&
+      nrsPublicLanding.includes("Formalisation without financial surveillance.") &&
+      nrsPublicLanding.includes("Revenue Guides support businesses through discovery") &&
+      !nrsPublicLanding.includes("Marketplace") &&
+      !nrsPublicLanding.includes("Try demo") &&
+      !nrsPublicLanding.includes("Pilot") &&
+      !nrsPublicLanding.includes("Placeholder") &&
       !nrsPublicLanding.includes("Invoice Monitoring") &&
       !nrsPublicLanding.includes("VAT Exposure") &&
       !nrsPublicLanding.includes("Revenue Opportunity"),
-    "Expected /nrs to be a public, SEO-ready, formalisation-focused landing page without retired transaction positioning.",
+    "Expected /nrs to be a public, SEO-ready, NRS-owned formalisation landing page without generic navigation or retired transaction positioning.",
   );
 });
 
