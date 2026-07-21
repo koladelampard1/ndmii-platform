@@ -37,6 +37,8 @@ const boiPortal = read("src/app/boi/page.tsx");
 const boiWorkspacePage = read("src/app/dashboard/boi/page.tsx");
 const boiWorkspaceLayout = read("src/app/dashboard/boi/layout.tsx");
 const boiWorkspaceSectionPage = read("src/app/dashboard/boi/[section]/page.tsx");
+const boiWorkspaceData = read("src/lib/data/boi-workspace.ts");
+const boiNativePages = read("src/components/boi/boi-native-pages.tsx");
 const impactShell = read("src/app/dashboard/impact-intelligence/impact-intelligence-shell.tsx");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const workspaceLanguage = read("src/lib/workspaces/workspace-language.ts");
@@ -112,8 +114,15 @@ const institutionalReportPdfModule = (() => {
   return commonJsModule.exports;
 })();
 const authorization = read("src/lib/auth/authorization.ts");
-const taxVatCompliancePage = read("src/components/msme/tax-vat-compliance-page.tsx");
-const reportsDashboardPage = read("src/app/dashboard/reports/page.tsx");
+const nrsWorkspaceLayout = read("src/app/dashboard/nrs/layout.tsx");
+const nrsWorkspacePage = read("src/app/dashboard/nrs/page.tsx");
+const nrsWorkspaceData = read("src/lib/data/nrs-formalisation.ts");
+const nrsWorkspaceComponent = read("src/components/nrs/nrs-formalisation-workspace.tsx");
+const nrsBusinessProfilePage = read("src/app/dashboard/nrs/businesses/[businessId]/page.tsx");
+const nrsLegacyInvoicesPage = read("src/app/dashboard/nrs/invoices/page.tsx");
+const nrsLegacyInvoiceRegistryPage = read("src/app/dashboard/nrs/invoice-registry/page.tsx");
+const nrsLegacyVatMonitorPage = read("src/app/dashboard/nrs/vat-monitor/page.tsx");
+const nrsLegacyRevenuePage = read("src/app/dashboard/nrs/revenue/page.tsx");
 const authProfile = read("src/lib/auth/profile.ts");
 const authorizationModule = (() => {
   const source = ts.transpileModule(authorization, {
@@ -730,13 +739,15 @@ check("BOI persona aliases resolve to the BOI workspace without LCDBO leakage", 
       normalizeUserRole("boi_admin") === "boi_executive" &&
       getDefaultDashboardRoute(normalizeUserRole("boi_officer")) === "/dashboard/boi" &&
       canAccessRoute("boi_executive", "/dashboard/boi") &&
-      canAccessRoute("boi_executive", "/dashboard/boi/business-pipeline") &&
+      canAccessRoute("boi_executive", "/dashboard/boi/businesses") &&
+      canAccessRoute("boi_executive", "/dashboard/boi/readiness") &&
+      canAccessRoute("boi_executive", "/dashboard/boi/risk") &&
       canAccessRoute("boi_executive", "/dashboard/impact-intelligence") &&
       !canAccessRoute("boi_executive", "/dashboard/lcdbo") &&
       impactShellCompact.includes('role === "boi_executive"') &&
       impactShellCompact.includes('item.href.startsWith("/dashboard/lcdbo")') &&
       impactShellCompact.includes("BOI_NAV_LABELS"),
-    "Expected BOI officer, manager, and admin aliases to land in BOI Impact Intelligence while excluding LCDBO navigation.",
+    "Expected BOI officer, manager, and admin aliases to land in the native BOI workspace while excluding LCDBO navigation.",
   );
 });
 
@@ -759,16 +770,21 @@ check("workspace registry establishes product-specific DPI workspaces", () => {
   );
 });
 
-check("BOI product routes bridge to proven Impact Intelligence workflows", () => {
+check("BOI product routes render native pages backed by proven Impact Intelligence loaders", () => {
   assert(
     boiPortal.includes("https://app.dbin.ng/dashboard/boi") &&
-      boiWorkspacePage.includes("BOI investment intelligence") &&
-      boiWorkspacePage.includes("No LCDBO workspace leakage") &&
-      boiWorkspaceSectionPage.includes('"business-pipeline": "/dashboard/impact-intelligence/cohorts"') &&
-      boiWorkspaceSectionPage.includes('"funding-pipeline": "/dashboard/impact-intelligence/interventions"') &&
-      boiWorkspaceSectionPage.includes('"investment-readiness": "/dashboard/impact-intelligence/assessments"') &&
-      boiWorkspaceSectionPage.includes('"risk-signals": "/dashboard/impact-intelligence/risk-flags"'),
-    "Expected /dashboard/boi product routes and compatibility bridges for existing BOI workflows.",
+      boiWorkspacePage.includes("getBoiOverview") &&
+      boiWorkspaceSectionPage.includes("resolveBoiSection") &&
+      !boiWorkspaceSectionPage.includes("redirect(") &&
+      boiWorkspaceData.includes("listImpactCohorts") &&
+      boiWorkspaceData.includes("listImpactInterventions") &&
+      boiWorkspaceData.includes("listImpactAssessments") &&
+      boiWorkspaceData.includes("listImpactEvidence") &&
+      boiWorkspaceData.includes('"business-pipeline": "businesses"') &&
+      boiNativePages.includes("Investment dossier") &&
+      boiNativePages.includes("Risk signals are operational review indicators") &&
+      boiNativePages.includes("/dashboard/boi/businesses/"),
+    "Expected /dashboard/boi product routes to render native BOI pages without redirecting users into Impact Intelligence URLs.",
   );
 });
 
@@ -806,69 +822,87 @@ check("super admin login and admin landing guards use the verified platform role
   );
 });
 
-check("NRS/FIRS workspace route access is presentation-ready", () => {
+check("NRS/FIRS formalisation workspace route access is presentation-ready", () => {
   const { canAccessRoute } = authorizationModule;
   const nrsRoutes = [
     "/dashboard/nrs",
-    "/dashboard/nrs/invoices",
-    "/dashboard/nrs/invoice-registry",
-    "/dashboard/nrs/vat-monitor",
-    "/dashboard/nrs/revenue",
+    "/dashboard/nrs/businesses",
+    "/dashboard/nrs/businesses/example",
+    "/dashboard/nrs/readiness",
+    "/dashboard/nrs/intelligence",
+    "/dashboard/nrs/revenue-guides",
+    "/dashboard/nrs/programmes",
+    "/dashboard/nrs/reports",
+    "/dashboard/nrs/verification",
+    "/dashboard/nrs/integrations",
     "/dashboard/firs",
-    "/dashboard/payments",
-    "/dashboard/revenue-guides",
-    "/dashboard/reviews/compliance",
-    "/dashboard/reports",
   ];
-  const restrictedRoutes = ["/dashboard/msme", "/dashboard/msme/compliance", "/dashboard/associations"];
+  const legacyRedirectRoutes = ["/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue"];
+  const restrictedRoutes = ["/dashboard/msme", "/dashboard/msme/compliance", "/dashboard/associations", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"];
 
   assert(
-    ["nrs_officer", "firs_officer", "admin", "super_admin"].every((role) => nrsRoutes.every((route) => canAccessRoute(role, route))) &&
+    ["nrs_officer", "firs_officer", "admin", "super_admin"].every((role) => [...nrsRoutes, ...legacyRedirectRoutes].every((route) => canAccessRoute(role, route))) &&
       ["nrs_officer", "firs_officer"].every((role) => restrictedRoutes.every((route) => !canAccessRoute(role, route))),
-    "Expected NRS/FIRS/admin roles to access intended revenue workspace routes while MSME/association surfaces remain restricted.",
+    "Expected NRS/FIRS/admin roles to access intended formalisation routes while transaction/compliance surfaces remain restricted.",
   );
 });
 
-check("NRS/FIRS navigation and route fixture stay aligned", () => {
+check("NRS/FIRS navigation and route fixture stay aligned to formalisation workspace", () => {
   const fixture = compact(impactRouteFixture);
   const nrsFixture = fixture.match(/nrs_officer: \{(.*?)\}, firs_officer:/)?.[1] ?? "";
   const firsFixture = fixture.match(/firs_officer: \{(.*?)\},? \};/)?.[1] ?? "";
+  const roleNavSection = authorization.slice(authorization.indexOf("export const ROLE_NAV_ITEMS"));
+  const nrsNav = roleNavSection.match(/nrs_officer: \[(.*?)\],\s*firs_officer:/s)?.[1] ?? "";
+  const firsNav = roleNavSection.match(/firs_officer: \[(.*?)\],\s*\};/s)?.[1] ?? "";
   const requiredRoutes = [
-    "/dashboard/nrs/invoices",
-    "/dashboard/nrs/vat-monitor",
-    "/dashboard/nrs/revenue",
-    "/dashboard/revenue-guides",
-    "/dashboard/reviews/compliance",
-    "/dashboard/payments",
-    "/dashboard/reports",
+    "/dashboard/nrs/businesses",
+    "/dashboard/nrs/readiness",
+    "/dashboard/nrs/intelligence",
+    "/dashboard/nrs/revenue-guides",
+    "/dashboard/nrs/programmes",
+    "/dashboard/nrs/reports",
+    "/dashboard/nrs/verification",
+    "/dashboard/nrs/integrations",
   ];
+  const retiredRoutes = ["/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"];
 
   assert(
-    requiredRoutes.every((route) => authorization.includes(`{ href: "${route}"`) && nrsFixture.includes(route) && firsFixture.includes(route)) &&
-      nrsFixture.includes('denied: ["/dashboard/associations", "/dashboard/msme"]') &&
-      firsFixture.includes('denied: ["/dashboard/associations", "/dashboard/msme"]'),
-    "Expected visible NRS/FIRS navigation, direct route access fixture, and restricted route denials to stay aligned.",
+    requiredRoutes.every((route) => nrsNav.includes(`{ href: "${route}"`) && firsNav.includes(`{ href: "${route}"`) && nrsFixture.includes(route) && firsFixture.includes(route)) &&
+      retiredRoutes.every((route) => !nrsNav.includes(`{ href: "${route}"`) && !firsNav.includes(`{ href: "${route}"`) && nrsFixture.includes(route) && firsFixture.includes(route)) &&
+      nrsFixture.includes('"/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"') &&
+      firsFixture.includes('"/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"'),
+    "Expected visible NRS/FIRS navigation, direct route access fixture, and restricted route denials to stay aligned to the formalisation boundary.",
   );
 });
 
-check("NRS Tax/VAT workspace does not link officers into MSME-only compliance pages", () => {
+check("NRS formalisation workspace removes private transaction and liability exposure", () => {
   assert(
-    taxVatCompliancePage.includes('const complianceHref = isMsmeView ? "/dashboard/msme/compliance" : "/dashboard/reviews/compliance"') &&
-      taxVatCompliancePage.includes('const workspaceHref = isMsmeView ? "/dashboard/msme/payments" : "/dashboard/payments"') &&
-      taxVatCompliancePage.includes('!isMsmeView && msmeMap.get(profile.msme_id)?.msme_id') &&
-      taxVatCompliancePage.includes('DBIN-derived readiness and transaction signals'),
-    "Expected the shared Tax/VAT page to render NRS-safe destinations, institutional wording, and taxpayer profile links.",
+    nrsWorkspaceLayout.includes("WorkspaceShell") &&
+      nrsWorkspacePage.includes("getNrsFormalisationWorkspace") &&
+      nrsBusinessProfilePage.includes("getNrsBusinessProfile") &&
+      nrsWorkspaceComponent.includes("Privacy-safe Business Registry") &&
+      nrsWorkspaceComponent.includes("Partner systems own statutory invoicing") &&
+      !nrsWorkspaceData.includes('.from("invoices")') &&
+      !nrsWorkspaceData.includes('.from("payments")') &&
+      !nrsWorkspaceData.includes("outstanding_amount") &&
+      !nrsWorkspaceData.includes("estimated_monthly_obligation") &&
+      !nrsWorkspaceData.includes("vat_amount") &&
+      !nrsWorkspaceData.includes("total_amount") &&
+      !nrsWorkspaceComponent.includes("VAT Exposure") &&
+      !nrsWorkspaceComponent.includes("Revenue Opportunity") &&
+      !nrsWorkspaceComponent.includes("Outstanding Exposure"),
+    "Expected NRS formalisation loaders and pages to avoid invoices, payments, VAT exposure, revenue opportunity and liability fields.",
   );
 });
 
-check("NRS report workspace allows revenue roles and keeps institutional disclosure", () => {
+check("legacy NRS transaction pages redirect into safe formalisation surfaces", () => {
   assert(
-    reportsDashboardPage.includes("canAccessNrsWorkspace(ctx)") &&
-      reportsDashboardPage.includes('"super_admin"') &&
-      reportsDashboardPage.includes("NRS Reporting & Export Centre") &&
-      reportsDashboardPage.includes("demoDisclosure()") &&
+    nrsLegacyInvoicesPage.includes('redirect("/dashboard/nrs/integrations?legacy=invoices")') &&
+      nrsLegacyInvoiceRegistryPage.includes('redirect("/dashboard/nrs/integrations?legacy=invoice-registry")') &&
+      nrsLegacyVatMonitorPage.includes('redirect("/dashboard/nrs/readiness?legacy=vat-monitor")') &&
+      nrsLegacyRevenuePage.includes('redirect("/dashboard/nrs/intelligence?legacy=revenue")') &&
       authProfile.includes('"officer@firs.gov.ng": "firs_officer"'),
-    "Expected NRS/FIRS report access and legacy FIRS demo account role inference to be configured.",
+    "Expected retired NRS transaction routes to redirect safely and legacy FIRS account role inference to remain configured.",
   );
 });
 

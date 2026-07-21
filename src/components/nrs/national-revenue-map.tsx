@@ -1,16 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
-export type NrsStateMetric = {
-  state: string;
-  businesses: number;
-  verified: number;
-  compliant: number;
-  revenueGuides: number;
-  vatExposure: number;
-  sectors: string[];
-};
+import type { NrsStateMetric } from "@/lib/data/nrs-formalisation";
 
 const stateLayout = [
   ["Sokoto", "Katsina", "Jigawa", "Yobe", "Borno"],
@@ -32,30 +23,26 @@ function intensity(value: number, max: number) {
   return "fill-emerald-100 stroke-emerald-300 text-emerald-900";
 }
 
-function formatNaira(value: number) {
-  return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value);
-}
-
 export function NationalRevenueMap({ states }: { states: NrsStateMetric[] }) {
   const byState = useMemo(() => new Map(states.map((item) => [item.state, item])), [states]);
   const maxBusinesses = Math.max(1, ...states.map((item) => item.businesses));
   const [selectedState, setSelectedState] = useState(states[0]?.state ?? "Lagos");
-  const selected = byState.get(selectedState) ?? { state: selectedState, businesses: 0, verified: 0, compliant: 0, revenueGuides: 0, vatExposure: 0, sectors: [] };
+  const selected = byState.get(selectedState) ?? { state: selectedState, businesses: 0, activated: 0, verified: 0, tinLinked: 0, formalised: 0, ready: 0, revenueGuides: 0, sectors: [] };
 
   return (
-    <article className="presentation-expand rounded-2xl border bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">National Map</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Revenue-readiness by state</h2>
-          <p className="mt-1 text-sm text-slate-600">A lightweight executive map using DBIN aggregate records. No GIS engine or external data source is used.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Formalisation Index</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-950">Business readiness by state</h2>
+          <p className="mt-1 text-sm text-slate-600">A lightweight executive map using aggregate DBIN formalisation records. No transaction or liability data is shown.</p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">DBIN Derived</span>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Aggregate view</span>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <div className="rounded-2xl bg-slate-50 p-4">
-          <svg viewBox="0 0 560 340" role="img" aria-label="Clickable Nigeria state revenue-readiness map" className="h-auto w-full">
+          <svg viewBox="0 0 560 340" role="img" aria-label="Clickable Nigeria state formalisation index map" className="h-auto w-full">
             {stateLayout.flatMap((row, rowIndex) =>
               row.map((state, colIndex) => {
                 const metric = byState.get(state);
@@ -72,25 +59,22 @@ export function NationalRevenueMap({ states }: { states: NrsStateMetric[] }) {
               })
             )}
           </svg>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-slate-100 ring-1 ring-slate-200" /> No current records</span>
-            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-100 ring-1 ring-emerald-300" /> Emerging</span>
-            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-500" /> High activity</span>
-          </div>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
           <p className="text-xs font-semibold uppercase text-slate-500">Selected State</p>
           <h3 className="mt-1 text-2xl font-semibold text-slate-950">{selected.state}</h3>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Businesses</p><p className="text-xl font-semibold">{selected.businesses}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Verified</p><p className="text-xl font-semibold">{selected.verified}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Compliance</p><p className="text-xl font-semibold">{selected.compliant}</p></div>
-            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Guides</p><p className="text-xl font-semibold">{selected.revenueGuides}</p></div>
+            <Metric label="Businesses" value={selected.businesses} />
+            <Metric label="Activated" value={selected.activated} />
+            <Metric label="Verified" value={selected.verified} />
+            <Metric label="TIN linked" value={selected.tinLinked} />
+            <Metric label="Formalised" value={selected.formalised} />
+            <Metric label="Ready" value={selected.ready} />
           </div>
           <div className="mt-3 rounded-xl border p-3">
-            <p className="text-xs font-semibold uppercase text-slate-500">VAT Exposure</p>
-            <p className="mt-1 text-lg font-semibold text-slate-950">{formatNaira(selected.vatExposure)}</p>
+            <p className="text-xs font-semibold uppercase text-slate-500">Guide coverage</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{selected.revenueGuides} state/LGA coverage points</p>
           </div>
           <div className="mt-3">
             <p className="text-xs font-semibold uppercase text-slate-500">Active sectors</p>
@@ -103,4 +87,8 @@ export function NationalRevenueMap({ states }: { states: NrsStateMetric[] }) {
       </div>
     </article>
   );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{label}</p><p className="text-xl font-semibold">{value}</p></div>;
 }

@@ -2,8 +2,8 @@ import { NrsWorkspacePage } from "@/components/nrs/nrs-formalisation-workspace";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { getNrsFormalisationWorkspace } from "@/lib/data/nrs-formalisation";
 
-export default async function NrsWorkspaceDashboardPage() {
+export default async function NrsIntelligencePage() {
   const ctx = await getCurrentUserContext();
   const workspace = await getNrsFormalisationWorkspace(ctx);
-  return <NrsWorkspacePage workspace={workspace} section="dashboard" />;
+  return <NrsWorkspacePage workspace={workspace} section="intelligence" />;
 }

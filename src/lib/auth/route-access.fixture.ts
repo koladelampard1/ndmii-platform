@@ -58,7 +58,7 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/nrs", "/dashboard/associations"],
   },
   boi_executive: {
-    allowed: ["/dashboard/boi", "/dashboard/boi/business-pipeline", "/dashboard/boi/investment-readiness", "/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
+    allowed: ["/dashboard/boi", "/dashboard/boi/businesses", "/dashboard/boi/businesses/example", "/dashboard/boi/funding-programmes", "/dashboard/boi/funding-pipeline", "/dashboard/boi/readiness", "/dashboard/boi/readiness/templates", "/dashboard/boi/documents", "/dashboard/boi/portfolio", "/dashboard/boi/monitoring", "/dashboard/boi/intelligence", "/dashboard/boi/reports", "/dashboard/boi/risk", "/dashboard/boi/executive", "/dashboard/boi/business-pipeline", "/dashboard/boi/investment-readiness", "/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
     denied: ["/dashboard/lcdbo", "/dashboard/msme", "/dashboard/admin"],
   },
   programme_officer: {
@@ -94,11 +94,11 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/reviews", "/dashboard/payments"],
   },
   nrs_officer: {
-    allowed: ["/dashboard/nrs", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs", "/dashboard/payments", "/dashboard/revenue-guides", "/dashboard/reviews/compliance", "/dashboard/reports"],
-    denied: ["/dashboard/associations", "/dashboard/msme"],
+    allowed: ["/dashboard/nrs", "/dashboard/nrs/businesses", "/dashboard/nrs/businesses/example", "/dashboard/nrs/readiness", "/dashboard/nrs/intelligence", "/dashboard/nrs/revenue-guides", "/dashboard/nrs/programmes", "/dashboard/nrs/reports", "/dashboard/nrs/verification", "/dashboard/nrs/integrations", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs"],
+    denied: ["/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"],
   },
   firs_officer: {
-    allowed: ["/dashboard/nrs", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs", "/dashboard/payments", "/dashboard/revenue-guides", "/dashboard/reviews/compliance", "/dashboard/reports"],
-    denied: ["/dashboard/associations", "/dashboard/msme"],
+    allowed: ["/dashboard/nrs", "/dashboard/nrs/businesses", "/dashboard/nrs/businesses/example", "/dashboard/nrs/readiness", "/dashboard/nrs/intelligence", "/dashboard/nrs/revenue-guides", "/dashboard/nrs/programmes", "/dashboard/nrs/reports", "/dashboard/nrs/verification", "/dashboard/nrs/integrations", "/dashboard/nrs/invoices", "/dashboard/nrs/invoice-registry", "/dashboard/nrs/vat-monitor", "/dashboard/nrs/revenue", "/dashboard/firs"],
+    denied: ["/dashboard/associations", "/dashboard/msme", "/dashboard/payments", "/dashboard/reviews/compliance", "/dashboard/reports"],
   },
 };
