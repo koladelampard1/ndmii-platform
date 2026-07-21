@@ -942,6 +942,31 @@ check("NRS formalisation workspace removes private transaction and liability exp
   );
 });
 
+check("NRS national intelligence dataset is seeded and shared across workspace pages", () => {
+  assert(
+    nrsWorkspaceData.includes("NATIONAL_BUSINESS_TARGET = 24_835") &&
+      nrsWorkspaceData.includes("STATE_LGAS") &&
+      nrsWorkspaceData.includes("Federal Capital Territory") &&
+      nrsWorkspaceData.includes("Renewable Energy") &&
+      nrsWorkspaceData.includes("createSeededBusinesses") &&
+      nrsWorkspaceData.includes("SEEDED_BUSINESSES") &&
+      nrsWorkspaceData.includes("buildProgrammes") &&
+      nrsWorkspaceData.includes("buildReports") &&
+      nrsWorkspaceData.includes("buildIntegrations") &&
+      nrsWorkspaceData.includes("guideCoverage") &&
+      nrsWorkspaceData.includes("activationTrend") &&
+      nrsWorkspaceData.includes("verificationTrend") &&
+      nrsWorkspaceData.includes("tinLinkageTrend") &&
+      nrsWorkspaceComponent.includes("Activation trend") &&
+      nrsWorkspaceComponent.includes("Business segmentation") &&
+      nrsWorkspaceComponent.includes("Common support gaps") &&
+      nrsWorkspaceComponent.includes("Upcoming campaigns") &&
+      nrsWorkspaceComponent.includes("Support history") &&
+      nrsWorkspaceComponent.includes("Partner referrals"),
+    "Expected Sprint 3.5 to provide one shared national formalisation dataset with executive intelligence, programmes, reports, integrations, guides and profiles.",
+  );
+});
+
 check("NRS dedicated host resolves to the formalisation landing and workspace", () => {
   const { resolveDbinHostSurface, resolveDbinRewritePath } = dbinHostsModule;
   assert(

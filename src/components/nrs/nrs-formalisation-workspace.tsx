@@ -131,6 +131,11 @@ function Dashboard({ workspace }: { workspace: NrsFormalisationWorkspace }) {
           </div>
         </Panel>
       </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Activation trend" eyebrow="Monthly progression" icon={<BadgeCheck className="h-5 w-5" />}><Trend rows={workspace.activationTrend} /></Panel>
+        <Panel title="Verification trend" eyebrow="Identity readiness" icon={<ShieldCheck className="h-5 w-5" />}><Trend rows={workspace.verificationTrend} /></Panel>
+        <Panel title="TIN linkage trend" eyebrow="Partner-system readiness" icon={<FileCheck2 className="h-5 w-5" />}><Trend rows={workspace.tinLinkageTrend} /></Panel>
+      </div>
       <NationalRevenueMap states={workspace.stateMetrics} />
       <BusinessTable businesses={workspace.businesses.slice(0, 8)} compact />
     </>
@@ -204,16 +209,17 @@ function BusinessTable({ businesses, compact = false }: { businesses: NrsBusines
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-100 text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
-            <tr><th className="px-5 py-3">Business</th><th className="px-5 py-3">Location</th><th className="px-5 py-3">TIN</th><th className="px-5 py-3">Stage</th>{!compact && <th className="px-5 py-3">Next action</th>}<th className="px-5 py-3">Profile</th></tr>
+            <tr><th className="px-5 py-3">Business</th><th className="px-5 py-3">Location</th><th className="px-5 py-3">TIN</th><th className="px-5 py-3">Stage</th>{!compact && <th className="px-5 py-3">Readiness</th>}{!compact && <th className="px-5 py-3">Next action</th>}<th className="px-5 py-3">Profile</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {businesses.length === 0 && <tr><td colSpan={compact ? 5 : 6} className="px-5 py-10 text-center text-slate-500">No businesses match the selected filters.</td></tr>}
+            {businesses.length === 0 && <tr><td colSpan={compact ? 5 : 7} className="px-5 py-10 text-center text-slate-500">No businesses match the selected filters.</td></tr>}
             {businesses.map((business) => (
               <tr key={business.internalId} className="align-top">
-                <td className="px-5 py-4"><p className="font-black text-slate-950">{business.businessName}</p><p className="mt-1 text-xs text-slate-500">BIN: {business.bin}</p><Badge tone={statusTone(business.verificationStatus)}>{humanize(business.verificationStatus)}</Badge></td>
-                <td className="px-5 py-4 text-slate-600">{business.state}<p className="text-xs text-slate-500">{business.lga} · {business.sector}</p></td>
+                <td className="px-5 py-4"><p className="font-black text-slate-950">{business.businessName}</p><p className="mt-1 text-xs text-slate-500">BIN: {business.bin}</p><p className="text-xs text-slate-500">Owner: {business.ownerName}</p><Badge tone={statusTone(business.verificationStatus)}>{humanize(business.verificationStatus)}</Badge></td>
+                <td className="px-5 py-4 text-slate-600">{business.state}<p className="text-xs text-slate-500">{business.lga} · {business.sector}</p><p className="text-xs text-slate-500">{business.businessSize} · {business.cluster}</p></td>
                 <td className="px-5 py-4"><Badge tone={statusTone(business.tinStatus)}>{business.tinStatus}</Badge></td>
                 <td className="px-5 py-4"><Badge tone={statusTone(business.readinessStatus)}>{business.formalisationStage}</Badge><p className="mt-1 text-xs text-slate-500">{business.readinessStatus}</p></td>
+                {!compact && <td className="px-5 py-4"><ProgressValue value={business.readinessScore ?? 0} /><p className="mt-2 text-xs text-slate-500">Digital adoption {business.digitalAdoptionScore}%</p></td>}
                 {!compact && <td className="px-5 py-4 text-slate-600">{business.nextAction}</td>}
                 <td className="px-5 py-4"><Link href={`/dashboard/nrs/businesses/${encodeURIComponent(business.bin)}`} className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 hover:text-emerald-900">Open profile <ArrowRight className="h-3 w-3" /></Link></td>
               </tr>
@@ -246,29 +252,36 @@ function Pagination({ filters, page, pageCount, total, from, to }: { filters: Nr
 
 function Readiness({ workspace }: { workspace: NrsFormalisationWorkspace }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <Panel title="Readiness distribution" eyebrow="Business readiness" icon={<BadgeCheck className="h-5 w-5" />}><Ranked rows={workspace.readinessDistribution} /></Panel>
-      <Panel title="Businesses requiring support" eyebrow="Next-best intervention" icon={<UsersRound className="h-5 w-5" />}>
-        <div className="space-y-3">{workspace.businesses.filter((item) => item.nextAction !== "Maintain partner-system readiness").slice(0, 10).map((item) => <SummaryRow key={item.internalId} title={item.businessName} meta={`${item.nextAction} · ${item.state}`} />)}</div>
-      </Panel>
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Readiness distribution" eyebrow="Business readiness" icon={<BadgeCheck className="h-5 w-5" />}><Ranked rows={workspace.readinessDistribution} /></Panel>
+        <Panel title="Businesses requiring support" eyebrow="Next-best intervention" icon={<UsersRound className="h-5 w-5" />}>
+          <div className="space-y-3">{workspace.businesses.filter((item) => item.nextAction !== "Maintain partner-system readiness").slice(0, 10).map((item) => <SummaryRow key={item.internalId} title={item.businessName} meta={`${item.nextAction} · ${item.state}`} />)}</div>
+        </Panel>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Business segmentation" eyebrow="Size distribution" icon={<Building2 className="h-5 w-5" />}><Ranked rows={workspace.sizeDistribution} /></Panel>
+        <Panel title="Common support gaps" eyebrow="Intervention planning" icon={<FileCheck2 className="h-5 w-5" />}><Ranked rows={workspace.supportGaps} /></Panel>
+        <Panel title="Readiness stages" eyebrow="Formalisation funnel" icon={<Network className="h-5 w-5" />}><Ranked rows={workspace.stageDistribution} /></Panel>
+      </div>
     </div>
   );
 }
 
 function Intelligence({ workspace }: { workspace: NrsFormalisationWorkspace }) {
-  return <div className="space-y-4"><NationalRevenueMap states={workspace.stateMetrics} /><div className="grid gap-4 md:grid-cols-2"><Panel title="Top states" eyebrow="Formalisation activity" icon={<Landmark className="h-5 w-5" />}><Ranked rows={workspace.topStates} /></Panel><Panel title="Top sectors" eyebrow="Business density" icon={<Building2 className="h-5 w-5" />}><Ranked rows={workspace.topSectors} /></Panel></div></div>;
+  return <div className="space-y-4"><NationalRevenueMap states={workspace.stateMetrics} /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"><Panel title="Top states" eyebrow="Formalisation activity" icon={<Landmark className="h-5 w-5" />}><Ranked rows={workspace.topStates} /></Panel><Panel title="Emerging states" eyebrow="Verification momentum" icon={<BadgeCheck className="h-5 w-5" />}><Ranked rows={workspace.emergingStates} unit="verified" /></Panel><Panel title="Top sectors" eyebrow="Business density" icon={<Building2 className="h-5 w-5" />}><Ranked rows={workspace.topSectors} /></Panel></div><div className="grid gap-4 lg:grid-cols-3"><Panel title="Activation trend" eyebrow="Aggregate monthly view" icon={<Network className="h-5 w-5" />}><Trend rows={workspace.activationTrend} /></Panel><Panel title="Verification trend" eyebrow="Identity progress" icon={<ShieldCheck className="h-5 w-5" />}><Trend rows={workspace.verificationTrend} /></Panel><Panel title="TIN linkage trend" eyebrow="Readiness progress" icon={<FileCheck2 className="h-5 w-5" />}><Trend rows={workspace.tinLinkageTrend} /></Panel></div></div>;
 }
 
 function RevenueGuides({ workspace }: { workspace: NrsFormalisationWorkspace }) {
-  return <Panel title="Guide coverage by state/LGA" eyebrow="Education and enablement" icon={<UsersRound className="h-5 w-5" />}><Ranked rows={workspace.guideCoverage} /></Panel>;
+  return <div className="grid gap-4 xl:grid-cols-2"><Panel title="Guide coverage by state/LGA" eyebrow="Education and enablement" icon={<UsersRound className="h-5 w-5" />}><Ranked rows={workspace.guideCoverage} /></Panel><Panel title="Education topics" eyebrow="Top guide themes" icon={<BookOpenCheck className="h-5 w-5" />}><Ranked rows={workspace.guideTopics} /></Panel><Panel title="Support requests" eyebrow="Business needs" icon={<FileCheck2 className="h-5 w-5" />}><Ranked rows={workspace.supportRequests} /></Panel><Panel title="Upcoming campaigns" eyebrow="National guide plan" icon={<Landmark className="h-5 w-5" />}><div className="space-y-3">{workspace.upcomingCampaigns.map((campaign) => <SummaryRow key={campaign.title} title={campaign.title} meta={`${campaign.state} · ${campaign.focus} · ${campaign.timing}`} />)}</div></Panel></div>;
 }
 
 function Programmes({ workspace }: { workspace: NrsFormalisationWorkspace }) {
-  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{workspace.programmes.length === 0 ? <Empty text="No formalisation programmes are currently configured." /> : workspace.programmes.map((programme) => <article key={programme.id} className="rounded-3xl border bg-white p-5 shadow-sm"><BookOpenCheck className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{programme.name}</h2><p className="mt-2 text-sm text-slate-500">{programme.targetSectors.length ? programme.targetSectors.join(", ") : "All eligible sectors"}</p><div className="mt-4 flex flex-wrap gap-2"><Badge tone={statusTone(programme.status)}>{programme.status}</Badge><Badge>{programme.enrolledBusinesses.toLocaleString("en-NG")} businesses in wider registry</Badge></div></article>)}</div>;
+  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{workspace.programmes.length === 0 ? <Empty text="No formalisation programmes are currently configured." /> : workspace.programmes.map((programme) => <article key={programme.id} className="rounded-3xl border bg-white p-5 shadow-sm"><BookOpenCheck className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{programme.name}</h2><p className="mt-2 text-sm text-slate-500">{programme.targetSectors.length ? programme.targetSectors.join(", ") : "All eligible sectors"}</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm"><Info label="Enrolled" value={programme.enrolledBusinesses.toLocaleString("en-NG")} /><Info label="Completed" value={programme.completedBusinesses.toLocaleString("en-NG")} /><Info label="States" value={programme.targetStates.toLocaleString("en-NG")} /><Info label="Stage" value={programme.currentStage} /></div><div className="mt-4 flex flex-wrap gap-2"><Badge tone={statusTone(programme.status)}>{programme.status}</Badge>{programme.expectedOutcomes.map((outcome) => <Badge key={outcome}>{outcome}</Badge>)}</div></article>)}</div>;
 }
 
 function Reports({ workspace }: { workspace: NrsFormalisationWorkspace }) {
-  return <div className="grid gap-4 md:grid-cols-2">{workspace.reports.map((report) => <article key={report.title} className="rounded-3xl border bg-white p-5 shadow-sm"><FileCheck2 className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{report.title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{report.description}</p><Badge>{report.scope}</Badge></article>)}</div>;
+  return <div className="grid gap-4 md:grid-cols-2">{workspace.reports.map((report) => <article key={report.title} className="rounded-3xl border bg-white p-5 shadow-sm"><FileCheck2 className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{report.title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{report.description}</p><div className="mt-4 flex flex-wrap gap-2"><Badge>{report.scope}</Badge><Badge tone="border-emerald-200 bg-emerald-50 text-emerald-700">{report.metric}</Badge></div></article>)}</div>;
 }
 
 function Verification({ workspace }: { workspace: NrsFormalisationWorkspace }) {
@@ -276,13 +289,11 @@ function Verification({ workspace }: { workspace: NrsFormalisationWorkspace }) {
 }
 
 function Integrations({ workspace }: { workspace: NrsFormalisationWorkspace }) {
-  return <div className="grid gap-4 md:grid-cols-2">{workspace.integrations.map((integration) => <article key={integration.name} className="rounded-3xl border bg-white p-5 shadow-sm"><Network className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{integration.name}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{integration.purpose}</p><div className="mt-4 flex flex-wrap gap-2"><Badge tone={statusTone(integration.status)}>{integration.status}</Badge><Badge>{integration.consent}</Badge></div><p className="mt-3 text-xs text-slate-500">Data categories: {integration.categories.join(", ")}</p></article>)}</div>;
+  return <div className="grid gap-4 md:grid-cols-2">{workspace.integrations.map((integration) => <article key={integration.name} className="rounded-3xl border bg-white p-5 shadow-sm"><Network className="h-6 w-6 text-emerald-700" /><h2 className="mt-4 text-lg font-black text-slate-950">{integration.name}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{integration.purpose}</p><div className="mt-4 flex flex-wrap gap-2"><Badge tone={statusTone(integration.status)}>{integration.status}</Badge><Badge>{integration.consent}</Badge></div><p className="mt-3 text-xs font-semibold text-slate-500">Last sync: {integration.lastSync}</p><div className="mt-3 flex flex-wrap gap-2">{integration.capabilities.map((capability) => <Badge key={capability}>{capability}</Badge>)}</div><p className="mt-3 text-xs text-slate-500">Data categories: {integration.categories.join(", ")}</p></article>)}</div>;
 }
 
 export function NrsBusinessProfile({ business }: { business: NrsBusinessSummary | null }) {
   if (!business) return <Empty text="Business formalisation profile not found." />;
-  const stages = ["Registered", "BIN Issued", "Identity Verified", "TIN Linked", "Tax Ready", "Growth Supported"];
-  const currentIndex = Math.max(0, stages.indexOf(business.formalisationStage));
   return (
     <section className="space-y-5">
       <Link href="/dashboard/nrs/businesses" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-700"><ArrowLeft className="h-4 w-4" /> Back to Business Registry</Link>
@@ -291,16 +302,21 @@ export function NrsBusinessProfile({ business }: { business: NrsBusinessSummary 
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{business.businessName}</h1>
         <p className="mt-2 text-sm text-slate-600">BIN {business.bin} · {business.state}{business.lga !== "Unavailable" ? ` / ${business.lga}` : ""} · {business.sector}</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Info label="Owner" value={business.ownerName} />
           <Info label="Verification" value={humanize(business.verificationStatus)} />
           <Info label="TIN linkage" value={business.tinStatus} />
-          <Info label="Activation" value={business.activationStatus} />
-          <Info label="Readiness" value={business.readinessStatus} />
+          <Info label="Readiness score" value={`${business.readinessScore ?? 0}%`} />
           <Info label="Next action" value={business.nextAction} />
         </div>
       </header>
       <Panel title="Formalisation journey" eyebrow="Progress" icon={<BadgeCheck className="h-5 w-5" />}>
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">{stages.map((stage, index) => <div key={stage} className={`rounded-2xl border p-3 ${index <= currentIndex ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}><p className="text-sm font-black text-slate-950">{stage}</p><p className="mt-1 text-xs text-slate-500">{index <= currentIndex ? "Complete or current" : "Future"}</p></div>)}</div>
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">{business.readinessTimeline.map((stage) => <div key={stage.label} className={`rounded-2xl border p-3 ${stage.status === "complete" ? "border-emerald-200 bg-emerald-50" : stage.status === "current" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}><p className="text-sm font-black text-slate-950">{stage.label}</p><p className="mt-1 text-xs capitalize text-slate-500">{stage.status}</p></div>)}</div>
       </Panel>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Support history" eyebrow="Guide activity" icon={<UsersRound className="h-5 w-5" />}><InsightList rows={business.supportHistory} /></Panel>
+        <Panel title="Recommended support" eyebrow="Next intervention" icon={<FileCheck2 className="h-5 w-5" />}><InsightList rows={business.supportNeeds.length ? business.supportNeeds : ["Maintain partner-system readiness"]} /></Panel>
+        <Panel title="Partner referrals" eyebrow="Growth support" icon={<Landmark className="h-5 w-5" />}><InsightList rows={business.partnerReferrals} /></Panel>
+      </div>
       <Panel title="Partner-system connection status" eyebrow="Interoperability" icon={<Network className="h-5 w-5" />}>
         <InsightList rows={["Taxpayer-service referral: available after consent", "E-invoicing partner connection: status only", "Official filing and remittance: handled by NRS core systems", "Business operations records remain owned by the business"]} />
       </Panel>
@@ -312,8 +328,8 @@ function Panel({ title, eyebrow, icon, children }: { title: string; eyebrow: str
   return <article className="rounded-3xl border bg-white p-5 shadow-sm"><div className="flex items-start gap-3"><span className="rounded-xl bg-emerald-50 p-2 text-emerald-700">{icon}</span><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold text-slate-950">{title}</h2></div></div><div className="mt-4">{children}</div></article>;
 }
 
-function Ranked({ rows }: { rows: Array<{ label: string; value: number }> }) {
-  return <div className="space-y-2">{rows.length === 0 ? <p className="text-sm text-slate-500">Available as formalisation records grow.</p> : rows.map((row) => <SummaryRow key={row.label} title={row.label} meta={`${row.value.toLocaleString("en-NG")} businesses`} />)}</div>;
+function Ranked({ rows, unit = "businesses" }: { rows: Array<{ label: string; value: number }>; unit?: string }) {
+  return <div className="space-y-2">{rows.length === 0 ? <p className="text-sm text-slate-500">Available as formalisation records grow.</p> : rows.map((row) => <SummaryRow key={row.label} title={row.label} meta={`${row.value.toLocaleString("en-NG")} ${unit}`} />)}</div>;
 }
 
 function InsightList({ rows }: { rows: string[] }) {
@@ -330,4 +346,14 @@ function Empty({ text }: { text: string }) {
 
 function Info({ label, value }: { label: string; value: string }) {
   return <div className="rounded-2xl border bg-slate-50 p-3"><p className="text-[11px] font-semibold uppercase text-slate-500">{label}</p><p className="mt-1 text-base font-semibold capitalize text-slate-950">{value}</p></div>;
+}
+
+function ProgressValue({ value }: { value: number }) {
+  const safeValue = Math.max(0, Math.min(100, value));
+  return <div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${safeValue}%` }} /></div><p className="mt-1 text-xs font-bold text-slate-600">{safeValue}% readiness</p></div>;
+}
+
+function Trend({ rows }: { rows: Array<{ label: string; value: number }> }) {
+  const peak = Math.max(1, ...rows.map((row) => row.value));
+  return <div className="space-y-3">{rows.map((row) => <div key={row.label}><div className="mb-1 flex items-center justify-between text-xs"><span className="font-semibold text-slate-600">{row.label}</span><span className="font-black text-slate-900">{row.value.toLocaleString("en-NG")}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.max(8, (row.value / peak) * 100)}%` }} /></div></div>)}</div>;
 }
