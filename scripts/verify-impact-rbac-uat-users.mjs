@@ -7,6 +7,7 @@ const EXPECTED_USERS = [
   ["superadmin@uat.ndmii.test", "super_admin"],
   ["admin@uat.ndmii.test", "admin"],
   ["executive@uat.ndmii.test", "boi_executive"],
+  ["boi.backup@uat.ndmii.test", "boi_executive"],
   ["po.a@uat.ndmii.test", "programme_officer"],
   ["po.b@uat.ndmii.test", "programme_officer"],
   ["ao.a@uat.ndmii.test", "assessment_officer"],

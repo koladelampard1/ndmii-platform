@@ -1,19 +1,20 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
+import { BoiSectionPage } from "@/components/boi/boi-native-pages";
+import { getCurrentUserContext } from "@/lib/auth/session";
+import { getBoiOverview, normalizeBoiSearchParams, resolveBoiSection } from "@/lib/data/boi-workspace";
 
-const SECTION_REDIRECTS: Record<string, string> = {
-  "business-pipeline": "/dashboard/impact-intelligence/cohorts",
-  "funding-programmes": "/dashboard/impact-intelligence/programmes",
-  "funding-pipeline": "/dashboard/impact-intelligence/interventions",
-  "investment-readiness": "/dashboard/impact-intelligence/assessments",
-  documents: "/dashboard/impact-intelligence/evidence",
-  "portfolio-monitoring": "/dashboard/impact-intelligence/monitoring",
-  "portfolio-intelligence": "/dashboard/impact-intelligence/analytics",
-  reports: "/dashboard/impact-intelligence/reports",
-  "risk-signals": "/dashboard/impact-intelligence/risk-flags",
-  executive: "/dashboard/impact-intelligence/executive",
-};
+export default async function BoiWorkspaceSectionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ section: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [{ section }, rawSearchParams] = await Promise.all([params, searchParams]);
+  const resolvedSection = resolveBoiSection(section);
+  if (!resolvedSection) notFound();
 
-export default async function BoiWorkspaceSectionPage({ params }: { params: Promise<{ section: string }> }) {
-  const { section } = await params;
-  redirect(SECTION_REDIRECTS[section] ?? "/dashboard/boi");
+  const ctx = await getCurrentUserContext();
+  const overview = await getBoiOverview(ctx);
+  return <BoiSectionPage section={resolvedSection} overview={overview} filters={normalizeBoiSearchParams(rawSearchParams)} />;
 }

@@ -9,6 +9,7 @@ const UAT_USERS = [
   ["superadmin@uat.ndmii.test", "super_admin", "Super Administrator"],
   ["admin@uat.ndmii.test", "admin", "Administrator"],
   ["executive@uat.ndmii.test", "boi_executive", "BOI Executive"],
+  ["boi.backup@uat.ndmii.test", "boi_executive", "BOI Backup Executive"],
   ["po.a@uat.ndmii.test", "programme_officer", "Programme Officer A"],
   ["po.b@uat.ndmii.test", "programme_officer", "Programme Officer B"],
   ["ao.a@uat.ndmii.test", "assessment_officer", "Assessment Officer A"],
