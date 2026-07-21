@@ -9,6 +9,7 @@ import {
   FileCheck2,
   Landmark,
   Network,
+  RefreshCw,
   Search,
   ShieldCheck,
   UsersRound,
@@ -82,6 +83,7 @@ function Badge({ children, tone }: { children: ReactNode; tone?: string }) {
 }
 
 export function NrsWorkspacePage({ workspace, section }: { workspace: NrsFormalisationWorkspace; section: NrsSection }) {
+  if (workspace.snapshot.status !== "ready") return <SnapshotUnavailable workspace={workspace} section={section} />;
   return (
     <section className="space-y-6">
       <Hero section={section} />
@@ -94,6 +96,30 @@ export function NrsWorkspacePage({ workspace, section }: { workspace: NrsFormali
       {section === "reports" && <Reports workspace={workspace} />}
       {section === "verification" && <Verification workspace={workspace} />}
       {section === "integrations" && <Integrations workspace={workspace} />}
+    </section>
+  );
+}
+
+function SnapshotUnavailable({ workspace, section }: { workspace: NrsFormalisationWorkspace; section: NrsSection }) {
+  const copy = SECTION_COPY[section];
+  return (
+    <section className="space-y-6">
+      <Hero section={section} />
+      <article className="rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Intelligence data temporarily unavailable</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">{copy.title} could not be loaded safely.</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-amber-950/80">
+              The NRS workspace is available, but the formalisation snapshot did not pass its stability checks. This prevents misleading zero dashboards from being shown during session refresh or data-source interruptions.
+            </p>
+            <p className="mt-3 text-xs font-semibold text-amber-900">Snapshot {workspace.snapshot.version} · {workspace.snapshot.fallbackReason}</p>
+          </div>
+          <Link href="/dashboard/nrs" className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-900 px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-white hover:bg-amber-950">
+            <RefreshCw className="h-4 w-4" /> Retry
+          </Link>
+        </div>
+      </article>
     </section>
   );
 }

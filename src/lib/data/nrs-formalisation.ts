@@ -100,6 +100,7 @@ export type NrsFormalisationWorkspace = {
   businesses: NrsBusinessSummary[];
   filteredBusinesses: NrsBusinessSummary[];
   filters: NrsFilters;
+  snapshot: NrsSnapshotMetadata;
   kpis: Array<{ label: string; value: string; detail: string }>;
   stateMetrics: NrsStateMetric[];
   topStates: Array<{ label: string; value: number }>;
@@ -123,6 +124,14 @@ export type NrsFormalisationWorkspace = {
   reports: NrsReportSummary[];
 };
 
+export type NrsSnapshotMetadata = {
+  status: "ready" | "unauthorized" | "unavailable";
+  source: "deterministic" | "live_plus_deterministic" | "unavailable";
+  version: typeof NRS_SNAPSHOT_VERSION;
+  recordCount: number;
+  fallbackReason: string;
+};
+
 type MsmeRow = {
   id: string;
   msme_id: string | null;
@@ -143,7 +152,8 @@ type ComplianceProfileRow = {
 };
 
 const UNAVAILABLE = "Unavailable";
-const NATIONAL_BUSINESS_TARGET = 24_835;
+export const NRS_SNAPSHOT_VERSION = "3.5.1";
+export const NATIONAL_BUSINESS_TARGET = 24_835;
 
 const STATE_ALIASES: Record<string, string> = {
   fct: "Federal Capital Territory",
@@ -220,6 +230,12 @@ const OWNER_FIRST_NAMES = ["Amina", "Chinedu", "Tunde", "Fatima", "Ifeoma", "San
 const OWNER_LAST_NAMES = ["Okafor", "Balogun", "Abubakar", "Eze", "Mohammed", "Adebayo", "Ibrahim", "Okon", "Nwachukwu", "Usman", "Ojo", "Danladi"];
 const BUSINESS_SUFFIXES = ["Enterprises", "Ventures", "Foods", "Works", "Services", "Industries", "Stores", "Creative Studio", "Logistics", "Agro Ventures", "Digital Hub", "Manufacturing"];
 
+type LiveRowsResult = {
+  msmes: MsmeRow[] | null;
+  complianceProfiles: ComplianceProfileRow[] | null;
+  errorCategory: string | null;
+};
+
 export function normalizeNrsState(value: string | null | undefined) {
   const cleaned = String(value ?? "").trim();
   if (!cleaned) return UNAVAILABLE;
@@ -257,14 +273,6 @@ export function normalizeNrsFilters(searchParams?: Record<string, string | strin
     readiness: normaliseFilter(searchParams?.readiness),
     page: normaliseFilter(searchParams?.page),
   };
-}
-
-async function safeLoad<T>(loader: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await loader();
-  } catch {
-    return fallback;
-  }
 }
 
 function latestDate(values: Array<string | null | undefined>) {
@@ -444,7 +452,31 @@ function buildPartnerReferrals(readinessScore: number, sector: string) {
   return referrals;
 }
 
-const SEEDED_BUSINESSES = createSeededBusinesses();
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const nested of Object.values(value as Record<string, unknown>)) {
+      if (nested && typeof nested === "object" && !Object.isFrozen(nested)) deepFreeze(nested);
+    }
+  }
+  return value;
+}
+
+function cloneBusiness(business: NrsBusinessSummary): NrsBusinessSummary {
+  return {
+    ...business,
+    supportNeeds: [...business.supportNeeds],
+    supportHistory: [...business.supportHistory],
+    partnerReferrals: [...business.partnerReferrals],
+    readinessTimeline: business.readinessTimeline.map((item) => ({ ...item })),
+  };
+}
+
+const SEEDED_BUSINESSES = deepFreeze(createSeededBusinesses().map((business) => deepFreeze(cloneBusiness(business))));
+
+function cloneSeededBusinesses() {
+  return SEEDED_BUSINESSES.map(cloneBusiness);
+}
 
 function readinessFromLive(params: { verified: boolean; tinLinked: boolean; complianceScore: number | null }) {
   if (params.verified && params.tinLinked && (params.complianceScore ?? 0) >= 70) return "Tax Ready";
@@ -485,31 +517,33 @@ export function paginateNrsItems<T>(items: T[], rawPage?: string, pageSize = 12)
 
 export async function getNrsFormalisationWorkspace(ctx: UserContext, filters: NrsFilters = {}): Promise<NrsFormalisationWorkspace> {
   if (!canAccessNrsWorkspace(ctx)) {
-    return emptyWorkspace(filters);
+    const workspace = unavailableWorkspace(filters, "unauthorized", "workspace_role_not_allowed");
+    logNrsSnapshot({
+      source: workspace.snapshot.source,
+      records: workspace.snapshot.recordCount,
+      reason: workspace.snapshot.fallbackReason,
+      role: ctx.role,
+      status: workspace.snapshot.status,
+    });
+    return workspace;
   }
-  const supabase = await createServerSupabaseClient();
-  const [msmes, complianceProfiles] = await Promise.all([
-    safeLoad(async () => {
-      const { data, error } = await supabase
-        .from("msmes")
-        .select("id,msme_id,business_name,state,lga,sector,verification_status,tin,created_at,updated_at")
-        .order("created_at", { ascending: false })
-        .limit(750);
-      if (error) throw error;
-      return (data ?? []) as MsmeRow[];
-    }, []),
-    safeLoad(async () => {
-      const { data, error } = await supabase
-        .from("msme_compliance_profiles")
-        .select("msme_id,compliance_score,next_deadline_at")
-        .limit(750);
-      if (error) throw error;
-      return (data ?? []) as ComplianceProfileRow[];
-    }, []),
-  ]);
-
-  const liveBusinesses = createLiveBusinessSummaries(msmes, complianceProfiles);
-  const businesses = mergeBusinessRecords(liveBusinesses, SEEDED_BUSINESSES);
+  const liveRows = await loadLiveRows();
+  const usableMsmes = Array.isArray(liveRows.msmes) ? liveRows.msmes.filter((row) => row && typeof row.id === "string") : [];
+  const usableCompliance = Array.isArray(liveRows.complianceProfiles) ? liveRows.complianceProfiles : [];
+  const liveBusinesses = createLiveBusinessSummaries(usableMsmes, usableCompliance);
+  const fallbackReason = liveRows.errorCategory ?? (liveBusinesses.length ? "live_records_available" : "no_live_dataset");
+  const businesses = mergeBusinessRecords(liveBusinesses, cloneSeededBusinesses());
+  if (businesses.length !== NATIONAL_BUSINESS_TARGET) {
+    const workspace = unavailableWorkspace(filters, "unavailable", "snapshot_record_count_mismatch");
+    logNrsSnapshot({
+      source: workspace.snapshot.source,
+      records: workspace.snapshot.recordCount,
+      reason: workspace.snapshot.fallbackReason,
+      role: ctx.role,
+      status: workspace.snapshot.status,
+    });
+    return workspace;
+  }
   const filteredBusinesses = filterBusinesses(businesses, filters);
   const activated = businesses.filter((item) => item.activationStatus === "activated").length;
   const verified = businesses.filter((item) => item.verificationStatus === "verified").length;
@@ -525,10 +559,17 @@ export async function getNrsFormalisationWorkspace(ctx: UserContext, filters: Nr
   const topStates = countBy(businesses.map((item) => item.state), 8);
   const emergingStates = [...stateMetrics].sort((a, b) => ratio(b.verified, b.businesses) - ratio(a.verified, a.businesses)).slice(0, 6).map((item) => ({ label: item.state, value: ratio(item.verified, item.businesses) }));
 
-  return {
+  const workspace = {
     businesses,
     filteredBusinesses,
     filters,
+    snapshot: {
+      status: "ready",
+      source: liveBusinesses.length ? "live_plus_deterministic" : "deterministic",
+      version: NRS_SNAPSHOT_VERSION,
+      recordCount: businesses.length,
+      fallbackReason,
+    },
     stateMetrics,
     topStates,
     emergingStates,
@@ -568,7 +609,49 @@ export async function getNrsFormalisationWorkspace(ctx: UserContext, filters: Nr
       { label: "LGAs Covered", value: formatNumber(lgas.size), detail: "LGA coverage across business records" },
       { label: "Partner-System Ready", value: formatNumber(businesses.filter((item) => item.tinStatus === "linked" && item.verificationStatus === "verified").length), detail: "Businesses ready for consented referral into approved partner systems" },
     ],
-  };
+  } satisfies NrsFormalisationWorkspace;
+  logNrsSnapshot({
+    source: workspace.snapshot.source,
+    records: workspace.snapshot.recordCount,
+    reason: workspace.snapshot.fallbackReason,
+    role: ctx.role,
+    status: workspace.snapshot.status,
+  });
+  return workspace;
+}
+
+async function loadLiveRows(): Promise<LiveRowsResult> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const [msmeResult, complianceResult] = await Promise.all([
+      supabase
+        .from("msmes")
+        .select("id,msme_id,business_name,state,lga,sector,verification_status,tin,created_at,updated_at")
+        .order("created_at", { ascending: false })
+        .limit(750),
+      supabase
+        .from("msme_compliance_profiles")
+        .select("msme_id,compliance_score,next_deadline_at")
+        .limit(750),
+    ]);
+    if (msmeResult.error) {
+      return { msmes: null, complianceProfiles: null, errorCategory: `msmes_query_error:${msmeResult.error.code ?? "unknown"}` };
+    }
+    if (complianceResult.error) {
+      return { msmes: msmeResult.data as MsmeRow[] | null, complianceProfiles: null, errorCategory: `compliance_query_error:${complianceResult.error.code ?? "unknown"}` };
+    }
+    return {
+      msmes: (msmeResult.data ?? []) as MsmeRow[],
+      complianceProfiles: (complianceResult.data ?? []) as ComplianceProfileRow[],
+      errorCategory: null,
+    };
+  } catch (error) {
+    return {
+      msmes: null,
+      complianceProfiles: null,
+      errorCategory: `live_query_exception:${error instanceof Error ? error.name : "unknown"}`,
+    };
+  }
 }
 
 function createLiveBusinessSummaries(msmes: MsmeRow[], complianceProfiles: ComplianceProfileRow[]) {
@@ -619,9 +702,9 @@ function createLiveBusinessSummaries(msmes: MsmeRow[], complianceProfiles: Compl
 }
 
 function mergeBusinessRecords(live: NrsBusinessSummary[], seeded: NrsBusinessSummary[]) {
-  if (!live.length) return seeded;
+  if (!live.length) return seeded.slice(0, NATIONAL_BUSINESS_TARGET);
   const liveKeys = new Set(live.map((item) => item.bin).filter((item) => item !== "Pending"));
-  return [...live, ...seeded.filter((item) => !liveKeys.has(item.bin))];
+  return [...live.map(cloneBusiness), ...seeded.filter((item) => !liveKeys.has(item.bin)).map(cloneBusiness)].slice(0, NATIONAL_BUSINESS_TARGET);
 }
 
 function buildStateMetrics(businesses: NrsBusinessSummary[]) {
@@ -705,11 +788,36 @@ function buildIntegrations(): NrsIntegrationSummary[] {
   ];
 }
 
-function emptyWorkspace(filters: NrsFilters): NrsFormalisationWorkspace {
+function logNrsSnapshot(input: {
+  source: NrsSnapshotMetadata["source"];
+  records: number;
+  reason: string;
+  role: string;
+  status: NrsSnapshotMetadata["status"];
+}) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info("[NRS snapshot]", {
+    source: input.source,
+    records: input.records,
+    reason: input.reason,
+    version: NRS_SNAPSHOT_VERSION,
+    role: input.role,
+    status: input.status,
+  });
+}
+
+function unavailableWorkspace(filters: NrsFilters, status: NrsSnapshotMetadata["status"], reason: string): NrsFormalisationWorkspace {
   return {
     businesses: [],
     filteredBusinesses: [],
     filters,
+    snapshot: {
+      status,
+      source: "unavailable",
+      version: NRS_SNAPSHOT_VERSION,
+      recordCount: 0,
+      fallbackReason: reason,
+    },
     kpis: [],
     stateMetrics: [],
     topStates: [],

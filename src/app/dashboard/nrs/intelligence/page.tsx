@@ -1,9 +1,10 @@
 import { NrsWorkspacePage } from "@/components/nrs/nrs-formalisation-workspace";
-import { getCurrentUserContext } from "@/lib/auth/session";
+import { requireWorkspaceRole } from "@/lib/auth/workspace-guards";
+import { NRS_ACCESS_ROLES } from "@/lib/nrs/access";
 import { getNrsFormalisationWorkspace } from "@/lib/data/nrs-formalisation";
 
 export default async function NrsIntelligencePage() {
-  const ctx = await getCurrentUserContext();
+  const ctx = await requireWorkspaceRole([...NRS_ACCESS_ROLES], "/dashboard/nrs");
   const workspace = await getNrsFormalisationWorkspace(ctx);
   return <NrsWorkspacePage workspace={workspace} section="intelligence" />;
 }

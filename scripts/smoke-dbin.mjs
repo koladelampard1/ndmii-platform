@@ -123,6 +123,14 @@ const nrsWorkspaceData = read("src/lib/data/nrs-formalisation.ts");
 const nrsWorkspaceComponent = read("src/components/nrs/nrs-formalisation-workspace.tsx");
 const nrsPublicLanding = read("src/app/nrs/page.tsx");
 const nrsBusinessProfilePage = read("src/app/dashboard/nrs/businesses/[businessId]/page.tsx");
+const nrsBusinessesPage = read("src/app/dashboard/nrs/businesses/page.tsx");
+const nrsReadinessPage = read("src/app/dashboard/nrs/readiness/page.tsx");
+const nrsIntelligencePage = read("src/app/dashboard/nrs/intelligence/page.tsx");
+const nrsRevenueGuidesPage = read("src/app/dashboard/nrs/revenue-guides/page.tsx");
+const nrsProgrammesPage = read("src/app/dashboard/nrs/programmes/page.tsx");
+const nrsReportsPage = read("src/app/dashboard/nrs/reports/page.tsx");
+const nrsVerificationPage = read("src/app/dashboard/nrs/verification/page.tsx");
+const nrsIntegrationsPage = read("src/app/dashboard/nrs/integrations/page.tsx");
 const nrsLegacyInvoicesPage = read("src/app/dashboard/nrs/invoices/page.tsx");
 const nrsLegacyInvoiceRegistryPage = read("src/app/dashboard/nrs/invoice-registry/page.tsx");
 const nrsLegacyVatMonitorPage = read("src/app/dashboard/nrs/vat-monitor/page.tsx");
@@ -945,11 +953,15 @@ check("NRS formalisation workspace removes private transaction and liability exp
 check("NRS national intelligence dataset is seeded and shared across workspace pages", () => {
   assert(
     nrsWorkspaceData.includes("NATIONAL_BUSINESS_TARGET = 24_835") &&
+      nrsWorkspaceData.includes('NRS_SNAPSHOT_VERSION = "3.5.1"') &&
       nrsWorkspaceData.includes("STATE_LGAS") &&
       nrsWorkspaceData.includes("Federal Capital Territory") &&
       nrsWorkspaceData.includes("Renewable Energy") &&
       nrsWorkspaceData.includes("createSeededBusinesses") &&
       nrsWorkspaceData.includes("SEEDED_BUSINESSES") &&
+      nrsWorkspaceData.includes("deepFreeze") &&
+      nrsWorkspaceData.includes("cloneSeededBusinesses") &&
+      nrsWorkspaceData.includes("slice(0, NATIONAL_BUSINESS_TARGET)") &&
       nrsWorkspaceData.includes("buildProgrammes") &&
       nrsWorkspaceData.includes("buildReports") &&
       nrsWorkspaceData.includes("buildIntegrations") &&
@@ -964,6 +976,30 @@ check("NRS national intelligence dataset is seeded and shared across workspace p
       nrsWorkspaceComponent.includes("Support history") &&
       nrsWorkspaceComponent.includes("Partner referrals"),
     "Expected Sprint 3.5 to provide one shared national formalisation dataset with executive intelligence, programmes, reports, integrations, guides and profiles.",
+  );
+});
+
+check("NRS workspace pages cannot silently turn session races into empty dashboards", () => {
+  const nrsPages = [
+    nrsWorkspacePage,
+    nrsBusinessesPage,
+    nrsReadinessPage,
+    nrsIntelligencePage,
+    nrsRevenueGuidesPage,
+    nrsProgrammesPage,
+    nrsReportsPage,
+    nrsVerificationPage,
+    nrsIntegrationsPage,
+    nrsBusinessProfilePage,
+  ];
+  assert(
+    nrsPages.every((page) => page.includes("requireWorkspaceRole([...NRS_ACCESS_ROLES]")) &&
+      nrsWorkspaceData.includes("unavailableWorkspace(filters, \"unauthorized\", \"workspace_role_not_allowed\")") &&
+      nrsWorkspaceData.includes("snapshot_record_count_mismatch") &&
+      nrsWorkspaceData.includes("logNrsSnapshot") &&
+      nrsWorkspaceComponent.includes("Intelligence data temporarily unavailable") &&
+      nrsWorkspaceComponent.includes("prevents misleading zero dashboards"),
+    "Expected every NRS page to use the workspace role guard and the NRS data layer to return explicit unavailable states instead of false empty dashboards.",
   );
 });
 
