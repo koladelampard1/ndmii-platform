@@ -884,9 +884,16 @@ check("NRS workspace bypasses the legacy dashboard shell", () => {
       dashboardLayout.includes('pathname.startsWith("/dashboard/nrs") || pathname.startsWith("/dashboard/firs")') &&
       dashboardLayout.includes('return <div className="min-h-screen bg-slate-100">{children}</div>') &&
       nrsWorkspaceLayout.includes("<WorkspaceShell") &&
-      workspaceShell.includes("hidden lg:sticky lg:top-0 lg:flex") &&
+      workspaceShell.includes("z-30 hidden") &&
+      workspaceShell.includes("border-r border-slate-200 bg-white text-slate-950") &&
+      workspaceShell.includes("border-emerald-200 bg-emerald-50 text-emerald-950") &&
       workspaceShell.includes("mobileNavOpen") &&
       workspaceShell.includes("role=\"dialog\"") &&
+      !workspaceShell.includes("opacity-") &&
+      !workspaceShell.includes("backdrop-blur") &&
+      !workspaceShell.includes("filter") &&
+      !workspaceShell.includes("bg-white/[") &&
+      !workspaceShell.includes("border-white/") &&
       !nrsWorkspaceLayout.includes("<Sidebar") &&
       !nrsWorkspaceComponent.includes("NRS Officer Portal") &&
       !nrsWorkspaceComponent.includes("Core Workflows") &&
