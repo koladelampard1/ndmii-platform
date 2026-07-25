@@ -24,6 +24,15 @@ const msmeNavigation = readFileSync(resolve("src/components/msme/msme-workspace-
 const adminNavigation = readFileSync(resolve("src/components/admin/admin-command-shell.tsx"), "utf8");
 const adminDashboard = readFileSync(resolve("src/app/dashboard/admin/page.tsx"), "utf8");
 const lcdboDashboard = readFileSync(resolve("src/app/dashboard/lcdbo/page.tsx"), "utf8");
+const lcdboLayout = readFileSync(resolve("src/app/dashboard/lcdbo/layout.tsx"), "utf8");
+const workspaceRegistry = readFileSync(resolve("src/lib/workspaces/workspace-registry.ts"), "utf8");
+const workspaceTypes = readFileSync(resolve("src/lib/workspaces/workspace-types.ts"), "utf8");
+const workspaceAccessPolicy = readFileSync(resolve("src/lib/workspaces/workspace-access-policy.ts"), "utf8");
+const workspaceShell = readFileSync(resolve("src/components/workspace/workspace-shell.tsx"), "utf8");
+const workspacePage = readFileSync(resolve("src/components/workspace/workspace-page.tsx"), "utf8");
+const workspaceMetrics = readFileSync(resolve("src/components/workspace/workspace-metrics.tsx"), "utf8");
+const workspaceTable = readFileSync(resolve("src/components/workspace/workspace-table.tsx"), "utf8");
+const workspaceReporting = readFileSync(resolve("src/components/workspace/workspace-reporting.tsx"), "utf8");
 
 const requiredTables = [
   "institutions",
@@ -170,6 +179,13 @@ assert(msmeNavigation.includes('href: "/dashboard/msme/lcdbo"'), "MSME workspace
 assert(adminNavigation.includes('href: "/dashboard/lcdbo"'), "Admin command navigation is missing LCDBO Programme Operations.");
 assert(adminDashboard.includes('href="/dashboard/lcdbo"'), "Admin dashboard is missing the LCDBO discovery card.");
 assert(lcdboDashboard.includes('"admin"') && lcdboDashboard.includes("isPlatformAdmin(ctx.role)"), "LCDBO dashboard does not explicitly support regular admin access.");
+assert(workspaceTypes.includes("WorkspaceNavigationSection") && workspaceTypes.includes("WorkspaceDataClassificationRule"), "Institutional workspace contract types are missing navigation sections or data classification rules.");
+assert(workspaceRegistry.includes("defineWorkspace") && workspaceRegistry.includes('id: "lcdbo"') && workspaceRegistry.includes("Programme Operations") && workspaceRegistry.includes("Governance & Reporting"), "LCDBO workspace identity and navigation are not registry-driven.");
+assert(workspaceAccessPolicy.includes("canAccessWorkspaceRoute") && workspaceAccessPolicy.includes("getVisibleWorkspaceNavigation"), "Shared workspace access policy is missing route or navigation helpers.");
+assert(lcdboLayout.includes('requireWorkspaceAccess("lcdbo"') && lcdboLayout.includes("<WorkspaceShell"), "LCDBO dashboard is missing the shared workspace shell layout.");
+assert(workspaceShell.includes("role=\"dialog\"") && workspaceShell.includes("Skip to workspace content") && workspaceShell.includes("navigationSections"), "WorkspaceShell is missing mobile drawer, skip link, or grouped navigation support.");
+assert(workspacePage.includes("WorkspacePageHeader") && workspacePage.includes("WorkspaceState") && workspacePage.includes("WorkspaceDataClassificationBadge"), "Shared workspace page/header/state components are missing.");
+assert(workspaceMetrics.includes("ExecutiveMetricCard") && workspaceTable.includes("WorkspaceDataTable") && workspaceReporting.includes("WorkspaceReportCatalogue"), "Shared KPI, table, or reporting components are missing.");
 
 console.log(JSON.stringify({
   ok: true,
@@ -191,4 +207,5 @@ console.log(JSON.stringify({
   phase4: "lcdbo_cluster_placement_and_participation_operations",
   sprintC: "lcdbo_governance_reporting_data_quality_and_geography",
   navigation: "lcdbo_discovery_enabled",
+  institutionalFramework: "workspace_contract_shell_policy_and_shared_components",
 }, null, 2));

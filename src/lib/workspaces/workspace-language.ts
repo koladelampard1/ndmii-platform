@@ -10,7 +10,11 @@ export type WorkspaceTermKey =
   | "evidence"
   | "analytics"
   | "reports"
-  | "risk";
+  | "risk"
+  | "participant"
+  | "participants"
+  | "intelligence"
+  | "support";
 
 export type WorkspaceLanguage = Record<WorkspaceTermKey, string>;
 
@@ -27,8 +31,14 @@ export const DEFAULT_WORKSPACE_LANGUAGE: WorkspaceLanguage = {
   analytics: "Analytics",
   reports: "Reports",
   risk: "Risk",
+  participant: "Participant",
+  participants: "Participants",
+  intelligence: "Intelligence",
+  support: "Support",
 };
 
-export function workspaceTerm(language: Partial<WorkspaceLanguage> | undefined, key: WorkspaceTermKey) {
-  return language?.[key] ?? DEFAULT_WORKSPACE_LANGUAGE[key];
+export function workspaceTerm(language: Partial<WorkspaceLanguage> | undefined, key: WorkspaceTermKey, options?: { lowercase?: boolean; plural?: boolean }) {
+  const resolvedKey = options?.plural && !key.endsWith("s") ? `${key}s` as WorkspaceTermKey : key;
+  const term = language?.[resolvedKey] ?? DEFAULT_WORKSPACE_LANGUAGE[resolvedKey] ?? DEFAULT_WORKSPACE_LANGUAGE[key];
+  return options?.lowercase ? term.toLowerCase() : term;
 }

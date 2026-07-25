@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { WorkspaceDefinition } from "@/lib/workspaces/workspace-registry";
+import type { WorkspaceDefinition, WorkspaceNavigationSection } from "@/lib/workspaces/workspace-registry";
 import { AccountActions } from "@/components/auth/account-actions";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -42,50 +42,66 @@ export function WorkspaceShell({
   children,
   userLabel,
   userEmail,
+  navigationSections,
 }: {
   workspace: WorkspaceDefinition;
   children: ReactNode;
   userLabel: string;
   userEmail: string | null;
+  navigationSections?: WorkspaceNavigationSection[];
 }) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const Icon = ICONS[workspace.icon] ?? Building2;
-  const activeItem = workspace.navigation.find((item) => isActive(pathname, item.href));
+  const sections = navigationSections?.length ? navigationSections : workspace.navigationSections ?? [{ label: "Workspace", items: workspace.navigation }];
+  const activeItem = sections.flatMap((section) => section.items).find((item) => isActive(pathname, item.href));
 
   const navigation = (
     <nav aria-label={`${workspace.title} navigation`} className="overflow-y-auto px-3 py-3 lg:flex-1">
-      <ul className="space-y-1">
-        {workspace.navigation.map((item) => {
-          const active = isActive(pathname, item.href);
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                onClick={() => setMobileNavOpen(false)}
-                className={[
-                  "group flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-xs font-semibold transition",
-                  active
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-950 shadow-sm"
-                    : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950",
-                ].join(" ")}
-              >
-                <span>{item.label}</span>
-                <ArrowRight className={["h-3.5 w-3.5 transition group-hover:translate-x-0.5", active ? "text-emerald-700" : "text-slate-500"].join(" ")} />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <section key={section.label} aria-labelledby={`${workspace.id}-${section.label.replace(/\s+/g, "-").toLowerCase()}-nav`}>
+            <h2 id={`${workspace.id}-${section.label.replace(/\s+/g, "-").toLowerCase()}-nav`} className="px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+              {section.label}
+            </h2>
+            {section.description ? <p className="mt-1 px-3 text-[10px] leading-4 text-slate-500">{section.description}</p> : null}
+            <ul className="mt-2 space-y-1">
+              {section.items.map((item) => {
+                const active = isActive(pathname, item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={[
+                        "group flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                        active
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-950 shadow-sm"
+                          : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950",
+                      ].join(" ")}
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight className={["h-3.5 w-3.5 transition group-hover:translate-x-0.5", active ? "text-emerald-700" : "text-slate-500"].join(" ")} />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </nav>
   );
 
   return (
     <div className="min-h-screen bg-[#eef2f7] lg:flex">
-      <aside className="z-30 hidden border-r border-slate-200 bg-white text-slate-950 shadow-xl shadow-slate-200/70 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[260px] lg:shrink-0 lg:flex-col">
+      <a href="#workspace-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-black focus:text-slate-950 focus:shadow-xl">
+        Skip to workspace content
+      </a>
+      <aside className="z-40 hidden border-r border-slate-200 bg-white text-slate-950 opacity-100 shadow-xl shadow-slate-200/70 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[280px] lg:shrink-0 lg:flex-col">
         <div className="border-b border-slate-200 px-5 py-6">
-          <Link href={workspace.homepage} className="flex items-center gap-3">
+          <Link href={workspace.homepage} className="flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
             <span className="grid h-11 w-11 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50">
               <Icon className="h-5 w-5 text-emerald-700" />
             </span>
@@ -102,6 +118,20 @@ export function WorkspaceShell({
         </div>
 
         {navigation}
+
+        {workspace.quickActions.length ? (
+          <div className="border-t border-slate-200 p-4">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Quick actions</p>
+            <div className="space-y-2">
+              {workspace.quickActions.slice(0, 3).map((action) => (
+                <Link key={action.href} href={action.href} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-800 transition hover:bg-white">
+                  {action.label}
+                  <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="border-t border-slate-200 p-4">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -131,7 +161,7 @@ export function WorkspaceShell({
               </div>
             </div>
           </header>
-          <main className="p-4 sm:p-5 lg:p-7">{children}</main>
+          <main id="workspace-content" className="p-4 sm:p-5 lg:p-7">{children}</main>
         </div>
       </div>
 
@@ -143,7 +173,7 @@ export function WorkspaceShell({
             aria-label="Close navigation"
             onClick={() => setMobileNavOpen(false)}
           />
-          <div className="relative z-10 flex h-full w-[min(86vw,22rem)] flex-col border-r border-slate-200 bg-white text-slate-950 shadow-2xl">
+          <div className="relative z-10 flex h-full w-[min(88vw,23rem)] flex-col border-r border-slate-200 bg-white text-slate-950 opacity-100 shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-5">
               <Link href={workspace.homepage} className="flex min-w-0 items-center gap-3" onClick={() => setMobileNavOpen(false)}>
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50">

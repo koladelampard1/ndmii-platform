@@ -4,6 +4,7 @@ import {
   getRoutePolicy as getImpactRoutePolicy,
   logImpactPolicyDrift,
 } from "@/lib/impact-intelligence/permissions";
+import { canAccessWorkspaceRoute } from "@/lib/workspaces/workspace-access-policy";
 
 export type UserContext = {
   authUserId: string | null;
@@ -196,10 +197,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (role === "public") legacyAllowed = false;
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
-  // The page performs programme/module resolution against scoped role assignments.
-  // Let authenticated users reach that guard while keeping BOI-only personas out
-  // of LCDBO programme operations.
-  else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = role !== "boi_executive";
+  else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed;
   // Property workspace performs module/scoped permission checks at page level.
   // Let authenticated users reach the guard without expanding global users.role.
   else if (routeMatchesPrefix(path, "/dashboard/property")) legacyAllowed = true;

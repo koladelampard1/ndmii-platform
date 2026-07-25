@@ -46,6 +46,14 @@ const impactShell = read("src/app/dashboard/impact-intelligence/impact-intellige
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const workspaceLanguage = read("src/lib/workspaces/workspace-language.ts");
 const workspaceShell = read("src/components/workspace/workspace-shell.tsx");
+const workspaceTypes = read("src/lib/workspaces/workspace-types.ts");
+const workspaceAccessPolicy = read("src/lib/workspaces/workspace-access-policy.ts");
+const workspaceAccessServer = read("src/lib/workspaces/workspace-access-server.ts");
+const workspaceClassification = read("src/lib/workspaces/workspace-classification.ts");
+const workspacePageComponents = read("src/components/workspace/workspace-page.tsx");
+const workspaceMetrics = read("src/components/workspace/workspace-metrics.tsx");
+const workspaceTable = read("src/components/workspace/workspace-table.tsx");
+const workspaceReporting = read("src/components/workspace/workspace-reporting.tsx");
 const adminGateway = read("src/app/admin/page.tsx");
 const adminDashboardLayout = read("src/app/dashboard/admin/layout.tsx");
 const adminDashboardPage = read("src/app/dashboard/admin/page.tsx");
@@ -118,6 +126,7 @@ const institutionalReportPdfModule = (() => {
 })();
 const authorization = read("src/lib/auth/authorization.ts");
 const nrsWorkspaceLayout = read("src/app/dashboard/nrs/layout.tsx");
+const lcdboWorkspaceLayout = read("src/app/dashboard/lcdbo/layout.tsx");
 const nrsWorkspacePage = read("src/app/dashboard/nrs/page.tsx");
 const nrsWorkspaceData = read("src/lib/data/nrs-formalisation.ts");
 const nrsWorkspaceComponent = read("src/components/nrs/nrs-formalisation-workspace.tsx");
@@ -171,6 +180,14 @@ const authorizationModule = (() => {
           canAccessRoute: () => true,
           getRoutePolicy: () => null,
           logImpactPolicyDrift: () => {},
+        };
+      }
+      if (moduleName === "@/lib/workspaces/workspace-access-policy") {
+        const lcdboRoles = new Set(["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor"]);
+        return {
+          canAccessWorkspaceRoute: ({ role }, workspaceId, pathname) => ({
+            allowed: workspaceId === "lcdbo" && pathname.startsWith("/dashboard/lcdbo") && lcdboRoles.has(role),
+          }),
         };
       }
       throw new Error(`Unexpected authorization dependency: ${moduleName}`);
@@ -325,7 +342,8 @@ check("authenticated BOI, Impact Intelligence, and admin surfaces expose account
   assert(
     boiPortal.includes("<AccountActions") &&
       boiWorkspaceLayout.includes("<WorkspaceShell") &&
-      boiWorkspaceLayout.includes('getWorkspaceDefinition("boi")') &&
+      boiWorkspaceLayout.includes('requireWorkspaceAccess("boi"') &&
+      workspaceShell.includes("<AccountActions") &&
       impactShell.includes("<AccountActions") &&
       adminGateway.includes("<AccountActions"),
     "Expected authenticated institutional surfaces to expose logout and switch-account actions.",
@@ -783,7 +801,15 @@ check("BOI persona aliases resolve to the BOI workspace without LCDBO leakage", 
 
 check("workspace registry establishes product-specific DPI workspaces", () => {
   assert(
-    workspaceRegistry.includes('id: "boi"') &&
+    workspaceTypes.includes("export type WorkspaceDefinition") &&
+      workspaceTypes.includes("WorkspaceNavigationSection") &&
+      workspaceTypes.includes("WorkspaceDataClassificationRule") &&
+      workspaceRegistry.includes("defineWorkspace") &&
+      workspaceRegistry.includes("canonicalName") &&
+      workspaceRegistry.includes("institutionalOwner") &&
+      workspaceRegistry.includes("capabilities") &&
+      workspaceRegistry.includes("dataClassification") &&
+      workspaceRegistry.includes('id: "boi"') &&
       workspaceRegistry.includes('homepage: "/dashboard/boi"') &&
       workspaceRegistry.includes("Business Pipeline") &&
       workspaceRegistry.includes("Investment Readiness") &&
@@ -795,8 +821,27 @@ check("workspace registry establishes product-specific DPI workspaces", () => {
       workspaceRegistry.includes('id: "association"') &&
       workspaceRegistry.includes('id: "admin"') &&
       workspaceLanguage.includes("workspaceTerm") &&
+      workspaceAccessPolicy.includes("canAccessWorkspaceRoute") &&
+      workspaceAccessPolicy.includes("getVisibleWorkspaceNavigation") &&
+      workspaceAccessServer.includes("requireWorkspaceAccess") &&
       workspaceShell.includes("WorkspaceShell"),
-    "Expected a central registry, terminology layer, and reusable workspace shell for institutional workspaces.",
+    "Expected a typed central registry, access policy, terminology layer, and reusable workspace shell for institutional workspaces.",
+  );
+});
+
+check("institutional workspace framework exposes shared page, state, classification, metric, table, and reporting primitives", () => {
+  assert(
+    workspaceClassification.includes("WORKSPACE_CLASSIFICATION_LABELS") &&
+      workspacePageComponents.includes("WorkspacePageHeader") &&
+      workspacePageComponents.includes("WorkspaceState") &&
+      workspacePageComponents.includes("WorkspaceDataClassificationBadge") &&
+      workspaceMetrics.includes("ExecutiveMetricCard") &&
+      workspaceMetrics.includes("ProgressMetricCard") &&
+      workspaceTable.includes("WorkspaceDataTable") &&
+      workspaceTable.includes("WorkspaceFilterBar") &&
+      workspaceReporting.includes("WorkspaceReportCatalogue") &&
+      workspaceReporting.includes("WorkspaceReportCard"),
+    "Expected shared institutional page, state, classification, metric, table/filter, and reporting components.",
   );
 });
 
@@ -910,14 +955,18 @@ check("NRS workspace bypasses the legacy dashboard shell", () => {
     proxyFile.includes('requestHeaders.set("x-dbin-pathname", request.nextUrl.pathname)') &&
       dashboardLayout.includes('headerStore.get("x-dbin-pathname")') &&
       dashboardLayout.includes('pathname.startsWith("/dashboard/nrs") || pathname.startsWith("/dashboard/firs")') &&
+      dashboardLayout.includes('pathname.startsWith("/dashboard/boi")') &&
+      dashboardLayout.includes('pathname.startsWith("/dashboard/lcdbo")') &&
       dashboardLayout.includes('return <div className="min-h-screen bg-slate-100">{children}</div>') &&
       nrsWorkspaceLayout.includes("<WorkspaceShell") &&
-      workspaceShell.includes("z-30 hidden") &&
-      workspaceShell.includes("border-r border-slate-200 bg-white text-slate-950") &&
+      workspaceShell.includes("z-40 hidden") &&
+      workspaceShell.includes("border-r border-slate-200 bg-white text-slate-950 opacity-100") &&
       workspaceShell.includes("border-emerald-200 bg-emerald-50 text-emerald-950") &&
       workspaceShell.includes("mobileNavOpen") &&
       workspaceShell.includes("role=\"dialog\"") &&
-      !workspaceShell.includes("opacity-") &&
+      !workspaceShell.includes("opacity-50") &&
+      !workspaceShell.includes("opacity-60") &&
+      !workspaceShell.includes("opacity-70") &&
       !workspaceShell.includes("backdrop-blur") &&
       !workspaceShell.includes("filter") &&
       !workspaceShell.includes("bg-white/[") &&
@@ -927,6 +976,24 @@ check("NRS workspace bypasses the legacy dashboard shell", () => {
       !nrsWorkspaceComponent.includes("Core Workflows") &&
       !nrsWorkspaceComponent.includes("Operational Modules"),
     "Expected NRS/FIRS routes to bypass the legacy dashboard shell and render only the unified workspace shell.",
+  );
+});
+
+check("LCDBO uses the institutional workspace shell without broad route-policy ambiguity", () => {
+  const { canAccessRoute } = authorizationModule;
+  assert(
+    lcdboWorkspaceLayout.includes('requireWorkspaceAccess("lcdbo"') &&
+      lcdboWorkspaceLayout.includes("<WorkspaceShell") &&
+      workspaceRegistry.includes('id: "lcdbo"') &&
+      workspaceRegistry.includes("Programme Operations") &&
+      workspaceRegistry.includes("Governance & Reporting") &&
+      authorization.includes('canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed') &&
+      !authorization.includes('routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = role !== "boi_executive"') &&
+      canAccessRoute("programme_officer", "/dashboard/lcdbo") &&
+      canAccessRoute("data_analyst", "/dashboard/lcdbo/intelligence") &&
+      !canAccessRoute("msme", "/dashboard/lcdbo") &&
+      !canAccessRoute("boi_executive", "/dashboard/lcdbo"),
+    "Expected LCDBO to use the shared workspace shell and registry-backed access policy without exposing BOI or MSME roles.",
   );
 });
 

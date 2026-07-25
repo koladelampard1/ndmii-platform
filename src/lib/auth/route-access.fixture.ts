@@ -23,6 +23,9 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
       "/dashboard/impact-intelligence/executive",
       "/dashboard/impact-intelligence/analytics",
       "/dashboard/impact-intelligence/reports",
+      "/dashboard/lcdbo",
+      "/dashboard/lcdbo/intelligence",
+      "/dashboard/lcdbo/reports",
       "/dashboard/admin/public-verification",
     ],
     denied: [],
@@ -49,6 +52,9 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
       "/dashboard/impact-intelligence/executive",
       "/dashboard/impact-intelligence/analytics",
       "/dashboard/impact-intelligence/reports",
+      "/dashboard/lcdbo",
+      "/dashboard/lcdbo/intelligence",
+      "/dashboard/lcdbo/reports",
       "/dashboard/admin/public-verification",
     ],
     denied: [],
@@ -62,7 +68,7 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/lcdbo", "/dashboard/msme", "/dashboard/admin"],
   },
   programme_officer: {
-    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports"],
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports", "/dashboard/lcdbo", "/dashboard/lcdbo/reports"],
     denied: ["/dashboard/impact-intelligence/assessments/templates", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags", "/dashboard/msme", "/dashboard/admin"],
   },
   assessment_officer: {
@@ -74,11 +80,11 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     denied: ["/dashboard/msme", "/dashboard/admin", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags"],
   },
   data_analyst: {
-    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags"],
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/reports", "/dashboard/impact-intelligence/intelligence", "/dashboard/impact-intelligence/risk-flags", "/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports"],
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
   auditor: {
-    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports"],
+    allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports", "/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports"],
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
   msme: {
