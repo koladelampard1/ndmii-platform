@@ -62,7 +62,7 @@ export function WorkstreamTable({ rows }: { rows: LcdboWorkstream[] }) {
 export function DeliveryItemTable({ rows }: { rows: LcdboDeliveryItem[] }) {
   const columns: WorkspaceTableColumn<LcdboDeliveryItem>[] = [
     { key: "reference", header: "Reference", render: (row) => <span className="font-black text-slate-900">{row.reference}</span> },
-    { key: "title", header: "Commitment", render: (row) => <div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 text-xs capitalize text-slate-500">{row.item_type} · {row.workstream?.name ?? "No workstream"}</p></div> },
+    { key: "title", header: "Commitment", render: (row) => <div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 text-xs capitalize text-slate-500">{row.item_type} · {row.workstream?.name ?? "No workstream"}</p><p className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">Scope: {humanize(row.delivery_scope_type ?? "national")}</p></div> },
     { key: "owner", header: "Owner", render: (row) => row.owner?.full_name ?? row.owner?.email ?? "Unassigned" },
     { key: "status", header: "Status", render: (row) => <StatusBadge value={row.status} /> },
     { key: "priority", header: "Priority", render: (row) => <StatusBadge value={row.priority} /> },
@@ -75,7 +75,7 @@ export function DeliveryItemTable({ rows }: { rows: LcdboDeliveryItem[] }) {
 export function RaidTable({ rows }: { rows: LcdboRaidItem[] }) {
   const columns: WorkspaceTableColumn<LcdboRaidItem>[] = [
     { key: "reference", header: "Reference", render: (row) => <span className="font-black text-slate-900">{row.reference}</span> },
-    { key: "title", header: "RAID item", render: (row) => <div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{row.description}</p></div> },
+    { key: "title", header: "RAID item", render: (row) => <div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{row.description}</p><p className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">Scope: {humanize(row.delivery_scope_type ?? "national")}</p></div> },
     { key: "type", header: "Type", render: (row) => <StatusBadge value={row.raid_type} /> },
     { key: "severity", header: "Severity", render: (row) => <StatusBadge value={row.severity} /> },
     { key: "status", header: "Status", render: (row) => <StatusBadge value={row.status} /> },

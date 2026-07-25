@@ -69,6 +69,11 @@ export type LcdboDeliveryItem = {
   id: string;
   programme_id: string;
   workstream_id: string | null;
+  parent_delivery_item_id?: string | null;
+  delivery_scope_type?: string;
+  state_plan_id?: string | null;
+  lga_plan_id?: string | null;
+  cluster_plan_id?: string | null;
   reference: string;
   item_type: "milestone" | "deliverable";
   title: string;
@@ -101,6 +106,10 @@ export type LcdboRaidItem = {
   programme_id: string;
   workstream_id: string | null;
   delivery_item_id: string | null;
+  delivery_scope_type?: string;
+  state_plan_id?: string | null;
+  lga_plan_id?: string | null;
+  cluster_plan_id?: string | null;
   reference: string;
   raid_type: RaidType;
   title: string;
@@ -162,7 +171,8 @@ export type LcdboDeliveryAccess = {
   roles: string[];
 };
 
-const VIEW_ROLES = ["programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor", "observer", "admin", "super_admin", "institution_admin"] as const;
+const GEOGRAPHIC_DELIVERY_ROLES = ["state_coordinator", "lga_coordinator", "cluster_manager"] as const;
+const VIEW_ROLES = ["programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor", "observer", "admin", "super_admin", "institution_admin", ...GEOGRAPHIC_DELIVERY_ROLES] as const;
 const MANAGE_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 const EXPORT_ROLES = ["programme_officer", "data_analyst", "auditor", "admin", "super_admin", "institution_admin"] as const;
 
@@ -438,6 +448,11 @@ export async function createOrUpdateDeliveryItem(input: { formData: FormData; ac
   const payload = {
     programme_id: input.programmeId,
     workstream_id: helper.value("workstream_id"),
+    parent_delivery_item_id: helper.value("parent_delivery_item_id"),
+    delivery_scope_type: helper.value("delivery_scope_type") ?? "national",
+    state_plan_id: helper.value("state_plan_id"),
+    lga_plan_id: helper.value("lga_plan_id"),
+    cluster_plan_id: helper.value("cluster_plan_id"),
     reference: helper.value("reference") ?? normaliseReference(itemType === "milestone" ? "LCDBO-MS" : "LCDBO-DL", count ?? 0),
     item_type: itemType as "milestone" | "deliverable",
     title: helper.value("title") ?? "Untitled delivery item",
@@ -482,6 +497,10 @@ export async function createOrUpdateRaidItem(input: { formData: FormData; actorU
     workstream_id: helper.value("workstream_id"),
     reference: helper.value("reference") ?? normaliseReference("LCDBO-RAID", count ?? 0),
     raid_type: raidType,
+    delivery_scope_type: helper.value("delivery_scope_type") ?? "national",
+    state_plan_id: helper.value("state_plan_id"),
+    lga_plan_id: helper.value("lga_plan_id"),
+    cluster_plan_id: helper.value("cluster_plan_id"),
     title: helper.value("title") ?? "Untitled RAID item",
     description: helper.value("description") ?? "No description provided.",
     owner_id: helper.value("owner_id"),
@@ -563,10 +582,10 @@ export async function exportLcdboDeliveryData(dataset: LcdboDeliveryExportDatase
     rows = [["Reference", "Workstream", "Status", "Health", "Priority", "Progress", "Target date", "Classification", "Latest update"], ...workstreams.map((item) => [item.reference, item.name, item.status, item.health, item.priority, item.progress_percentage, item.target_date, deliveryClassification(item.metadata), item.latest_update])];
   } else if (dataset === "milestones") {
     const items = await listLcdboDeliveryItems({ programmeId: programme.id, client: supabase });
-    rows = [["Reference", "Type", "Title", "Workstream", "Status", "Priority", "Progress", "Due date", "Evidence required", "Latest update"], ...items.map((item) => [item.reference, item.item_type, item.title, item.workstream?.name, item.status, item.priority, item.progress_percentage, item.due_date, item.evidence_requirement, item.latest_update])];
+    rows = [["Reference", "Type", "Title", "Workstream", "Scope", "Status", "Priority", "Progress", "Due date", "Evidence required", "Latest update"], ...items.map((item) => [item.reference, item.item_type, item.title, item.workstream?.name, item.delivery_scope_type ?? "national", item.status, item.priority, item.progress_percentage, item.due_date, item.evidence_requirement, item.latest_update])];
   } else if (dataset === "raid") {
     const raids = await listLcdboRaidItems({ programmeId: programme.id, client: supabase });
-    rows = [["Reference", "Type", "Title", "Workstream", "Status", "Severity", "Escalation", "Review date", "Target resolution", "Mitigation"], ...raids.map((item) => [item.reference, item.raid_type, item.title, item.workstream?.name, item.status, item.severity, item.escalation_status, item.review_date, item.target_resolution_date, item.mitigation_plan])];
+    rows = [["Reference", "Type", "Title", "Workstream", "Scope", "Status", "Severity", "Escalation", "Review date", "Target resolution", "Mitigation"], ...raids.map((item) => [item.reference, item.raid_type, item.title, item.workstream?.name, item.delivery_scope_type ?? "national", item.status, item.severity, item.escalation_status, item.review_date, item.target_resolution_date, item.mitigation_plan])];
   } else {
     const decisions = await listLcdboDecisions({ programmeId: programme.id, client: supabase });
     rows = [["Reference", "Decision required", "Workstream", "Status", "Owner", "Due date", "Decision date", "Outcome", "Follow-up"], ...decisions.map((item) => [item.reference, item.decision_required, item.workstream?.name, item.status, item.decisionOwner?.full_name ?? item.decisionOwner?.email, item.due_date, item.decision_date, item.decision_outcome, item.follow_up_action])];

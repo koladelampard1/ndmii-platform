@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, CalendarDays, ClipboardCheck, GitBranch, ShieldCheck } from "lucide-react";
+import { ArrowRight, CalendarDays, ClipboardCheck, Factory, GitBranch, MapPinned, Route, ShieldCheck } from "lucide-react";
 import { WorkspacePage, WorkspacePageHeader, WorkspaceSection, WorkspaceState } from "@/components/workspace/workspace-page";
 import { DeliveryItemTable, LcdboDeliveryMetricGrid, RaidTable, StatusBadge, SuccessErrorBanner, WorkstreamTable } from "@/components/lcdbo/lcdbo-delivery-components";
 import { getLcdboDeliverySnapshot, requireLcdboDeliveryAccess } from "@/lib/data/lcdbo-delivery";
+import { GeographicDeliveryMetricGrid, StatePlanTable } from "@/components/lcdbo/lcdbo-delivery-geography-components";
+import { getLcdboGeographyDeliverySnapshot } from "@/lib/data/lcdbo-delivery-geography";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,7 @@ export default async function LcdboDeliveryOverviewPage({ searchParams }: { sear
   const access = await requireLcdboDeliveryAccess("view").catch(() => null);
   if (!access) redirect("/access-denied");
   const snapshot = await getLcdboDeliverySnapshot(access.supabase);
+  const geographic = await getLcdboGeographyDeliverySnapshot(access.supabase);
 
   return (
     <WorkspacePage>
@@ -29,6 +32,7 @@ export default async function LcdboDeliveryOverviewPage({ searchParams }: { sear
       ) : (
         <>
           <LcdboDeliveryMetricGrid metrics={snapshot.metrics} />
+          {!geographic.unavailable ? <GeographicDeliveryMetricGrid metrics={geographic.metrics} /> : null}
           <WorkspaceSection title="Programme control summary" description="Core delivery facts reused from the existing LCDBO programme definition.">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-slate-50 p-4">
@@ -75,9 +79,18 @@ export default async function LcdboDeliveryOverviewPage({ searchParams }: { sear
               <RaidTable rows={snapshot.raids.filter((item) => item.severity === "critical" || item.escalation_status !== "none").slice(0, 5)} />
             </WorkspaceSection>
           </div>
-          <WorkspaceSection title="Delivery navigation" description="Operational registers introduced in Sprint 1.">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {!geographic.unavailable ? (
+            <WorkspaceSection title="Geographic delivery hierarchy" description="State, LGA and cluster plans represent configured LCDBO delivery operations. They do not imply nationwide reference-geography coverage.">
+              <StatePlanTable rows={geographic.statePlans.slice(0, 5)} />
+            </WorkspaceSection>
+          ) : null}
+          <WorkspaceSection title="Delivery navigation" description="Operational registers for national and geographic delivery planning.">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
+                ["State Plans", "/dashboard/lcdbo/delivery/states", MapPinned],
+                ["LGA Plans", "/dashboard/lcdbo/delivery/lgas", Route],
+                ["Cluster Plans", "/dashboard/lcdbo/delivery/clusters", Factory],
+                ["My Work", "/dashboard/lcdbo/my-work", ClipboardCheck],
                 ["Workstreams", "/dashboard/lcdbo/workstreams", GitBranch],
                 ["Milestones", "/dashboard/lcdbo/milestones", CalendarDays],
                 ["Risks & Issues", "/dashboard/lcdbo/raid", ShieldCheck],

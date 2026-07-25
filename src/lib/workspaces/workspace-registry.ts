@@ -247,7 +247,7 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     allowedRoles: ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor"],
     scopedAccess: {
       baseRoles: ["workspace_user"],
-      roles: ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer"],
+      roles: ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "state_coordinator", "lga_coordinator", "cluster_manager"],
       scopeType: "programme",
       programmeSlug: "local-content-development-beyond-oil",
       institutionSlug: "roseate-forte-nigeria-limited",
@@ -256,6 +256,10 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     navigation: [
       { label: "Operations", href: "/dashboard/lcdbo" },
       { label: "Programme Overview", href: "/dashboard/lcdbo/delivery" },
+      { label: "State Plans", href: "/dashboard/lcdbo/delivery/states" },
+      { label: "LGA Plans", href: "/dashboard/lcdbo/delivery/lgas" },
+      { label: "Cluster Plans", href: "/dashboard/lcdbo/delivery/clusters" },
+      { label: "My Work", href: "/dashboard/lcdbo/my-work" },
       { label: "Workstreams", href: "/dashboard/lcdbo/workstreams" },
       { label: "Milestones", href: "/dashboard/lcdbo/milestones" },
       { label: "Risks & Issues", href: "/dashboard/lcdbo/raid" },
@@ -274,6 +278,10 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
       ] },
       { label: "Programme Delivery", items: [
         { label: "Programme Overview", href: "/dashboard/lcdbo/delivery" },
+        { label: "State Plans", href: "/dashboard/lcdbo/delivery/states" },
+        { label: "LGA Plans", href: "/dashboard/lcdbo/delivery/lgas" },
+        { label: "Cluster Plans", href: "/dashboard/lcdbo/delivery/clusters" },
+        { label: "My Work", href: "/dashboard/lcdbo/my-work" },
         { label: "Workstreams", href: "/dashboard/lcdbo/workstreams" },
         { label: "Milestones", href: "/dashboard/lcdbo/milestones" },
         { label: "Risks & Issues", href: "/dashboard/lcdbo/raid" },

@@ -5,6 +5,7 @@ import { DeliveryItemTable, ExportLink, SuccessErrorBanner } from "@/components/
 import { WorkspacePage, WorkspacePageHeader, WorkspaceSection, WorkspaceState } from "@/components/workspace/workspace-page";
 import { WorkspaceFilterBar } from "@/components/workspace/workspace-table";
 import { DELIVERY_ITEM_STATUSES, DELIVERY_PRIORITIES, getLcdboDeliverySnapshot, listLcdboDeliveryInstitutions, listLcdboDeliveryUsers, requireLcdboDeliveryAccess } from "@/lib/data/lcdbo-delivery";
+import { getLcdboGeographyDeliverySnapshot } from "@/lib/data/lcdbo-delivery-geography";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function LcdboMilestonesPage({ searchParams }: { searchPara
   if (!access) redirect("/access-denied");
   const snapshot = await getLcdboDeliverySnapshot(access.supabase);
   if (snapshot.unavailable) return <WorkspacePage><WorkspaceState type="not-configured" title="Milestones unavailable" description="Apply the Sprint 1 delivery migration to enable this register." /></WorkspacePage>;
+  const geographic = await getLcdboGeographyDeliverySnapshot(access.supabase);
   const [users, institutions] = access.canManage ? await Promise.all([listLcdboDeliveryUsers(access.supabase), listLcdboDeliveryInstitutions(access.supabase)]) : [[], []];
   const filtered = snapshot.items.filter((item) => (!params.type || item.item_type === params.type) && (!params.status || item.status === params.status) && (!params.priority || item.priority === params.priority));
 
@@ -36,6 +38,10 @@ export default async function LcdboMilestonesPage({ searchParams }: { searchPara
             <label className="text-sm font-bold text-slate-700">Type<select name="item_type" defaultValue="milestone" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="milestone">Milestone</option><option value="deliverable">Deliverable</option></select></label>
             <label className="text-sm font-bold text-slate-700 md:col-span-2">Title<input required name="title" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
             <label className="text-sm font-bold text-slate-700">Workstream<select name="workstream_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">Programme-level</option>{snapshot.workstreams.map((item) => <option key={item.id} value={item.id}>{item.reference} · {item.name}</option>)}</select></label>
+            <label className="text-sm font-bold text-slate-700">Delivery scope<select name="delivery_scope_type" defaultValue="national" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="national">National</option><option value="state">State plan</option><option value="lga">LGA plan</option><option value="cluster">Cluster plan</option><option value="workstream">Workstream</option><option value="partner">Partner</option></select></label>
+            <label className="text-sm font-bold text-slate-700">State plan<select name="state_plan_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">No state scope</option>{geographic.statePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.plan_reference} · {plan.state?.name}</option>)}</select></label>
+            <label className="text-sm font-bold text-slate-700">LGA plan<select name="lga_plan_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">No LGA scope</option>{geographic.lgaPlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.plan_reference} · {plan.lga?.name}</option>)}</select></label>
+            <label className="text-sm font-bold text-slate-700">Cluster plan<select name="cluster_plan_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">No cluster scope</option>{geographic.clusterPlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.plan_reference} · {plan.cluster?.name}</option>)}</select></label>
             <label className="text-sm font-bold text-slate-700">Owner<select name="owner_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">Unassigned</option>{users.map((user) => <option key={user.id} value={user.id}>{user.full_name ?? user.email}</option>)}</select></label>
             <label className="text-sm font-bold text-slate-700">Institution<select name="supporting_institution_id" defaultValue="" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">None</option>{institutions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="text-sm font-bold text-slate-700 md:col-span-3">Description<textarea name="description" rows={2} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>

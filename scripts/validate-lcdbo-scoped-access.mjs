@@ -24,6 +24,7 @@ const files = {
   lcdboOperationsExport: read("src/app/api/lcdbo/export/[dataset]/route.ts"),
   governanceActions: read("src/app/dashboard/lcdbo/governance-actions.ts"),
   migration: read("supabase/migrations/20260622143000_lcdbo_scoped_workspace_access_hardening.sql"),
+  sprint2Migration: read("supabase/migrations/20260623120000_lcdbo_delivery_core_sprint2.sql"),
 };
 
 assert(files.roles.includes('| "workspace_user"'), "workspace_user is missing from UserRole.");
@@ -32,7 +33,7 @@ assert(files.authorization.includes("workspace_user: []"), "workspace_user must 
 assert(files.authorization.includes('role === "workspace_user" && routeMatchesPrefix(path, "/dashboard/lcdbo")'), "workspace_user must only be allowed through the LCDBO route gate for server-side scoped checks.");
 assert(files.workspaceTypes.includes("WorkspaceScopedAccess"), "Workspace scoped access metadata is missing.");
 assert(files.workspaceRegistry.includes('baseRoles: ["workspace_user"]'), "LCDBO scoped access must be limited to workspace_user base identities.");
-assert(["programme_officer", "institution_admin", "data_analyst", "auditor", "observer"].every((role) => files.workspaceRegistry.includes(`"${role}"`)), "LCDBO scoped roles are incomplete.");
+assert(["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "state_coordinator", "lga_coordinator", "cluster_manager"].every((role) => files.workspaceRegistry.includes(`"${role}"`)), "LCDBO scoped roles are incomplete.");
 assert(files.workspacePolicy.includes("canAccessWorkspaceWithAssignments") && files.workspacePolicy.includes("canAccessWorkspaceRouteWithAssignments"), "Central scoped workspace evaluator is missing.");
 assert(files.workspacePolicy.includes('assignment.status !== "active"') && files.workspacePolicy.includes("expires_at"), "Scoped evaluator must deny inactive or expired assignments.");
 assert(files.workspaceServer.includes("role_assignments") && files.workspaceServer.includes("canAccessWorkspaceRouteWithAssignments"), "Workspace server guard must resolve scoped assignments centrally.");
@@ -44,6 +45,7 @@ assert(files.lcdboOperationsExport.includes('"data_analyst"') && files.lcdboOper
 assert(files.governanceActions.includes("canManageLcdboGovernanceSnapshot") && files.governanceActions.includes("institution_admin"), "Governance snapshot actions must support scoped manage roles.");
 assert(files.migration.includes("'workspace_user'"), "Migration must add workspace_user to the users.role constraint.");
 assert(files.migration.includes("'observer'") && files.migration.includes("lcdbo_can_view_delivery_programme") && files.migration.includes("lcdbo_can_view_intelligence"), "Migration must update LCDBO read RLS helpers for scoped observer access.");
+assert(["state_coordinator", "lga_coordinator", "cluster_manager"].every((role) => files.sprint2Migration.includes(`'${role}'`)), "Sprint 2 migration must update delivery RLS helpers for scoped geographic roles.");
 
 function loadCommonJsModule(file, requireMap = {}) {
   const source = read(file);
@@ -56,11 +58,11 @@ function loadCommonJsModule(file, requireMap = {}) {
     },
     fileName: file,
   });
-  const module = { exports: {} };
+  const cjsModule = { exports: {} };
   const dirname = path.dirname(path.join(root, file));
   const sandbox = {
-    module,
-    exports: module.exports,
+    module: cjsModule,
+    exports: cjsModule.exports,
     require(specifier) {
       if (specifier in requireMap) return requireMap[specifier];
       throw new Error(`Unexpected validator import ${specifier} from ${file}`);
@@ -69,7 +71,7 @@ function loadCommonJsModule(file, requireMap = {}) {
     __filename: path.join(root, file),
   };
   vm.runInNewContext(outputText, sandbox, { filename: file });
-  return module.exports;
+  return cjsModule.exports;
 }
 
 const registryModule = loadCommonJsModule("src/lib/workspaces/workspace-registry.ts");
@@ -108,7 +110,7 @@ const assertDecision = (condition, message) => assert(condition, `Scoped access 
 assertDecision(!canAccessWorkspace(baseCtx, "lcdbo").allowed, "workspace_user must not receive legacy LCDBO access without a scoped role.");
 assertDecision(!canAccessWorkspaceWithAssignments(baseCtx, "lcdbo", [], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed, "workspace_user with no assignments must be denied.");
 
-for (const role of ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer"]) {
+for (const role of ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "state_coordinator", "lga_coordinator", "cluster_manager"]) {
   assertDecision(
     canAccessWorkspaceRouteWithAssignments(baseCtx, "lcdbo", "/dashboard/lcdbo", [matchingAssignment(role)], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed,
     `${role} programme assignment should grant LCDBO route access.`,
@@ -143,6 +145,20 @@ assertDecision(
   !canAccessWorkspaceRouteWithAssignments(baseCtx, "impact-intelligence", "/dashboard/impact-intelligence", [matchingAssignment("observer")], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed,
   "LCDBO observer assignment must not grant Impact Intelligence access.",
 );
+for (const role of ["state_coordinator", "lga_coordinator", "cluster_manager"]) {
+  assertDecision(
+    !canAccessWorkspaceRouteWithAssignments(baseCtx, "nrs", "/dashboard/nrs", [matchingAssignment(role)], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed,
+    `${role} assignment must not grant NRS access.`,
+  );
+  assertDecision(
+    !canAccessWorkspaceRouteWithAssignments(baseCtx, "boi", "/dashboard/boi", [matchingAssignment(role)], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed,
+    `${role} assignment must not grant BOI access.`,
+  );
+  assertDecision(
+    !canAccessWorkspaceRouteWithAssignments(baseCtx, "impact-intelligence", "/dashboard/impact-intelligence", [matchingAssignment(role)], { scopeId: lcdbOProgrammeId, institutionId: roseateInstitutionId }, now).allowed,
+    `${role} assignment must not grant Impact Intelligence access.`,
+  );
+}
 assertDecision(
   canAccessWorkspace({ role: "admin", appUserId: "admin-1" }, "lcdbo").allowed,
   "existing global admin access must remain intact.",
