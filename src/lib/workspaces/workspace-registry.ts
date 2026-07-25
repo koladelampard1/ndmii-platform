@@ -247,6 +247,11 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     allowedRoles: ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor"],
     navigation: [
       { label: "Operations", href: "/dashboard/lcdbo" },
+      { label: "Programme Overview", href: "/dashboard/lcdbo/delivery" },
+      { label: "Workstreams", href: "/dashboard/lcdbo/workstreams" },
+      { label: "Milestones", href: "/dashboard/lcdbo/milestones" },
+      { label: "Risks & Issues", href: "/dashboard/lcdbo/raid" },
+      { label: "Delivery Calendar", href: "/dashboard/lcdbo/calendar" },
       { label: "Intelligence", href: "/dashboard/lcdbo/intelligence" },
       { label: "Reports", href: "/dashboard/lcdbo/reports" },
       { label: "Geography", href: "/dashboard/lcdbo/geography" },
@@ -259,6 +264,14 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
         { label: "Intelligence", href: "/dashboard/lcdbo/intelligence" },
         { label: "Geography", href: "/dashboard/lcdbo/geography" },
       ] },
+      { label: "Programme Delivery", items: [
+        { label: "Programme Overview", href: "/dashboard/lcdbo/delivery" },
+        { label: "Workstreams", href: "/dashboard/lcdbo/workstreams" },
+        { label: "Milestones", href: "/dashboard/lcdbo/milestones" },
+        { label: "Risks & Issues", href: "/dashboard/lcdbo/raid" },
+        { label: "Decisions", href: "/dashboard/lcdbo/decisions" },
+        { label: "Delivery Calendar", href: "/dashboard/lcdbo/calendar" },
+      ] },
       { label: "Governance & Reporting", items: [
         { label: "Reports", href: "/dashboard/lcdbo/reports" },
         { label: "Data Quality", href: "/dashboard/lcdbo/data-quality" },
@@ -268,11 +281,12 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     terminology: { programme: "Industrialisation Programme", programmes: "Industrialisation Programmes", cohort: "Cluster Pipeline", cohorts: "Cluster Pipelines", intervention: "Business Intervention", interventions: "Business Interventions", assessment: "Cluster Readiness", assessments: "Cluster Readiness", evidence: "Programme Evidence", analytics: "Programme Intelligence", reports: "Executive Reports" },
     quickActions: [
       { label: "Review enrolments", href: "/dashboard/lcdbo" },
+      { label: "Open delivery overview", href: "/dashboard/lcdbo/delivery" },
       { label: "Open reports", href: "/dashboard/lcdbo/reports" },
       { label: "View executive briefings", href: "/dashboard/lcdbo/briefings" },
     ],
     dataClassification: [
-      { classification: "operational", label: "Programme Records", description: "LCDBO enrolments, cluster interests, assignments, assessments and document workflow records." },
+      { classification: "operational", label: "Programme Records", description: "LCDBO enrolments, cluster interests, assignments, assessments, documents, workstreams, milestones, RAID and decision records." },
       { classification: "aggregate", label: "Aggregate Intelligence", description: "Summarised metrics derived from current LCDBO programme records." },
       { classification: "estimate", label: "Governed Estimate", description: "Programme estimates derived from configured cluster targets and current records." },
       { classification: "target", label: "Configured Target", description: "Programme targets requiring formal source validation before external publication." },

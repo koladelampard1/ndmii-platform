@@ -30,6 +30,7 @@ import { LcdboCommandMetricCard, LcdboCoveragePanel, LcdboPipeline } from "@/com
 const REVIEW_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 
 const workspaceCards = [
+  { title: "Programme delivery", detail: "Workstreams, milestones, RAID, decisions and delivery calendar.", icon: ClipboardCheck, href: "/dashboard/lcdbo/delivery" },
   { title: "Programme model", detail: "Ownership, partners, delivery model, and public programme narrative.", icon: Building2, href: "/lcdbo/model" },
   { title: "Industrial clusters", detail: "Pilot cluster locations, capabilities, and participation demand.", icon: Factory, href: "/lcdbo/clusters" },
   { title: "Partner ecosystem", detail: "Institutions supporting delivery across the programme.", icon: Network, href: "/lcdbo/partners" },

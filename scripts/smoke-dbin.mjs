@@ -54,6 +54,16 @@ const workspacePageComponents = read("src/components/workspace/workspace-page.ts
 const workspaceMetrics = read("src/components/workspace/workspace-metrics.tsx");
 const workspaceTable = read("src/components/workspace/workspace-table.tsx");
 const workspaceReporting = read("src/components/workspace/workspace-reporting.tsx");
+const lcdboDeliveryMigration = read("supabase/migrations/20260622120000_lcdbo_delivery_core_sprint1.sql");
+const lcdboDeliveryData = read("src/lib/data/lcdbo-delivery.ts");
+const lcdboDeliveryActions = read("src/app/dashboard/lcdbo/delivery-actions.ts");
+const lcdboDeliveryOverview = read("src/app/dashboard/lcdbo/delivery/page.tsx");
+const lcdboWorkstreamsPage = read("src/app/dashboard/lcdbo/workstreams/page.tsx");
+const lcdboMilestonesPage = read("src/app/dashboard/lcdbo/milestones/page.tsx");
+const lcdboRaidPage = read("src/app/dashboard/lcdbo/raid/page.tsx");
+const lcdboDecisionsPage = read("src/app/dashboard/lcdbo/decisions/page.tsx");
+const lcdboCalendarPage = read("src/app/dashboard/lcdbo/calendar/page.tsx");
+const lcdboDeliveryExportRoute = read("src/app/api/lcdbo/delivery/export/[dataset]/route.ts");
 const adminGateway = read("src/app/admin/page.tsx");
 const adminDashboardLayout = read("src/app/dashboard/admin/layout.tsx");
 const adminDashboardPage = read("src/app/dashboard/admin/page.tsx");
@@ -994,6 +1004,76 @@ check("LCDBO uses the institutional workspace shell without broad route-policy a
       !canAccessRoute("msme", "/dashboard/lcdbo") &&
       !canAccessRoute("boi_executive", "/dashboard/lcdbo"),
     "Expected LCDBO to use the shared workspace shell and registry-backed access policy without exposing BOI or MSME roles.",
+  );
+});
+
+check("LCDBO delivery core registers governed programme-planning routes and access", () => {
+  const { canAccessRoute } = authorizationModule;
+  const deliveryRoutes = [
+    "/dashboard/lcdbo/delivery",
+    "/dashboard/lcdbo/workstreams",
+    "/dashboard/lcdbo/milestones",
+    "/dashboard/lcdbo/raid",
+    "/dashboard/lcdbo/decisions",
+    "/dashboard/lcdbo/calendar",
+  ];
+  assert(
+    deliveryRoutes.every((route) => workspaceRegistry.includes(route)) &&
+      deliveryRoutes.every((route) => canAccessRoute("admin", route)) &&
+      deliveryRoutes.every((route) => canAccessRoute("programme_officer", route)) &&
+      deliveryRoutes.every((route) => canAccessRoute("data_analyst", route)) &&
+      deliveryRoutes.every((route) => canAccessRoute("auditor", route)) &&
+      deliveryRoutes.every((route) => !canAccessRoute("msme", route)) &&
+      deliveryRoutes.every((route) => !canAccessRoute("boi_executive", route)),
+    "Expected LCDBO delivery routes to be registry-driven, visible to authorized LCDBO roles, and denied to MSME/BOI roles.",
+  );
+});
+
+check("LCDBO delivery core persists governed workstreams, commitments, RAID and decisions", () => {
+  assert(
+    ["lcdbo_workstreams", "lcdbo_delivery_items", "lcdbo_raid_items", "lcdbo_decisions"].every((table) => lcdboDeliveryMigration.includes(`public.${table}`)) &&
+      lcdboDeliveryMigration.includes("enable row level security") &&
+      lcdboDeliveryMigration.includes("lcdbo_can_review_programme") &&
+      ["not_started", "planned", "in_progress", "at_risk", "blocked", "submitted", "completed", "cancelled"].every((status) => lcdboDeliveryMigration.includes(`'${status}'`)) &&
+      lcdboDeliveryMigration.includes("lcdbo_can_view_delivery_programme") &&
+      lcdboDeliveryMigration.includes("data_analyst") &&
+      lcdboDeliveryMigration.includes("auditor") &&
+      lcdboDeliveryMigration.includes("LCDBO-WS-001") &&
+      lcdboDeliveryData.includes("requireLcdboDeliveryAccess") &&
+      lcdboDeliveryData.includes("MANAGE_ROLES") &&
+      lcdboDeliveryData.includes("EXPORT_ROLES") &&
+      lcdboDeliveryData.includes("calculateDeliveryMetrics") &&
+      lcdboDeliveryData.includes("isLcdboDeliverySchemaUnavailable"),
+    "Expected Sprint 1 additive schema, RLS, deterministic seed records, access helpers, and governed progress calculations.",
+  );
+});
+
+check("LCDBO delivery server actions and exports enforce authorization and auditability", () => {
+  assert(
+    lcdboDeliveryActions.includes('requireLcdboDeliveryAccess("manage")') &&
+      lcdboDeliveryData.includes("lcdbo.delivery.workstream.created") &&
+      lcdboDeliveryData.includes("lcdbo.delivery.item.created") &&
+      lcdboDeliveryData.includes("lcdbo.delivery.raid.created") &&
+      lcdboDeliveryData.includes("lcdbo.delivery.decision.created") &&
+      lcdboDeliveryData.includes("lcdbo.delivery.export.generated") &&
+      lcdboDeliveryData.includes("/^[=+\\-@]/") &&
+      lcdboDeliveryExportRoute.includes('requireLcdboDeliveryAccess("export"'),
+    "Expected delivery mutations and exports to enforce server-side permissions, audit events, and CSV formula protection.",
+  );
+});
+
+check("LCDBO delivery pages use shared institutional workspace primitives", () => {
+  assert(
+    lcdboDeliveryOverview.includes("WorkspacePageHeader") &&
+      lcdboDeliveryOverview.includes("LcdboDeliveryMetricGrid") &&
+      lcdboWorkstreamsPage.includes("WorkspaceFilterBar") &&
+      lcdboWorkstreamsPage.includes("WorkstreamTable") &&
+      lcdboMilestonesPage.includes("DeliveryItemTable") &&
+      lcdboRaidPage.includes("RaidTable") &&
+      lcdboDecisionsPage.includes("DecisionTable") &&
+      lcdboCalendarPage.includes("CalendarAgenda") &&
+      [lcdboDeliveryOverview, lcdboWorkstreamsPage, lcdboMilestonesPage, lcdboRaidPage, lcdboDecisionsPage, lcdboCalendarPage].every((source) => source.includes("WorkspaceState")),
+    "Expected Sprint 1 pages to reuse shared page, metric, table, filter and state components.",
   );
 });
 

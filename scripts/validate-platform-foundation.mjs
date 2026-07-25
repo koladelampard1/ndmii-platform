@@ -33,6 +33,11 @@ const workspacePage = readFileSync(resolve("src/components/workspace/workspace-p
 const workspaceMetrics = readFileSync(resolve("src/components/workspace/workspace-metrics.tsx"), "utf8");
 const workspaceTable = readFileSync(resolve("src/components/workspace/workspace-table.tsx"), "utf8");
 const workspaceReporting = readFileSync(resolve("src/components/workspace/workspace-reporting.tsx"), "utf8");
+const deliveryCoreMigrationPath = resolve("supabase/migrations/20260622120000_lcdbo_delivery_core_sprint1.sql");
+const deliveryCoreSql = readFileSync(deliveryCoreMigrationPath, "utf8");
+const deliveryCoreDataPath = resolve("src/lib/data/lcdbo-delivery.ts");
+const deliveryCoreData = readFileSync(deliveryCoreDataPath, "utf8");
+const deliveryOverview = readFileSync(resolve("src/app/dashboard/lcdbo/delivery/page.tsx"), "utf8");
 
 const requiredTables = [
   "institutions",
@@ -186,6 +191,14 @@ assert(lcdboLayout.includes('requireWorkspaceAccess("lcdbo"') && lcdboLayout.inc
 assert(workspaceShell.includes("role=\"dialog\"") && workspaceShell.includes("Skip to workspace content") && workspaceShell.includes("navigationSections"), "WorkspaceShell is missing mobile drawer, skip link, or grouped navigation support.");
 assert(workspacePage.includes("WorkspacePageHeader") && workspacePage.includes("WorkspaceState") && workspacePage.includes("WorkspaceDataClassificationBadge"), "Shared workspace page/header/state components are missing.");
 assert(workspaceMetrics.includes("ExecutiveMetricCard") && workspaceTable.includes("WorkspaceDataTable") && workspaceReporting.includes("WorkspaceReportCatalogue"), "Shared KPI, table, or reporting components are missing.");
+for (const table of ["lcdbo_workstreams", "lcdbo_delivery_items", "lcdbo_raid_items", "lcdbo_decisions"]) {
+  assert(deliveryCoreSql.includes(`public.${table}`), `Missing LCDBO delivery core table ${table}.`);
+}
+for (const route of ["/dashboard/lcdbo/delivery", "/dashboard/lcdbo/workstreams", "/dashboard/lcdbo/milestones", "/dashboard/lcdbo/raid", "/dashboard/lcdbo/decisions", "/dashboard/lcdbo/calendar"]) {
+  assert(workspaceRegistry.includes(route), `LCDBO delivery route is not registry-driven: ${route}.`);
+}
+assert(deliveryCoreData.includes("requireLcdboDeliveryAccess") && deliveryCoreData.includes("calculateDeliveryMetrics"), "LCDBO delivery core is missing access or governed progress helpers.");
+assert(deliveryOverview.includes("WorkspacePageHeader") && deliveryOverview.includes("LcdboDeliveryMetricGrid"), "LCDBO delivery overview does not use shared workspace components.");
 
 console.log(JSON.stringify({
   ok: true,
@@ -198,6 +211,8 @@ console.log(JSON.stringify({
   sprintCGovernanceLayer: sprintCGovernancePath,
   sprintCReportingLayer: sprintCReportingPath,
   sprintCSnapshotRoute: sprintCSnapshotRoutePath,
+  deliveryCoreMigration: deliveryCoreMigrationPath,
+  deliveryCoreDataLayer: deliveryCoreDataPath,
   tables: requiredTables.length,
   modules: requiredModuleKeys.length,
   institutions: requiredInstitutions.length,
@@ -208,4 +223,5 @@ console.log(JSON.stringify({
   sprintC: "lcdbo_governance_reporting_data_quality_and_geography",
   navigation: "lcdbo_discovery_enabled",
   institutionalFramework: "workspace_contract_shell_policy_and_shared_components",
+  deliveryCore: "lcdbo_programme_planning_and_governance_sprint1",
 }, null, 2));
