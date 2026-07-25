@@ -99,6 +99,10 @@ export const ROUTE_ACCESS_FIXTURE: Record<Exclude<UserRole, "public">, { allowed
     allowed: ["/dashboard/impact-intelligence", "/dashboard/impact-intelligence/programmes", "/dashboard/impact-intelligence/cohorts", "/dashboard/impact-intelligence/interventions", "/dashboard/impact-intelligence/assessments", "/dashboard/impact-intelligence/monitoring", "/dashboard/impact-intelligence/evidence", "/dashboard/impact-intelligence/indicators", "/dashboard/impact-intelligence/executive", "/dashboard/impact-intelligence/analytics", "/dashboard/impact-intelligence/reports", "/dashboard/lcdbo/delivery", "/dashboard/lcdbo/workstreams", "/dashboard/lcdbo/milestones", "/dashboard/lcdbo/raid", "/dashboard/lcdbo/decisions", "/dashboard/lcdbo/calendar", "/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports"],
     denied: ["/dashboard/msme", "/dashboard/admin"],
   },
+  workspace_user: {
+    allowed: ["/dashboard/lcdbo", "/dashboard/lcdbo/delivery", "/dashboard/lcdbo/workstreams", "/dashboard/lcdbo/milestones", "/dashboard/lcdbo/raid", "/dashboard/lcdbo/decisions", "/dashboard/lcdbo/calendar", "/dashboard/lcdbo/intelligence", "/dashboard/lcdbo/reports"],
+    denied: ["/dashboard/nrs", "/dashboard/boi", "/dashboard/impact-intelligence", "/dashboard/admin", "/dashboard/msme"],
+  },
   msme: {
     allowed: ["/dashboard/msme", "/dashboard/msme/onboarding", "/dashboard/msme/id-card", "/dashboard/msme/payments"],
     denied: ["/dashboard/reviews", "/dashboard/nrs", "/dashboard"],

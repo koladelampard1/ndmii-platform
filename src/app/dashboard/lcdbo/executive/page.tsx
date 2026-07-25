@@ -11,7 +11,7 @@ import { LcdboExecutiveDashboard } from "@/components/lcdbo/lcdbo-executive-dash
 import { calculateDataQuality, calculateProgrammeHealth, getReportSnapshots } from "@/lib/data/lcdbo-governance";
 import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
 
-const EXECUTIVE_ROLES = ["programme_officer", "admin", "super_admin", "boi_executive", "auditor", "data_analyst", "institution_admin", "executive", "observer"] as const;
+const EXECUTIVE_ROLES = ["programme_officer", "admin", "super_admin", "boi_executive", "auditor", "data_analyst", "institution_admin", "observer"] as const;
 
 export default async function LcdboExecutivePage() {
   const ctx = await getCurrentUserContext();

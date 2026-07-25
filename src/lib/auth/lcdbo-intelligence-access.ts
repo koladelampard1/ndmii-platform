@@ -5,7 +5,7 @@ import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
 import { LCDBO_MODULE_KEY } from "@/lib/lcdbo/content";
 
-export const LCDBO_INTELLIGENCE_ROLES = ["programme_officer", "admin", "super_admin", "boi_executive", "auditor", "data_analyst", "institution_admin", "executive", "observer"] as const;
+export const LCDBO_INTELLIGENCE_ROLES = ["programme_officer", "admin", "super_admin", "boi_executive", "auditor", "data_analyst", "institution_admin", "observer"] as const;
 
 export async function requireLcdboIntelligenceAccess() {
   const ctx = await getCurrentUserContext();

@@ -16,6 +16,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   field_officer: "Field Officer",
   data_analyst: "Data Analyst",
   auditor: "Auditor",
+  workspace_user: "Workspace User",
   reviewer: "Reviewer",
   fccpc_officer: "FCCPC Officer",
   nrs_officer: "NRS Officer",
@@ -41,7 +42,7 @@ export async function Sidebar() {
       supabase.from("programmes").select("id").eq("slug", "local-content-development-beyond-oil").maybeSingle(),
     ]);
     const { data: scopedRoles } = programme?.id
-      ? await supabase.from("role_assignments").select("id,expires_at").eq("user_id", context.appUserId).eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "institution_admin", "admin", "super_admin"])
+      ? await supabase.from("role_assignments").select("id,expires_at").eq("user_id", context.appUserId).eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "admin", "super_admin"])
       : { data: [] };
     const hasActiveScopedRole = (scopedRoles ?? []).some((assignment) => !assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now());
     if ((count ?? 0) > 0 || hasActiveScopedRole) navGroups.push({ label: "Programme Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" }] });

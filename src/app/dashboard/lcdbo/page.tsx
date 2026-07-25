@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Activity, ArrowRight, BarChart3, Building2, CheckCircle2, ClipboardCheck, Factory, FileClock, FileText, Gauge, Landmark, MapPinned, Network, UserRoundCheck, Users } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { isPlatformAdmin } from "@/lib/auth/authorization";
+import { canAccessRoute, isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import {
   getLcdboClusterInterestQueue,
@@ -27,6 +27,7 @@ import {
 } from "@/lib/data/lcdbo-operations";
 import { LcdboCommandMetricCard, LcdboCoveragePanel, LcdboPipeline } from "@/components/lcdbo/lcdbo-visuals";
 
+const VIEW_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin", "data_analyst", "auditor", "observer"] as const;
 const REVIEW_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 
 const workspaceCards = [
@@ -62,7 +63,7 @@ async function requireLcdboReviewer() {
   const access = await canUseWorkspaceModule({
     ctx,
     moduleKey: LCDBO_MODULE_KEY,
-    allowedRoles: REVIEW_ROLES,
+    allowedRoles: VIEW_ROLES,
     scopeType: "programme",
     scopeId: programme.id,
     programmeId: programme.id,
@@ -73,15 +74,24 @@ async function requireLcdboReviewer() {
     source: isPlatformAdmin(ctx.role) ? "platform_admin" as const : "denied" as const,
     module: { allowed: isPlatformAdmin(ctx.role), status: "fallback", source: "module" as const },
   }));
+  const manageAccess = await canUseWorkspaceModule({
+    ctx,
+    moduleKey: LCDBO_MODULE_KEY,
+    allowedRoles: REVIEW_ROLES,
+    scopeType: "programme",
+    scopeId: programme.id,
+    programmeId: programme.id,
+    institutionId: programme.owning_institution_id,
+  }).catch(() => ({ allowed: isPlatformAdmin(ctx.role) }));
   if (!ctx.appUserId) redirect("/access-denied");
-  const canManage = isPlatformAdmin(ctx.role) || access.allowed;
+  const canManage = isPlatformAdmin(ctx.role) || manageAccess.allowed;
   let assignedAccess = false;
   if (!canManage) {
     const supabase = await createServiceRoleSupabaseClient();
     const { count } = await supabase.from("cluster_members").select("id,industrial_clusters!inner(programme_id)", { count: "exact", head: true }).eq("assigned_officer_id", ctx.appUserId).eq("industrial_clusters.programme_id", programme.id);
     assignedAccess = (count ?? 0) > 0;
   }
-  if (!canManage && !assignedAccess) redirect("/access-denied");
+  if (!access.allowed && !canManage && !assignedAccess) redirect("/access-denied");
   return { ctx, programme, access, canManage };
 }
 
@@ -167,6 +177,7 @@ export default async function LcdboDashboardPage({
   const readinessCompleted = operations.assessments.size;
   const statesCovered = new Set(enrolments.map((item) => item.msme?.state).filter(Boolean)).size;
   const officersAssigned = operations.participants.filter((item) => item.assigned_officer_id).length;
+  const visibleWorkspaceCards = workspaceCards.filter((card) => !card.href.startsWith("/dashboard/impact-intelligence") || canAccessRoute(ctx.role, card.href));
   const pipeline = [
     { label: "Applications", value: enrolments.length },
     { label: "Review", value: pendingEnrolments.length },
@@ -295,7 +306,7 @@ export default async function LcdboDashboardPage({
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-black text-[#06172f]">Workspace modules</h2><p className="mt-1 text-sm text-slate-600">Operational links connected to the LCDBO programme foundation.</p></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800">{access.module.status ?? "enabled"}</span></div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {workspaceCards.map((card) => { const Icon = card.icon; return <Link key={card.title} href={card.href} className="group rounded-xl border border-slate-200 p-4 hover:border-[#d9a441]"><Icon className="h-5 w-5 text-emerald-700" /><p className="mt-3 font-black text-[#06172f]">{card.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{card.detail}</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-black text-emerald-800">Open <ArrowRight className="h-3.5 w-3.5" /></span></Link>; })}
+              {visibleWorkspaceCards.map((card) => { const Icon = card.icon; return <Link key={card.title} href={card.href} className="group rounded-xl border border-slate-200 p-4 hover:border-[#d9a441]"><Icon className="h-5 w-5 text-emerald-700" /><p className="mt-3 font-black text-[#06172f]">{card.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{card.detail}</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-black text-emerald-800">Open <ArrowRight className="h-3.5 w-3.5" /></span></Link>; })}
             </div>
           </article>
         </div>

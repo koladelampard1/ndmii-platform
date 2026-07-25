@@ -16,7 +16,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ dataset: s
   const ctx = await getCurrentUserContext();
   const programme = await getLcdboProgramme();
   if (!programme || !ctx.appUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const permission = await canUseWorkspaceModule({ ctx, moduleKey: LCDBO_MODULE_KEY, allowedRoles: ["programme_officer", "admin", "super_admin", "institution_admin"], scopeType: "programme", scopeId: programme.id, programmeId: programme.id, institutionId: programme.owning_institution_id });
+  const permission = await canUseWorkspaceModule({ ctx, moduleKey: LCDBO_MODULE_KEY, allowedRoles: ["programme_officer", "admin", "super_admin", "institution_admin", "data_analyst", "auditor"], scopeType: "programme", scopeId: programme.id, programmeId: programme.id, institutionId: programme.owning_institution_id });
   if (!isPlatformAdmin(ctx.role) && !permission.allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const supabase = await createServiceRoleSupabaseClient();

@@ -28,6 +28,7 @@ const KNOWN_ROLES: UserRole[] = [
   "field_officer",
   "data_analyst",
   "auditor",
+  "workspace_user",
   "fccpc_officer",
   "nrs_officer",
   "firs_officer",
@@ -57,6 +58,8 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   dataanalyst: "data_analyst",
   analyst: "data_analyst",
   auditor: "auditor",
+  workspace_user: "workspace_user",
+  workspaceuser: "workspace_user",
   fccpc: "fccpc_officer",
   fccpc_officer: "fccpc_officer",
   nrs: "nrs_officer",
@@ -80,6 +83,7 @@ const ROLE_HOME: Record<Exclude<UserRole, "public">, string> = {
   field_officer: "/dashboard/impact-intelligence/monitoring",
   data_analyst: "/dashboard/impact-intelligence/analytics",
   auditor: "/dashboard/impact-intelligence",
+  workspace_user: "/dashboard",
   reviewer: "/dashboard/reviews",
   fccpc_officer: "/dashboard/fccpc",
   nrs_officer: "/dashboard/nrs",
@@ -103,6 +107,7 @@ export const ROLE_ROUTE_PREFIXES: Record<Exclude<UserRole, "public">, string[]> 
   ],
   data_analyst: ["/dashboard/impact-intelligence"],
   auditor: ["/dashboard/impact-intelligence"],
+  workspace_user: [],
   nrs_officer: ["/dashboard/nrs", "/dashboard/firs"],
   msme: ["/dashboard/msme"],
   association_officer: ["/dashboard/associations", "/dashboard/reports"],
@@ -197,6 +202,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (role === "public") legacyAllowed = false;
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
+  else if (role === "workspace_user" && routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
   else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed;
   // Property workspace performs module/scoped permission checks at page level.
   // Let authenticated users reach the guard without expanding global users.role.
@@ -381,6 +387,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/impact-intelligence/intelligence", label: "Intelligence" },
     { href: "/dashboard/impact-intelligence/risk-flags", label: "Risk Flags" },
   ],
+  workspace_user: [],
   msme: [
     { href: "/dashboard/msme", label: "Provider Workspace" },
     { href: "/dashboard/msme/lcdbo", label: "LCDBO Programme" },
@@ -452,6 +459,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
   field_officer: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.field_officer }],
   data_analyst: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.data_analyst }],
   auditor: [{ label: "Impact Intelligence", items: ROLE_NAV_ITEMS.auditor }],
+  workspace_user: [],
   admin: [
     {
       label: "Overview",

@@ -9,7 +9,16 @@ export type WorkspaceAccessContext = {
 export type WorkspaceAccessDecision = {
   allowed: boolean;
   workspace: WorkspaceDefinition;
-  reason: "platform_admin" | "workspace_role" | "route_alias" | "navigation_route" | "denied";
+  reason: "platform_admin" | "workspace_role" | "scoped_role" | "route_alias" | "navigation_route" | "denied";
+};
+
+export type WorkspaceScopedAssignment = {
+  role: string;
+  scope_type: string;
+  scope_id: string | null;
+  institution_id: string | null;
+  status: string;
+  expires_at?: string | null;
 };
 
 function isPlatformAdminRole(role: UserRole) {
@@ -52,6 +61,62 @@ export function canAccessWorkspace(ctx: WorkspaceAccessContext, workspaceId: Wor
   if (isPlatformAdminRole(ctx.role)) return { allowed: true, workspace, reason: "platform_admin" };
   if (workspace.allowedRoles.includes(ctx.role)) return { allowed: true, workspace, reason: "workspace_role" };
   return { allowed: false, workspace, reason: "denied" };
+}
+
+function isActiveAssignment(assignment: WorkspaceScopedAssignment, now = new Date()) {
+  if (assignment.status !== "active") return false;
+  if (!assignment.expires_at) return true;
+  return new Date(assignment.expires_at).getTime() > now.getTime();
+}
+
+export function canAccessWorkspaceWithAssignments(
+  ctx: WorkspaceAccessContext,
+  workspaceId: WorkspaceId,
+  assignments: WorkspaceScopedAssignment[],
+  scope: { scopeId?: string | null; institutionId?: string | null } = {},
+  now = new Date(),
+): WorkspaceAccessDecision {
+  const globalDecision = canAccessWorkspace(ctx, workspaceId);
+  if (globalDecision.allowed) return globalDecision;
+
+  const workspace = globalDecision.workspace;
+  const scopedAccess = workspace.scopedAccess;
+  if (!scopedAccess || !scopedAccess.baseRoles.includes(ctx.role)) {
+    return { allowed: false, workspace, reason: "denied" };
+  }
+
+  const allowed = assignments.some((assignment) => {
+    if (!isActiveAssignment(assignment, now)) return false;
+    if (!scopedAccess.roles.includes(assignment.role)) return false;
+    if (assignment.scope_type === "global") return true;
+    if (scopedAccess.scopeType === "programme") {
+      const programmeMatches = Boolean(scope.scopeId && assignment.scope_type === "programme" && assignment.scope_id === scope.scopeId);
+      const institutionMatches = Boolean(scope.institutionId && assignment.institution_id === scope.institutionId);
+      return programmeMatches || institutionMatches;
+    }
+    if (scopedAccess.scopeType === "institution") {
+      return Boolean(scope.institutionId && assignment.scope_type === "institution" && assignment.institution_id === scope.institutionId);
+    }
+    return false;
+  });
+
+  return { allowed, workspace, reason: allowed ? "scoped_role" : "denied" };
+}
+
+export function canAccessWorkspaceRouteWithAssignments(
+  ctx: WorkspaceAccessContext,
+  workspaceId: WorkspaceId,
+  pathname: string,
+  assignments: WorkspaceScopedAssignment[],
+  scope: { scopeId?: string | null; institutionId?: string | null } = {},
+  now = new Date(),
+): WorkspaceAccessDecision {
+  const decision = canAccessWorkspaceWithAssignments(ctx, workspaceId, assignments, scope, now);
+  if (!decision.allowed) return decision;
+  const routes = workspaceRoutes(decision.workspace);
+  const routeAllowed = [...routes].some((route) => routeMatches(pathname, route));
+  if (!routeAllowed) return { ...decision, allowed: false, reason: "denied" };
+  return { ...decision, reason: decision.reason === "platform_admin" ? "platform_admin" : decision.reason === "scoped_role" ? "scoped_role" : "navigation_route" };
 }
 
 export function canAccessWorkspaceRoute(ctx: WorkspaceAccessContext, workspaceId: WorkspaceId, pathname: string): WorkspaceAccessDecision {

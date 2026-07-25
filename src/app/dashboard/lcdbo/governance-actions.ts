@@ -4,15 +4,34 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/auth/authorization";
+import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
 import { calculateDataQuality, calculateProgrammeHealth, generateKpiSnapshot, generateReportSnapshot, type SnapshotFrequency } from "@/lib/data/lcdbo-governance";
 import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { LCDBO_MODULE_KEY } from "@/lib/lcdbo/content";
 
-export async function generateGovernanceSnapshotAction(formData: FormData) {
+const GOVERNANCE_MANAGE_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
+
+export async function canManageLcdboGovernanceSnapshot() {
   const ctx = await getCurrentUserContext();
   const programme = await getLcdboProgramme();
-  if (!ctx.appUserId || !programme || (!isPlatformAdmin(ctx.role) && ctx.role !== "programme_officer")) redirect("/access-denied");
+  if (!ctx.appUserId || !programme) return { allowed: false, ctx, programme };
+  const access = await canUseWorkspaceModule({
+    ctx,
+    moduleKey: LCDBO_MODULE_KEY,
+    allowedRoles: GOVERNANCE_MANAGE_ROLES,
+    scopeType: "programme",
+    scopeId: programme.id,
+    programmeId: programme.id,
+    institutionId: programme.owning_institution_id,
+  }).catch(() => ({ allowed: isPlatformAdmin(ctx.role) }));
+  return { allowed: isPlatformAdmin(ctx.role) || access.allowed, ctx, programme };
+}
+
+export async function generateGovernanceSnapshotAction(formData: FormData) {
+  const { allowed, ctx, programme } = await canManageLcdboGovernanceSnapshot();
+  if (!allowed || !ctx.appUserId || !programme) redirect("/access-denied");
   const frequency = String(formData.get("frequency") ?? "monthly") as SnapshotFrequency;
   if (!["daily", "weekly", "monthly", "quarterly"].includes(frequency)) redirect("/dashboard/lcdbo/data-quality?error=invalid_frequency");
   const supabase = await createServiceRoleSupabaseClient();

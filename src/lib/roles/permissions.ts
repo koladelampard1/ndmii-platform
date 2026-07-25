@@ -12,6 +12,7 @@ export const roleRouteMap: Record<UserRole, string[]> = {
   field_officer: ROLE_ROUTE_PREFIXES.field_officer,
   data_analyst: ROLE_ROUTE_PREFIXES.data_analyst,
   auditor: ROLE_ROUTE_PREFIXES.auditor,
+  workspace_user: ROLE_ROUTE_PREFIXES.workspace_user,
   fccpc_officer: ROLE_ROUTE_PREFIXES.fccpc_officer,
   nrs_officer: ROLE_ROUTE_PREFIXES.nrs_officer,
   firs_officer: ROLE_ROUTE_PREFIXES.firs_officer,

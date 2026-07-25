@@ -245,6 +245,14 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     executiveDashboard: "/dashboard/lcdbo/executive",
     reports: "/dashboard/lcdbo/reports",
     allowedRoles: ["admin", "super_admin", "programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor"],
+    scopedAccess: {
+      baseRoles: ["workspace_user"],
+      roles: ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer"],
+      scopeType: "programme",
+      programmeSlug: "local-content-development-beyond-oil",
+      institutionSlug: "roseate-forte-nigeria-limited",
+      moduleKey: "lcdb_o_workspace",
+    },
     navigation: [
       { label: "Operations", href: "/dashboard/lcdbo" },
       { label: "Programme Overview", href: "/dashboard/lcdbo/delivery" },

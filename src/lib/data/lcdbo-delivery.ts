@@ -162,7 +162,7 @@ export type LcdboDeliveryAccess = {
   roles: string[];
 };
 
-const VIEW_ROLES = ["programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor", "admin", "super_admin", "institution_admin"] as const;
+const VIEW_ROLES = ["programme_officer", "assessment_officer", "field_officer", "data_analyst", "auditor", "observer", "admin", "super_admin", "institution_admin"] as const;
 const MANAGE_ROLES = ["programme_officer", "admin", "super_admin", "institution_admin"] as const;
 const EXPORT_ROLES = ["programme_officer", "data_analyst", "auditor", "admin", "super_admin", "institution_admin"] as const;
 

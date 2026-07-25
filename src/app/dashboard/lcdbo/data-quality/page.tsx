@@ -5,10 +5,10 @@ import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { IntelligenceHeader, IntelligenceBarChart } from "@/components/lcdbo/lcdbo-intelligence-dashboard";
 import { LcdboCommandMetricCard } from "@/components/lcdbo/lcdbo-visuals";
-import { generateGovernanceSnapshotAction } from "@/app/dashboard/lcdbo/governance-actions";
+import { canManageLcdboGovernanceSnapshot, generateGovernanceSnapshotAction } from "@/app/dashboard/lcdbo/governance-actions";
 
 export default async function LcdboDataQualityPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string }> }) {
-  const { programme, ctx } = await requireLcdboIntelligenceAccess();
+  const { programme } = await requireLcdboIntelligenceAccess();
   const query = await searchParams;
   const supabase = await createServiceRoleSupabaseClient();
   const snapshot = await getLcdboIntelligenceSnapshot(supabase);
@@ -17,7 +17,7 @@ export default async function LcdboDataQualityPage({ searchParams }: { searchPar
   const [trends, definitions] = await Promise.all([getReportSnapshots(programme.id, "data_quality", 12, supabase), getKpiDefinitions(programme.id, supabase)]);
   const trendData = trends.slice().reverse().map((item) => [item.snapshot_date, Number(item.metrics_payload.score ?? 0)] as [string, number]);
   const governanceReady = definitions.length > 0;
-  const canGenerate = governanceReady && ["admin", "super_admin", "programme_officer"].includes(ctx.role);
+  const canGenerate = governanceReady && (await canManageLcdboGovernanceSnapshot()).allowed;
   return <main className="min-h-screen bg-[#F6F8FB]"><IntelligenceHeader eyebrow="Programme Data Governance" title="LCDBO Data Quality Centre" description="Monitor completeness, integrity, geographic coverage and operational trust across the national programme dataset." actions={canGenerate ? <form action={generateGovernanceSnapshotAction} className="flex gap-2"><select name="frequency" defaultValue="monthly" className="rounded-xl border border-white/20 bg-[#082441] px-3 py-2 text-sm text-white"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select><button className="rounded-xl bg-[#D4A017] px-4 py-2 text-sm font-black text-[#0B2E59]">Capture snapshot</button></form> : null} /><div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">{query.success && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">Governed KPI, quality, health and national report snapshots were generated.</p>}
     {query.error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">The governed snapshot could not be generated. Confirm that the Sprint C migration is applied and try again.</p>}
     {!governanceReady && <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-black text-amber-950">Governance snapshots are not configured yet</h2><p className="mt-2 text-sm leading-6 text-amber-800">Live quality checks remain available. Apply the Sprint C governance migration to enable KPI definitions, historical trends and scheduled snapshots.</p></article>}

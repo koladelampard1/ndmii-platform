@@ -1,4 +1,5 @@
 import type { UserRole } from "@/types/roles";
+import type { PlatformModuleKey } from "@/types/platform";
 import type { WorkspaceLanguage } from "@/lib/workspaces/workspace-language";
 
 export type WorkspaceId =
@@ -57,6 +58,15 @@ export type WorkspaceNavigationSection = {
   items: WorkspaceNavigationItem[];
 };
 
+export type WorkspaceScopedAccess = {
+  baseRoles: UserRole[];
+  roles: string[];
+  scopeType: "programme" | "institution";
+  programmeSlug?: string;
+  institutionSlug?: string;
+  moduleKey?: PlatformModuleKey;
+};
+
 export type WorkspacePalette = {
   shell: string;
   surface: string;
@@ -95,6 +105,7 @@ export type WorkspaceDefinition = {
   executiveDashboard?: string;
   reports?: string;
   allowedRoles: UserRole[];
+  scopedAccess?: WorkspaceScopedAccess;
   navigation: WorkspaceNavigationItem[];
   navigationSections?: WorkspaceNavigationSection[];
   terminology: Partial<WorkspaceLanguage>;
