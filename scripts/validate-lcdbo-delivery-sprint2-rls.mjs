@@ -10,6 +10,8 @@ const assert = (condition, message) => {
 
 const migrationPath = "supabase/migrations/20260726120000_lcdbo_delivery_sprint2_rls_remediation.sql";
 const migration = read(migrationPath);
+const returningMigrationPath = "supabase/migrations/20260726123000_lcdbo_delivery_sprint2_returning_rls_fix.sql";
+const returningMigration = read(returningMigrationPath);
 const service = read("src/lib/data/lcdbo-delivery-geography.ts");
 
 assert(migration.includes("create or replace function public.lcdbo_can_save_delivery_activity"), "Activity save helper must be replaced.");
@@ -34,8 +36,21 @@ assert(migration.includes("review_status <> 'approved' or reviewed_by <> submitt
 assert(service.includes("Geographic coordinators can only assign activities to themselves or leave them unassigned."), "Server action must reject client-supplied owner impersonation before the database write.");
 assert(!service.includes("access.canManage || payload.owner_id === access.ctx.appUserId"), "Server activity scope check must not grant access by owner_id alone.");
 
+assert(returningMigration.includes("revoke all on table public.lcdbo_delivery_activities from anon"), "Activity table must revoke anonymous privileges.");
+assert(returningMigration.includes("revoke all on table public.lcdbo_delivery_progress_updates from anon"), "Progress update table must revoke anonymous privileges.");
+assert(returningMigration.includes("grant select, insert, update on table public.lcdbo_delivery_activities to authenticated"), "Activity table must grant only required authenticated operations.");
+assert(returningMigration.includes("grant select, insert, update on table public.lcdbo_delivery_progress_updates to authenticated"), "Progress update table must grant only required authenticated operations.");
+assert(!returningMigration.includes("delete on table public.lcdbo_delivery_activities") && !returningMigration.includes("delete on table public.lcdbo_delivery_progress_updates"), "Corrective grants must not include DELETE.");
+assert(!returningMigration.includes("truncate") && !returningMigration.includes("trigger") && !returningMigration.includes("references"), "Corrective grants must not include TRUNCATE, TRIGGER or REFERENCES.");
+assert(returningMigration.includes('drop policy if exists "LCDBO delivery readers can read activities"'), "Activity SELECT policy must be replaced.");
+assert(returningMigration.includes("public.lcdbo_can_save_delivery_activity(programme_id, state_plan_id, lga_plan_id, cluster_plan_id, owner_id)"), "Activity SELECT policy must evaluate from returned row scope.");
+assert(returningMigration.includes('drop policy if exists "LCDBO delivery readers can read progress updates"'), "Progress SELECT policy must be replaced.");
+assert(returningMigration.includes("submitted_by = public.lcdbo_current_app_user_id()"), "Progress SELECT policy must allow submitters to read their returned row.");
+assert(returningMigration.includes("public.lcdbo_can_view_state_delivery_plan(state_plan_id)") && returningMigration.includes("public.lcdbo_can_view_lga_delivery_plan(lga_plan_id)") && returningMigration.includes("public.lcdbo_can_view_cluster_delivery_plan(cluster_plan_id)"), "Progress SELECT policy must preserve geographic scoped visibility.");
+
 console.log(JSON.stringify({
   ok: true,
   migration: path.join(root, migrationPath),
+  returningMigration: path.join(root, returningMigrationPath),
   validation: "lcdbo_delivery_sprint2_rls_remediation",
 }, null, 2));
