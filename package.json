@@ -20,7 +20,8 @@
     "seed:lcdbo-demo": "node scripts/seed-lcdbo-national-demo.mjs",
     "seed:temp-reviewer": "node scripts/create-temp-reviewer.mjs",
     "validate:platform-foundation": "node scripts/validate-platform-foundation.mjs",
-    "validate:property-phase35": "node scripts/validate-property-phase35.mjs"
+    "validate:property-phase35": "node scripts/validate-property-phase35.mjs",
+    "validate:lcdbo-delivery-sprint2-rls": "node scripts/validate-lcdbo-delivery-sprint2-rls.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",

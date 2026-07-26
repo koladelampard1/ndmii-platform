@@ -336,7 +336,7 @@ function assertCanSaveClusterPlan(access: LcdboGeographyDeliveryAccess, plan: Pi
 }
 
 async function canSaveActivityScope(access: LcdboGeographyDeliveryAccess, payload: { state_plan_id?: string | null; lga_plan_id?: string | null; cluster_plan_id?: string | null; owner_id?: string | null }) {
-  if (access.canManage || payload.owner_id === access.ctx.appUserId) return true;
+  if (access.canManage) return true;
   if (payload.cluster_plan_id) {
     const clusterPlan = await getClusterDeliveryPlan(payload.cluster_plan_id, access.programme.id, access.supabase);
     return !!clusterPlan && canSaveAssignedClusterPlan(access, clusterPlan);
@@ -781,6 +781,9 @@ export async function createOrUpdateActivity(input: { formData: FormData; access
     updated_by: actorUserId,
     ...(!id ? { created_by: actorUserId } : {}),
   };
+  if (!input.access.canManage && payload.owner_id && payload.owner_id !== actorUserId) {
+    throw new Error("Geographic coordinators can only assign activities to themselves or leave them unassigned.");
+  }
   if (id) {
     const existing = (await listDeliveryActivities({ programmeId, client: supabase })).find((item) => item.id === id);
     if (!existing) throw new Error("Delivery activity not found.");
