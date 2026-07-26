@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { recordPlatformEvent } from "@/lib/data/platform-foundation";
+import { recordTrustedLcdboDeliveryEvent } from "@/lib/data/platform-foundation";
 import {
   DELIVERY_PRIORITIES,
   HEALTH_STATUSES,
@@ -623,7 +623,7 @@ export async function createOrUpdateStatePlan(input: { formData: FormData; acces
   const query = id ? supabase.from("lcdbo_state_delivery_plans").update(payload).eq("id", id).eq("programme_id", programmeId) : supabase.from("lcdbo_state_delivery_plans").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save state delivery plan.");
-  await recordPlatformEvent({ actorUserId, eventType: id ? "lcdbo.delivery.state_plan.updated" : "lcdbo.delivery.state_plan.created", entityType: "lcdbo_state_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: id ? "lcdbo.delivery.state_plan.updated" : "lcdbo.delivery.state_plan.created", entityType: "lcdbo_state_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status } });
   return data as StatePlan;
 }
 
@@ -678,7 +678,7 @@ export async function createOrUpdateLgaPlan(input: { formData: FormData; access:
   const query = id ? supabase.from("lcdbo_lga_delivery_plans").update(payload).eq("id", id).eq("programme_id", programmeId) : supabase.from("lcdbo_lga_delivery_plans").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save LGA delivery plan.");
-  await recordPlatformEvent({ actorUserId, eventType: id ? "lcdbo.delivery.lga_plan.updated" : "lcdbo.delivery.lga_plan.created", entityType: "lcdbo_lga_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: id ? "lcdbo.delivery.lga_plan.updated" : "lcdbo.delivery.lga_plan.created", entityType: "lcdbo_lga_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status } });
   return data as LgaPlan;
 }
 
@@ -738,7 +738,7 @@ export async function createOrUpdateClusterPlan(input: { formData: FormData; acc
   const query = id ? supabase.from("lcdbo_cluster_delivery_plans").update(payload).eq("id", id).eq("programme_id", programmeId) : supabase.from("lcdbo_cluster_delivery_plans").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save cluster delivery plan.");
-  await recordPlatformEvent({ actorUserId, eventType: id ? "lcdbo.delivery.cluster_plan.updated" : "lcdbo.delivery.cluster_plan.created", entityType: "lcdbo_cluster_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: id ? "lcdbo.delivery.cluster_plan.updated" : "lcdbo.delivery.cluster_plan.created", entityType: "lcdbo_cluster_delivery_plan", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { plan_reference: data.plan_reference, activation_status: data.activation_status, approval_status: data.approval_status } });
   return data as ClusterPlan;
 }
 
@@ -794,7 +794,7 @@ export async function createOrUpdateActivity(input: { formData: FormData; access
   const query = id ? supabase.from("lcdbo_delivery_activities").update(payload).eq("id", id).eq("programme_id", programmeId) : supabase.from("lcdbo_delivery_activities").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save activity.");
-  await recordPlatformEvent({ actorUserId, eventType: status === "completed" ? "lcdbo.delivery.activity.completed" : id ? "lcdbo.delivery.activity.updated" : "lcdbo.delivery.activity.created", entityType: "lcdbo_delivery_activity", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { reference: data.reference, activity_type: data.activity_type, status: data.status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: status === "completed" ? "lcdbo.delivery.activity.completed" : id ? "lcdbo.delivery.activity.updated" : "lcdbo.delivery.activity.created", entityType: "lcdbo_delivery_activity", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { reference: data.reference, activity_type: data.activity_type, status: data.status } });
   return data as DeliveryActivity;
 }
 
@@ -832,7 +832,7 @@ export async function submitProgressUpdate(input: { formData: FormData; access: 
   await assertCanSubmitProgressUpdate(input.access, payload);
   const { data, error } = await supabase.from("lcdbo_delivery_progress_updates").insert(payload).select("*").single();
   if (error || !data) throw error ?? new Error("Unable to submit progress update.");
-  await recordPlatformEvent({ actorUserId, eventType: "lcdbo.delivery.progress_update.submitted", entityType: "lcdbo_delivery_progress_update", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { review_status: data.review_status, progress_percentage: data.progress_percentage }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: "lcdbo.delivery.progress_update.submitted", entityType: "lcdbo_delivery_progress_update", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { review_status: data.review_status, progress_percentage: data.progress_percentage } });
   return data as ProgressUpdate;
 }
 
@@ -854,7 +854,7 @@ export async function reviewProgressUpdate(input: { updateId: string; reviewStat
     .single();
   if (error || !data) throw error ?? new Error("Unable to review progress update.");
   if (input.reviewStatus === "approved") await syncApprovedProgressUpdate(data as ProgressUpdate, actorUserId, supabase);
-  await recordPlatformEvent({ actorUserId, eventType: `lcdbo.delivery.progress_update.${input.reviewStatus}`, entityType: "lcdbo_delivery_progress_update", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { review_status: input.reviewStatus }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: `lcdbo.delivery.progress_update.${input.reviewStatus}`, entityType: "lcdbo_delivery_progress_update", entityId: data.id, scopeType: "programme", scopeId: programmeId, metadata: { review_status: input.reviewStatus } });
   return data as ProgressUpdate;
 }
 
@@ -942,6 +942,6 @@ export async function exportLcdboGeographyDeliveryData(dataset: LcdboGeographyDe
     const work = await getMyLcdboDeliveryWork({ access });
     rows = [["Type", "Reference", "Title", "Status", "Health/Priority", "Due/Updated"], ...work.statePlans.map((item) => ["State plan", item.plan_reference, item.title, item.delivery_status, item.delivery_health, item.updated_at]), ...work.lgaPlans.map((item) => ["LGA plan", item.plan_reference, item.title, item.delivery_status, item.delivery_health, item.updated_at]), ...work.clusterPlans.map((item) => ["Cluster plan", item.plan_reference, item.title, item.delivery_status, item.delivery_health, item.updated_at]), ...work.activities.map((item) => ["Activity", item.reference, item.title, item.status, item.priority, item.planned_end_date])];
   }
-  await recordPlatformEvent({ actorUserId: ctx.appUserId!, eventType: "lcdbo.delivery.geographic_export.generated", entityType: "lcdbo_geographic_delivery_export", scopeType: "programme", scopeId: programme.id, metadata: { dataset, row_count: Math.max(0, rows.length - 1) }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId: ctx.appUserId!, eventType: "lcdbo.delivery.geographic_export.generated", entityType: "lcdbo_geographic_delivery_export", scopeType: "programme", scopeId: programme.id, metadata: { dataset, row_count: Math.max(0, rows.length - 1) } });
   return { csv: csv(rows), filename: `lcdbo-geographic-delivery-${dataset}-${new Date().toISOString().slice(0, 10)}.csv`, rowCount: Math.max(0, rows.length - 1) };
 }

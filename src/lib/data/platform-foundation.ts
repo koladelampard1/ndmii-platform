@@ -19,6 +19,20 @@ import type { UserRole } from "@/types/roles";
 
 type Client = SupabaseClient<any>;
 
+type PlatformEventInput = {
+  actorUserId?: string | null;
+  actorInstitutionId?: string | null;
+  eventType: string;
+  entityType: string;
+  entityId?: string | null;
+  scopeType?: ScopeType | null;
+  scopeId?: string | null;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  client?: Client;
+};
+
 export type PlatformWorkspaceFoundation = {
   institutions: Institution[];
   programmes: Programme[];
@@ -199,19 +213,7 @@ export async function canAccessModule(input: {
   return { allowed: module.status === "active", status: module.status, source: "module" };
 }
 
-export async function recordPlatformEvent(input: {
-  actorUserId?: string | null;
-  actorInstitutionId?: string | null;
-  eventType: string;
-  entityType: string;
-  entityId?: string | null;
-  scopeType?: ScopeType | null;
-  scopeId?: string | null;
-  metadata?: Record<string, unknown>;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  client?: Client;
-}): Promise<PlatformEvent | null> {
+export async function recordPlatformEvent(input: PlatformEventInput): Promise<PlatformEvent | null> {
   const supabase = input.client ?? await createServiceRoleSupabaseClient();
   const { data, error } = await supabase
     .from("platform_events")
@@ -238,6 +240,59 @@ export async function recordPlatformEvent(input: {
     });
     return null;
   }
+  return data as PlatformEvent;
+}
+
+const SENSITIVE_AUDIT_METADATA_KEY = /(password|token|secret|service.*key|authorization|cookie|session|nin|bvn)/i;
+
+function sanitizeAuditMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sanitizeAuditMetadata(entry));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !SENSITIVE_AUDIT_METADATA_KEY.test(key))
+        .map(([key, entry]) => [key, sanitizeAuditMetadata(entry)]),
+    );
+  }
+  if (typeof value === "string") return value.length > 500 ? `${value.slice(0, 500)}…` : value;
+  return value;
+}
+
+export async function recordTrustedLcdboDeliveryEvent(input: Omit<PlatformEventInput, "client">): Promise<PlatformEvent> {
+  if (!input.eventType.startsWith("lcdbo.delivery.")) {
+    throw new Error("Unsupported LCDBO delivery audit event namespace.");
+  }
+  if (!input.actorUserId) {
+    throw new Error("Verified actor identity is required for LCDBO delivery audit events.");
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data, error } = await supabase
+    .from("platform_events")
+    .insert({
+      actor_user_id: input.actorUserId,
+      actor_institution_id: input.actorInstitutionId ?? null,
+      event_type: input.eventType,
+      entity_type: input.entityType,
+      entity_id: input.entityId ?? null,
+      scope_type: input.scopeType ?? null,
+      scope_id: input.scopeId ?? null,
+      metadata: sanitizeAuditMetadata(input.metadata ?? {}) as Record<string, unknown>,
+      ip_address: input.ipAddress ?? null,
+      user_agent: input.userAgent ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.warn("[platform-event] trusted LCDBO delivery insert failed", {
+      eventType: input.eventType,
+      entityType: input.entityType,
+      error: error?.message ?? "No platform event returned.",
+    });
+    throw new Error("Unable to record the LCDBO delivery audit event.");
+  }
+
   return data as PlatformEvent;
 }
 

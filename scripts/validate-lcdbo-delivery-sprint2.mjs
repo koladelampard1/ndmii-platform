@@ -8,10 +8,12 @@ const exists = (file) => fs.existsSync(path.join(root, file));
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+const deliveryAuditLines = (source) => source.split("\n").filter((line) => line.includes("recordPlatformEvent") || line.includes("recordTrustedLcdboDeliveryEvent"));
 
 const migrationPath = "supabase/migrations/20260623120000_lcdbo_delivery_core_sprint2.sql";
 const migration = read(migrationPath);
 const service = read("src/lib/data/lcdbo-delivery-geography.ts");
+const audit = read("src/lib/data/platform-foundation.ts");
 const route = read("src/app/api/lcdbo/delivery/export/[dataset]/route.ts");
 const registry = read("src/lib/workspaces/workspace-registry.ts");
 const scopedAccess = read("scripts/validate-lcdbo-scoped-access.mjs");
@@ -83,6 +85,9 @@ assert(service.includes("Geographic coordinators cannot submit updates directly 
 assert(service.includes("Only programme officers, institution administrators or platform administrators can review"), "Progress update review must remain programme-manager controlled.");
 assert(route.includes('requireLcdboDeliveryAccess("export"'), "Sprint 2 exports must use the shared export authorization guard.");
 assert(service.includes("reviewStatus") && service.includes("existing.submitted_by === actorUserId"), "Progress review separation of duties is missing.");
+assert(service.includes("recordTrustedLcdboDeliveryEvent"), "Sprint 2 delivery audit events must use the trusted server-side LCDBO delivery audit writer.");
+assert(deliveryAuditLines(service).every((line) => !line.includes("recordPlatformEvent") && !line.includes("client: supabase")), "Sprint 2 delivery actions must not pass the signed-in client to platform_events audit inserts.");
+assert(audit.includes("createServiceRoleSupabaseClient()") && audit.includes("Unable to record the LCDBO delivery audit event."), "Trusted LCDBO delivery audit writer must use the server-only service-role client and fail safely.");
 assert(service.includes("classificationLabel"), "Exports must include data classification labels.");
 assert(service.includes("/^[=+\\-@]/") || service.includes("/^[=+\\-@]/"), "CSV formula injection neutralization is missing.");
 assert(route.includes("states") && route.includes("lgas") && route.includes("clusters") && route.includes("activities") && route.includes("progress-updates") && route.includes("my-work"), "Delivery export API must include Sprint 2 datasets.");

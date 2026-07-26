@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPlatformAdmin, type UserContext } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { recordPlatformEvent } from "@/lib/data/platform-foundation";
+import { recordTrustedLcdboDeliveryEvent } from "@/lib/data/platform-foundation";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
 import { LCDBO_MODULE_KEY } from "@/lib/lcdbo/content";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -431,7 +431,7 @@ export async function createOrUpdateWorkstream(input: { formData: FormData; acto
   const query = id ? supabase.from("lcdbo_workstreams").update(payload).eq("id", id).eq("programme_id", input.programmeId) : supabase.from("lcdbo_workstreams").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save workstream.");
-  await recordPlatformEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.workstream.updated" : "lcdbo.delivery.workstream.created", entityType: "lcdbo_workstream", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, status: data.status, progress_percentage: data.progress_percentage }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.workstream.updated" : "lcdbo.delivery.workstream.created", entityType: "lcdbo_workstream", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, status: data.status, progress_percentage: data.progress_percentage } });
   return data as LcdboWorkstream;
 }
 
@@ -476,7 +476,7 @@ export async function createOrUpdateDeliveryItem(input: { formData: FormData; ac
   const query = id ? supabase.from("lcdbo_delivery_items").update(payload).eq("id", id).eq("programme_id", input.programmeId) : supabase.from("lcdbo_delivery_items").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save milestone or deliverable.");
-  await recordPlatformEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.item.updated" : "lcdbo.delivery.item.created", entityType: "lcdbo_delivery_item", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, item_type: data.item_type, status: data.status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.item.updated" : "lcdbo.delivery.item.created", entityType: "lcdbo_delivery_item", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, item_type: data.item_type, status: data.status } });
   return data as LcdboDeliveryItem;
 }
 
@@ -520,7 +520,7 @@ export async function createOrUpdateRaidItem(input: { formData: FormData; actorU
   const query = id ? supabase.from("lcdbo_raid_items").update(payload).eq("id", id).eq("programme_id", input.programmeId) : supabase.from("lcdbo_raid_items").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save RAID item.");
-  await recordPlatformEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.raid.updated" : "lcdbo.delivery.raid.created", entityType: "lcdbo_raid_item", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, raid_type: data.raid_type, status: data.status, severity: data.severity, escalation_status: data.escalation_status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId: input.actorUserId, eventType: id ? "lcdbo.delivery.raid.updated" : "lcdbo.delivery.raid.created", entityType: "lcdbo_raid_item", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, raid_type: data.raid_type, status: data.status, severity: data.severity, escalation_status: data.escalation_status } });
   return data as LcdboRaidItem;
 }
 
@@ -556,7 +556,7 @@ export async function createOrUpdateDecision(input: { formData: FormData; actorU
   const query = id ? supabase.from("lcdbo_decisions").update(payload).eq("id", id).eq("programme_id", input.programmeId) : supabase.from("lcdbo_decisions").insert(payload);
   const { data, error } = await query.select("*").single();
   if (error || !data) throw error ?? new Error("Unable to save decision.");
-  await recordPlatformEvent({ actorUserId: input.actorUserId, eventType: status === "decided" ? "lcdbo.delivery.decision.completed" : id ? "lcdbo.delivery.decision.updated" : "lcdbo.delivery.decision.created", entityType: "lcdbo_decision", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, status: data.status }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId: input.actorUserId, eventType: status === "decided" ? "lcdbo.delivery.decision.completed" : id ? "lcdbo.delivery.decision.updated" : "lcdbo.delivery.decision.created", entityType: "lcdbo_decision", entityId: data.id, scopeType: "programme", scopeId: input.programmeId, metadata: { reference: data.reference, status: data.status } });
   return data as LcdboDecision;
 }
 
@@ -590,6 +590,6 @@ export async function exportLcdboDeliveryData(dataset: LcdboDeliveryExportDatase
     const decisions = await listLcdboDecisions({ programmeId: programme.id, client: supabase });
     rows = [["Reference", "Decision required", "Workstream", "Status", "Owner", "Due date", "Decision date", "Outcome", "Follow-up"], ...decisions.map((item) => [item.reference, item.decision_required, item.workstream?.name, item.status, item.decisionOwner?.full_name ?? item.decisionOwner?.email, item.due_date, item.decision_date, item.decision_outcome, item.follow_up_action])];
   }
-  await recordPlatformEvent({ actorUserId, eventType: "lcdbo.delivery.export.generated", entityType: "lcdbo_delivery_export", scopeType: "programme", scopeId: programme.id, metadata: { dataset, row_count: Math.max(0, rows.length - 1) }, client: supabase });
+  await recordTrustedLcdboDeliveryEvent({ actorUserId, eventType: "lcdbo.delivery.export.generated", entityType: "lcdbo_delivery_export", scopeType: "programme", scopeId: programme.id, metadata: { dataset, row_count: Math.max(0, rows.length - 1) } });
   return { csv: csv(rows), filename: `lcdbo-delivery-${dataset}-${new Date().toISOString().slice(0, 10)}.csv`, rowCount: Math.max(0, rows.length - 1) };
 }

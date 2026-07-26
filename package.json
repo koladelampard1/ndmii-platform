@@ -14,6 +14,7 @@
     "validate:nrs-snapshot": "node scripts/validate-nrs-snapshot-stability.mjs",
     "validate:lcdbo-delivery-core": "node scripts/validate-lcdbo-delivery-core.mjs",
     "validate:lcdbo-delivery-sprint2": "node scripts/validate-lcdbo-delivery-sprint2.mjs",
+    "validate:lcdbo-delivery-audit-writer": "node scripts/validate-lcdbo-delivery-audit-writer.mjs",
     "validate:lcdbo-scoped-access": "node scripts/validate-lcdbo-scoped-access.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
     "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",

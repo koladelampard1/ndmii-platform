@@ -9,10 +9,12 @@ const assert = (condition, message) => {
     process.exit(1);
   }
 };
+const deliveryAuditLines = (source) => source.split("\n").filter((line) => line.includes("recordPlatformEvent") || line.includes("recordTrustedLcdboDeliveryEvent"));
 
 const migrationPath = "supabase/migrations/20260622120000_lcdbo_delivery_core_sprint1.sql";
 const migration = read(migrationPath);
 const data = read("src/lib/data/lcdbo-delivery.ts");
+const audit = read("src/lib/data/platform-foundation.ts");
 const registry = read("src/lib/workspaces/workspace-registry.ts");
 const overview = read("src/app/dashboard/lcdbo/delivery/page.tsx");
 const workstreams = read("src/app/dashboard/lcdbo/workstreams/page.tsx");
@@ -41,6 +43,10 @@ for (const eventType of [
 ]) {
   assert(data.includes(eventType), `Missing audit event ${eventType}.`);
 }
+
+assert(data.includes("recordTrustedLcdboDeliveryEvent"), "Sprint 1 delivery audit events must use the trusted server-side LCDBO delivery audit writer.");
+assert(deliveryAuditLines(data).every((line) => !line.includes("recordPlatformEvent") && !line.includes("client: supabase")), "Sprint 1 delivery actions must not pass the signed-in client to platform_events audit inserts.");
+assert(audit.includes("recordTrustedLcdboDeliveryEvent") && audit.includes('startsWith("lcdbo.delivery.")'), "Trusted LCDBO delivery audit writer must restrict event namespace.");
 
 for (const route of ["/dashboard/lcdbo/delivery", "/dashboard/lcdbo/workstreams", "/dashboard/lcdbo/milestones", "/dashboard/lcdbo/raid", "/dashboard/lcdbo/decisions", "/dashboard/lcdbo/calendar"]) {
   assert(registry.includes(route), `Workspace registry missing ${route}.`);
