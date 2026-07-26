@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { Activity, AlertTriangle, Building2, CheckCircle2, DatabaseZap, Factory, FileClock, FileText, Gauge, Handshake, MapPinned, Users } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Building2, CheckCircle2, DatabaseZap, Factory, FileClock, FileText, Gauge, Handshake, MapPinned, Route, ShieldCheck, Users } from "lucide-react";
 import type { PlatformEvent } from "@/types/platform";
 import type { DataQualityResult, ProgrammeHealthResult, ReportSnapshot } from "@/lib/data/lcdbo-governance";
+import type { Sprint3Snapshot } from "@/lib/data/lcdbo-delivery-intelligence";
 import { LcdboCommandMetricCard, LcdboCoveragePanel, LcdboPipeline, LcdboSicipTeaser } from "@/components/lcdbo/lcdbo-visuals";
+import { ExecutiveMetricCard, ExecutiveMetricGrid } from "@/components/workspace/workspace-metrics";
 
 type ExecutiveMetric = {
   enrolments: number;
@@ -25,9 +27,10 @@ type Props = {
   quality: DataQualityResult;
   health: ProgrammeHealthResult;
   reportSnapshots: ReportSnapshot[];
+  deliveryIntelligence: Sprint3Snapshot;
 };
 
-export function LcdboExecutiveDashboard({ metrics, pipeline, topSectors, topStates, recentActivity, partners, quality, health, reportSnapshots }: Props) {
+export function LcdboExecutiveDashboard({ metrics, pipeline, topSectors, topStates, recentActivity, partners, quality, health, reportSnapshots, deliveryIntelligence }: Props) {
   return (
     <main className="min-h-screen bg-[#F6F8FB] text-slate-900">
       <header className="relative overflow-hidden bg-[#0B2E59] text-white">
@@ -53,6 +56,85 @@ export function LcdboExecutiveDashboard({ metrics, pipeline, topSectors, topStat
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]"><article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><DatabaseZap className="h-5 w-5 text-[#008751]" /><h2 className="font-black text-[#0B2E59]">Governance confidence</h2></div><div className="mt-5 grid grid-cols-2 gap-3">{[["Data quality", quality.score], ["Programme health", health.score]].map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-4"><p className={`text-3xl font-black ${Number(value) >= 75 ? "text-[#008751]" : "text-amber-600"}`}>{value}</p><p className="mt-1 text-xs font-bold text-slate-500">{label} / 100</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><Link href="/dashboard/lcdbo/data-quality" className="rounded-xl bg-[#0B2E59] px-3 py-2 text-xs font-black text-white">Data quality</Link><Link href="/dashboard/lcdbo/geography" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-[#0B2E59]">Geography</Link><Link href="/dashboard/lcdbo/briefings" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-[#0B2E59]">Briefings</Link></div></article><article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" /><h2 className="font-black text-[#0B2E59]">Executive attention</h2></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{health.alerts.filter((item) => item.count > 0).slice(0, 4).map((item) => <div key={item.code} className="rounded-xl bg-amber-50 p-3"><p className="text-sm font-black text-amber-950">{item.label} · {item.count}</p><p className="mt-1 text-xs text-amber-800">{item.detail}</p></div>)}{!health.alerts.some((item) => item.count > 0) && <p className="text-sm text-slate-500">No active programme alerts.</p>}</div></article></section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Delivery intelligence</p>
+              <h2 className="mt-1 text-2xl font-black text-[#0B2E59]">Explainable programme health</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{deliveryIntelligence.health.disclosure}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/dashboard/lcdbo/executive/attention" className="inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-4 py-3 text-sm font-black text-white">Attention queue<ArrowRight className="h-4 w-4" /></Link>
+              <Link href="/dashboard/lcdbo/pilot-readiness" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-[#0B2E59]">Pilot readiness</Link>
+              <Link href="/dashboard/lcdbo/evidence" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-[#0B2E59]">Evidence</Link>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[0.35fr_0.65fr]">
+            <div className="rounded-2xl bg-slate-950 p-5 text-white">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-300">Calculated health</p>
+              <p className="mt-3 text-5xl font-black">{deliveryIntelligence.health.score}</p>
+              <p className="mt-2 text-sm font-bold text-slate-300">{deliveryIntelligence.health.statusText}</p>
+              <p className="mt-4 text-xs leading-5 text-slate-400">{deliveryIntelligence.health.modelVersion} · {new Date(deliveryIntelligence.health.calculatedAt).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {deliveryIntelligence.health.factors.slice(0, 8).map((factor) => (
+                <Link key={factor.code} href={factor.drillDownHref} className="rounded-2xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+                  <div className="flex items-start justify-between gap-3"><p className="font-black text-slate-900">{factor.label}</p><span className="text-sm font-black text-[#008751]">{factor.score}</span></div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{factor.explanation}</p>
+                  {factor.missingDataImpact ? <p className="mt-2 text-xs font-bold text-amber-700">{factor.missingDataImpact}</p> : null}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <ExecutiveMetricGrid>
+          {deliveryIntelligence.metrics.slice(0, 8).map((item) => (
+            <ExecutiveMetricCard
+              key={item.title}
+              label={item.title}
+              value={item.value}
+              context={item.calculationBasis}
+              status={String(item.value).includes("0") ? "neutral" : item.title.toLowerCase().includes("overdue") || item.title.toLowerCase().includes("critical") || item.title.toLowerCase().includes("pending") ? "attention" : "positive"}
+              classification={{ classification: item.classification === "live_operational" ? "operational" : item.classification === "configured_target" ? "target" : item.classification === "governed_estimate" ? "estimate" : item.classification === "test_uat" ? "unavailable" : "aggregate", label: item.classification.replaceAll("_", " ") }}
+              sourceNote={`${item.source}. Excluded UAT/test: ${item.excludedRecords}.`}
+              comparisonPeriod={item.reportingPeriod}
+              action={{ label: "View lineage", href: item.drillDownHref }}
+              icon={item.title.includes("Pilot") ? ShieldCheck : item.title.includes("Active") ? MapPinned : item.title.includes("Progress") ? Gauge : item.title.includes("Decision") ? FileText : item.title.includes("Risk") ? AlertTriangle : Route}
+            />
+          ))}
+        </ExecutiveMetricGrid>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Multi-level health</p>
+              <h2 className="mt-1 text-2xl font-black text-[#0B2E59]">Health explanation by delivery level</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Programme, workstream, state, LGA and cluster scores use the same versioned model and show included records, excluded UAT/test records and drill-down destinations.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{deliveryIntelligence.health.modelVersion}</span>
+          </div>
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.08em] text-slate-500">
+                <tr><th className="px-4 py-3">Scope</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Score</th><th className="px-4 py-3">Records</th><th className="px-4 py-3">Missing/test impact</th><th className="px-4 py-3">Drill-down</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {deliveryIntelligence.scopedHealth.slice(0, 12).map((item) => (
+                  <tr key={`${item.targetType}:${item.targetId}`}>
+                    <td className="px-4 py-3"><p className="font-black text-slate-900">{item.targetTitle}</p><p className="mt-1 text-xs text-slate-500">{item.targetType.replaceAll("_", " ")}</p></td>
+                    <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{item.statusText}</span>{item.override ? <p className="mt-1 text-xs font-bold text-amber-700">Override: {item.override.override_reason}</p> : null}</td>
+                    <td className="px-4 py-3 font-black text-[#0B2E59]">{item.score}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.includedRecords} included · {item.excludedRecords} UAT/test excluded</td>
+                    <td className="px-4 py-3 text-xs leading-5 text-slate-500">{item.factors.find((factor) => factor.missingDataImpact)?.missingDataImpact ?? item.disclosure}</td>
+                    <td className="px-4 py-3"><Link href={item.drillDownHref} className="font-black text-emerald-700 hover:underline">Open</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-xs font-black uppercase tracking-[0.14em] text-[#008751]">Programme pipeline</p><h2 className="mt-1 text-2xl font-black text-[#0B2E59]">National delivery progression</h2><div className="mt-5"><LcdboPipeline stages={pipeline} /></div></section>
 

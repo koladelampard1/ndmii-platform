@@ -36,6 +36,17 @@ export function ProgressBar({ value }: { value: number }) {
   );
 }
 
+export function EvidenceLink({ type, id, label = "Add evidence" }: { type: string; id: string; label?: string }) {
+  return (
+    <Link
+      href={`/dashboard/lcdbo/evidence?target=${encodeURIComponent(`${type}:${id}`)}`}
+      className="inline-flex rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-black text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
+    >
+      {label}
+    </Link>
+  );
+}
+
 export function LcdboDeliveryMetricGrid({ metrics }: { metrics: { governedProgress: number; workstreamCount: number; overdueItems: number; criticalRaids: number; pendingDecisions: number; dueSoon: number } }) {
   return (
     <ExecutiveMetricGrid>
@@ -55,6 +66,7 @@ export function WorkstreamTable({ rows }: { rows: LcdboWorkstream[] }) {
     { key: "status", header: "Status", render: (row) => <div className="space-y-2"><StatusBadge value={row.status} /><StatusBadge value={row.health} /></div> },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "target", header: "Target", render: (row) => row.target_date ? new Date(row.target_date).toLocaleDateString("en-NG", { dateStyle: "medium" }) : "Not set" },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="workstream" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No workstreams yet" emptyDescription="Create the first governed LCDBO workstream to begin programme delivery tracking." />;
 }
@@ -68,6 +80,7 @@ export function DeliveryItemTable({ rows }: { rows: LcdboDeliveryItem[] }) {
     { key: "priority", header: "Priority", render: (row) => <StatusBadge value={row.priority} /> },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "due", header: "Due", render: (row) => row.due_date ? new Date(row.due_date).toLocaleDateString("en-NG", { dateStyle: "medium" }) : "Not set" },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="delivery_item" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No milestones or deliverables" emptyDescription="Governed milestones and deliverables will appear here once configured." />;
 }
@@ -81,6 +94,7 @@ export function RaidTable({ rows }: { rows: LcdboRaidItem[] }) {
     { key: "status", header: "Status", render: (row) => <StatusBadge value={row.status} /> },
     { key: "escalation", header: "Escalation", render: (row) => <StatusBadge value={row.escalation_status} /> },
     { key: "review", header: "Review", render: (row) => row.review_date ? new Date(row.review_date).toLocaleDateString("en-NG", { dateStyle: "medium" }) : "Not set" },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="raid_item" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No RAID records" emptyDescription="Risks, issues, assumptions and dependencies requiring governance attention will appear here." />;
 }
@@ -93,6 +107,7 @@ export function DecisionTable({ rows }: { rows: LcdboDecision[] }) {
     { key: "status", header: "Status", render: (row) => <StatusBadge value={row.status} /> },
     { key: "due", header: "Due", render: (row) => row.due_date ? new Date(row.due_date).toLocaleDateString("en-NG", { dateStyle: "medium" }) : "Not set" },
     { key: "outcome", header: "Outcome", render: (row) => row.decision_outcome ?? "Pending" },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="decision" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No decisions tracked" emptyDescription="Governance decisions requiring formal tracking will appear here." />;
 }

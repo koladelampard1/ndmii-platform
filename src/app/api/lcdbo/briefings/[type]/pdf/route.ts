@@ -4,20 +4,35 @@ import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { LCDBO_INTELLIGENCE_ROLES } from "@/lib/auth/lcdbo-intelligence-access";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
+import { requireLcdboDeliveryAccess } from "@/lib/data/lcdbo-delivery";
+import { buildSprint3PdfInput, getLcdboSprint3Snapshot, type Sprint3ReportFamily } from "@/lib/data/lcdbo-delivery-intelligence";
 import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
 import { generateReportSnapshot, isGovernanceSchemaUnavailable } from "@/lib/data/lcdbo-governance";
-import { recordPlatformEvent } from "@/lib/data/platform-foundation";
+import { recordPlatformEvent, recordTrustedLcdboDeliveryEvent } from "@/lib/data/platform-foundation";
 import { LCDBO_MODULE_KEY } from "@/lib/lcdbo/content";
 import { createLcdboProgrammePdf } from "@/lib/reports/lcdbo-programme-pdf";
 import { buildGovernedMetricsPayload, buildLcdboPdfInput, scopeLcdboSnapshot } from "@/lib/reports/lcdbo-reporting";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const TYPES = new Set(["national", "state", "cluster", "partner"]);
+const DELIVERY_TYPES = new Set<Sprint3ReportFamily>(["programme-delivery", "workstream-performance", "milestone-deliverable", "risk-issue", "state-delivery", "lga-delivery", "cluster-delivery", "executive-exceptions", "pilot-readiness", "evidence-verification"]);
+const SNAPSHOT_TYPE: Record<Sprint3ReportFamily, string> = {
+  "programme-delivery": "programme_delivery",
+  "workstream-performance": "workstream_performance",
+  "milestone-deliverable": "milestone_deliverable",
+  "risk-issue": "risk_issue",
+  "state-delivery": "state_delivery",
+  "lga-delivery": "lga_delivery",
+  "cluster-delivery": "cluster_delivery",
+  "executive-exceptions": "executive_exceptions",
+  "pilot-readiness": "pilot_readiness",
+  "evidence-verification": "evidence_verification",
+};
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ type: string }> }) {
   const { type } = await params;
-  if (!TYPES.has(type)) return NextResponse.json({ error: "Unknown briefing type." }, { status: 404 });
+  if (!TYPES.has(type) && !DELIVERY_TYPES.has(type as Sprint3ReportFamily)) return NextResponse.json({ error: "Unknown briefing type." }, { status: 404 });
   const ctx = await getCurrentUserContext();
   const programme = await getLcdboProgramme();
   if (!ctx.appUserId || !programme || ctx.role === "msme") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,6 +41,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
 
   try {
     const supabase = await createServiceRoleSupabaseClient();
+    if (DELIVERY_TYPES.has(type as Sprint3ReportFamily)) {
+      await requireLcdboDeliveryAccess("export", supabase);
+      const reportFamily = type as Sprint3ReportFamily;
+      const includeTestData = new URL(request.url).searchParams.get("include_test") === "true";
+      const snapshot = await getLcdboSprint3Snapshot({ client: supabase, includeTestData });
+      const pdf = createLcdboProgrammePdf(buildSprint3PdfInput(snapshot, reportFamily));
+      let snapshotId: string | null = null;
+      try {
+        const reportSnapshot = await generateReportSnapshot({
+          programmeId: programme.id,
+          reportType: SNAPSHOT_TYPE[reportFamily],
+          frequency: "daily",
+          generatedBy: ctx.appUserId,
+          notes: "Briefing snapshot captured from successful Sprint 3 delivery PDF export.",
+          metrics: { sprint3: snapshot },
+          dimensions: { scope_type: "programme", programme_id: programme.id, include_test_data: includeTestData, report_family: reportFamily, briefing: true },
+          exportCapture: { capturedAt: new Date().toISOString(), metrics: { reportFamily, includeTestData, briefing: true }, dimensions: { scope_type: "programme", programme_id: programme.id } },
+          client: supabase,
+        });
+        snapshotId = reportSnapshot.id;
+      } catch (snapshotError) {
+        if (!isGovernanceSchemaUnavailable(snapshotError)) throw snapshotError;
+      }
+      await recordTrustedLcdboDeliveryEvent({ actorUserId: ctx.appUserId, eventType: "lcdbo.delivery.executive_report.generated", entityType: "lcdbo_delivery_sprint3_briefing", entityId: snapshotId, scopeType: "programme", scopeId: programme.id, metadata: { report_type: reportFamily, briefing: true, report_snapshot_id: snapshotId, snapshot_persisted: Boolean(snapshotId), include_test_data: includeTestData, byte_length: pdf.length } });
+      return new NextResponse(pdf as BodyInit, { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="lcdbo-${reportFamily}-briefing-${new Date().toISOString().slice(0, 10)}.pdf"`, "Content-Length": String(pdf.length), "Cache-Control": "no-store" } });
+    }
     const snapshot = await getLcdboIntelligenceSnapshot(supabase);
     const scope = new URL(request.url).searchParams.get("scope");
     const subject = resolveScope(type, scope, snapshot);

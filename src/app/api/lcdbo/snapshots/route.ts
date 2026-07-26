@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { calculateDataQuality, calculateProgrammeHealth, generateKpiSnapshot, generateReportSnapshot, type SnapshotFrequency } from "@/lib/data/lcdbo-governance";
 import { getLcdboProgramme } from "@/lib/data/lcdbo-enrolment";
 import { getLcdboIntelligenceSnapshot } from "@/lib/data/lcdbo-intelligence";
+import { generateSprint3ReportSnapshot } from "@/lib/data/lcdbo-delivery-intelligence";
 import { recordPlatformEvent } from "@/lib/data/platform-foundation";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { buildLcdboSnapshotPlans } from "@/lib/reports/lcdbo-reporting";
@@ -31,6 +32,17 @@ export async function GET(request: Request) {
         ...plans.map((plan) => generateReportSnapshot({ programmeId: programme.id, reportType: plan.reportType, frequency, generatedBy: null, notes: "Scheduled governed snapshot.", metrics: plan.metrics, dimensions: plan.dimensions, client: supabase })),
         generateReportSnapshot({ programmeId: programme.id, reportType: "data_quality", frequency, generatedBy: null, metrics: quality, dimensions: { scope_type: "programme", programme_id: programme.id }, client: supabase }),
         generateReportSnapshot({ programmeId: programme.id, reportType: "programme_health", frequency, generatedBy: null, metrics: health, dimensions: { scope_type: "programme", programme_id: programme.id }, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "programme_delivery", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "workstream_performance", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "milestone_deliverable", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "risk_issue", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "state_delivery", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "lga_delivery", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "cluster_delivery", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "executive_delivery", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "executive_exceptions", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "pilot_readiness", generatedBy: null, client: supabase }),
+        generateSprint3ReportSnapshot({ reportType: "evidence_verification", generatedBy: null, client: supabase }),
       ]),
     ]);
     const national = reports.find((report) => report.report_type === "national") ?? reports[0];

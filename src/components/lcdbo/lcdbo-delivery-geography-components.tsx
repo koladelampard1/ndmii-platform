@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Activity, Building2, Factory, MapPinned, Route, ShieldCheck } from "lucide-react";
 import { ExecutiveMetricCard, ExecutiveMetricGrid } from "@/components/workspace/workspace-metrics";
 import { WorkspaceDataTable, type WorkspaceTableColumn } from "@/components/workspace/workspace-table";
-import { ProgressBar, StatusBadge, humanize } from "@/components/lcdbo/lcdbo-delivery-components";
+import { EvidenceLink, ProgressBar, StatusBadge, humanize } from "@/components/lcdbo/lcdbo-delivery-components";
 import type {
   ClusterPlan,
   DeliveryActivity,
@@ -32,6 +32,7 @@ export function StatePlanTable({ rows }: { rows: StatePlan[] }) {
     { key: "accountability", header: "Coordinator", render: (row) => <div><p className="font-bold text-slate-800">{row.coordinator?.full_name ?? row.coordinator?.email ?? "Unassigned"}</p><p className="mt-1 text-xs text-slate-500">{row.accountableInstitution?.name ?? "No institution assigned"}</p></div> },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "health", header: "Health", render: (row) => <StatusBadge value={row.delivery_health} /> },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="state_plan" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No state delivery plans" emptyDescription="State delivery plans are created deliberately; reference geography alone is not operational coverage." />;
 }
@@ -44,6 +45,7 @@ export function LgaPlanTable({ rows }: { rows: LgaPlan[] }) {
     { key: "lead", header: "Lead", render: (row) => row.lead?.full_name ?? row.lead?.email ?? "Unassigned" },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "health", header: "Health", render: (row) => <StatusBadge value={row.delivery_health} /> },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="lga_plan" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No LGA delivery plans" emptyDescription="Only approved or planned LGA operations appear here; national LGA reference coverage remains separate." />;
 }
@@ -56,6 +58,7 @@ export function ClusterPlanTable({ rows }: { rows: ClusterPlan[] }) {
     { key: "capacity", header: "Capacity", render: (row) => <div><p className="font-black text-slate-900">{row.liveMembershipCount ?? 0} live members</p><p className="mt-1 text-xs text-slate-500">{row.target_business_capacity ?? 0} configured capacity target</p></div> },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "health", header: "Health", render: (row) => <StatusBadge value={row.delivery_health} /> },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="cluster_plan" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No cluster delivery plans" emptyDescription="Cluster plans must reference existing industrial clusters and do not duplicate live participation records." />;
 }
@@ -69,6 +72,7 @@ export function ActivityTable({ rows }: { rows: DeliveryActivity[] }) {
     { key: "priority", header: "Priority", render: (row) => <StatusBadge value={row.priority} /> },
     { key: "progress", header: "Progress", render: (row) => <ProgressBar value={row.progress_percentage} />, className: "min-w-44" },
     { key: "end", header: "Planned end", render: (row) => row.planned_end_date ? new Date(row.planned_end_date).toLocaleDateString("en-NG", { dateStyle: "medium" }) : "Not set" },
+    { key: "evidence", header: "Evidence", render: (row) => <EvidenceLink type="activity" id={row.id} /> },
   ];
   return <WorkspaceDataTable rows={rows} columns={columns} getRowKey={(row) => row.id} emptyTitle="No local activities" emptyDescription="Local delivery activities will appear here once assigned under a state, LGA or cluster plan." />;
 }
@@ -84,6 +88,7 @@ export function ProgressUpdateTimeline({ updates, canManage, reviewAction, redir
               <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{update.reporting_period_start} → {update.reporting_period_end}</p>
               <h3 className="mt-1 font-black text-slate-900">{update.progress_summary}</h3>
               <p className="mt-1 text-xs text-slate-500">Submitted by {update.submitter?.full_name ?? update.submitter?.email ?? "Unknown"} · {new Date(update.submitted_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}</p>
+              <div className="mt-3"><EvidenceLink type="progress_update" id={update.id} /></div>
             </div>
             <div className="flex gap-2"><StatusBadge value={update.review_status} /><StatusBadge value={update.updated_health} /></div>
           </div>

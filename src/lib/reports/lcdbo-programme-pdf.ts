@@ -58,7 +58,7 @@ function summaryPage(input: LcdboPdfReportInput) {
 
 function intelligencePage(input: LcdboPdfReportInput) {
   const commands = [text("SECTOR AND GEOGRAPHIC INTELLIGENCE", 42, 790, 10, true, "0.00 0.53 0.32"), text("Programme distribution", 42, 758, 22, true, "0.04 0.18 0.35"), text("TOP SECTORS", 42, 712, 10, true), text("TOP STATES", 315, 712, 10, true)];
-  const chart = (rows: Array<[string, number]>, x: number) => { const peak = Math.max(...rows.map(([, count]) => count), 1); rows.slice(0, 8).forEach(([label, count], index) => { const y = 672 - index * 44; commands.push(text(label.slice(0, 26), x, y + 17, 8, true), rect(x, y, 210, 10, "0.93 0.95 0.96"), rect(x, y, Math.max(3, (count / peak) * 210), 10, "0.00 0.53 0.32"), text(String(count), x + 220, y + 1, 8, true)); }); };
+  const chart = (rows: Array<[string, number]>, x: number) => { const peak = Math.max(...rows.map(([, count]) => count), 1); rows.slice(0, 8).forEach(([label, count], index) => { const y = 672 - index * 48; commands.push(wrappedText(label, x, y + 22, 28, 7.4, 9, true), rect(x, y, 210, 10, "0.93 0.95 0.96"), rect(x, y, Math.max(3, (count / peak) * 210), 10, "0.00 0.53 0.32"), text(String(count), x + 220, y + 1, 8, true)); }); };
   chart(input.topSectors, 42); chart(input.topStates, 315);
   commands.push(text("GOVERNANCE INDICATORS", 42, 292, 10, true, "0.00 0.53 0.32"));
   [["Data quality score", input.qualityScore], ["Programme health score", input.healthScore]].forEach(([label, value], index) => { const x = 42 + index * 260; commands.push(rect(x, 194, 240, 76, "0.96 0.97 0.98", "0.86 0.89 0.92"), text(String(value), x + 18, 226, 28, true, Number(value) >= 75 ? "0.00 0.53 0.32" : "0.83 0.45 0.05"), text(`${label} / 100`, x + 82, 231, 11, true)); });
@@ -68,13 +68,13 @@ function intelligencePage(input: LcdboPdfReportInput) {
 
 function governancePage(input: LcdboPdfReportInput) {
   const commands = [text("PROGRAMME ESTIMATES AND ACTIONS", 42, 790, 10, true, "0.00 0.53 0.32"), text("Executive decision support", 42, 758, 22, true, "0.04 0.18 0.35")];
-  input.estimates.slice(0, 5).forEach((item, index) => { const x = 42 + (index % 3) * 170; const y = index < 3 ? 650 : 558; commands.push(rect(x, y, 156, 76, "1.00 0.97 0.86", "0.91 0.78 0.40"), text(item.value, x + 12, y + 40, 16, true, "0.04 0.18 0.35"), text(item.label.slice(0, 24), x + 12, y + 18, 8, true, "0.45 0.34 0.08")); });
+  input.estimates.slice(0, 6).forEach((item, index) => { const x = 42 + (index % 2) * 260; const y = 650 - Math.floor(index / 2) * 82; commands.push(rect(x, y, 240, 70, "1.00 0.97 0.86", "0.91 0.78 0.40"), wrappedText(item.value, x + 12, y + 43, 25, 11, 13, true, "0.04 0.18 0.35"), wrappedText(item.label, x + 12, y + 17, 30, 7.8, 9, true, "0.45 0.34 0.08")); });
   const listSection = (title: string, items: string[], y: number, color: string) => { commands.push(text(title, 42, y, 10, true, color)); items.slice(0, 3).forEach((item, index) => { commands.push(rect(42, y - 28 - index * 35, 8, 8, color), wrappedText(item, 60, y - 22 - index * 35, 78, 9, 12)); }); };
-  listSection("TOP OPPORTUNITIES", input.opportunities ?? ["Scale cluster participation where readiness and officer coverage are strongest."], 500, "0.00 0.53 0.32");
-  listSection("TOP RISKS", input.risks ?? ["Address overdue reviews, incomplete location records and outstanding evidence requests."], 375, "0.73 0.16 0.18");
-  listSection("RECOMMENDED ACTIONS", input.recommendations ?? ["Prioritise high-severity quality issues and refresh governed snapshots at the agreed frequency."], 250, "0.04 0.18 0.35");
-  commands.push(text("DISCLOSURES", 42, 124, 9, true, "0.83 0.45 0.05"));
-  input.disclosures.slice(0, 3).forEach((entry, index) => commands.push(wrappedText(entry, 42, 106 - index * 24, 88, 7.5, 10, false, "0.36 0.43 0.52")));
+  listSection("TOP OPPORTUNITIES", input.opportunities ?? ["Scale cluster participation where readiness and officer coverage are strongest."], 438, "0.00 0.53 0.32");
+  listSection("TOP RISKS", input.risks ?? ["Address overdue reviews, incomplete location records and outstanding evidence requests."], 328, "0.73 0.16 0.18");
+  listSection("RECOMMENDED ACTIONS", input.recommendations ?? ["Prioritise high-severity quality issues and refresh governed snapshots at the agreed frequency."], 224, "0.04 0.18 0.35");
+  commands.push(text("DISCLOSURES", 42, 112, 9, true, "0.83 0.45 0.05"));
+  input.disclosures.slice(0, 3).forEach((entry, index) => commands.push(wrappedText(entry, 42, 94 - index * 22, 88, 7.5, 9, false, "0.36 0.43 0.52")));
   commands.push(footer(4, 4));
   return commands.join("\n");
 }
