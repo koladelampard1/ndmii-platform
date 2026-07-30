@@ -271,8 +271,11 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     },
     navigation: [
       { label: "Executive Overview", href: "/dashboard/ekirs" },
+      { label: "Applications", href: "/dashboard/ekirs/applications" },
       { label: "Business Registry", href: "/dashboard/ekirs/businesses" },
       { label: "Onboarding & Verification", href: "/dashboard/ekirs/verification" },
+      { label: "Field Verification", href: "/dashboard/ekirs/verification/field" },
+      { label: "Duplicate Review", href: "/dashboard/ekirs/verification/duplicates" },
       { label: "Formalisation Journey", href: "/dashboard/ekirs/formalisation" },
       { label: "LGA & LCDA Intelligence", href: "/dashboard/ekirs/intelligence" },
       { label: "Integrations", href: "/dashboard/ekirs/integrations" },
@@ -284,8 +287,11 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
         description: "Ekiti-only formalisation and readiness operations.",
         items: [
           { label: "Executive Overview", href: "/dashboard/ekirs" },
+          { label: "Applications", href: "/dashboard/ekirs/applications" },
           { label: "Business Registry", href: "/dashboard/ekirs/businesses" },
           { label: "Onboarding & Verification", href: "/dashboard/ekirs/verification" },
+          { label: "Field Verification", href: "/dashboard/ekirs/verification/field" },
+          { label: "Duplicate Review", href: "/dashboard/ekirs/verification/duplicates" },
           { label: "Formalisation Journey", href: "/dashboard/ekirs/formalisation" },
         ],
       },

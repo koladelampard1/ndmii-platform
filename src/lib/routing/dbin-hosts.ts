@@ -103,6 +103,7 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (isDirectApplicationPath(pathname)) return null;
     if (pathname === "/") return "/ekirs";
     if (pathname === "/ekirs" || pathname.startsWith("/ekirs/")) return null;
+    if (pathname === "/apply" || pathname.startsWith("/apply/")) return `/ekirs${pathname}`;
     if (pathname === "/verification") return "/verify";
     if (pathname === "/verify" || pathname.startsWith("/verify/")) return null;
     if (pathname === "/register" || pathname.startsWith("/register/")) return null;

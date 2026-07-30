@@ -47,8 +47,8 @@ export default function EkirsLandingPage() {
               <Link href={staffLoginHref} className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:-translate-y-0.5 hover:bg-lime-200 sm:w-auto">
                 Staff sign in <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="#pilot-onboarding" className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15 sm:w-auto">
-                Pilot onboarding information
+              <Link href="/ekirs/apply" className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15 sm:w-auto">
+                Start EKIRS application
               </Link>
               <Link href="/verify" className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/20 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10 sm:w-auto">
                 Business verification

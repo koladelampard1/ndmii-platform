@@ -102,6 +102,11 @@ test("EKIRS authentication and workspace routes remain host-relative", () => {
 });
 
 test("EKIRS host keeps intentional public support routes direct", () => {
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply"), "/ekirs/apply");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/new"), "/ekirs/apply/new");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/existing"), "/ekirs/apply/existing");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/status"), "/ekirs/apply/status");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/resume/EKIRS-APP-2026-ABC123"), "/ekirs/apply/resume/EKIRS-APP-2026-ABC123");
   assert.equal(resolveDbinRewritePath("ekirs", "/verification"), "/verify");
   assert.equal(resolveDbinRewritePath("ekirs", "/verify"), null);
   assert.equal(resolveDbinRewritePath("ekirs", "/register"), null);

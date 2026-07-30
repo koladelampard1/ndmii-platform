@@ -4,9 +4,12 @@ import { WorkspaceContentGrid, WorkspacePage, WorkspacePageHeader, WorkspaceSect
 import { EKIRS_JURISDICTION } from "@/lib/state-revenue/jurisdictions";
 import { getEkirsLgaMetrics, getEkirsMetrics } from "@/lib/state-revenue/ekirs-demo-data";
 import { GeographyFoundation, StateRevenueDisclosure, StateRevenueMetricCard } from "@/components/state-revenue/state-revenue-components";
+import { getApplicationMetrics, listStateRevenueApplications } from "@/lib/state-revenue/onboarding";
 
-export default function EkirsDashboardPage() {
+export default async function EkirsDashboardPage() {
   const metrics = getEkirsMetrics();
+  const applications = await listStateRevenueApplications({ jurisdictionId: "ekiti" });
+  const applicationMetrics = getApplicationMetrics(applications);
   const lgaMetrics = getEkirsLgaMetrics().slice(0, 6);
 
   return (
@@ -17,16 +20,17 @@ export default function EkirsDashboardPage() {
         description="A controlled operating view for EKIRS business formalisation, jurisdiction eligibility, readiness support and integration preparation."
         disclosure={EKIRS_JURISDICTION.demonstration.disclosure}
         lastUpdated="July 2026"
-        actions={<Link href="/dashboard/ekirs/businesses" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800">Open registry <ArrowRight className="h-4 w-4" /></Link>}
+        actions={<Link href="/dashboard/ekirs/applications" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800">Open applications <ArrowRight className="h-4 w-4" /></Link>}
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StateRevenueMetricCard label="Synthetic businesses" value={metrics.totalBusinesses} note="Deterministic UAT records only." />
-        <StateRevenueMetricCard label="Jurisdiction verified" value={metrics.jurisdictionVerified} note="Records at verification level 2 or higher." />
-        <StateRevenueMetricCard label="TIN linked" value={metrics.tinLinked} note="Readiness signal; no live tax feed." />
-        <StateRevenueMetricCard label="Quality exceptions" value={metrics.dataQualityExceptions} note="Address, consent or duplicate checks." />
+        <StateRevenueMetricCard label="Applications" value={applicationMetrics.total} note="UAT operational records only." />
+        <StateRevenueMetricCard label="Under review" value={applicationMetrics.underReview} note="Reviewer queue." />
+        <StateRevenueMetricCard label="Approved" value={applicationMetrics.approved} note="Identity/linkage workflow completed." />
+        <StateRevenueMetricCard label="Synthetic businesses" value={metrics.totalBusinesses} note="Separate Sprint 0 reference data." />
       </div>
       <WorkspaceContentGrid columns="lg:grid-cols-3">
         {[
+          ["Applications", "Review submitted onboarding requests, duplicate flags, evidence and field referrals.", "/dashboard/ekirs/applications"],
           ["Business Registry", "Review Ekiti synthetic business records, LGA context and readiness signals.", "/dashboard/ekirs/businesses"],
           ["Eligibility Policy", "Understand the jurisdiction, evidence and review model before live workflow activation.", "/dashboard/ekirs/verification"],
           ["Pilot Readiness", "Track the controls needed before EKIRS UAT and production preparation.", "/dashboard/ekirs/pilot-readiness"],

@@ -296,6 +296,44 @@ export async function recordTrustedLcdboDeliveryEvent(input: Omit<PlatformEventI
   return data as PlatformEvent;
 }
 
+export async function recordTrustedStateRevenueEvent(input: Omit<PlatformEventInput, "client">): Promise<PlatformEvent> {
+  if (!input.eventType.startsWith("state_revenue.")) {
+    throw new Error("Unsupported state revenue audit event namespace.");
+  }
+  if (!input.actorUserId) {
+    throw new Error("Verified actor identity is required for state revenue audit events.");
+  }
+
+  const supabase = await createServiceRoleSupabaseClient();
+  const { data, error } = await supabase
+    .from("platform_events")
+    .insert({
+      actor_user_id: input.actorUserId,
+      actor_institution_id: input.actorInstitutionId ?? null,
+      event_type: input.eventType,
+      entity_type: input.entityType,
+      entity_id: input.entityId ?? null,
+      scope_type: input.scopeType ?? null,
+      scope_id: input.scopeId ?? null,
+      metadata: sanitizeAuditMetadata(input.metadata ?? {}) as Record<string, unknown>,
+      ip_address: input.ipAddress ?? null,
+      user_agent: input.userAgent ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.warn("[platform-event] trusted state revenue insert failed", {
+      eventType: input.eventType,
+      entityType: input.entityType,
+      error: error?.message ?? "No platform event returned.",
+    });
+    throw new Error("Unable to record the state revenue audit event.");
+  }
+
+  return data as PlatformEvent;
+}
+
 export async function hasActiveConsent(input: {
   subjectType: "msme" | "business" | "user" | "institution";
   subjectId: string;

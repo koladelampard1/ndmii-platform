@@ -21,6 +21,7 @@ const auth = read("src/lib/auth/authorization.ts");
 const jurisdiction = read("src/lib/state-revenue/jurisdictions.ts");
 const data = read("src/lib/state-revenue/ekirs-demo-data.ts");
 const synthetic = read("src/lib/state-revenue/synthetic-data.ts");
+const onboarding = read("src/lib/state-revenue/onboarding.ts");
 const components = read("src/components/state-revenue/state-revenue-components.tsx");
 
 assert(types.includes('| "ekirs"'), "WorkspaceId must include ekirs.");
@@ -41,6 +42,7 @@ assert(exists("docs/state-revenue-security-architecture.md"), "State revenue sec
 
 const neutralSources = [
   ["src/lib/state-revenue/synthetic-data.ts", synthetic],
+  ["src/lib/state-revenue/onboarding.ts", onboarding],
   ["src/components/state-revenue/state-revenue-components.tsx", components],
 ];
 const forbiddenNeutralTokens = ["EKIRS", "BIN-EK", "ekirs.dbin.ng", "/dashboard/ekirs", "ekiti-state-internal-revenue-service"];
