@@ -18,6 +18,8 @@
     "validate:lcdbo-delivery-sprint3": "node scripts/validate-lcdbo-delivery-sprint3.mjs",
     "validate:lcdbo-delivery-sprint3-acceptance": "node scripts/validate-lcdbo-delivery-sprint3-acceptance.mjs",
     "validate:lcdbo-scoped-access": "node scripts/validate-lcdbo-scoped-access.mjs",
+    "validate:state-revenue-framework": "node scripts/validate-state-revenue-framework.mjs",
+    "validate:ekirs-sprint0": "node scripts/validate-ekirs-sprint0.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
     "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",
     "seed:lcdbo-demo": "node scripts/seed-lcdbo-national-demo.mjs",

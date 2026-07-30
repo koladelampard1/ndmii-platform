@@ -162,6 +162,8 @@ export function isPublicPath(path: string): boolean {
     path === "/contact" ||
     path === "/nrs" ||
     path.startsWith("/nrs/") ||
+    path === "/ekirs" ||
+    path.startsWith("/ekirs/") ||
     path === "/lcdbo" ||
     path.startsWith("/lcdbo/") ||
     path === "/sample-id-card" ||
@@ -204,6 +206,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (path === "/dashboard") legacyAllowed = true;
   else if (role === "workspace_user" && routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
   else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed;
+  else if (routeMatchesPrefix(path, "/dashboard/ekirs")) legacyAllowed = canAccessWorkspaceRoute({ role }, "ekirs", path).allowed;
   // Property workspace performs module/scoped permission checks at page level.
   // Let authenticated users reach the guard without expanding global users.role.
   else if (routeMatchesPrefix(path, "/dashboard/property")) legacyAllowed = true;
@@ -486,6 +489,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/nrs", label: "NRS Formalisation" },
+        { href: "/dashboard/ekirs", label: "EKIRS State Revenue Workspace" },
         { href: "/dashboard/nrs/revenue-guides", label: "Revenue Guides" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },
@@ -520,6 +524,7 @@ export const ROLE_NAV_GROUPS: Partial<Record<Exclude<UserRole, "public">, Naviga
       items: [
         { href: "/dashboard/admin/complaints", label: "Complaints" },
         { href: "/dashboard/nrs", label: "NRS Formalisation" },
+        { href: "/dashboard/ekirs", label: "EKIRS State Revenue Workspace" },
         { href: "/dashboard/nrs/revenue-guides", label: "Revenue Guides" },
         { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
         { href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" },

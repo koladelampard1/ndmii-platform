@@ -27,8 +27,18 @@ export async function requireWorkspaceAccess(workspaceId: WorkspaceId, pathname?
           .maybeSingle()
       : { data: null, error: null };
     if (programme.error) redirect(`/access-denied?workspace=${workspaceId}`);
+
+    const institution = !scopedAccess.programmeSlug && scopedAccess.institutionSlug
+      ? await supabase
+          .from("institutions")
+          .select("id")
+          .eq("slug", scopedAccess.institutionSlug)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (institution.error) redirect(`/access-denied?workspace=${workspaceId}`);
+
     const scopeId = programme.data?.id ?? null;
-    const institutionId = programme.data?.owning_institution_id ?? null;
+    const institutionId = programme.data?.owning_institution_id ?? institution.data?.id ?? null;
     const assignments = await supabase
       .from("role_assignments")
       .select("role,scope_type,scope_id,institution_id,status,expires_at")

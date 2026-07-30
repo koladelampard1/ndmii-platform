@@ -54,6 +54,13 @@ const workspacePageComponents = read("src/components/workspace/workspace-page.ts
 const workspaceMetrics = read("src/components/workspace/workspace-metrics.tsx");
 const workspaceTable = read("src/components/workspace/workspace-table.tsx");
 const workspaceReporting = read("src/components/workspace/workspace-reporting.tsx");
+const ekirsLanding = read("src/app/ekirs/page.tsx");
+const ekirsWorkspaceLayout = read("src/app/dashboard/ekirs/layout.tsx");
+const ekirsWorkspacePage = read("src/app/dashboard/ekirs/page.tsx");
+const ekirsJurisdiction = read("src/lib/state-revenue/jurisdictions.ts");
+const ekirsDemoData = read("src/lib/state-revenue/ekirs-demo-data.ts");
+const stateRevenueSyntheticData = read("src/lib/state-revenue/synthetic-data.ts");
+const ekirsMigration = read("supabase/migrations/20260730120000_state_revenue_ekirs_sprint0.sql");
 const lcdboDeliveryMigration = read("supabase/migrations/20260622120000_lcdbo_delivery_core_sprint1.sql");
 const lcdboDeliveryData = read("src/lib/data/lcdbo-delivery.ts");
 const lcdboDeliveryActions = read("src/app/dashboard/lcdbo/delivery-actions.ts");
@@ -1162,6 +1169,48 @@ check("NRS dedicated host resolves to the formalisation landing and workspace", 
       resolveDbinRewritePath("nrs", "/logout") === null &&
       resolveDbinRewritePath("nrs", "/") !== "/boi",
     "Expected nrs.dbin.ng to resolve to the NRS public entry while keeping auth and workspace paths host-relative.",
+  );
+});
+
+check("EKIRS dedicated host resolves to the state revenue landing and workspace", () => {
+  const { resolveDbinHostSurface, resolveDbinRewritePath } = dbinHostsModule;
+  assert(
+    resolveDbinHostSurface("ekirs.dbin.ng") === "ekirs" &&
+      resolveDbinHostSurface("ekirs.localhost:3000") === "ekirs" &&
+      resolveDbinRewritePath("ekirs", "/") === "/ekirs" &&
+      resolveDbinRewritePath("ekirs", "/ekirs") === null &&
+      resolveDbinRewritePath("ekirs", "/dashboard/ekirs") === null &&
+      resolveDbinRewritePath("ekirs", "/login") === null &&
+      resolveDbinRewritePath("ekirs", "/") !== "/nrs" &&
+      resolveDbinRewritePath("ekirs", "/") !== "/boi",
+    "Expected ekirs.dbin.ng to resolve to the EKIRS public entry while keeping auth and workspace paths host-relative.",
+  );
+});
+
+check("EKIRS Sprint 0 is scoped, synthetic and revenue-safe", () => {
+  assert(
+    workspaceTypes.includes('| "ekirs"') &&
+      workspaceRegistry.includes('id: "ekirs"') &&
+      workspaceRegistry.includes('institutionSlug: "ekiti-state-internal-revenue-service"') &&
+      workspaceRegistry.includes('scopeType: "institution"') &&
+      workspaceRegistry.includes('allowedRoles: ["admin", "super_admin"]') &&
+      workspaceAccessServer.includes('.from("institutions")') &&
+      ekirsLanding.includes("Ekiti Business Formalisation and Revenue Readiness Platform") &&
+      ekirsLanding.includes('/login?workspace=ekirs&next=/dashboard/ekirs') &&
+      ekirsWorkspaceLayout.includes('requireStateRevenueWorkspaceAccess("ekiti", "/dashboard/ekirs")') &&
+      ekirsWorkspacePage.includes("No collection, liability, payment or assessment values") &&
+      ekirsJurisdiction.includes('binPrefix: "BIN-EK"') &&
+      ekirsJurisdiction.includes("configuredCount: 22") &&
+      ekirsDemoData.includes("createStateRevenueSyntheticBusinesses(EKIRS_JURISDICTION)") &&
+      stateRevenueSyntheticData.includes('"synthetic_demo"') &&
+      ekirsMigration.includes("state_revenue_service_workspace") &&
+      !ekirsDemoData.includes("collectionAmount") &&
+      !ekirsDemoData.includes("liabilityAmount") &&
+      !stateRevenueSyntheticData.includes("collectionAmount") &&
+      !stateRevenueSyntheticData.includes("liabilityAmount") &&
+      !ekirsMigration.includes("auth.users") &&
+      !ekirsMigration.includes("password"),
+    "Expected EKIRS Sprint 0 to use institution-scoped access, deterministic synthetic data and no live revenue or user-provisioning artifacts.",
   );
 });
 

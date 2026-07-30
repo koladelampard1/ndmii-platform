@@ -8,6 +8,7 @@ export type WorkspaceId =
   | "boi"
   | "fccpc"
   | "impact-intelligence"
+  | "ekirs"
   | "lcdbo"
   | "msme"
   | "nrs"

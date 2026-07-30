@@ -20,6 +20,7 @@ const PUBLIC_ROUTES = [
   "/search",
   "/categories",
   "/verify",
+  "/ekirs",
   "/sample-id-card",
   "/lcdbo",
   "/lcdbo/about",

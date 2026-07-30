@@ -76,6 +76,38 @@ test("NRS host keeps intentional public support routes direct", () => {
   assert.equal(resolveDbinRewritePath("nrs", "/contact"), null);
 });
 
+test("ekirs.dbin.ng resolves to the EKIRS surface", () => {
+  assert.equal(resolveDbinHostSurface("ekirs.dbin.ng"), "ekirs");
+  assert.equal(resolveDbinHostSurface("EKIRS.DBIN.NG:443"), "ekirs");
+  assert.equal(resolveDbinHostSurface("ekirs.localhost:3000"), "ekirs");
+  assert.equal(resolveDbinHostSurface("ekirs.dbin.local:3000"), "ekirs");
+});
+
+test("EKIRS host requests resolve to the public EKIRS entry without NRS or BOI leakage", () => {
+  assert.equal(resolveDbinRewritePath("ekirs", "/"), "/ekirs");
+  assert.equal(resolveDbinRewritePath("ekirs", "/ekirs"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/about"), "/ekirs");
+  assert.notEqual(resolveDbinRewritePath("ekirs", "/"), "/nrs");
+  assert.notEqual(resolveDbinRewritePath("ekirs", "/"), "/boi");
+});
+
+test("EKIRS authentication and workspace routes remain host-relative", () => {
+  assert.equal(resolveDbinRewritePath("ekirs", "/login"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/logout"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/auth/callback"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/dashboard/ekirs"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/dashboard/nrs"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/api/auth/session"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/_next/static/chunk.js"), null);
+});
+
+test("EKIRS host keeps intentional public support routes direct", () => {
+  assert.equal(resolveDbinRewritePath("ekirs", "/verification"), "/verify");
+  assert.equal(resolveDbinRewritePath("ekirs", "/verify"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/register"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/contact"), null);
+});
+
 test("BOI authenticated workspaces remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/boi"), null);
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/admin"), null);
@@ -89,11 +121,12 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("admin.dbin.ng"), "admin");
   assert.equal(resolveDbinHostSurface("verify.dbin.ng"), "verify");
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
+  assert.equal(resolveDbinHostSurface("ekirs.dbin.ng"), "ekirs");
   assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 
-test("super admin landing route remains direct on app, BOI, and admin surfaces", () => {
-  for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "admin.dbin.ng"]) {
+test("super admin landing route remains direct on app, BOI, NRS, EKIRS and admin surfaces", () => {
+  for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "ekirs.dbin.ng", "admin.dbin.ng"]) {
     const surface = resolveDbinHostSurface(host);
     assert.equal(resolveDbinRewritePath(surface, "/dashboard/admin"), null);
   }
@@ -125,4 +158,5 @@ test("localhost development continues to use the app surface", () => {
 test("the first forwarded hostname is used", () => {
   assert.equal(resolveDbinHostSurface("boi.dbin.ng, proxy.internal"), "boi");
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng, proxy.internal"), "nrs");
+  assert.equal(resolveDbinHostSurface("ekirs.dbin.ng, proxy.internal"), "ekirs");
 });

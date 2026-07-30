@@ -28,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const isSharedInstitutionalWorkspace =
     isNrsWorkspace ||
     pathname.startsWith("/dashboard/boi") ||
+    pathname.startsWith("/dashboard/ekirs") ||
     pathname.startsWith("/dashboard/lcdbo");
   if (ctx.role === "public") {
     if (isNrsWorkspace) {

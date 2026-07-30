@@ -1,4 +1,4 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "lands" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lands" | "unknown";
 
 type HostRoutingConfig = {
   marketingHosts: Set<string>;
@@ -7,6 +7,7 @@ type HostRoutingConfig = {
   verifyHosts: Set<string>;
   boiHosts: Set<string>;
   nrsHosts: Set<string>;
+  ekirsHosts: Set<string>;
   landsHosts: Set<string>;
   localAppHosts: Set<string>;
 };
@@ -40,6 +41,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     verifyHosts: hostSet(process.env.DBIN_VERIFY_HOSTS, ["verify.dbin.ng"]),
     boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
     nrsHosts: hostSet(process.env.DBIN_NRS_HOSTS, ["nrs.dbin.ng", "nrs.localhost", "nrs.dbin.local"]),
+    ekirsHosts: hostSet(process.env.DBIN_EKIRS_HOSTS, ["ekirs.dbin.ng", "ekirs.localhost", "ekirs.dbin.local"]),
     landsHosts: hostSet(process.env.DBIN_LANDS_HOSTS, ["lands.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };
@@ -55,6 +57,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.verifyHosts.has(hostname)) return "verify";
   if (config.boiHosts.has(hostname)) return "boi";
   if (config.nrsHosts.has(hostname)) return "nrs";
+  if (config.ekirsHosts.has(hostname)) return "ekirs";
   if (config.landsHosts.has(hostname)) return "lands";
   return "unknown";
 }
@@ -94,6 +97,17 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (pathname === "/register" || pathname.startsWith("/register/")) return null;
     if (pathname === "/contact" || pathname.startsWith("/contact/")) return null;
     return "/nrs";
+  }
+
+  if (surface === "ekirs") {
+    if (isDirectApplicationPath(pathname)) return null;
+    if (pathname === "/") return "/ekirs";
+    if (pathname === "/ekirs" || pathname.startsWith("/ekirs/")) return null;
+    if (pathname === "/verification") return "/verify";
+    if (pathname === "/verify" || pathname.startsWith("/verify/")) return null;
+    if (pathname === "/register" || pathname.startsWith("/register/")) return null;
+    if (pathname === "/contact" || pathname.startsWith("/contact/")) return null;
+    return "/ekirs";
   }
 
   if (surface === "admin") {
