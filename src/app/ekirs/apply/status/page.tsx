@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { lookupEkirsApplicationStatusAction } from "@/app/ekirs/apply/actions";
 import { lookupStateRevenueApplicationStatus } from "@/lib/state-revenue/onboarding";
+import { EKIRS_JURISDICTION } from "@/lib/state-revenue/jurisdictions";
+import { StateRevenueProgressTracker, StateRevenuePublicShell } from "@/components/state-revenue/state-revenue-components";
 
 export const metadata = {
   title: "EKIRS Application Status | DBIN",
@@ -18,14 +20,25 @@ export default async function EkirsApplicationStatusPage({
   const status = result?.current_status ?? params.status ?? null;
 
   return (
-    <main className="min-h-screen bg-[#f6faf7] px-6 py-14 text-slate-950 lg:px-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+    <StateRevenuePublicShell config={EKIRS_JURISDICTION}>
+    <section className="px-5 py-14 text-slate-950 lg:px-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Application status</p>
           <h1 className="mt-3 text-3xl font-black">Track EKIRS onboarding</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Status lookup requires both the application reference and the submitted contact email. Evidence and reviewer notes are never exposed here.
           </p>
+          <div className="mt-6">
+            <StateRevenueProgressTracker
+              steps={[
+                { label: "Draft", description: "Application started or saved.", status: status === "draft" ? "current" : "complete" },
+                { label: "Submitted", description: "Application received for eligibility review.", status: status ? "complete" : "next" },
+                { label: "Review", description: "Evidence, duplicate and location checks are completed where required.", status: status?.includes("review") || status?.includes("verification") ? "current" : "next" },
+                { label: "Decision", description: "Approved, returned or rejected with next-step guidance.", status: status === "approved" || status === "rejected" ? "current" : "next" },
+              ]}
+            />
+          </div>
           {params.submitted && params.reference ? (
             <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
               <p className="font-black">Application received</p>
@@ -38,14 +51,15 @@ export default async function EkirsApplicationStatusPage({
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">No matching application was found for that reference and email combination.</div>
           ) : null}
           {status ? (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-stone-50 p-4">
               <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Current status</p>
               <p className="mt-2 text-2xl font-black text-slate-950">{status.replace(/_/g, " ")}</p>
               {result?.decision_notes ? <p className="mt-2 text-sm leading-6 text-slate-600">{result.decision_notes}</p> : null}
+              <p className="mt-3 text-sm leading-6 text-slate-600">If EKIRS requests additional information or replacement evidence, sign in with the application owner account and use the resume link provided after submission.</p>
             </div>
           ) : null}
         </section>
-        <form action={lookupEkirsApplicationStatusAction} className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-7 shadow-sm md:grid-cols-[1fr_1fr_auto]">
+        <form action={lookupEkirsApplicationStatusAction} className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm md:grid-cols-[1fr_1fr_auto]">
           <label className="grid gap-1 text-sm font-bold text-slate-700">
             Application reference
             <input name="application_reference" defaultValue={params.reference ?? ""} className="h-11 rounded-xl border border-slate-200 px-3 text-sm" required />
@@ -58,6 +72,7 @@ export default async function EkirsApplicationStatusPage({
         </form>
         <Link href="/ekirs/apply" className="inline-flex rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Back to application options</Link>
       </div>
-    </main>
+    </section>
+    </StateRevenuePublicShell>
   );
 }

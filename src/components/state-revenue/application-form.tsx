@@ -1,7 +1,9 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { CheckCircle2, FileText, LockKeyhole, MapPinned } from "lucide-react";
 import { EKITI_CONSTITUTIONAL_LGAS } from "@/lib/state-revenue/jurisdictions";
 import type { OwnedStateRevenueBusiness, StateRevenueApplicationDetail } from "@/lib/state-revenue/onboarding";
+import { StateRevenueProgressTracker } from "@/components/state-revenue/state-revenue-components";
 
 const SECTORS = ["Retail", "Services", "Agro-processing", "Manufacturing", "Creative", "Technology", "Transport", "Food services"];
 const EVIDENCE_TYPES = [
@@ -20,15 +22,16 @@ const EVIDENCE_TYPES = [
 
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) {
   return (
-    <label className="grid gap-1 text-sm font-bold text-slate-700">
-      <span>{label}{required ? <span className="text-rose-600"> *</span> : null}</span>
+    <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+      <span>{label}{required ? <span className="text-rose-600" aria-label="required"> *</span> : null}</span>
       {children}
     </label>
   );
 }
 
-const inputClass = "h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
-const textareaClass = "min-h-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+const inputClass = "h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+const textareaClass = "min-h-32 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+const sectionClass = "rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 sm:p-7";
 
 export function StateRevenueApplicationForm({
   action,
@@ -48,38 +51,58 @@ export function StateRevenueApplicationForm({
   const location = application?.location;
   const selectedEvidence = new Set(application?.evidence.map((item) => item.evidence_type) ?? []);
   return (
-    <form action={action} className="mx-auto max-w-5xl space-y-6 px-6 py-10 lg:px-8">
+    <form action={action} className="mx-auto max-w-5xl space-y-7 px-5 py-10 lg:px-8">
       {application ? (
         <>
           <input type="hidden" name="application_id" value={application.id} />
           <input type="hidden" name="application_reference" value={application.application_reference} />
         </>
       ) : null}
-      {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{decodeURIComponent(error)}</div> : null}
+      <StateRevenueProgressTracker
+        steps={[
+          { label: "Business pathway", description: mode === "existing_business" ? "Preserve an existing DBIN identity." : "Start a new identity pathway.", status: "complete" },
+          { label: "Business information", description: "Core records and contact details.", status: "current" },
+          { label: "Ekiti location", description: "Operating presence and activity.", status: "next" },
+          { label: "Evidence & declaration", description: "Consent and final submission.", status: "next" },
+        ]}
+      />
+      {error ? <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{decodeURIComponent(error)}</div> : null}
       {application ? (
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-950">
+        <div className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-950">
           <p className="font-black">Application {application.application_reference}</p>
           <p className="mt-1">Current status: <span className="font-black">{application.current_status.replace(/_/g, " ")}</span></p>
         </div>
       ) : null}
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Step 1</p>
-        <h2 className="mt-2 text-2xl font-black">Business and applicant information</h2>
+      <section className={sectionClass}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"><FileText className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Business records</p>
+            <h2 className="mt-2 text-2xl font-black">Business and applicant information</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Use the name and contact details EKIRS should rely on during review. Optional CAC/TIN fields help readiness but are not silently treated as tax approval.</p>
+          </div>
+        </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {mode === "existing_business" ? (
             <Field label="Select your DBIN business" required>
               {ownedBusinesses.length ? (
-                <select name="existing_business_id" className={inputClass} defaultValue={application?.existing_business_id ?? ""} required>
-                  <option value="">Choose a business</option>
-                  {ownedBusinesses.map((business) => {
-                    const relationship = business.state_revenue_jurisdiction_relationships?.[0];
-                    return (
-                      <option key={business.id} value={business.id}>
-                        {business.business_name ?? "Unnamed business"} · {business.msme_id ?? "BIN pending"} · {business.lga ?? business.state ?? "location pending"}{relationship ? ` · EKIRS ${relationship.relationship_status}` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className="grid gap-3">
+                  <select name="existing_business_id" className={inputClass} defaultValue={application?.existing_business_id ?? ""} required>
+                    <option value="">Choose a business</option>
+                    {ownedBusinesses.map((business) => {
+                      const relationship = business.state_revenue_jurisdiction_relationships?.[0];
+                      return (
+                        <option key={business.id} value={business.id}>
+                          {business.business_name ?? "Unnamed business"} · {business.msme_id ?? "BIN pending"} · {business.lga ?? business.state ?? "location pending"}{relationship ? ` · EKIRS ${relationship.relationship_status}` : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-950">
+                    <p className="font-black">Your existing BIN will be preserved.</p>
+                    <p className="mt-1">Only businesses owned by this signed-in account are available here.</p>
+                  </div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
                   <p className="font-black">No owned DBIN business found</p>
@@ -122,10 +145,15 @@ export function StateRevenueApplicationForm({
           </Field>
         </div>
       </section>
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Step 2</p>
-        <h2 className="mt-2 text-2xl font-black">Ekiti operating location</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">Eligibility is based on genuine Ekiti operation, not owner indigeneity, phone number or uploaded evidence alone.</p>
+      <section className={sectionClass}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-sky-50 text-sky-800 ring-1 ring-sky-200"><MapPinned className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Operating presence</p>
+            <h2 className="mt-2 text-2xl font-black">Ekiti operating location</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Eligibility is based on genuine Ekiti operation, not owner indigeneity, phone number or uploaded evidence alone.</p>
+          </div>
+        </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <Field label="Constitutional LGA" required>
             <select name="lga_name" className={inputClass} defaultValue={location?.lga_name ?? ""} required>
@@ -170,12 +198,18 @@ export function StateRevenueApplicationForm({
           </div>
         </div>
       </section>
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Step 3</p>
-        <h2 className="mt-2 text-2xl font-black">Evidence, consent and declaration</h2>
+      <section className={sectionClass}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-800 ring-1 ring-amber-200"><LockKeyhole className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Private evidence</p>
+            <h2 className="mt-2 text-2xl font-black">Evidence, consent and declaration</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Select the types of evidence you can provide. Actual file upload remains private and review-controlled.</p>
+          </div>
+        </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {EVIDENCE_TYPES.map(([value, label]) => (
-            <label key={value} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+            <label key={value} className="flex min-h-14 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50/40">
               <input type="checkbox" name="evidence_types" value={value} className="mt-1" defaultChecked={selectedEvidence.has(value)} />
               <span>{label}</span>
             </label>
@@ -202,8 +236,8 @@ export function StateRevenueApplicationForm({
           </Field>
         </section>
       ) : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" name="intent" value="submit" className="rounded-full bg-emerald-700 px-6 py-3 text-sm font-black text-white transition hover:bg-emerald-800">{application?.current_status === "additional_information_required" || application?.current_status === "evidence_required" ? "Resubmit application" : "Submit application"}</button>
+      <div className="sticky bottom-3 z-30 flex flex-wrap items-center gap-3 rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-2xl shadow-slate-300/50 backdrop-blur">
+        <button type="submit" name="intent" value="submit" className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-6 py-3 text-sm font-black text-white transition hover:bg-emerald-800"><CheckCircle2 className="h-4 w-4" />{application?.current_status === "additional_information_required" || application?.current_status === "evidence_required" ? "Resubmit application" : "Submit application"}</button>
         <button type="submit" name="intent" value="draft" formNoValidate className="rounded-full border border-emerald-200 bg-white px-6 py-3 text-sm font-black text-emerald-800 transition hover:bg-emerald-50">Save draft</button>
         <Link href="/ekirs/apply" className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">Back</Link>
       </div>

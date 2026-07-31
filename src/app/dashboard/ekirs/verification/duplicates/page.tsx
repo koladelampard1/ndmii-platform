@@ -15,7 +15,7 @@ export default async function EkirsDuplicateReviewPage() {
         eyebrow="Identity governance"
         title="Duplicate Review"
         description="Review possible canonical-identity matches before creating or linking a DBIN business identity. Strong matches block automatic identity creation."
-        disclosure="Possible duplicate records are preserved for resolution; Sprint 1 never destructively merges records."
+        disclosure="Possible duplicate records are preserved for governed resolution; the workspace does not destructively merge records."
       />
       <WorkspaceSection title={`${applications.length} candidate${applications.length === 1 ? "" : "s"}`} description="Only authorised reviewers can resolve duplicate identity conflicts.">
         {!applications.length ? <WorkspaceState type="empty" title="No duplicate candidates" description="Applications with strong or possible identity matches will appear here." /> : (

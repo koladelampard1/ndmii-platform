@@ -28,7 +28,7 @@ export default async function EkirsApplicationsPage({ searchParams }: { searchPa
       <WorkspacePageHeader
         eyebrow="Operational onboarding"
         title="Applications"
-        description="Review EKIRS onboarding applications, duplicate flags, evidence requirements and field-verification referrals. Synthetic Sprint 0 registry data remains separate from UAT applications."
+        description="Review EKIRS onboarding applications, duplicate flags, evidence requirements and field-verification referrals. Controlled reference registry data remains separate from submitted applications."
         disclosure="Application records are UAT/test classified until EKIRS authorises live onboarding."
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -54,7 +54,7 @@ export default async function EkirsApplicationsPage({ searchParams }: { searchPa
       </form>
       <WorkspaceSection title={`${rows.length} application${rows.length === 1 ? "" : "s"}`} description="No tax liabilities, assessments, payments or collection metrics are displayed.">
         {!rows.length ? (
-          <WorkspaceState type="empty" title="No applications yet" description="Applications submitted through /ekirs/apply will appear here after the Sprint 1 migration is applied." />
+          <WorkspaceState type="empty" title="No applications yet" description="Applications submitted through the EKIRS application journey will appear here once the live database workflow is enabled." />
         ) : (
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">

@@ -11,10 +11,10 @@ export default function EkirsIntelligencePage() {
         eyebrow="Privacy-safe operating intelligence"
         title="LGA & LCDA Intelligence"
         description="Synthetic aggregate views across Ekiti LGAs, with LCDA records held pending authoritative state confirmation."
-        disclosure="No live revenue metrics, taxpayer liabilities, payment records or private owner fields are displayed in Sprint 0 intelligence."
+        disclosure="No live revenue metrics, taxpayer liabilities, payment records or private owner fields are displayed in EKIRS intelligence."
       />
       <GeographyFoundation config={EKIRS_JURISDICTION} />
-      <WorkspaceSection title="LGA aggregate coverage" description="Aggregates are calculated from deterministic demonstration records only.">
+      <WorkspaceSection title="LGA aggregate coverage" description="Aggregates are calculated from controlled reference records only.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {lgas.map((lga) => (
             <article key={lga.lga} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

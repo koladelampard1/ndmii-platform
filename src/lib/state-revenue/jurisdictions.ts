@@ -186,14 +186,14 @@ export const EKIRS_JURISDICTION: StateRevenueJurisdictionConfig = {
     "Formalisation Journey",
     "LGA Intelligence",
     "Integration Catalogue",
-    "Pilot Readiness",
+    "Operational Readiness",
   ],
   integrations: [
     { key: "dbin_identity", name: "DBIN Business Identity", category: "identity", status: "foundation_ready", description: "Business identity credential linkage and verification history.", liveData: false },
     { key: "tin_linkage", name: "TIN Linkage", category: "tax", status: "simulated", description: "Controlled readiness signal for future TIN status coordination.", liveData: false },
     { key: "cac_reference", name: "CAC Reference", category: "registry", status: "simulated", description: "Business registration evidence readiness for future verified registry integration.", liveData: false },
     { key: "field_verification", name: "Field Verification", category: "field", status: "foundation_ready", description: "Officer review and physical operating-location evidence model.", liveData: false },
-    { key: "payment_provider", name: "Payment Service Provider", category: "payments", status: "future", description: "Future payment orchestration only; Sprint 0 does not record collections.", liveData: false },
+    { key: "payment_provider", name: "Payment Service Provider", category: "payments", status: "future", description: "Payment orchestration is reserved for a separately authorised production phase; this workspace does not record collections.", liveData: false },
     { key: "sms_email", name: "SMS and Email Notifications", category: "communications", status: "foundation_ready", description: "Controlled contact and onboarding communication readiness.", liveData: false },
   ],
   reporting: {
@@ -204,7 +204,7 @@ export const EKIRS_JURISDICTION: StateRevenueJurisdictionConfig = {
   demonstration: {
     deterministicRecords: 64,
     dataClassification: "synthetic_demo",
-    disclosure: "All EKIRS Sprint 0 records are deterministic synthetic data for controlled architecture and UAT demonstration. No taxpayer liability, assessment, payment, collection or live revenue information is included.",
+    disclosure: "EKIRS reference records shown in this workspace are controlled synthetic records for authorised UAT and executive review. No taxpayer liability, assessment, payment, collection or live revenue information is included.",
   },
   privacy: {
     privateFieldsExcluded: ["owner names", "phone numbers", "emails", "NIN", "BVN", "private documents", "internal tax notes", "payment information"],
@@ -214,17 +214,17 @@ export const EKIRS_JURISDICTION: StateRevenueJurisdictionConfig = {
     status: "foundation_ready",
     targetBusinesses: 64,
     onboardingMode: "controlled_uat",
-    nextGate: "EKIRS confirmation of pilot users, authoritative LCDA records and approved operating procedures.",
+    nextGate: "EKIRS confirmation of UAT users, authoritative LCDA records and approved operating procedures.",
   },
   readiness: [
-    { area: "Workspace shell", status: "ready", note: "Public and authenticated routes are configured through the shared workspace framework." },
-    { area: "Scoped access", status: "foundation_ready", note: "Institution-scoped role assignments are supported; live user provisioning remains out of scope." },
+    { area: "Digital experience", status: "ready", note: "Public, applicant and institutional routes are configured through the DBIN state revenue framework." },
+    { area: "Scoped access", status: "foundation_ready", note: "Institution-scoped role assignments are supported for authorised EKIRS users." },
     { area: "Geography", status: "requires_confirmation", note: "The 16 constitutional LGAs are configured. LCDA names remain pending authoritative confirmation." },
     { area: "Integrations", status: "foundation_ready", note: "Integration catalogue is defined without live external credentials or revenue feeds." },
     { area: "Live operations", status: "requires_confirmation", note: "Requires EKIRS approval, UAT accounts and production migration deployment." },
   ],
   disclaimers: [
-    "Sprint 0 is an architecture and demonstration foundation.",
+    "This is a controlled UAT environment for EKIRS review and operational preparation.",
     "No live revenue, assessment, liability or taxpayer payment data is represented.",
     "No federal or state endorsement is implied beyond the configured workspace foundation.",
     "LCDA records require authoritative Ekiti confirmation before operational use.",

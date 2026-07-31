@@ -37,7 +37,7 @@ export default async function EkirsBusinessesPage({ searchParams }: { searchPara
   return (
     <WorkspacePage>
       <WorkspacePageHeader
-        eyebrow="Synthetic business registry"
+        eyebrow="Reference business registry"
         title="Business Registry"
         description="Review deterministic Ekiti business records by LGA, sector, verification level, formality and TIN-readiness signals."
         disclosure={EKIRS_JURISDICTION.demonstration.disclosure}
@@ -57,8 +57,8 @@ export default async function EkirsBusinessesPage({ searchParams }: { searchPara
           <Link href="/dashboard/ekirs/businesses" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">Reset</Link>
         </WorkspaceToolbar>
       </form>
-      <WorkspaceSection title={`${businesses.length} records`} description="All rows are synthetic and safe for demonstration.">
-        {businesses.length ? <StateRevenueBusinessTable businesses={businesses} getProfileHref={(business) => `/dashboard/ekirs/businesses/${encodeURIComponent(business.bin)}`} /> : <WorkspaceState type="filtered-zero" title="No matching records" description="Adjust the filters to view deterministic EKIRS demonstration records." />}
+      <WorkspaceSection title={`${businesses.length} records`} description="All rows are controlled synthetic records for safe EKIRS review.">
+        {businesses.length ? <StateRevenueBusinessTable businesses={businesses} getProfileHref={(business) => `/dashboard/ekirs/businesses/${encodeURIComponent(business.bin)}`} /> : <WorkspaceState type="filtered-zero" title="No matching records" description="Adjust the filters to view EKIRS reference records." />}
       </WorkspaceSection>
     </WorkspacePage>
   );

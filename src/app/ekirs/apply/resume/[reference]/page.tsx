@@ -5,6 +5,8 @@ import { submitEkirsNewApplicationAction, submitEkirsExistingApplicationAction, 
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getOwnedStateRevenueApplicationByReference, listOwnedStateRevenueBusinesses } from "@/lib/state-revenue/onboarding";
+import { EKIRS_JURISDICTION } from "@/lib/state-revenue/jurisdictions";
+import { StateRevenueProgressTracker, StateRevenuePublicShell } from "@/components/state-revenue/state-revenue-components";
 
 export const metadata = {
   title: "Resume EKIRS Application | DBIN",
@@ -46,7 +48,7 @@ export default async function EkirsResumeApplicationPage({
     : [];
 
   return (
-    <main className="min-h-screen bg-[#f6faf7] text-slate-950">
+    <StateRevenuePublicShell config={EKIRS_JURISDICTION}>
       <section className="bg-[#0b2d26] px-6 py-12 text-white lg:px-8">
         <div className="mx-auto max-w-5xl">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-lime-200">Save and resume</p>
@@ -57,6 +59,14 @@ export default async function EkirsResumeApplicationPage({
         </div>
       </section>
       <div className="mx-auto max-w-5xl space-y-4 px-6 pt-8 lg:px-8">
+        <StateRevenueProgressTracker
+          steps={[
+            { label: "Application", description: application.application_reference, status: "complete" },
+            { label: "Current status", description: application.current_status.replace(/_/g, " "), status: editable ? "current" : "complete" },
+            { label: "Applicant action", description: editable ? "Update and resubmit if required." : "No applicant action currently required.", status: editable ? "current" : "next" },
+            { label: "Institutional review", description: "EKIRS review continues after submission.", status: "next" },
+          ]}
+        />
         {query.error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{decodeURIComponent(query.error)}</div> : null}
         {query.saved ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">Draft saved.</div> : null}
         {query.uploaded ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">Evidence uploaded securely.</div> : null}
@@ -107,6 +117,6 @@ export default async function EkirsResumeApplicationPage({
           </section>
         </>
       ) : null}
-    </main>
+    </StateRevenuePublicShell>
   );
 }

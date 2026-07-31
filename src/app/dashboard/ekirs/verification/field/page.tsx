@@ -13,7 +13,7 @@ export default async function EkirsFieldVerificationPage() {
       <WorkspacePageHeader
         eyebrow="Field operations"
         title="Field Verification"
-        description="Assigned field-verification work for Ekiti operating-location confirmation. GPS capture is consent-led and not mandatory in Sprint 1."
+        description="Assigned field-verification work for Ekiti operating-location confirmation. GPS capture remains consent-led and is never required by default."
         disclosure="Field officers see assigned work only when scoped role and assignment policies are active."
       />
       <WorkspaceSection title={`${applications.length} field item${applications.length === 1 ? "" : "s"}`} description="Field outcomes support eligibility; field officers do not approve final applications by default.">

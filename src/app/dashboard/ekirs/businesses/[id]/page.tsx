@@ -18,7 +18,7 @@ export default async function EkirsBusinessProfilePage({ params }: { params: Par
       <WorkspacePageHeader
         eyebrow={business.bin}
         title={business.businessName}
-        description={`${business.sector} business in ${business.lga}, ${EKIRS_JURISDICTION.state}. Profile is deterministic synthetic data for eligibility and readiness demonstration.`}
+        description={`${business.sector} business in ${business.lga}, ${EKIRS_JURISDICTION.state}. Profile uses controlled reference data for eligibility and readiness review.`}
         disclosure={EKIRS_JURISDICTION.demonstration.disclosure}
         breadcrumbs={[{ label: "Business Registry", href: "/dashboard/ekirs/businesses" }]}
         actions={<Link href="/dashboard/ekirs/businesses" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /> Back</Link>}

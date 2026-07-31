@@ -1197,7 +1197,7 @@ check("EKIRS Sprint 0 is scoped, synthetic and revenue-safe", () => {
       workspaceRegistry.includes('allowedRoles: ["admin", "super_admin"]') &&
       workspaceAccessServer.includes('.from("institutions")') &&
       ekirsLanding.includes("Ekiti Business Formalisation and Revenue Readiness Platform") &&
-      ekirsLanding.includes('/login?workspace=ekirs&next=/dashboard/ekirs') &&
+      ekirsLanding.includes('/login?workspace=ekirs') &&
       ekirsWorkspaceLayout.includes('requireStateRevenueWorkspaceAccess("ekiti", "/dashboard/ekirs")') &&
       ekirsWorkspacePage.includes("No collection, liability, payment or assessment values") &&
       ekirsJurisdiction.includes('binPrefix: "BIN-EK"') &&

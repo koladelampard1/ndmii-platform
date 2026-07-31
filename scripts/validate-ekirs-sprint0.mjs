@@ -34,8 +34,8 @@ const routingTest = read("scripts/test-dbin-host-routing.mjs");
 const docs = read("docs/ekirs-sprint0-demonstration-walkthrough.md");
 
 assert(landing.includes("Ekiti Business Formalisation and Revenue Readiness Platform"), "Public landing title must match Sprint 0 requirement.");
-assert(landing.includes("/login?workspace=ekirs&next=/dashboard/ekirs"), "Public landing must link to EKIRS staff sign-in.");
-assert(landing.includes("Business verification"), "Public landing must expose business verification CTA.");
+assert(landing.includes("/login?workspace=ekirs"), "Public landing must link to EKIRS staff sign-in.");
+assert(landing.includes("Verify a business identity"), "Public landing must expose business verification CTA.");
 assert(registry.includes('allowedRoles: ["admin", "super_admin"]'), "EKIRS global allowed roles should be limited to platform administrators.");
 assert(registry.includes('"workspace_user"') && registry.includes('"observer"'), "EKIRS scoped role model must include workspace_user and observer.");
 assert(jurisdiction.includes("Ado Ekiti") && jurisdiction.includes("Irepodun/Ifelodun"), "Ekiti LGA configuration must include constitutional LGAs.");

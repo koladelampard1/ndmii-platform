@@ -26,14 +26,14 @@ export default async function EkirsDashboardPage() {
         <StateRevenueMetricCard label="Applications" value={applicationMetrics.total} note="UAT operational records only." />
         <StateRevenueMetricCard label="Under review" value={applicationMetrics.underReview} note="Reviewer queue." />
         <StateRevenueMetricCard label="Approved" value={applicationMetrics.approved} note="Identity/linkage workflow completed." />
-        <StateRevenueMetricCard label="Synthetic businesses" value={metrics.totalBusinesses} note="Separate Sprint 0 reference data." />
+        <StateRevenueMetricCard label="Reference businesses" value={metrics.totalBusinesses} note="Controlled Ekiti records for executive review." classification="Synthetic" />
       </div>
       <WorkspaceContentGrid columns="lg:grid-cols-3">
         {[
           ["Applications", "Review submitted onboarding requests, duplicate flags, evidence and field referrals.", "/dashboard/ekirs/applications"],
-          ["Business Registry", "Review Ekiti synthetic business records, LGA context and readiness signals.", "/dashboard/ekirs/businesses"],
+          ["Business Registry", "Review Ekiti reference business records, LGA context and readiness signals.", "/dashboard/ekirs/businesses"],
           ["Eligibility Policy", "Understand the jurisdiction, evidence and review model before live workflow activation.", "/dashboard/ekirs/verification"],
-          ["Pilot Readiness", "Track the controls needed before EKIRS UAT and production preparation.", "/dashboard/ekirs/pilot-readiness"],
+          ["Operational Readiness", "Track the controls needed before EKIRS UAT and production preparation.", "/dashboard/ekirs/pilot-readiness"],
         ].map(([title, description, href]) => (
           <Link key={href} href={href} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-lg">
             <h2 className="font-black text-slate-950">{title}</h2>
@@ -42,7 +42,7 @@ export default async function EkirsDashboardPage() {
           </Link>
         ))}
       </WorkspaceContentGrid>
-      <WorkspaceSection title="LGA readiness snapshot" description="Top configured LGA slices from deterministic Sprint 0 records.">
+      <WorkspaceSection title="LGA readiness snapshot" description="Top Ekiti LGA slices from controlled reference records.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {lgaMetrics.map((lga) => (
             <article key={lga.lga} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -53,7 +53,7 @@ export default async function EkirsDashboardPage() {
         </div>
       </WorkspaceSection>
       <GeographyFoundation config={EKIRS_JURISDICTION} />
-      <StateRevenueDisclosure text="No collection, liability, payment or assessment values are calculated or displayed in the EKIRS Sprint 0 workspace." />
+      <StateRevenueDisclosure text="No collection, liability, payment or assessment values are calculated or displayed in the EKIRS workspace." />
     </WorkspacePage>
   );
 }

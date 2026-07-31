@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { StateRevenueApplicationForm } from "@/components/state-revenue/application-form";
 import { submitEkirsNewApplicationAction } from "@/app/ekirs/apply/actions";
+import { EKIRS_JURISDICTION } from "@/lib/state-revenue/jurisdictions";
+import { StateRevenuePublicShell } from "@/components/state-revenue/state-revenue-components";
 
 export const metadata = {
   title: "New EKIRS Business Application | DBIN",
@@ -15,8 +17,9 @@ export default async function EkirsNewApplicationPage({
   const [ctx, params] = await Promise.all([getCurrentUserContext().catch(() => null), searchParams]);
   if (!ctx?.appUserId) {
     return (
-      <main className="min-h-screen bg-[#f6faf7] px-6 py-16 text-slate-950 lg:px-8">
-        <div className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+      <StateRevenuePublicShell config={EKIRS_JURISDICTION}>
+        <section className="px-5 py-16 text-slate-950 lg:px-8">
+        <div className="mx-auto max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-7 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">New business application</p>
           <h1 className="mt-3 text-3xl font-black">Sign in to save and resume</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -24,11 +27,12 @@ export default async function EkirsNewApplicationPage({
           </p>
           <Link href="/login?workspace=ekirs&next=/ekirs/apply/new" className="mt-6 inline-flex rounded-full bg-emerald-700 px-6 py-3 text-sm font-black text-white hover:bg-emerald-800">Sign in</Link>
         </div>
-      </main>
+        </section>
+      </StateRevenuePublicShell>
     );
   }
   return (
-    <main className="min-h-screen bg-[#f6faf7] text-slate-950">
+    <StateRevenuePublicShell config={EKIRS_JURISDICTION}>
       <section className="bg-[#0b2d26] px-6 py-12 text-white lg:px-8">
         <div className="mx-auto max-w-5xl">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-lime-200">New business application</p>
@@ -39,6 +43,6 @@ export default async function EkirsNewApplicationPage({
         </div>
       </section>
       <StateRevenueApplicationForm action={submitEkirsNewApplicationAction} mode="new_business" error={params.error} />
-    </main>
+    </StateRevenuePublicShell>
   );
 }

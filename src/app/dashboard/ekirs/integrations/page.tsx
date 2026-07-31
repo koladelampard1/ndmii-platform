@@ -9,7 +9,7 @@ export default function EkirsIntegrationsPage() {
         eyebrow="Integration catalogue"
         title="Integrations"
         description="A foundation catalogue for future DBIN identity, TIN linkage, CAC reference, field verification, payments and communications integrations."
-        disclosure="All Sprint 0 integrations are configured as foundation-ready, simulated or future capabilities. No external credentials or live revenue feeds are used."
+        disclosure="Integrations are represented as controlled readiness capabilities. No external credentials or live revenue data connections are used."
       />
       <IntegrationCatalogue integrations={EKIRS_JURISDICTION.integrations} />
       <StateRevenueDisclosure text="Payment-provider integration remains future-only and does not record collections, liabilities, assessments or remittances." />
