@@ -86,6 +86,10 @@ test("ekirs.dbin.ng resolves to the EKIRS surface", () => {
 test("EKIRS host requests resolve to the public EKIRS entry without NRS or BOI leakage", () => {
   assert.equal(resolveDbinRewritePath("ekirs", "/"), "/ekirs");
   assert.equal(resolveDbinRewritePath("ekirs", "/ekirs"), null);
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply"), "/ekirs/apply");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/new"), "/ekirs/apply/new");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/existing"), "/ekirs/apply/existing");
+  assert.equal(resolveDbinRewritePath("ekirs", "/apply/status"), "/ekirs/apply/status");
   assert.equal(resolveDbinRewritePath("ekirs", "/about"), "/ekirs");
   assert.notEqual(resolveDbinRewritePath("ekirs", "/"), "/nrs");
   assert.notEqual(resolveDbinRewritePath("ekirs", "/"), "/boi");

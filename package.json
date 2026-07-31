@@ -22,6 +22,7 @@
     "validate:ekirs-sprint0": "node scripts/validate-ekirs-sprint0.mjs",
     "validate:state-revenue-sprint1": "node scripts/validate-state-revenue-sprint1.mjs",
     "validate:state-revenue-field-access": "node scripts/validate-state-revenue-field-access.mjs",
+    "validate:ekirs-auth-routing": "node scripts/validate-ekirs-auth-routing.mjs",
     "seed:impact-demo": "node scripts/seed-impact-intelligence-demo.mjs",
     "seed:impact-rbac-uat": "node scripts/seed-impact-rbac-uat-users.mjs",
     "seed:lcdbo-demo": "node scripts/seed-lcdbo-national-demo.mjs",

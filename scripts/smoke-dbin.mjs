@@ -30,6 +30,7 @@ const complaintsRoute = read("src/app/api/public-complaints/route.ts");
 const financeRoute = read("src/app/api/msme/finance-readiness/assessments/route.ts");
 const logoRoute = read("src/app/api/msme/provider-logo/route.ts");
 const authSessionRoute = read("src/app/api/auth/session/route.ts");
+const loginDestination = read("src/lib/auth/login-destination.ts");
 const logoutRoute = read("src/app/logout/route.ts");
 const authCookies = read("src/lib/auth/cookies.ts");
 const supabaseServer = read("src/lib/supabase/server.ts");
@@ -1246,9 +1247,12 @@ check("NRS sign-in, denied and logout flows preserve workspace context safely", 
   assert(
       loginPage.includes('searchParams.get("workspace")') &&
       loginPage.includes('searchParams.get("next")') &&
-      loginPage.includes('"/dashboard/nrs"') &&
-      loginPage.includes('/access-denied?workspace=nrs') &&
-      loginPage.includes("canAccessRoute(verifiedRole") &&
+      loginPage.includes("sessionDebug?.targetRoute") &&
+      authSessionRoute.includes("resolveLoginDestination") &&
+      authSessionRoute.includes("targetRoute: destination.targetRoute") &&
+      loginDestination.includes('input.requestedWorkspace === "nrs"') &&
+      loginDestination.includes('"/dashboard/nrs"') &&
+      loginDestination.includes('/access-denied?workspace=nrs') &&
       dashboardLayout.includes('/login?workspace=nrs&next=') &&
       workspaceGuards.includes('"/access-denied?workspace=nrs"') &&
       accessDeniedPage.includes("This account does not have access to the NRS workspace.") &&

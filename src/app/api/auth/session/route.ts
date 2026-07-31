@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeUserRole } from "@/lib/auth/authorization";
+import { resolveLoginDestination } from "@/lib/auth/login-destination";
 import {
   clearDbinAuthCookies,
   dbinAuthCookieNames,
@@ -126,6 +127,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, ok: false, error: metadata.error }, { status: metadata.status, headers });
   }
 
+  const service = await createServiceRoleSupabaseClient();
+  const destination = await resolveLoginDestination(service, {
+    role: metadata.role,
+    appUserId: metadata.appUserId || null,
+    requestedWorkspace: typeof body.workspace === "string" ? body.workspace : null,
+    returnTo: typeof body.returnTo === "string" ? body.returnTo : null,
+    next: typeof body.next === "string" ? body.next : null,
+    requestHost: request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+  });
+
   const response = NextResponse.json({
     success: true,
     ok: true,
@@ -133,6 +144,8 @@ export async function POST(request: Request) {
     appUserId: metadata.appUserId || null,
     authUserId: metadata.authUserId,
     profileMatchedBy: metadata.profileMatchedBy,
+    targetRoute: destination.targetRoute,
+    targetRouteReason: destination.reason,
     cookieNamesSet: [...dbinAuthCookieNames, ...supabaseAuthCookieNames],
   }, { headers });
 
@@ -148,16 +161,14 @@ export async function POST(request: Request) {
   response.cookies.set("ndmii_auth_user_id", metadata.authUserId, dbinAuthCookieOptions);
   response.cookies.set("ndmii_app_user_id", metadata.appUserId, dbinAuthCookieOptions);
 
-  const responseSetCookieHeaders = response.headers.getSetCookie?.() ?? [response.headers.get("set-cookie")].filter((value): value is string => Boolean(value));
-
   console.info("[auth-session:set-cookies]", {
     isProduction,
     requestOrigin: request.headers.get("origin"),
     requestHost: request.headers.get("host"),
     cookieNamesSet: [...dbinAuthCookieNames, ...supabaseAuthCookieNames],
     cookieCountBeingSet: dbinAuthCookieNames.length + supabaseAuthCookieNames.length,
-    responseSetCookieHeaders,
-    responseHasSetCookieHeader: responseSetCookieHeaders.length > 0,
+    responseHasSetCookieHeader: Boolean(response.headers.get("set-cookie")),
+    targetRouteReason: destination.reason,
   });
 
   if (process.env.NODE_ENV !== "production") {

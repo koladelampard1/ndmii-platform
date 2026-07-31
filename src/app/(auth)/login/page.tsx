@@ -8,20 +8,14 @@ import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { inferRoleFromEmail, resolveOrCreateUserProfile } from "@/lib/auth/profile";
-import { canAccessRoute, getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
+import { getDefaultDashboardRoute, normalizeUserRole } from "@/lib/auth/authorization";
 import type { UserRole } from "@/types/roles";
-
-const NRS_LOGIN_ROLES: UserRole[] = ["nrs_officer", "firs_officer", "admin", "super_admin"];
 
 function getSafeRelativePath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
   if (value === "/login" || value.startsWith("/login?")) return null;
   if (value === "/logout" || value.startsWith("/logout?")) return null;
   return value;
-}
-
-function canUseNrsWorkspace(role: UserRole) {
-  return NRS_LOGIN_ROLES.includes(role);
 }
 
 function LoginPageContent() {
@@ -38,6 +32,7 @@ function LoginPageContent() {
   const signedOut = searchParams.get("signedOut") === "1";
   const requestedWorkspace = searchParams.get("workspace");
   const isNrsLogin = requestedWorkspace === "nrs";
+  const requestedReturnPath = getSafeRelativePath(searchParams.get("returnTo"));
   const requestedNextPath = getSafeRelativePath(searchParams.get("next"));
 
   useEffect(() => {
@@ -90,6 +85,9 @@ function LoginPageContent() {
         accessToken: signInData.session.access_token,
         refreshToken: signInData.session.refresh_token,
         expiresAt: signInData.session.expires_at ?? null,
+        workspace: requestedWorkspace,
+        returnTo: requestedReturnPath,
+        next: requestedNextPath,
       }),
     });
     const sessionDebug = await sessionResponse.json().catch(() => null);
@@ -106,23 +104,8 @@ function LoginPageContent() {
     );
     console.info("[auth-login:session-sync-success]", { role: verifiedRole, sessionDebug });
 
-    const requestedReturnPath = getSafeRelativePath(searchParams.get("returnTo"));
-    const safeReturnPath =
-      requestedReturnPath &&
-      canAccessRoute(verifiedRole, requestedReturnPath.split("?")[0] || "/")
-        ? requestedReturnPath
-        : null;
-    const safeNextPath =
-      requestedNextPath &&
-      canAccessRoute(verifiedRole, requestedNextPath.split("?")[0] || "/")
-        ? requestedNextPath
-        : null;
-    const nrsTargetRoute = isNrsLogin
-      ? canUseNrsWorkspace(verifiedRole)
-        ? safeNextPath ?? "/dashboard/nrs"
-        : `/access-denied?workspace=nrs&returnTo=${encodeURIComponent(getDefaultDashboardRoute(verifiedRole))}`
-      : null;
-    const targetRoute = nrsTargetRoute ?? safeReturnPath ?? safeNextPath ?? getDefaultDashboardRoute(verifiedRole);
+    const targetRoute = getSafeRelativePath(typeof sessionDebug?.targetRoute === "string" ? sessionDebug.targetRoute : null)
+      ?? getDefaultDashboardRoute(verifiedRole);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
         authenticatedEmail: signInData.user.email ?? email,
@@ -130,6 +113,7 @@ function LoginPageContent() {
         authUserId: signInData.user.id,
         appUserId,
         targetRoute,
+        targetRouteReason: sessionDebug?.targetRouteReason ?? null,
       });
     }
 
