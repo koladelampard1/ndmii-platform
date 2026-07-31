@@ -214,7 +214,7 @@ export type StateRevenueDecisionAction =
 const FINAL_STATUSES = new Set<StateRevenueApplicationStatus>(["approved", "rejected", "withdrawn", "no_longer_operating"]);
 const REVIEW_ROLES = new Set(["state_revenue_executive", "state_revenue_admin", "registration_reviewer", "field_supervisor", "taxpayer_support_officer"]);
 const READ_ROLES = new Set([...REVIEW_ROLES, "data_analyst", "auditor", "observer"]);
-const FIELD_ROLES = new Set(["field_supervisor", "field_officer"]);
+const FIELD_ASSIGNMENT_MANAGEMENT_ROLES = new Set(["state_revenue_admin", "field_supervisor"]);
 const APPROVAL_ROLES = new Set(["state_revenue_executive", "state_revenue_admin", "registration_reviewer"]);
 export const STATE_REVENUE_EVIDENCE_BUCKET = "state-revenue-evidence";
 export const STATE_REVENUE_EVIDENCE_MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -222,6 +222,31 @@ export const STATE_REVENUE_EVIDENCE_SIGNED_URL_SECONDS = 60 * 5;
 export const STATE_REVENUE_EVIDENCE_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 export const STATE_REVENUE_EVIDENCE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
 const APPLICANT_EDITABLE_STATUSES = new Set<StateRevenueApplicationStatus>(["draft", "evidence_required", "additional_information_required"]);
+const FIELD_VERIFICATION_STATUSES = new Set<StateRevenueApplicationStatus>([
+  "field_verification_required",
+  "field_verification_assigned",
+  "field_verification_in_progress",
+  "field_verification_submitted",
+]);
+const FIELD_VERIFICATION_MUTABLE_STATUSES = new Set<StateRevenueApplicationStatus>([
+  "field_verification_assigned",
+  "field_verification_in_progress",
+]);
+const FIELD_RELEVANT_EVIDENCE_TYPES = new Set([
+  "operating_location_photograph",
+  "utility_bill",
+  "tenancy_or_occupancy",
+  "market_association_confirmation",
+  "trade_association_confirmation",
+  "local_government_permit",
+  "shop_or_business_permit",
+  "field_verification_evidence",
+  "geotagged_location_evidence",
+  "agriculture_farm_location_evidence",
+  "other",
+]);
+const ACTIVE_FIELD_TASK_STATUSES = new Set(["assigned", "in_progress"]);
+const VISIBLE_FIELD_TASK_STATUSES = new Set(["assigned", "in_progress", "submitted", "returned_for_correction", "accepted"]);
 
 const TRANSITIONS: Record<StateRevenueApplicationStatus, StateRevenueApplicationStatus[]> = {
   draft: ["submitted", "withdrawn"],
@@ -459,11 +484,60 @@ async function getReviewerRoles(input: { ctx: UserContext; client: Client; juris
     .map((row) => row.role as string);
 }
 
+async function assertEligibleStateRevenueFieldOfficer(input: { client: Client; jurisdiction: StateRevenueJurisdictionConfig; userId: string }) {
+  const institutionId = await getInstitutionId(input.client, input.jurisdiction);
+  const { data: user, error: userError } = await input.client
+    .from("users")
+    .select("id,email,role")
+    .eq("id", input.userId)
+    .maybeSingle<{ id: string; email: string | null; role: string | null }>();
+  if (userError) throw userError;
+  if (!user) throw new Error("Selected field officer was not found.");
+  if (user.role !== "workspace_user" && user.role !== "field_officer") {
+    throw new Error(`Selected user is not eligible for ${input.jurisdiction.acronym} field assignment.`);
+  }
+  const { data, error } = await input.client
+    .from("role_assignments")
+    .select("id,role,scope_type,institution_id,status,expires_at")
+    .eq("user_id", input.userId)
+    .eq("role", "field_officer")
+    .eq("status", "active");
+  if (error) throw error;
+  const eligible = (data ?? []).some((assignment) =>
+    (!assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now())
+    && assignment.scope_type === "institution"
+    && assignment.institution_id === institutionId
+  );
+  if (!eligible) throw new Error(`Selected user does not have an active ${input.jurisdiction.acronym} field-officer assignment.`);
+}
+
+function hasAssignedStateRevenueFieldTask(detail: StateRevenueApplicationDetail, appUserId: string | null | undefined, statusSet = VISIBLE_FIELD_TASK_STATUSES) {
+  if (!appUserId) return false;
+  return detail.assigned_field_officer_id === appUserId
+    || detail.tasks.some((task) => task.assigned_officer_id === appUserId && statusSet.has(task.status));
+}
+
+function canManageStateRevenueFieldAssignment(roles: string[], ctx: UserContext) {
+  return isPlatformAdmin(ctx.role) || roles.some((role) => FIELD_ASSIGNMENT_MANAGEMENT_ROLES.has(role));
+}
+
+function canSubmitStateRevenueFieldOutcome(detail: StateRevenueApplicationDetail, roles: string[], ctx: UserContext) {
+  if (!FIELD_VERIFICATION_MUTABLE_STATUSES.has(detail.current_status)) return false;
+  if (canManageStateRevenueFieldAssignment(roles, ctx)) return true;
+  return hasAssignedStateRevenueFieldTask(detail, ctx.appUserId, ACTIVE_FIELD_TASK_STATUSES);
+}
+
+function isScopedFieldOfficerOnly(roles: string[], ctx: UserContext) {
+  if (isPlatformAdmin(ctx.role)) return false;
+  if (!roles.includes("field_officer")) return false;
+  return !roles.some((role) => READ_ROLES.has(role) || FIELD_ASSIGNMENT_MANAGEMENT_ROLES.has(role));
+}
+
 export async function requireStateRevenueApplicationAccess(input: {
   applicationId: string;
   ctx: UserContext;
   client: Client;
-  mode?: "view" | "operate" | "approve" | "field";
+  mode?: "view" | "operate" | "approve" | "field" | "assign_field";
 }) {
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
   const detail = await getStateRevenueApplicationDetail(input.applicationId, input.client);
@@ -472,15 +546,18 @@ export async function requireStateRevenueApplicationAccess(input: {
   const roles = await getReviewerRoles({ ctx: input.ctx, client: input.client, jurisdiction });
   const isOwner = detail.applicant_user_id === input.ctx.appUserId;
   const isAssignedReviewer = detail.assigned_reviewer_id === input.ctx.appUserId;
-  const isAssignedFieldOfficer = detail.assigned_field_officer_id === input.ctx.appUserId || detail.tasks.some((task) => task.assigned_officer_id === input.ctx.appUserId);
+  const isAssignedFieldOfficer = hasAssignedStateRevenueFieldTask(detail, input.ctx.appUserId);
   const canReadByRole = isPlatformAdmin(input.ctx.role) || roles.some((role) => READ_ROLES.has(role));
   const canOperateByRole = isPlatformAdmin(input.ctx.role) || roles.some((role) => REVIEW_ROLES.has(role));
   const canApproveByRole = isPlatformAdmin(input.ctx.role) || roles.some((role) => APPROVAL_ROLES.has(role));
-  const canField = isPlatformAdmin(input.ctx.role) || roles.some((role) => FIELD_ROLES.has(role)) || isAssignedFieldOfficer;
+  const canField = canSubmitStateRevenueFieldOutcome(detail, roles, input.ctx);
+  const canAssignField = canManageStateRevenueFieldAssignment(roles, input.ctx);
 
   const mode = input.mode ?? "view";
   const allowed = mode === "view"
     ? isOwner || isAssignedReviewer || isAssignedFieldOfficer || canReadByRole
+    : mode === "assign_field"
+      ? canAssignField
     : mode === "field"
       ? canField
       : mode === "approve"
@@ -633,10 +710,13 @@ export async function listStateRevenueApplications(input: {
   jurisdictionId: StateRevenueJurisdictionId;
   ctx?: UserContext | null;
   filters?: { status?: string | null; lga?: string | null; q?: string | null };
+  queue?: "all" | "field";
   client?: Client;
 }) {
   const client = input.client ?? await createServiceRoleSupabaseClient();
   const jurisdiction = ensureJurisdiction(input.jurisdictionId);
+  const roles = input.ctx?.appUserId ? await getReviewerRoles({ ctx: input.ctx, client, jurisdiction }) : [];
+  const fieldOfficerOnly = input.queue === "field" && input.ctx?.appUserId && isScopedFieldOfficerOnly(roles, input.ctx);
   let query = client
     .from("state_revenue_applications")
     .select("*,state_revenue_operating_locations(id,lga_name,town,address,location_type,business_activity,verification_status)")
@@ -644,6 +724,8 @@ export async function listStateRevenueApplications(input: {
     .order("created_at", { ascending: false })
     .limit(200);
   if (input.ctx?.appUserId && input.ctx.role === "msme") query = query.eq("applicant_user_id", input.ctx.appUserId);
+  if (input.queue === "field") query = query.in("current_status", [...FIELD_VERIFICATION_STATUSES]);
+  if (fieldOfficerOnly && input.ctx?.appUserId) query = query.eq("assigned_field_officer_id", input.ctx.appUserId);
   if (input.filters?.status) query = query.eq("current_status", input.filters.status);
   if (input.filters?.q) {
     const q = cleanPostgrestSearch(input.filters.q, 80);
@@ -655,6 +737,7 @@ export async function listStateRevenueApplications(input: {
     throw error;
   }
   let rows = (data ?? []) as Array<StateRevenueApplication & { state_revenue_operating_locations?: StateRevenueOperatingLocation[] }>;
+  if (fieldOfficerOnly) rows = rows.filter((row) => row.assigned_field_officer_id === input.ctx?.appUserId);
   if (input.filters?.lga) {
     rows = rows.filter((row) => row.state_revenue_operating_locations?.some((location) => location.lga_name === input.filters?.lga));
   }
@@ -966,7 +1049,10 @@ export async function getStateRevenueEvidenceForAccess(input: {
   if (!data) return null;
   const app = (data as any).state_revenue_applications;
   if (!app?.id) return null;
-  await requireStateRevenueApplicationAccess({ applicationId: app.id, ctx: input.ctx, client, mode: "view" });
+  const access = await requireStateRevenueApplicationAccess({ applicationId: app.id, ctx: input.ctx, client, mode: "view" });
+  if (isScopedFieldOfficerOnly(access.roles, input.ctx) && !FIELD_RELEVANT_EVIDENCE_TYPES.has(String(data.evidence_type))) {
+    throw new Error("This evidence is not available for the assigned field-verification task.");
+  }
   return data as StateRevenueEvidence & { state_revenue_applications?: { id: string; jurisdiction_id: string } };
 }
 
@@ -1150,8 +1236,14 @@ export async function reviewStateRevenueApplication(input: {
   client?: Client;
 }) {
   const client = input.client ?? await createServiceRoleSupabaseClient();
-  const mode = input.action === "approve" || input.action === "reject" ? "approve" : input.action === "assign_field_officer" || input.action === "submit_field_verification" ? "field" : "operate";
-  const { detail, jurisdiction } = await requireStateRevenueApplicationAccess({ applicationId: input.applicationId, ctx: input.ctx, client, mode });
+  const mode = input.action === "approve" || input.action === "reject"
+    ? "approve"
+    : input.action === "assign_field_officer"
+      ? "assign_field"
+      : input.action === "submit_field_verification"
+        ? "field"
+        : "operate";
+  const { detail, roles, jurisdiction } = await requireStateRevenueApplicationAccess({ applicationId: input.applicationId, ctx: input.ctx, client, mode });
   if (!input.ctx.appUserId) throw new Error("Authentication is required.");
   if ((input.action === "approve" || input.action === "reject") && detail.applicant_user_id === input.ctx.appUserId) {
     throw new Error("Applicants cannot review their own applications.");
@@ -1160,6 +1252,16 @@ export async function reviewStateRevenueApplication(input: {
     throw new Error("Application is already approved.");
   }
   const form = input.form ?? {};
+  if (input.action === "assign_field_officer") {
+    if (!form.assignedFieldOfficerId) throw new Error(`Select a ${jurisdiction.acronym} field officer before assigning field verification.`);
+    if (!FIELD_VERIFICATION_STATUSES.has(detail.current_status)) {
+      throw new Error("Field verification must be requested before assigning a field officer.");
+    }
+    await assertEligibleStateRevenueFieldOfficer({ client, jurisdiction, userId: form.assignedFieldOfficerId });
+  }
+  if (input.action === "submit_field_verification" && !canSubmitStateRevenueFieldOutcome(detail, roles, input.ctx)) {
+    throw new Error("Only the assigned field officer or an authorised field supervisor can submit this field outcome.");
+  }
   const { patch, target } = patchForDecision(input.action, detail, input.ctx.appUserId, form);
 
   let resolvedBusinessId = detail.resolved_business_id;
@@ -1187,7 +1289,10 @@ export async function reviewStateRevenueApplication(input: {
   if (error || !updated) throw error ?? new Error("Unable to update state revenue application.");
 
   if (input.action === "assign_field_officer" && form.assignedFieldOfficerId) {
-    const { error: taskError } = await client.from("state_revenue_verification_tasks").insert({
+    const eventType = detail.assigned_field_officer_id && detail.assigned_field_officer_id !== form.assignedFieldOfficerId
+      ? "state_revenue.field_assignment.reassigned"
+      : "state_revenue.field_assignment.created";
+    const { data: task, error: taskError } = await client.from("state_revenue_verification_tasks").insert({
       application_id: detail.id,
       operating_location_id: detail.location?.id ?? null,
       verification_type: "operating_location",
@@ -1197,8 +1302,15 @@ export async function reviewStateRevenueApplication(input: {
       created_by: input.ctx.appUserId,
       updated_by: input.ctx.appUserId,
       metadata: { assignment_notes: form.notes ?? null },
+    }).select("id").single<{ id: string }>();
+    if (taskError || !task?.id) throw taskError ?? new Error("Unable to create field-verification assignment.");
+    await recordTrustedStateRevenueEvent({
+      actorUserId: input.ctx.appUserId,
+      eventType,
+      entityType: "state_revenue_verification_task",
+      entityId: task.id,
+      metadata: { jurisdictionId: jurisdiction.jurisdictionId, applicationReference: detail.application_reference, assignedOfficerId: form.assignedFieldOfficerId },
     });
-    if (taskError) throw taskError;
   }
 
   if (input.action === "submit_field_verification") {
@@ -1208,7 +1320,7 @@ export async function reviewStateRevenueApplication(input: {
     if (task) {
       const { error: taskError } = await client.from("state_revenue_verification_tasks").update({
         status: "submitted",
-        outcome: form.reasonCode ?? "operating_location_confirmed",
+        outcome: form.reasonCode ?? "verified_operating",
         completed_at: nowIso(),
         updated_by: input.ctx.appUserId,
         notes: form.notes,
@@ -1216,6 +1328,15 @@ export async function reviewStateRevenueApplication(input: {
       }).eq("id", task.id);
       if (taskError) throw taskError;
     }
+    await recordTrustedStateRevenueEvent({
+      actorUserId: input.ctx.appUserId,
+      eventType: form.reasonCode === "revisit_required" || form.reasonCode === "location_not_found" || form.reasonCode === "applicant_unavailable"
+        ? "state_revenue.field_verification.unable_to_verify"
+        : "state_revenue.field_verification.completed",
+      entityType: "state_revenue_verification_task",
+      entityId: task?.id ?? detail.id,
+      metadata: { jurisdictionId: jurisdiction.jurisdictionId, applicationReference: detail.application_reference, outcome: form.reasonCode ?? "verified_operating" },
+    });
   }
 
   if (input.action === "approve" && resolvedBusinessId) {

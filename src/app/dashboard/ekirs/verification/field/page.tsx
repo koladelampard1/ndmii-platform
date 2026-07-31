@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { WorkspacePage, WorkspacePageHeader, WorkspaceSection, WorkspaceState } from "@/components/workspace/workspace-page";
 import { StatusBadge } from "@/components/state-revenue/state-revenue-components";
+import { getCurrentUserContext } from "@/lib/auth/session";
 import { listStateRevenueApplications } from "@/lib/state-revenue/onboarding";
 
 export default async function EkirsFieldVerificationPage() {
-  const applications = (await listStateRevenueApplications({ jurisdictionId: "ekiti" })).filter((row: any) =>
-    ["field_verification_required", "field_verification_assigned", "field_verification_in_progress", "field_verification_submitted"].includes(row.current_status),
-  );
+  const ctx = await getCurrentUserContext();
+  const applications = await listStateRevenueApplications({ jurisdictionId: "ekiti", ctx, queue: "field" });
 
   return (
     <WorkspacePage>

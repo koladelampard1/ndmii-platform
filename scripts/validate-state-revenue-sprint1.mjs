@@ -45,7 +45,6 @@ const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const platformFoundation = read("src/lib/data/platform-foundation.ts");
 const dashboardApplications = read("src/app/dashboard/ekirs/applications/page.tsx");
 const detailPage = read("src/app/dashboard/ekirs/applications/[id]/page.tsx");
-const fieldPage = read("src/app/dashboard/ekirs/verification/field/page.tsx");
 const duplicatesPage = read("src/app/dashboard/ekirs/verification/duplicates/page.tsx");
 const docs = read("docs/state-revenue-sprint1-onboarding.md");
 
@@ -128,7 +127,7 @@ assert(detailPage.includes("reviewEkirsApplicationAction"), "Application detail 
 assert(detailPage.includes('value="submit_field_verification"'), "Detail page must expose field outcome submission.");
 assert(detailPage.includes('value="request_additional_information"'), "Detail page must expose additional-information request.");
 assert(detailPage.includes("reviewEkirsEvidenceAction"), "Detail page must expose evidence-review controls.");
-assert(fieldPage.includes("field_verification_submitted"), "Field page must cover submitted field outcomes.");
+assert(service.includes("field_verification_submitted"), "Field queue service must cover submitted field outcomes.");
 assert(duplicatesPage.includes("strong_match"), "Duplicate page must cover strong-match duplicate candidates.");
 assert(docs.includes("`resubmitted`: read-only"), "Docs must classify resubmitted applications as applicant read-only.");
 assert(docs.includes("Production gates before unrestricted launch"), "Docs must classify production-readiness gates explicitly.");

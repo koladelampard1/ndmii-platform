@@ -45,6 +45,21 @@ The `evidence_required` state is part of the formal Sprint 1 state machine. It i
 
 Evidence replacement is available only when a reviewer marks the existing evidence as `replacement_requested`.
 
+## Field-officer assignment boundary
+
+Sprint 1 uses the existing assignment model:
+
+- `state_revenue_applications.assigned_field_officer_id`
+- `state_revenue_verification_tasks.assigned_officer_id`
+
+A scoped `field_officer` role is not enough to list, open or submit a field-verification case. The officer must be assigned to the exact application/task through `public.users.id`. Field officers see only assigned field-verification work and can submit outcomes only while the assignment is active and the application is in `field_verification_assigned` or `field_verification_in_progress`.
+
+Field supervisors and state revenue administrators can assign/reassign field cases within the EKIRS institution scope. Assignment writes require the selected officer to have an active, non-expired EKIRS institution-scoped `field_officer` assignment.
+
+Field-only users receive a reduced detail view: operating-location context, field-relevant evidence only, assignment status/history and the field outcome form. Duplicate-resolution data, private contact/CAC/TIN details, evidence-review controls and full institutional approval/rejection controls remain unavailable to field-only users.
+
+Trusted audit events are recorded for field assignment creation/reassignment and field-verification completion/unable-to-verify outcomes. A dedicated revocation/start workflow is not exposed in Sprint 1; if added later, it should emit `state_revenue.field_assignment.revoked` and `state_revenue.field_verification.started` through the trusted state-revenue audit writer.
+
 ## Controlled UAT versus production gates
 
 Controlled UAT may proceed before the following production controls only when access is restricted to named UAT participants, test evidence contains no sensitive personal information, public promotion has not started, and the pilot is explicitly classified as controlled UAT rather than production.
