@@ -58,7 +58,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
     nrsHosts: hostSet(process.env.DBIN_NRS_HOSTS, ["nrs.dbin.ng", "nrs.localhost", "nrs.dbin.local"]),
     ekirsHosts: hostSet(process.env.DBIN_EKIRS_HOSTS, ["ekirs.dbin.ng", "ekirs.localhost", "ekirs.dbin.local"]),
-    lcdboHosts: hostSet(process.env.DBIN_LCDBO_HOSTS, [LCDBO_CANONICAL_HOST, "lcdbo.localhost", "lcdbo.dbin.local"]),
+    lcdboHosts: hostSet(process.env.DBIN_LCDBO_HOSTS, [LCDBO_CANONICAL_HOST, "lcdbo.com", "www.lcdbo.com", "lcdbo.localhost", "lcdbo.dbin.local"]),
     landsHosts: hostSet(process.env.DBIN_LANDS_HOSTS, ["lands.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };

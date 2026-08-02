@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   ArrowDown,
   ArrowRight,
@@ -26,6 +27,16 @@ import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_PARTNER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
+
+export const metadata: Metadata = {
+  title: "LCDBO Strategic Partners | Industrial Transformation Ecosystem",
+  description:
+    "See how public institutions, state governments, finance providers, technical partners, investors and markets can participate in the LCDBO ecosystem.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/partners`,
+  },
+};
 
 type Partner = Awaited<ReturnType<typeof loadLcdboPublicData>>["partners"][number];
 

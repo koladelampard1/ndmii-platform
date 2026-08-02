@@ -1,7 +1,18 @@
+import type { Metadata } from "next";
 import { FlowDiagram, PillarGrid } from "@/components/lcdbo/lcdbo-cards";
 import { LcdboFinalCta, LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { adcFramework, modelSteps } from "@/lib/lcdbo/content";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 import { ArrowRight, CheckCircle2, Database, Factory, Landmark } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "LCDBO Delivery Model | Acquire, Demonstrate, Commercialise",
+  description:
+    "Explore the LCDBO delivery model connecting business identity, raw-material intelligence, cluster participation, investment readiness and market access.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/model`,
+  },
+};
 
 export default function LcdboModelPage() {
   return (

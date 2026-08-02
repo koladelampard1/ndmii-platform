@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -42,6 +43,16 @@ import {
   type ResourceCategory,
   type StateClusterOpportunity,
 } from "@/lib/lcdbo/state-cluster-opportunities";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
+
+export const metadata: Metadata = {
+  title: "LCDBO Industrial Clusters | National Production Network",
+  description:
+    "Explore LCDBO industrial cluster pathways for Nigerian raw materials, MSME production, shared infrastructure, value-chain growth and export readiness.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/clusters`,
+  },
+};
 
 const nationalNetwork = [
   { value: "Nigeria", label: "National industrial ambition", icon: Landmark },
@@ -479,7 +490,7 @@ function NationalImpactSection() {
 
 function ClusterProfilePreview() {
   return (
-    <section className="bg-white px-4 py-16 sm:px-6 lg:py-20"><div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.65fr_1.35fr] lg:items-center"><SectionHeading eyebrow="Inside a cluster profile" title="See the complete production ecosystem." description="Each profile brings participants, capacity, infrastructure, market pathways and investment needs into one view for programme stakeholders." /><div className="rounded-[28px] border border-slate-200 bg-[#07172e] p-5 text-white shadow-2xl sm:p-7"><div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-6"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Demonstration profile</p><h3 className="mt-2 text-3xl font-black">Ondo Cocoa Cluster</h3><p className="mt-2 text-sm text-slate-300">Cocoa production, processing and export ecosystem</p></div><span className="rounded-full border border-[#efc85d]/30 bg-[#efc85d]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#efc85d]">Value-chain view</span></div><div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{clusterParticipants.map((participant) => { const Icon = participant.icon; return <article key={participant.title} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.08]"><Icon className="h-5 w-5 text-emerald-400" /><p className="mt-4 text-sm font-black">{participant.title}</p></article>; })}<div className="pointer-events-none absolute inset-0 hidden place-items-center lg:grid"><span className="grid h-20 w-20 place-items-center rounded-full border-4 border-[#07172e] bg-[#D4A017] text-center text-[10px] font-black uppercase leading-4 text-[#06172f] shadow-xl">Cluster<br />Hub</span></div></div></div></div></section>
+    <section className="bg-white px-4 py-16 sm:px-6 lg:py-20"><div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.65fr_1.35fr] lg:items-center"><SectionHeading eyebrow="Inside a cluster profile" title="See the complete production ecosystem." description="Each profile brings participants, capacity, infrastructure, market pathways and investment needs into one view for programme stakeholders." /><div className="rounded-[28px] border border-slate-200 bg-[#07172e] p-5 text-white shadow-2xl sm:p-7"><div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-6"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Production ecosystem</p><h3 className="mt-2 text-3xl font-black">Ondo Cocoa Cluster</h3><p className="mt-2 text-sm text-slate-300">Cocoa production, processing and export ecosystem</p></div><span className="rounded-full border border-[#efc85d]/30 bg-[#efc85d]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#efc85d]">Value-chain view</span></div><div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{clusterParticipants.map((participant) => { const Icon = participant.icon; return <article key={participant.title} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.08]"><Icon className="h-5 w-5 text-emerald-400" /><p className="mt-4 text-sm font-black">{participant.title}</p></article>; })}<div className="pointer-events-none absolute inset-0 hidden place-items-center lg:grid"><span className="grid h-20 w-20 place-items-center rounded-full border-4 border-[#07172e] bg-[#D4A017] text-center text-[10px] font-black uppercase leading-4 text-[#06172f] shadow-xl">Cluster<br />Hub</span></div></div></div></div></section>
   );
 }
 

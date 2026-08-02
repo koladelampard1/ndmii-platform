@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   ArrowDown,
   ArrowRight,
@@ -26,6 +27,16 @@ import {
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_INVESTOR_HREF, LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
+
+export const metadata: Metadata = {
+  title: "LCDBO Opportunities | MSMEs, Investors and Industrial Partners",
+  description:
+    "Discover LCDBO participation pathways for MSMEs, clusters, investors, development finance institutions, technical partners, buyers and state governments.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/opportunities`,
+  },
+};
 
 type OpportunityCategory = "MSME" | "Investor" | "State" | "Technical Partner" | "Buyer" | "Finance" | "Export" | "Research" | "Diaspora" | "Cluster";
 

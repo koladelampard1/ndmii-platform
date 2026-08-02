@@ -125,6 +125,8 @@ test("EKIRS host keeps intentional public support routes direct", () => {
 
 test("lcdbo.dbin.ng resolves to the LCDBO surface", () => {
   assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("lcdbo.com"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("www.lcdbo.com"), "lcdbo");
   assert.equal(resolveDbinHostSurface("LCDBO.DBIN.NG:443"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lcdbo.localhost:3000"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lcdbo.dbin.local:3000"), "lcdbo");
@@ -192,6 +194,8 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
   assert.equal(resolveDbinHostSurface("ekirs.dbin.ng"), "ekirs");
   assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("lcdbo.com"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("www.lcdbo.com"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 

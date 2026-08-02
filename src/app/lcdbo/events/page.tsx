@@ -1,10 +1,21 @@
+import type { Metadata } from "next";
 import { CalendarDays } from "lucide-react";
 import { LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
+
+export const metadata: Metadata = {
+  title: "LCDBO Events | Programme Briefings and Institutional Engagements",
+  description:
+    "Follow LCDBO institutional briefings, cluster readiness engagements and investor roundtables supporting Nigeria’s non-oil industrial transformation.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/events`,
+  },
+};
 
 const events = [
   { title: "LCDBO National Programme Briefing", date: "To be announced", audience: "Federal and state institutions", status: "Planning" },
   { title: "Pilot Cluster Readiness Sessions", date: "To be announced", audience: "Associations and MSMEs", status: "Foundation stage" },
-  { title: "Investor and DFI Roundtable", date: "To be announced", audience: "Investors, DFIs, banks", status: "Future phase" },
+  { title: "Investor and DFI Roundtable", date: "To be announced", audience: "Investors, DFIs, banks", status: "Institutional track" },
 ];
 
 export default function LcdboEventsPage() {
@@ -13,7 +24,7 @@ export default function LcdboEventsPage() {
       <LcdboPageHero
         eyebrow="Events"
         title="Programme events and institutional engagements."
-        description="The event layer will later connect to programme calendars, partner briefings, cluster mobilisation sessions, and investor engagements."
+        description="LCDBO engagements bring institutions, MSMEs, cluster operators, investors and technical partners around practical industrial delivery."
       />
       <LcdboSection title="Upcoming programme activities">
         <div className="grid gap-4 md:grid-cols-3">

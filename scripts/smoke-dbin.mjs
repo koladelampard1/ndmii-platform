@@ -1201,6 +1201,8 @@ check("LCDBO dedicated host resolves to canonical programme URLs and workspace r
   assert(
     LCDBO_CANONICAL_ORIGIN === "https://lcdbo.dbin.ng" &&
       resolveDbinHostSurface("lcdbo.dbin.ng") === "lcdbo" &&
+      resolveDbinHostSurface("lcdbo.com") === "lcdbo" &&
+      resolveDbinHostSurface("www.lcdbo.com") === "lcdbo" &&
       resolveDbinHostSurface("lcdbo.localhost:3000") === "lcdbo" &&
       resolveDbinRewritePath("lcdbo", "/") === "/lcdbo" &&
       resolveDbinRewritePath("lcdbo", "/clusters") === "/lcdbo/clusters" &&

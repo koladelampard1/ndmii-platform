@@ -39,12 +39,12 @@ export type LcdboPartnerCard = {
 };
 
 export const lcdboStats = [
-  { label: "LGAs Targeted", value: "774", detail: "Programme target for nationwide reach" },
-  { label: "States + FCT", value: "36+FCT", detail: "Target national industrial footprint" },
-  { label: "MSMEs Per LGA", value: "5,000", detail: "Programme enablement target" },
-  { label: "Investment Mobilisation", value: "$100B", detail: "Long-term programme target" },
-  { label: "$1 Trillion Economy", value: "$1T", detail: "Industrial growth pathway" },
-  { label: "Strategic Partners", value: "6", detail: "Seed institutional ecosystem" },
+  { label: "LGA reference geography", value: "774", detail: "Reference geography for national design scope" },
+  { label: "National design scope", value: "36 States + FCT", detail: "Design scope, not verified active coverage" },
+  { label: "MSMEs per LGA ambition", value: "Up to 5,000", detail: "Long-term enablement ambition" },
+  { label: "Investment ambition", value: "$100B", detail: "Long-term investment mobilisation ambition" },
+  { label: "Economy contribution pathway", value: "$1T", detail: "Contribution pathway toward Nigeria’s $1T economy ambition" },
+  { label: "Strategic partner records", value: "6", detail: "Seed public ecosystem context" },
 ] as const;
 
 export const lcdboPillars = [
@@ -120,7 +120,7 @@ export const opportunityCards = [
     title: "Investor Partnership",
     description: "Engage future investable cluster pipelines and programme-backed opportunity flows.",
     audience: "Investors, DFIs, funds, banks",
-    status: "Coming in a future phase",
+    status: "Structured engagement track",
     cta: "View Investment Track",
     href: LCDBO_INVESTOR_HREF,
   },

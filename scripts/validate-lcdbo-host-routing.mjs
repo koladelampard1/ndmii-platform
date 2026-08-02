@@ -57,6 +57,7 @@ assert(routing.includes('"lcdbo"'), "Host surface union must include lcdbo.");
 assert(routing.includes('export const LCDBO_CANONICAL_HOST = "lcdbo.dbin.ng"'), "Canonical LCDBO host constant is missing.");
 assert(routing.includes("LCDBO_CANONICAL_ORIGIN"), "Canonical LCDBO origin constant is missing.");
 assert(routing.includes("DBIN_LCDBO_HOSTS"), "LCDBO host environment override is missing.");
+assert(routing.includes('"lcdbo.com"') && routing.includes('"www.lcdbo.com"'), "LCDBO commercial domains must remain recognized host aliases.");
 assert(routing.includes("LCDBO_PUBLIC_PATHS"), "LCDBO valid public path allow-list is missing.");
 assert(routing.includes("resolveDbinCanonicalRedirectUrl"), "Canonical redirect helper is missing.");
 assert(routing.includes("pathname === \"/dashboard\"") && routing.includes('redirectUrl.pathname = "/dashboard/lcdbo"'), "LCDBO /dashboard canonical redirect is missing.");
@@ -108,6 +109,8 @@ const {
 
 assert.equal(LCDBO_CANONICAL_ORIGIN, "https://lcdbo.dbin.ng");
 assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
+assert.equal(resolveDbinHostSurface("lcdbo.com"), "lcdbo");
+assert.equal(resolveDbinHostSurface("www.lcdbo.com"), "lcdbo");
 assert.equal(resolveDbinHostSurface("lcdbo.localhost:3000"), "lcdbo");
 assert.equal(resolveDbinRewritePath("lcdbo", "/"), "/lcdbo");
 assert.equal(resolveDbinRewritePath("lcdbo", "/about"), "/lcdbo/about");

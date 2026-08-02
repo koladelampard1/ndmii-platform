@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -25,6 +26,16 @@ import {
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
+
+export const metadata: Metadata = {
+  title: "About LCDBO | RMRDC-led Industrial Transformation",
+  description:
+    "Understand the RMRDC-led LCDBO blueprint for raw-material value addition, MSME growth, industrial clusters, investment readiness and non-oil competitiveness.",
+  alternates: {
+    canonical: `${LCDBO_CANONICAL_ORIGIN}/about`,
+  },
+};
 
 const challenges = [
   "Import dependence",
