@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
-import { LCDBO_INVESTOR_HREF, LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF } from "@/lib/lcdbo/content";
+import { LCDBO_INVESTOR_HREF, LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 
 type OpportunityCategory = "MSME" | "Investor" | "State" | "Technical Partner" | "Buyer" | "Finance" | "Export" | "Research" | "Diaspora" | "Cluster";
 
@@ -57,7 +57,7 @@ const opportunityTracks = [
     status: "Pilot pipeline",
     category: "Cluster",
     cta: "Explore Clusters",
-    href: "/lcdbo/clusters",
+    href: lcdboPublicHref("/clusters"),
     icon: Factory,
   },
   {
@@ -107,7 +107,7 @@ const opportunityTracks = [
     status: "Planned market-access pathway",
     category: "Buyer",
     cta: "Discover Supply Opportunities",
-    href: "/lcdbo/model",
+    href: lcdboPublicHref("/model"),
     icon: PackageCheck,
   },
   {
@@ -234,7 +234,7 @@ function OpportunitiesHero() {
           <p className="mt-6 max-w-3xl text-base leading-7 text-slate-200 sm:text-xl sm:leading-8">LCDBO connects businesses, investors, governments, technical partners and buyers to structured opportunities across Nigeria&apos;s industrial clusters, value chains and production ecosystems.</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link href={LCDBO_REGISTER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Register Your Business <ArrowRight className="h-4 w-4" /></Link>
-            <Link href="/lcdbo/clusters" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/10">Explore Cluster Opportunities <ArrowRight className="h-4 w-4" /></Link>
+            <Link href={lcdboPublicHref("/clusters")} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/10">Explore Cluster Opportunities <ArrowRight className="h-4 w-4" /></Link>
             <Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/10">Partner With LCDBO <ArrowDown className="h-4 w-4" /></Link>
           </div>
         </div>
@@ -272,7 +272,7 @@ function OpportunityTracksSection({ tracks, query, category }: { tracks: typeof 
             <Select name="category" label="Opportunity category" value={category} options={filterCategories} />
             <button className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-xl bg-[#0B2E59] px-4 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-[#123f72]"><Filter className="h-4 w-4" />Search marketplace</button>
           </div>
-          {query || category ? <Link href="/lcdbo/opportunities#tracks" className="mt-4 inline-flex text-sm font-black text-[#008751]">Clear opportunity filters</Link> : null}
+          {query || category ? <Link href={lcdboPublicHref("/opportunities#tracks")} className="mt-4 inline-flex text-sm font-black text-[#008751]">Clear opportunity filters</Link> : null}
         </form>
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold text-slate-500"><span className="font-black text-[#06172f]">{tracks.length}</span> opportunity track{tracks.length === 1 ? "" : "s"} match the current view</p><span className="rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">Foundation marketplace</span></div>
         <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -356,7 +356,7 @@ function StateOpportunitySection() {
         <SectionHeading eyebrow="State opportunity" title="Opportunities for States" description="States can use LCDBO to turn local economic advantages into organised industrial clusters, investment cases and measurable development outcomes." />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {stateOpportunities.map((item) => <article key={item} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-[#008751]/30 hover:shadow-xl"><Landmark className="h-5 w-5 text-[#008751]" /><p className="mt-5 text-sm font-black text-[#06172f]">{item}</p></article>)}
-          <Link href="/lcdbo/clusters#state-opportunities" className="rounded-2xl border border-[#D4A017]/40 bg-[#D4A017]/15 p-5 text-sm font-black text-[#06172f] transition hover:-translate-y-1 hover:bg-[#D4A017]/25">Explore Clusters by State <ArrowRight className="mt-4 h-5 w-5" /></Link>
+          <Link href={lcdboPublicHref("/clusters#state-opportunities")} className="rounded-2xl border border-[#D4A017]/40 bg-[#D4A017]/15 p-5 text-sm font-black text-[#06172f] transition hover:-translate-y-1 hover:bg-[#D4A017]/25">Explore Clusters by State <ArrowRight className="mt-4 h-5 w-5" /></Link>
         </div>
       </div>
     </section>
@@ -394,7 +394,7 @@ function FinalCta() {
       <div className="absolute inset-0 bg-[#031226]/90" />
       <div className="relative mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-4xl"><p className="text-xs font-black uppercase tracking-[0.18em] text-[#efc85d]">National opportunity marketplace</p><h2 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">Turn Industrial Potential Into Opportunity.</h2><p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">Whether you are a business, investor, government institution, buyer or technical partner, LCDBO provides a structured pathway into Nigeria&apos;s industrial production network.</p></div>
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row"><Link href={LCDBO_REGISTER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Register Your Business <ArrowRight className="h-4 w-4" /></Link><Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Partner With LCDBO</Link><Link href="/lcdbo/clusters" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Explore Clusters</Link></div>
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row"><Link href={LCDBO_REGISTER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Register Your Business <ArrowRight className="h-4 w-4" /></Link><Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Partner With LCDBO</Link><Link href={lcdboPublicHref("/clusters")} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Explore Clusters</Link></div>
       </div>
     </section>
   );

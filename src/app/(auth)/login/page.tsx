@@ -33,6 +33,8 @@ function LoginPageContent() {
   const requestedWorkspace = searchParams.get("workspace");
   const isNrsLogin = requestedWorkspace === "nrs";
   const isEkirsLogin = requestedWorkspace === "ekirs";
+  const isLcdboLogin = requestedWorkspace === "lcdbo";
+  const isInstitutionLogin = isEkirsLogin || isLcdboLogin;
   const requestedReturnPath = getSafeRelativePath(searchParams.get("returnTo"));
   const requestedNextPath = getSafeRelativePath(searchParams.get("next"));
 
@@ -125,24 +127,24 @@ function LoginPageContent() {
   }
 
   return (
-    <main className={isEkirsLogin ? "min-h-screen bg-[#f7f5ef]" : "min-h-screen bg-slate-100"}>
-      <header className={isEkirsLogin ? "border-b border-emerald-900/10 bg-[#08251f] text-white" : "border-b border-slate-200 bg-white"}>
+    <main className={isInstitutionLogin ? "min-h-screen bg-[#f7f5ef]" : "min-h-screen bg-slate-100"}>
+      <header className={isInstitutionLogin ? "border-b border-emerald-900/10 bg-[#08251f] text-white" : "border-b border-slate-200 bg-white"}>
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href={isEkirsLogin ? "/ekirs" : "/"} className="rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
-            <DbinBrandLogo textClassName={isEkirsLogin ? "text-white" : "text-slate-900"} />
+          <Link href={isEkirsLogin ? "/ekirs" : isLcdboLogin ? "/lcdbo" : "/"} className="rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+            <DbinBrandLogo textClassName={isInstitutionLogin ? "text-white" : "text-slate-900"} />
           </Link>
-          <nav className={isEkirsLogin ? "flex w-full flex-wrap items-center gap-2 text-xs text-emerald-50 sm:w-auto sm:gap-4 sm:text-sm" : "flex w-full flex-wrap items-center gap-2 text-xs text-slate-700 sm:w-auto sm:gap-4 sm:text-sm"}>
-            {isEkirsLogin ? null : <Link href="/marketplace" className="transition hover:text-emerald-700">Marketplace</Link>}
-            <Link href="/verify" className="transition hover:text-emerald-700">Verify Business ID</Link>
-            {isEkirsLogin ? <Link href="/ekirs/apply/status" className="transition hover:text-lime-200">Track application</Link> : <Link href="/resources" className="transition hover:text-emerald-700">Resources</Link>}
-            {isEkirsLogin ? <Link href="/ekirs" className="transition hover:text-lime-200">EKIRS home</Link> : <Link href="/partners" className="transition hover:text-emerald-700">Partners</Link>}
-            {!isEkirsLogin ? <Link href="/about" className="transition hover:text-emerald-700">About</Link> : null}
+          <nav className={isInstitutionLogin ? "flex w-full flex-wrap items-center gap-2 text-xs text-emerald-50 sm:w-auto sm:gap-4 sm:text-sm" : "flex w-full flex-wrap items-center gap-2 text-xs text-slate-700 sm:w-auto sm:gap-4 sm:text-sm"}>
+            {isInstitutionLogin ? null : <Link href="/marketplace" className="transition hover:text-emerald-700">Marketplace</Link>}
+            <Link href="/verify" className={isInstitutionLogin ? "transition hover:text-lime-200" : "transition hover:text-emerald-700"}>Verify Business ID</Link>
+            {isEkirsLogin ? <Link href="/ekirs/apply/status" className="transition hover:text-lime-200">Track application</Link> : isLcdboLogin ? <Link href="/lcdbo/clusters" className="transition hover:text-lime-200">Clusters</Link> : <Link href="/resources" className="transition hover:text-emerald-700">Resources</Link>}
+            {isEkirsLogin ? <Link href="/ekirs" className="transition hover:text-lime-200">EKIRS home</Link> : isLcdboLogin ? <Link href="/lcdbo" className="transition hover:text-lime-200">LCDBO home</Link> : <Link href="/partners" className="transition hover:text-emerald-700">Partners</Link>}
+            {!isInstitutionLogin ? <Link href="/about" className="transition hover:text-emerald-700">About</Link> : null}
             <Link href="/contact" className="transition hover:text-emerald-700">Contact</Link>
-            {!isEkirsLogin ? <Link href="/register">
+            {!isInstitutionLogin ? <Link href="/register">
               <Button size="sm" variant="secondary">Register</Button>
             </Link> : null}
             <Link href="/login">
-              <Button size="sm" variant={isEkirsLogin ? "secondary" : "default"}>Sign in</Button>
+              <Button size="sm" variant={isInstitutionLogin ? "secondary" : "default"}>Sign in</Button>
             </Link>
           </nav>
         </div>
@@ -154,12 +156,14 @@ function LoginPageContent() {
             <div>
               <DbinBrandLogo showText={false} iconClassName="h-9 w-14 rounded-lg" />
               <h1 className="mt-2 text-2xl font-semibold leading-tight sm:text-3xl">
-                {isEkirsLogin ? "EKIRS secure access" : isNrsLogin ? "NRS Formalisation Workspace" : "Welcome to "}
-                {!isNrsLogin && !isEkirsLogin ? <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span> : null}
+                {isEkirsLogin ? "EKIRS secure access" : isLcdboLogin ? "LCDBO secure access" : isNrsLogin ? "NRS Formalisation Workspace" : "Welcome to "}
+                {!isNrsLogin && !isInstitutionLogin ? <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span> : null}
               </h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-emerald-100/90 sm:text-base">
                 {isEkirsLogin
                   ? "Sign in to continue an EKIRS application or open your authorised institutional operations workspace."
+                  : isLcdboLogin
+                  ? "Sign in to open your authorised LCDBO programme workspace, delivery portfolio or executive view."
                   : isNrsLogin
                   ? "Sign in to access business formalisation, Revenue Guide operations, readiness intelligence and institutional reports."
                   : "Your trusted platform for business identity verification, secure participation, and compliance-ready growth across Nigeria."}
@@ -178,14 +182,14 @@ function LoginPageContent() {
                 <span className="mt-0.5 rounded-full bg-emerald-500/20 p-2"><ShieldUser className="h-4 w-4 text-emerald-200" /></span>
                 <div>
                   <p className="font-semibold text-white">Role-based institutional access</p>
-                  <p className="text-emerald-100/80">Applicants, reviewers, field officers and observers are routed to the right EKIRS experience.</p>
+                  <p className="text-emerald-100/80">{isLcdboLogin ? "Programme officers, scoped managers, analysts, auditors and observers are routed to the right LCDBO workspace." : "Applicants, reviewers, field officers and observers are routed to the right EKIRS experience."}</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-emerald-500/20 p-2"><Building2 className="h-4 w-4 text-emerald-200" /></span>
                 <div>
-                  <p className="font-semibold text-white">{isEkirsLogin ? "Private evidence" : "Trusted Network"}</p>
-                  <p className="text-emerald-100/80">{isEkirsLogin ? "Application evidence remains inside authorised review and applicant-owned flows." : "Connect with verified businesses, institutions, and associations."}</p>
+                  <p className="font-semibold text-white">{isEkirsLogin ? "Private evidence" : isLcdboLogin ? "Programme records" : "Trusted Network"}</p>
+                  <p className="text-emerald-100/80">{isEkirsLogin ? "Application evidence remains inside authorised review and applicant-owned flows." : isLcdboLogin ? "Delivery records, cluster operations and executive intelligence remain permission-bound." : "Connect with verified businesses, institutions, and associations."}</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
@@ -201,8 +205,8 @@ function LoginPageContent() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 lg:col-span-8 lg:rounded-l-none lg:p-12">
           <div className="mx-auto w-full max-w-2xl">
-            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{isEkirsLogin ? "Sign in to EKIRS" : "Sign in to your account"}</h2>
-            <p className="mt-2 text-slate-600">{isEkirsLogin ? "Secure access for Ekiti business applicants and authorised EKIRS institutional users." : "Access your dashboard and manage your business identity."}</p>
+            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{isEkirsLogin ? "Sign in to EKIRS" : isLcdboLogin ? "Sign in to LCDBO" : "Sign in to your account"}</h2>
+            <p className="mt-2 text-slate-600">{isEkirsLogin ? "Secure access for Ekiti business applicants and authorised EKIRS institutional users." : isLcdboLogin ? "Secure access for authorised LCDBO programme, delivery and reporting users." : "Access your dashboard and manage your business identity."}</p>
 
             <form className="mt-8 space-y-5" onSubmit={onSubmit}>
               <label className="block space-y-2">
@@ -263,9 +267,9 @@ function LoginPageContent() {
             </form>
 
             <p className="mt-6 text-center text-sm text-slate-600">
-              {isEkirsLogin ? "Starting an EKIRS application?" : "New to DBIN?"}
+              {isEkirsLogin ? "Starting an EKIRS application?" : isLcdboLogin ? "Looking for the public LCDBO programme?" : "New to DBIN?"}
               {" "}
-              <Link href={isEkirsLogin ? "/ekirs/apply" : "/register"} className="font-semibold text-emerald-700 hover:underline">{isEkirsLogin ? "Choose an application pathway" : "Create your business profile"}</Link>
+              <Link href={isEkirsLogin ? "/ekirs/apply" : isLcdboLogin ? "/lcdbo" : "/register"} className="font-semibold text-emerald-700 hover:underline">{isEkirsLogin ? "Choose an application pathway" : isLcdboLogin ? "Open LCDBO home" : "Create your business profile"}</Link>
             </p>
           </div>
         </div>

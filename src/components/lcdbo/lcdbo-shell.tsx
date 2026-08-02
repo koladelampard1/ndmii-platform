@@ -2,17 +2,17 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, Building2, Factory, Landmark, Menu, Network, ShieldCheck } from "lucide-react";
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
-import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF } from "@/lib/lcdbo/content";
+import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 
 const navItems = [
-  { href: "/lcdbo/about", label: "About" },
-  { href: "/lcdbo/model", label: "Model" },
-  { href: "/lcdbo/clusters", label: "Clusters" },
-  { href: "/lcdbo/partners", label: "Partners" },
-  { href: "/lcdbo/opportunities", label: "Opportunities" },
-  { href: "/lcdbo/events", label: "Events" },
-  { href: "/lcdbo/resources", label: "Resources" },
-  { href: "/lcdbo/contact", label: "Contact" },
+  { href: lcdboPublicHref("/about"), label: "About" },
+  { href: lcdboPublicHref("/model"), label: "Model" },
+  { href: lcdboPublicHref("/clusters"), label: "Clusters" },
+  { href: lcdboPublicHref("/partners"), label: "Partners" },
+  { href: lcdboPublicHref("/opportunities"), label: "Opportunities" },
+  { href: lcdboPublicHref("/events"), label: "Events" },
+  { href: lcdboPublicHref("/resources"), label: "Resources" },
+  { href: lcdboPublicHref("/contact"), label: "Contact" },
 ];
 
 export function LcdboShell({ children, landing = false }: { children: ReactNode; landing?: boolean }) {
@@ -20,7 +20,7 @@ export function LcdboShell({ children, landing = false }: { children: ReactNode;
     <main className="min-h-screen bg-[#F6F8FB] text-[#101828]">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0B2E59]/95 text-white shadow-lg shadow-slate-950/10 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/lcdbo" className="flex items-center gap-3 rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d9a441]">
+          <Link href={lcdboPublicHref()} className="flex items-center gap-3 rounded-lg p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d9a441]">
             {landing ? (
               <>
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#008751] text-[11px] font-black tracking-[0.08em] text-white shadow-lg shadow-black/20">LC</span>
@@ -80,7 +80,7 @@ export function LcdboHero() {
             <Link href={LCDBO_REGISTER_HREF} className="inline-flex h-11 items-center gap-2 rounded-md bg-[#d9a441] px-4 text-sm font-black text-[#06172f] transition hover:bg-[#f2c76b]">
               Register Your Business <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/lcdbo/clusters" className="inline-flex h-11 items-center rounded-md border border-white/25 px-4 text-sm font-bold text-white transition hover:bg-white/10">
+            <Link href={lcdboPublicHref("/clusters")} className="inline-flex h-11 items-center rounded-md border border-white/25 px-4 text-sm font-bold text-white transition hover:bg-white/10">
               Explore Industrial Clusters
             </Link>
             <Link href={LCDBO_PARTNER_HREF} className="inline-flex h-11 items-center rounded-md border border-white/25 px-4 text-sm font-bold text-white transition hover:bg-white/10">

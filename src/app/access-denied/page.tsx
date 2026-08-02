@@ -21,7 +21,8 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
   const safeReturnTo = getSafeDashboardReturnPath(firstValue(params.returnTo)) ?? "/dashboard";
   const isNrsWorkspace = workspace === "nrs";
   const isEkirsWorkspace = workspace === "ekirs";
-  const institutionalWorkspace = isNrsWorkspace || isEkirsWorkspace;
+  const isLcdboWorkspace = workspace === "lcdbo";
+  const institutionalWorkspace = isNrsWorkspace || isEkirsWorkspace || isLcdboWorkspace;
 
   return (
     <main className={institutionalWorkspace ? "min-h-screen bg-emerald-950 px-6 py-16" : "mx-auto max-w-2xl px-6 py-16"}>
@@ -34,6 +35,8 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
             ? "This account does not have access to the NRS workspace."
             : isEkirsWorkspace
               ? "This account does not have access to the EKIRS workspace."
+              : isLcdboWorkspace
+                ? "This account does not have access to the LCDBO workspace."
             : "You do not have permission to access this page."}
         </h1>
         <p className="mt-3 text-slate-600">
@@ -41,6 +44,8 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
             ? "The NRS Formalisation Workspace is available only to authorised NRS, FIRS and platform administration roles. Return to an authorised workspace or contact your administrator."
             : isEkirsWorkspace
               ? "The EKIRS State Revenue Workspace is available only to authorised Ekiti institution roles. Return to the EKIRS home page or sign in with an assigned account."
+              : isLcdboWorkspace
+                ? "The LCDBO Programme Workspace is available only to authorised programme, institution, delivery, analyst, auditor and observer assignments. Return to the LCDBO home page or sign in with an assigned account."
             : "Your current role cannot view the requested route or record. Return to your assigned workspace."}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
@@ -49,11 +54,16 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
               <Link href="/dashboard/ekirs" className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Open assigned EKIRS workspace</Link>
               <Link href="/logout" className="rounded border px-4 py-2 text-sm">Sign out</Link>
             </>
+          ) : isLcdboWorkspace ? (
+            <>
+              <Link href="/dashboard/lcdbo" className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Open assigned LCDBO workspace</Link>
+              <Link href="/logout" className="rounded border px-4 py-2 text-sm">Sign out</Link>
+            </>
           ) : (
             <Link href={safeReturnTo} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Go to my dashboard</Link>
           )}
-          <Link href={isNrsWorkspace ? "/nrs" : isEkirsWorkspace ? "/ekirs" : "/verify"} className="rounded border px-4 py-2 text-sm">
-            {isNrsWorkspace ? "Return to NRS home" : isEkirsWorkspace ? "Return to EKIRS home" : "Open public verification"}
+          <Link href={isNrsWorkspace ? "/nrs" : isEkirsWorkspace ? "/ekirs" : isLcdboWorkspace ? "/lcdbo" : "/verify"} className="rounded border px-4 py-2 text-sm">
+            {isNrsWorkspace ? "Return to NRS home" : isEkirsWorkspace ? "Return to EKIRS home" : isLcdboWorkspace ? "Return to LCDBO home" : "Open public verification"}
           </Link>
         </div>
       </div>

@@ -1,10 +1,16 @@
 import type { IndustrialCluster, Institution, PlatformModuleKey, Programme } from "@/types/platform";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 
 export const LCDBO_PROGRAMME_SLUG = "local-content-development-beyond-oil";
 export const LCDBO_MODULE_KEY: PlatformModuleKey = "lcdb_o_workspace";
+export function lcdboPublicHref(path = "/") {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${LCDBO_CANONICAL_ORIGIN}${cleanPath === "/" ? "" : cleanPath}`;
+}
+
 export const LCDBO_REGISTER_HREF = "/register/msme?programme=lcdbo&source=lcdbo_public_site";
-export const LCDBO_PARTNER_HREF = "/lcdbo/contact?intent=partner&programme=lcdbo&source=lcdbo_public_site";
-export const LCDBO_INVESTOR_HREF = "/lcdbo/opportunities?audience=investor&programme=lcdbo&source=lcdbo_public_site";
+export const LCDBO_PARTNER_HREF = `${lcdboPublicHref("/contact")}?intent=partner&programme=lcdbo&source=lcdbo_public_site`;
+export const LCDBO_INVESTOR_HREF = `${lcdboPublicHref("/opportunities")}?audience=investor&programme=lcdbo&source=lcdbo_public_site`;
 
 export type LcdboClusterCard = {
   id: string;
@@ -100,7 +106,7 @@ export const opportunityCards = [
     audience: "MSMEs, associations, cooperatives",
     status: "Pilot pipeline",
     cta: "Explore Clusters",
-    href: "/lcdbo/clusters",
+    href: lcdboPublicHref("/clusters"),
   },
   {
     title: "Funding Readiness",
@@ -140,7 +146,7 @@ export const opportunityCards = [
     audience: "Export-ready businesses and trade partners",
     status: "Structured pipeline",
     cta: "Explore Pathway",
-    href: "/lcdbo/model",
+    href: lcdboPublicHref("/model"),
   },
 ] as const;
 

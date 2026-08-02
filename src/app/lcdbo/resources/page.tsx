@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { FileText } from "lucide-react";
 import { LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
+import { lcdboPublicHref } from "@/lib/lcdbo/content";
 
 const resources = [
-  { title: "Programme Model Brief", type: "Framework", href: "/lcdbo/model" },
-  { title: "Pilot Cluster Registry", type: "Data view", href: "/lcdbo/clusters" },
-  { title: "Partner Participation Pathways", type: "Guide", href: "/lcdbo/partners" },
-  { title: "Opportunity Tracks", type: "Pipeline", href: "/lcdbo/opportunities" },
+  { title: "Programme Model Brief", type: "Framework", href: lcdboPublicHref("/model") },
+  { title: "Pilot Cluster Registry", type: "Data view", href: lcdboPublicHref("/clusters") },
+  { title: "Partner Participation Pathways", type: "Guide", href: lcdboPublicHref("/partners") },
+  { title: "Opportunity Tracks", type: "Pipeline", href: lcdboPublicHref("/opportunities") },
 ];
 
 export default function LcdboResourcesPage() {

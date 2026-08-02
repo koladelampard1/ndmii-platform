@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 
 const PUBLIC_ROUTES = [
   "",
@@ -22,13 +23,6 @@ const PUBLIC_ROUTES = [
   "/verify",
   "/ekirs",
   "/sample-id-card",
-  "/lcdbo",
-  "/lcdbo/about",
-  "/lcdbo/clusters",
-  "/lcdbo/opportunities",
-  "/lcdbo/partners",
-  "/lcdbo/resources",
-  "/lcdbo/contact",
   "/property",
   "/property/about",
   "/property/explorer",
@@ -45,10 +39,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://dbin.ng";
   const lastModified = new Date();
 
-  return PUBLIC_ROUTES.map((route) => ({
+  const dbinRoutes = PUBLIC_ROUTES.map((route) => ({
     url: `${baseUrl}${route}`,
     lastModified,
-    changeFrequency: route === "" ? "weekly" : "monthly",
-    priority: route === "" ? 1 : route.startsWith("/lcdbo") || route.startsWith("/property") ? 0.8 : 0.7,
+    changeFrequency: route === "" ? "weekly" as const : "monthly" as const,
+    priority: route === "" ? 1 : route.startsWith("/property") ? 0.8 : 0.7,
   }));
+
+  const lcdboRoutes = ["", "/about", "/clusters", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model"].map((route) => ({
+    url: `${LCDBO_CANONICAL_ORIGIN}${route}`,
+    lastModified,
+    changeFrequency: "monthly" as const,
+    priority: route === "" ? 0.9 : 0.8,
+  }));
+
+  return [...dbinRoutes, ...lcdboRoutes];
 }

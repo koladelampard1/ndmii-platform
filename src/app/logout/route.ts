@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         : "Signed out successfully.",
     );
     loginUrl.searchParams.set("signedOut", "1");
+    if (surface === "lcdbo") loginUrl.searchParams.set("workspace", "lcdbo");
   }
   const returnTo = getSafeReturnPath(request.nextUrl.searchParams.get("returnTo"));
   if (returnTo && surface !== "nrs") loginUrl.searchParams.set("returnTo", returnTo);

@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
-import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF } from "@/lib/lcdbo/content";
+import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 
 const challenges = [
   "Import dependence",
@@ -106,7 +106,7 @@ function BlueprintHero() {
           <p className="inline-flex items-center gap-2 rounded-full border border-[#efc85d]/35 bg-[#efc85d]/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#efc85d]"><Landmark className="h-4 w-4" />About LCDBO</p>
           <h1 className="mt-6 max-w-4xl text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-7xl lg:text-[5rem]">A National Framework for <span className="text-[#efc85d]">Local Content Beyond Oil.</span></h1>
           <p className="mt-6 max-w-3xl text-base leading-7 text-slate-200 sm:text-xl sm:leading-8">LCDBO connects industrial policy, local enterprise, cluster development, investment readiness and market access into one coordinated pathway for Nigeria&apos;s productive economy.</p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row"><Link href="/lcdbo/model" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Explore the model <ArrowRight className="h-4 w-4" /></Link><Link href="/lcdbo/clusters" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">View Industrial Clusters</Link></div>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row"><Link href={lcdboPublicHref("/model")} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Explore the model <ArrowRight className="h-4 w-4" /></Link><Link href={lcdboPublicHref("/clusters")} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">View Industrial Clusters</Link></div>
         </div>
         <BlueprintVisual />
       </div>

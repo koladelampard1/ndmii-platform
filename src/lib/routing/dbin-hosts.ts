@@ -1,4 +1,19 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lands" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lcdbo" | "lands" | "unknown";
+
+export const LCDBO_CANONICAL_HOST = "lcdbo.dbin.ng";
+export const LCDBO_CANONICAL_ORIGIN = `https://${LCDBO_CANONICAL_HOST}`;
+export const LCDBO_INTERNAL_PUBLIC_ROOT = "/lcdbo";
+export const LCDBO_PUBLIC_PATHS = new Set([
+  "/",
+  "/about",
+  "/clusters",
+  "/contact",
+  "/events",
+  "/model",
+  "/opportunities",
+  "/partners",
+  "/resources",
+]);
 
 type HostRoutingConfig = {
   marketingHosts: Set<string>;
@@ -8,6 +23,7 @@ type HostRoutingConfig = {
   boiHosts: Set<string>;
   nrsHosts: Set<string>;
   ekirsHosts: Set<string>;
+  lcdboHosts: Set<string>;
   landsHosts: Set<string>;
   localAppHosts: Set<string>;
 };
@@ -42,6 +58,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
     nrsHosts: hostSet(process.env.DBIN_NRS_HOSTS, ["nrs.dbin.ng", "nrs.localhost", "nrs.dbin.local"]),
     ekirsHosts: hostSet(process.env.DBIN_EKIRS_HOSTS, ["ekirs.dbin.ng", "ekirs.localhost", "ekirs.dbin.local"]),
+    lcdboHosts: hostSet(process.env.DBIN_LCDBO_HOSTS, [LCDBO_CANONICAL_HOST, "lcdbo.localhost", "lcdbo.dbin.local"]),
     landsHosts: hostSet(process.env.DBIN_LANDS_HOSTS, ["lands.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };
@@ -58,6 +75,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.boiHosts.has(hostname)) return "boi";
   if (config.nrsHosts.has(hostname)) return "nrs";
   if (config.ekirsHosts.has(hostname)) return "ekirs";
+  if (config.lcdboHosts.has(hostname)) return "lcdbo";
   if (config.landsHosts.has(hostname)) return "lands";
   return "unknown";
 }
@@ -78,6 +96,58 @@ function isDirectApplicationPath(pathname: string) {
     pathname === "/reset-password" ||
     pathname.startsWith("/reset-password/")
   );
+}
+
+function cleanLcdboPublicPath(pathname: string) {
+  const withoutTrailingSlash = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (withoutTrailingSlash === LCDBO_INTERNAL_PUBLIC_ROOT) return "/";
+  if (withoutTrailingSlash.startsWith(`${LCDBO_INTERNAL_PUBLIC_ROOT}/`)) {
+    return withoutTrailingSlash.slice(LCDBO_INTERNAL_PUBLIC_ROOT.length) || "/";
+  }
+  return withoutTrailingSlash || "/";
+}
+
+function isLcdboPublicPath(pathname: string) {
+  return LCDBO_PUBLIC_PATHS.has(cleanLcdboPublicPath(pathname));
+}
+
+export function getLcdboCanonicalPath(pathname: string) {
+  return cleanLcdboPublicPath(pathname);
+}
+
+export function resolveDbinCanonicalRedirectUrl(surface: DbinHostSurface, url: URL) {
+  const pathname = url.pathname;
+
+  if (surface === "marketing" && (pathname === LCDBO_INTERNAL_PUBLIC_ROOT || pathname.startsWith(`${LCDBO_INTERNAL_PUBLIC_ROOT}/`))) {
+    if (!isLcdboPublicPath(pathname)) return null;
+    const redirectUrl = new URL(url);
+    redirectUrl.protocol = "https:";
+    redirectUrl.host = LCDBO_CANONICAL_HOST;
+    redirectUrl.pathname = cleanLcdboPublicPath(pathname);
+    return redirectUrl;
+  }
+
+  if (surface === "lcdbo") {
+    if (pathname === "/dashboard") {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = "/dashboard/lcdbo";
+      return redirectUrl;
+    }
+
+    if (pathname === "/login" && url.searchParams.get("workspace") !== "lcdbo") {
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set("workspace", "lcdbo");
+      return redirectUrl;
+    }
+
+    if (pathname === LCDBO_INTERNAL_PUBLIC_ROOT || pathname.startsWith(`${LCDBO_INTERNAL_PUBLIC_ROOT}/`)) {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = cleanLcdboPublicPath(pathname);
+      return redirectUrl;
+    }
+  }
+
+  return null;
 }
 
 export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: string) {
@@ -109,6 +179,20 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (pathname === "/register" || pathname.startsWith("/register/")) return null;
     if (pathname === "/contact" || pathname.startsWith("/contact/")) return null;
     return "/ekirs";
+  }
+
+  if (surface === "lcdbo") {
+    if (isDirectApplicationPath(pathname)) return null;
+    if (pathname === "/") return LCDBO_INTERNAL_PUBLIC_ROOT;
+    if (pathname === LCDBO_INTERNAL_PUBLIC_ROOT || pathname.startsWith(`${LCDBO_INTERNAL_PUBLIC_ROOT}/`)) return null;
+    if (isLcdboPublicPath(pathname)) {
+      return pathname === "/" ? LCDBO_INTERNAL_PUBLIC_ROOT : `${LCDBO_INTERNAL_PUBLIC_ROOT}${pathname}`;
+    }
+    if (pathname === "/verification") return "/verify";
+    if (pathname === "/verify" || pathname.startsWith("/verify/")) return null;
+    if (pathname === "/register" || pathname.startsWith("/register/")) return null;
+    if (pathname === "/contact" || pathname.startsWith("/contact/")) return null;
+    return null;
   }
 
   if (surface === "admin") {

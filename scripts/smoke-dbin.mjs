@@ -178,6 +178,7 @@ const dbinHostsModule = (() => {
     exports: commonJsModule.exports,
     process,
     Set,
+    URL,
   });
   return commonJsModule.exports;
 })();
@@ -347,7 +348,9 @@ check("logout clears Supabase and DBIN cookies before returning safely", () => {
     logoutRoute.includes("supabase.auth.signOut") &&
       logoutRoute.includes("clearSupabaseAuthCookies(response)") &&
       logoutRoute.includes("clearDbinAuthCookies(response)") &&
-      logoutRoute.includes('surface === "nrs" ? "/" : "/login"') &&
+      logoutRoute.includes('surface === "nrs"') &&
+      logoutRoute.includes('surface === "lcdbo"') &&
+      logoutRoute.includes('"workspace", "lcdbo"') &&
       authCookies.includes("DBIN_AUTH_COOKIE_DOMAIN") &&
       authCookies.includes("Clear legacy host-only cookies") &&
       supabaseServer.includes("response.cookies.set(name, \"\", expiredOptions)") &&
@@ -1185,6 +1188,29 @@ check("EKIRS dedicated host resolves to the state revenue landing and workspace"
       resolveDbinRewritePath("ekirs", "/") !== "/nrs" &&
       resolveDbinRewritePath("ekirs", "/") !== "/boi",
     "Expected ekirs.dbin.ng to resolve to the EKIRS public entry while keeping auth and workspace paths host-relative.",
+  );
+});
+
+check("LCDBO dedicated host resolves to canonical programme URLs and workspace routes", () => {
+  const {
+    LCDBO_CANONICAL_ORIGIN,
+    resolveDbinCanonicalRedirectUrl,
+    resolveDbinHostSurface,
+    resolveDbinRewritePath,
+  } = dbinHostsModule;
+  assert(
+    LCDBO_CANONICAL_ORIGIN === "https://lcdbo.dbin.ng" &&
+      resolveDbinHostSurface("lcdbo.dbin.ng") === "lcdbo" &&
+      resolveDbinHostSurface("lcdbo.localhost:3000") === "lcdbo" &&
+      resolveDbinRewritePath("lcdbo", "/") === "/lcdbo" &&
+      resolveDbinRewritePath("lcdbo", "/clusters") === "/lcdbo/clusters" &&
+      resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo") === null &&
+      resolveDbinRewritePath("lcdbo", "/api/lcdbo/delivery/export/workstreams") === null &&
+      resolveDbinRewritePath("lcdbo", "/reports") === null &&
+      resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/about"))?.toString() === "https://lcdbo.dbin.ng/about" &&
+      resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/lcdbo/about"))?.toString() === "https://lcdbo.dbin.ng/about" &&
+      resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/dashboard"))?.toString() === "https://lcdbo.dbin.ng/dashboard/lcdbo",
+    "Expected lcdbo.dbin.ng to present canonical clean programme URLs while preserving authenticated LCDBO workspace and API routes.",
   );
 });
 

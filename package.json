@@ -17,6 +17,7 @@
     "validate:lcdbo-delivery-audit-writer": "node scripts/validate-lcdbo-delivery-audit-writer.mjs",
     "validate:lcdbo-delivery-sprint3": "node scripts/validate-lcdbo-delivery-sprint3.mjs",
     "validate:lcdbo-delivery-sprint3-acceptance": "node scripts/validate-lcdbo-delivery-sprint3-acceptance.mjs",
+    "validate:lcdbo-host-routing": "node scripts/validate-lcdbo-host-routing.mjs",
     "validate:lcdbo-scoped-access": "node scripts/validate-lcdbo-scoped-access.mjs",
     "validate:state-revenue-framework": "node scripts/validate-state-revenue-framework.mjs",
     "validate:ekirs-sprint0": "node scripts/validate-ekirs-sprint0.mjs",

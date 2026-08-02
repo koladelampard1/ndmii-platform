@@ -344,7 +344,7 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
     institutionalOwner: "LCDBO Programme Secretariat",
     purpose: "A programme operating workspace for enrolment review, cluster participation, readiness, documents, geographic intelligence, governance and executive reporting.",
     publicLanding: "/lcdbo",
-    host: { futureHosts: ["lcdbo.dbin.ng"] },
+    host: { canonicalHost: "lcdbo.dbin.ng", hostEnvironmentKey: "DBIN_LCDBO_HOSTS" },
     palette: { shell: "bg-[#092f2d]", surface: "bg-white", accent: "text-emerald-300", accentSoft: "bg-emerald-300/10", accentBorder: "border-emerald-200", text: "text-slate-100" },
     homepage: "/dashboard/lcdbo",
     executiveDashboard: "/dashboard/lcdbo/executive",

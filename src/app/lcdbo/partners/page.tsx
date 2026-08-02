@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
-import { LCDBO_PARTNER_HREF } from "@/lib/lcdbo/content";
+import { LCDBO_PARTNER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
 
 type Partner = Awaited<ReturnType<typeof loadLcdboPublicData>>["partners"][number];
@@ -363,7 +363,7 @@ function PartnerDirectorySection({ partners, query, category, sort }: { partners
             <Select name="sort" label="Sort" value={sort} options={["name", "category", "type"]} />
             <button className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-xl bg-[#0B2E59] px-4 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-[#123f72]"><Filter className="h-4 w-4" />Search directory</button>
           </div>
-          {query || category || sort ? <Link href="/lcdbo/partners#directory" className="mt-4 inline-flex text-sm font-black text-[#008751]">Clear directory filters</Link> : null}
+          {query || category || sort ? <Link href={lcdboPublicHref("/partners#directory")} className="mt-4 inline-flex text-sm font-black text-[#008751]">Clear directory filters</Link> : null}
         </form>
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold text-slate-500"><span className="font-black text-[#06172f]">{partners.length}</span> partner record{partners.length === 1 ? "" : "s"} in the current view</p><span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#008751]">Partner database preserved</span></div>
         <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -399,7 +399,7 @@ function PartnerCta() {
       <div className="absolute inset-0 bg-[#031226]/90" />
       <div className="relative mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-4xl"><p className="inline-flex items-center gap-2 rounded-full border border-[#efc85d]/30 bg-[#efc85d]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.17em] text-[#efc85d]"><Sparkles className="h-3.5 w-3.5" />Strategic alliance</p><h2 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">Join Nigeria&apos;s Industrial Transformation Alliance.</h2><p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">Whether you are a government institution, investor, engineering body, university, development organisation or private enterprise, there is a role for you within LCDBO.</p></div>
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row"><Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Become a Strategic Partner <ArrowRight className="h-4 w-4" /></Link><Link href="/lcdbo/contact?programme=lcdbo&source=lcdbo_public_site" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Contact LCDBO</Link></div>
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row"><Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Become a Strategic Partner <ArrowRight className="h-4 w-4" /></Link><Link href={`${lcdboPublicHref("/contact")}?programme=lcdbo&source=lcdbo_public_site`} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10">Contact LCDBO</Link></div>
       </div>
     </section>
   );

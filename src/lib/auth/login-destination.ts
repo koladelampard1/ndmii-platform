@@ -33,6 +33,9 @@ export type LoginDestinationResult = {
   reason:
     | "safe_return_to"
     | "safe_next"
+    | "lcdbo_scoped_default"
+    | "lcdbo_applicant_default"
+    | "lcdbo_denied"
     | "ekirs_scoped_default"
     | "ekirs_applicant_default"
     | "ekirs_denied"
@@ -65,6 +68,28 @@ const STATE_REVENUE_ROLE_PRIORITY = [
   "observer",
 ];
 
+const LCDBO_ROUTE_BY_ROLE: Record<string, string> = {
+  programme_officer: "/dashboard/lcdbo/delivery",
+  institution_admin: "/dashboard/lcdbo",
+  data_analyst: "/dashboard/lcdbo/intelligence",
+  auditor: "/dashboard/lcdbo/intelligence",
+  observer: "/dashboard/lcdbo/executive",
+  state_coordinator: "/dashboard/lcdbo/my-work",
+  lga_coordinator: "/dashboard/lcdbo/my-work",
+  cluster_manager: "/dashboard/lcdbo/my-work",
+};
+
+const LCDBO_ROLE_PRIORITY = [
+  "programme_officer",
+  "institution_admin",
+  "state_coordinator",
+  "lga_coordinator",
+  "cluster_manager",
+  "data_analyst",
+  "auditor",
+  "observer",
+];
+
 function getSafeRelativePath(value: string | null | undefined) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
   if (value === "/login" || value.startsWith("/login?")) return null;
@@ -82,6 +107,12 @@ function internalPathForSurface(surface: DbinHostSurface, path: string) {
     if (path === "/apply") return "/ekirs/apply";
     if (path.startsWith("/apply/")) return `/ekirs${path}`;
   }
+  if (surface === "lcdbo") {
+    if (path === "/") return "/lcdbo";
+    if (["/about", "/clusters", "/contact", "/events", "/model", "/opportunities", "/partners", "/resources"].includes(path)) {
+      return `/lcdbo${path}`;
+    }
+  }
   return path;
 }
 
@@ -90,6 +121,10 @@ function displayPathForSurface(surface: DbinHostSurface, path: string) {
     if (path === "/ekirs") return "/";
     if (path === "/ekirs/apply") return "/apply";
     if (path.startsWith("/ekirs/apply/")) return path.replace(/^\/ekirs/, "");
+  }
+  if (surface === "lcdbo") {
+    if (path === "/lcdbo") return "/";
+    if (path.startsWith("/lcdbo/")) return path.replace(/^\/lcdbo/, "");
   }
   return path;
 }
@@ -223,6 +258,56 @@ async function resolveEkirsDefault(
     : { targetRoute: "/access-denied?workspace=ekirs&returnTo=/ekirs", reason: "ekirs_denied" };
 }
 
+async function resolveLcdboDefault(
+  client: MinimalSupabaseClient,
+  input: LoginDestinationInput,
+): Promise<LoginDestinationResult> {
+  if (input.role === "msme") {
+    return { targetRoute: "/dashboard/msme/lcdbo", reason: "lcdbo_applicant_default" };
+  }
+
+  if (input.role === "admin" || input.role === "super_admin") {
+    return { targetRoute: "/dashboard/lcdbo", reason: "lcdbo_scoped_default" };
+  }
+
+  if (input.role !== "workspace_user" || !input.appUserId) {
+    return { targetRoute: "/access-denied?workspace=lcdbo&returnTo=/lcdbo", reason: "lcdbo_denied" };
+  }
+
+  const [scope, assignments] = await Promise.all([
+    resolveWorkspaceScope(client, "lcdbo"),
+    loadAssignments(client, input.appUserId),
+  ]);
+  if (!scope || !assignments) {
+    return { targetRoute: "/access-denied?workspace=lcdbo&returnTo=/lcdbo", reason: "lcdbo_denied" };
+  }
+
+  const activeLcdboRoles = assignments
+    .filter((assignment) => {
+      if (!isActiveAssignment(assignment)) return false;
+      const programmeMatches = Boolean(scope.scopeId && assignment.scope_type === "programme" && assignment.scope_id === scope.scopeId);
+      const institutionMatches = Boolean(scope.institutionId && assignment.institution_id === scope.institutionId);
+      return programmeMatches || institutionMatches;
+    })
+    .map((assignment) => assignment.role);
+
+  const role = LCDBO_ROLE_PRIORITY.find((candidate) => activeLcdboRoles.includes(candidate));
+  const route = role ? LCDBO_ROUTE_BY_ROLE[role] : null;
+  if (!route) return { targetRoute: "/access-denied?workspace=lcdbo&returnTo=/lcdbo", reason: "lcdbo_denied" };
+
+  const allowed = canAccessWorkspaceRouteWithAssignments(
+    { role: input.role, appUserId: input.appUserId },
+    "lcdbo",
+    route,
+    assignments,
+    scope,
+  ).allowed;
+
+  return allowed
+    ? { targetRoute: route, reason: "lcdbo_scoped_default" }
+    : { targetRoute: "/access-denied?workspace=lcdbo&returnTo=/lcdbo", reason: "lcdbo_denied" };
+}
+
 export async function resolveLoginDestination(
   client: MinimalSupabaseClient,
   input: LoginDestinationInput,
@@ -241,6 +326,10 @@ export async function resolveLoginDestination(
 
   if (surface === "ekirs" || input.requestedWorkspace === "ekirs") {
     return resolveEkirsDefault(client, input, surface);
+  }
+
+  if (surface === "lcdbo" || input.requestedWorkspace === "lcdbo") {
+    return resolveLcdboDefault(client, input);
   }
 
   if (input.requestedWorkspace === "nrs") {

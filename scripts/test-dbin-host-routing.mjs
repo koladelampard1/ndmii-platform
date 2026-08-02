@@ -23,9 +23,15 @@ vm.runInNewContext(transpiled, {
   exports: commonJsModule.exports,
   process,
   Set,
+  URL,
 });
 
-const { resolveDbinHostSurface, resolveDbinRewritePath } = commonJsModule.exports;
+const {
+  LCDBO_CANONICAL_ORIGIN,
+  resolveDbinCanonicalRedirectUrl,
+  resolveDbinHostSurface,
+  resolveDbinRewritePath,
+} = commonJsModule.exports;
 
 test("boi.dbin.ng resolves to the BOI surface", () => {
   assert.equal(resolveDbinHostSurface("boi.dbin.ng"), "boi");
@@ -117,6 +123,60 @@ test("EKIRS host keeps intentional public support routes direct", () => {
   assert.equal(resolveDbinRewritePath("ekirs", "/contact"), null);
 });
 
+test("lcdbo.dbin.ng resolves to the LCDBO surface", () => {
+  assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("LCDBO.DBIN.NG:443"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("lcdbo.localhost:3000"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("lcdbo.dbin.local:3000"), "lcdbo");
+});
+
+test("LCDBO host presents clean public paths while reusing existing /lcdbo routes internally", () => {
+  assert.equal(resolveDbinRewritePath("lcdbo", "/"), "/lcdbo");
+  for (const pathName of ["/about", "/clusters", "/contact", "/events", "/model", "/opportunities", "/partners", "/resources"]) {
+    assert.equal(resolveDbinRewritePath("lcdbo", pathName), `/lcdbo${pathName}`);
+  }
+  assert.equal(resolveDbinRewritePath("lcdbo", "/reports"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/unknown-public-page"), null);
+});
+
+test("LCDBO host keeps authentication, APIs, assets and workspace routes host-relative", () => {
+  assert.equal(resolveDbinRewritePath("lcdbo", "/login"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/logout"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/auth/callback"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/update-password"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo/my-work"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/api/lcdbo/delivery/export/workstreams"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/api/auth/session"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/_next/static/chunk.js"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/verification"), "/verify");
+  assert.equal(resolveDbinRewritePath("lcdbo", "/verify"), null);
+  assert.equal(resolveDbinRewritePath("lcdbo", "/register/msme"), null);
+});
+
+test("DBIN marketing LCDBO pages redirect permanently to the canonical LCDBO subdomain", () => {
+  const rootRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo?source=nav"));
+  assert.equal(rootRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/?source=nav`);
+
+  const aboutRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/about?utm=partner"));
+  assert.equal(aboutRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/about?utm=partner`);
+
+  assert.equal(resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/reports")), null);
+});
+
+test("LCDBO host removes duplicate /lcdbo prefixes and keeps dashboard/login canonical", () => {
+  const publicRedirect = resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/lcdbo/clusters?focus=leather"));
+  assert.equal(publicRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/clusters?focus=leather`);
+
+  const dashboardRedirect = resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/dashboard"));
+  assert.equal(dashboardRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/dashboard/lcdbo`);
+
+  const loginRedirect = resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/login?next=%2Fdashboard%2Flcdbo"));
+  assert.equal(loginRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/login?next=%2Fdashboard%2Flcdbo&workspace=lcdbo`);
+
+  assert.equal(resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/login?workspace=lcdbo")), null);
+});
+
 test("BOI authenticated workspaces remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/boi"), null);
   assert.equal(resolveDbinRewritePath("boi", "/dashboard/admin"), null);
@@ -131,11 +191,12 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("verify.dbin.ng"), "verify");
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
   assert.equal(resolveDbinHostSurface("ekirs.dbin.ng"), "ekirs");
+  assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 
-test("super admin landing route remains direct on app, BOI, NRS, EKIRS and admin surfaces", () => {
-  for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "ekirs.dbin.ng", "admin.dbin.ng"]) {
+test("super admin landing route remains direct on app, BOI, NRS, EKIRS, LCDBO and admin surfaces", () => {
+  for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "ekirs.dbin.ng", "lcdbo.dbin.ng", "admin.dbin.ng"]) {
     const surface = resolveDbinHostSurface(host);
     assert.equal(resolveDbinRewritePath(surface, "/dashboard/admin"), null);
   }
@@ -168,4 +229,5 @@ test("the first forwarded hostname is used", () => {
   assert.equal(resolveDbinHostSurface("boi.dbin.ng, proxy.internal"), "boi");
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng, proxy.internal"), "nrs");
   assert.equal(resolveDbinHostSurface("ekirs.dbin.ng, proxy.internal"), "ekirs");
+  assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng, proxy.internal"), "lcdbo");
 });

@@ -5,11 +5,19 @@ import {
   createServerSupabaseClient,
   setSupabaseAuthCookies,
 } from "@/lib/supabase/server";
-import { resolveDbinHostSurface, resolveDbinRewritePath } from "@/lib/routing/dbin-hosts";
+import { resolveDbinCanonicalRedirectUrl, resolveDbinHostSurface, resolveDbinRewritePath } from "@/lib/routing/dbin-hosts";
 
 function createRoutingResponse(request: NextRequest) {
   const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   const surface = resolveDbinHostSurface(requestHost);
+  const redirectUrl = resolveDbinCanonicalRedirectUrl(surface, request.nextUrl);
+  if (redirectUrl) {
+    const redirectResponse = NextResponse.redirect(redirectUrl, 308);
+    redirectResponse.headers.set("x-dbin-surface", surface);
+    redirectResponse.headers.set("x-dbin-canonical-redirect", redirectUrl.pathname);
+    return redirectResponse;
+  }
+
   const rewritePath = resolveDbinRewritePath(surface, request.nextUrl.pathname);
   const rewriteUrl = request.nextUrl.clone();
   if (rewritePath) rewriteUrl.pathname = rewritePath;

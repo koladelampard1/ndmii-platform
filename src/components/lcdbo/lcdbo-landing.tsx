@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, BadgeCheck, Banknote, Boxes, BriefcaseBusiness, Building2, Check, Factory, Globe2, Handshake, Landmark, Leaf, MapPinned, Network, Ship, Sparkles, TrendingUp, Users, Wrench } from "lucide-react";
-import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF } from "@/lib/lcdbo/content";
+import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 
 // Governance note: the 5,000+ MSMEs per LGA, $100B investment mobilisation,
 // and $1T industrial economy pathway targets require formal owner, source,
@@ -77,7 +77,7 @@ function LandingHero() {
         <p className="mt-6 max-w-2xl text-base leading-7 text-slate-200 sm:text-xl sm:leading-8">The Local Content Development Beyond Oil initiative connects MSMEs, industrial clusters, investors and partners to drive production, jobs, exports and inclusive economic growth.</p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <PrimaryLink href={LCDBO_REGISTER_HREF}>Register Your Business</PrimaryLink>
-          <SecondaryLink href="/lcdbo/clusters">Explore Industrial Clusters</SecondaryLink>
+          <SecondaryLink href={lcdboPublicHref("/clusters")}>Explore Industrial Clusters</SecondaryLink>
           <SecondaryLink href={LCDBO_PARTNER_HREF}>Partner With LCDBO</SecondaryLink>
         </div>
         <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-3 text-xs font-bold uppercase tracking-[0.12em] text-slate-300"><span className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />National reach</span><span className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />Cluster-led growth</span><span className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />Export ambition</span></div>
@@ -112,7 +112,7 @@ function StakeholderSection() {
 function ImpactStory() {
   const outcomes = ["Jobs for Nigerians", "Industries for Tomorrow", "Exports for the World", "Prosperity for All"];
   return <Section eyebrow="National impact" title="Real People. Real Progress." description="Across Nigeria, productive businesses, industrial jobs and export-ready value chains are taking shape.">
-    <div className="grid gap-9 lg:grid-cols-[0.72fr_1.28fr] lg:items-center"><div><div className="space-y-3">{outcomes.map((item, index) => <div key={item} className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-sm font-black text-[#008751] transition group-hover:bg-[#008751] group-hover:text-white">0{index + 1}</span><p className="font-black text-[#06172f]">{item}</p></div>)}</div><Link href="/lcdbo/about" className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#007a49] transition hover:gap-3 hover:text-[#005f39]">Discover the LCDBO vision <ArrowRight className="h-4 w-4" /></Link></div><div className="grid min-h-[460px] grid-cols-2 grid-rows-2 gap-3"><StoryImage src="/images/lcdbo/women-briquette-production.jpg" alt="Women workers producing biomass briquettes in Namibia" className="row-span-2" credit="GIZ / CC BY-SA 4.0" creditHref="https://commons.wikimedia.org/wiki/File:Bushblok_briquette_production_Namibia.jpg" /><StoryImage src="/images/lcdbo/agro-processing.jpg" alt="Agricultural machinery supporting agro-processing value chains" /><StoryImage src="/images/lcdbo/brick-factory-workers.jpg" alt="Workers carrying newly produced bricks at a factory in Somalia" /></div></div>
+    <div className="grid gap-9 lg:grid-cols-[0.72fr_1.28fr] lg:items-center"><div><div className="space-y-3">{outcomes.map((item, index) => <div key={item} className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-sm font-black text-[#008751] transition group-hover:bg-[#008751] group-hover:text-white">0{index + 1}</span><p className="font-black text-[#06172f]">{item}</p></div>)}</div><Link href={lcdboPublicHref("/about")} className="mt-7 inline-flex items-center gap-2 text-sm font-black text-[#007a49] transition hover:gap-3 hover:text-[#005f39]">Discover the LCDBO vision <ArrowRight className="h-4 w-4" /></Link></div><div className="grid min-h-[460px] grid-cols-2 grid-rows-2 gap-3"><StoryImage src="/images/lcdbo/women-briquette-production.jpg" alt="Women workers producing biomass briquettes in Namibia" className="row-span-2" credit="GIZ / CC BY-SA 4.0" creditHref="https://commons.wikimedia.org/wiki/File:Bushblok_briquette_production_Namibia.jpg" /><StoryImage src="/images/lcdbo/agro-processing.jpg" alt="Agricultural machinery supporting agro-processing value chains" /><StoryImage src="/images/lcdbo/brick-factory-workers.jpg" alt="Workers carrying newly produced bricks at a factory in Somalia" /></div></div>
   </Section>;
 }
 

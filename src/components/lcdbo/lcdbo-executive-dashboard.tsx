@@ -5,6 +5,7 @@ import type { DataQualityResult, ProgrammeHealthResult, ReportSnapshot } from "@
 import type { Sprint3Snapshot } from "@/lib/data/lcdbo-delivery-intelligence";
 import { LcdboCommandMetricCard, LcdboCoveragePanel, LcdboPipeline, LcdboSicipTeaser } from "@/components/lcdbo/lcdbo-visuals";
 import { ExecutiveMetricCard, ExecutiveMetricGrid } from "@/components/workspace/workspace-metrics";
+import { lcdboPublicHref } from "@/lib/lcdbo/content";
 
 type ExecutiveMetric = {
   enrolments: number;
@@ -38,7 +39,7 @@ export function LcdboExecutiveDashboard({ metrics, pipeline, topSectors, topStat
         <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:py-14">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#efc85d]">Read-only executive view</p><h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">LCDBO National Programme Dashboard</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">A concise national operating picture for industrial cluster participation, MSME readiness and programme delivery.</p></div>
-            <div className="flex flex-wrap gap-2"><Link href="/dashboard/lcdbo" className="rounded-xl border border-white/20 px-4 py-3 text-sm font-black text-white">Operations</Link><Link href="/lcdbo" className="rounded-xl bg-[#D4A017] px-4 py-3 text-sm font-black text-[#0B2E59]">Public Programme</Link></div>
+            <div className="flex flex-wrap gap-2"><Link href="/dashboard/lcdbo" className="rounded-xl border border-white/20 px-4 py-3 text-sm font-black text-white">Operations</Link><Link href={lcdboPublicHref()} className="rounded-xl bg-[#D4A017] px-4 py-3 text-sm font-black text-[#0B2E59]">Public Programme</Link></div>
           </div>
         </div>
       </header>
