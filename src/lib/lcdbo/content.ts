@@ -93,6 +93,14 @@ export const stakeholderValue = [
 
 export const opportunityCards = [
   {
+    title: "Programme Model and Milestones",
+    description: "Understand the source-backed LCDBO model, four-phase pathway, milestone programmes and governed KPI framework.",
+    audience: "Government, investors, institutions, partners",
+    status: "Authoritative public summary",
+    cta: "View Programme Model",
+    href: lcdboPublicHref("/programme-and-milestones"),
+  },
+  {
     title: "MSME Registration",
     description: "Join the LCDBO pipeline through DBIN business onboarding and identity readiness.",
     audience: "MSMEs, artisans, manufacturers, service providers",

@@ -46,7 +46,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: route === "" ? 1 : route.startsWith("/property") ? 0.8 : 0.7,
   }));
 
-  const lcdboRoutes = ["", "/about", "/clusters", "/clusters/map", "/clusters/catalogue", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model"].map((route) => ({
+  const lcdboRoutes = ["", "/about", "/clusters", "/clusters/map", "/clusters/catalogue", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model", "/programme-and-milestones"].map((route) => ({
     url: `${LCDBO_CANONICAL_ORIGIN}${route}`,
     lastModified,
     changeFrequency: "monthly" as const,

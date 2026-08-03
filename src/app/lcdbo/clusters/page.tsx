@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, BadgeCheck, Factory, FileSearch, MapPinned, ShieldCheck, type LucideIcon } from "lucide-react";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
+import { lcdboAuthoritativeMeasures } from "@/lib/lcdbo/programme-model";
 import {
   LCDBO_CLUSTER_DATA_CLASSES,
   RMRDC_SOURCE_DISCLOSURE,
@@ -67,6 +68,31 @@ export default async function LcdboClustersPage() {
                 <Icon className="h-6 w-6 text-[#008751]" />
                 <h2 className="mt-5 text-lg font-black text-[#06172f]">{title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#07172e] px-4 py-16 text-white sm:px-6 lg:py-20">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+          <div>
+            <SectionHeading
+              dark
+              eyebrow="774-LGA pathway"
+              title="One leading product pathway per LGA, governed before publication."
+              description="The national ambition is to connect every LGA to a principal industrial opportunity, a coordinated cluster pathway and a structured MSME pipeline. Source intelligence remains pending validation until institutional approval is complete."
+            />
+            <Link href={lcdboPublicHref("/programme-and-milestones")} className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">
+              View Programme Milestones <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {lcdboAuthoritativeMeasures.filter((measure) => ["lga-industrial-development", "msmes-per-lga", "investment-mobilisation-2030"].includes(measure.key)).map((measure) => (
+              <article key={measure.key} className="rounded-2xl border border-white/10 bg-white/[0.055] p-5">
+                <p className="text-4xl font-black tracking-tight text-[#efc85d]">{measure.value}</p>
+                <h2 className="mt-3 text-base font-black leading-5 text-white">{measure.label}</h2>
+                <p className="mt-3 text-xs leading-5 text-slate-300">{measure.classification}</p>
               </article>
             ))}
           </div>

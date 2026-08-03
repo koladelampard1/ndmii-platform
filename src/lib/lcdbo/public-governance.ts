@@ -1,5 +1,6 @@
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 import { lcdboPublicHref } from "@/lib/lcdbo/content";
+import { lcdboAuthoritativeMeasures, lcdboAuthoritativeSourceSummary } from "@/lib/lcdbo/programme-model";
 
 export type LcdboMeasureClassification =
   | "Live operational data"
@@ -62,7 +63,7 @@ export const lcdboInstitutionalAttribution = {
 } as const;
 
 export const lcdboMeasureDisclosure =
-  "Figures shown include programme ambitions, configured targets and reference geography. They do not represent achieved results unless expressly identified as verified operational data.";
+  lcdboAuthoritativeSourceSummary.governanceDisclosure;
 
 export const lcdboPublicMeasures: LcdboPublicMeasure[] = [
   {
@@ -87,12 +88,12 @@ export const lcdboPublicMeasures: LcdboPublicMeasure[] = [
   },
   {
     key: "msme-lga-ambition",
-    value: "Up to 5,000",
-    label: "MSMEs per LGA",
-    classification: "Long-term ambition",
-    timeframe: "Long-term enablement ambition",
-    basis: "Configured programme ambition subject to institutional approval and phased activation.",
-    note: "Not an achieved result; displayed as an enablement ambition only.",
+    value: "5,000",
+    label: "MSMEs per LGA projection baseline",
+    classification: "Governed estimate",
+    timeframe: "Five-year projection baseline",
+    basis: "Source-backed LCDBO model projection requiring formal institutional validation before launch reporting.",
+    note: "Not an achieved result; used in the source model to frame revenue and job potential.",
     publicDisplay: true,
   },
   {
@@ -113,6 +114,26 @@ export const lcdboPublicMeasures: LcdboPublicMeasure[] = [
     timeframe: "Long-term national economic ambition",
     basis: "Contribution pathway toward Nigeria’s $1T economy ambition.",
     note: "LCDBO is positioned as a contribution pathway, not the sole driver or a verified result.",
+    publicDisplay: true,
+  },
+  {
+    key: "top-ten-economy-2035",
+    value: "Top 10",
+    label: "global economy ambition",
+    classification: "Long-term ambition",
+    timeframe: "By 2035",
+    basis: "Source-backed LCDBO milestone ambition.",
+    note: "A national ambition referenced in LCDBO source material, not a guaranteed outcome.",
+    publicDisplay: true,
+  },
+  {
+    key: "jobs-2030",
+    value: "20M+",
+    label: "job-creation ambition",
+    classification: "Governed estimate",
+    timeframe: "By 2030",
+    basis: "Source-backed LCDBO direct and indirect job projection.",
+    note: "Not jobs already created; displayed as a programme projection only.",
     publicDisplay: true,
   },
 ];
@@ -149,6 +170,17 @@ export const lcdboProgrammeStatuses: LcdboProgrammeStatus[] = [
 ];
 
 export const lcdboPublicResources: LcdboPublicResource[] = [
+  {
+    key: "programme-model-milestones",
+    title: "Programme model and milestones",
+    category: "Authoritative programme content",
+    description: "A public summary of the LCDBO authoritative model, pillars, milestone programmes, investment architecture and phased implementation pathway.",
+    href: lcdboPublicHref("/programme-and-milestones"),
+    status: "published",
+    sourceNote: lcdboAuthoritativeMeasures.map((measure) => `${measure.value} ${measure.label}`).join("; "),
+    lastReviewed: "2026-08-03",
+    publicDisplay: true,
+  },
   {
     key: "programme-overview",
     title: "Programme overview",

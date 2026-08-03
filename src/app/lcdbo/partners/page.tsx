@@ -27,6 +27,7 @@ import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_PARTNER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
 import { loadLcdboPublicData } from "@/lib/lcdbo/data";
+import { lcdboKeyDrivers, lcdboStrategicPartnerGroups } from "@/lib/lcdbo/programme-model";
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 
 export const metadata: Metadata = {
@@ -214,6 +215,7 @@ export default async function LcdboPartnersPage({
     <LcdboShell landing>
       <PartnersHero />
       <EcosystemSection />
+      <AuthoritativeStakeholdersSection />
       <ArchitectureSection />
       <FeaturedPartnersSection partners={enrichFeaturedPartners(data.partners)} />
       <ContributionFlowSection />
@@ -240,6 +242,40 @@ function PartnersHero() {
             <Link href={LCDBO_PARTNER_HREF} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4A017] px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:bg-[#efc85d]">Become a Strategic Partner <ArrowRight className="h-4 w-4" /></Link>
             <Link href="#ecosystem" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-5 text-sm font-black text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/10">Explore the Ecosystem <ArrowDown className="h-4 w-4" /></Link>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AuthoritativeStakeholdersSection() {
+  return (
+    <section className="bg-[#f3f6f9] px-4 py-16 sm:px-6 lg:py-20">
+      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr]">
+        <div>
+          <SectionHeading
+            eyebrow="Source-backed stakeholder architecture"
+            title="Public leadership, implementation capacity and investment channels."
+            description="The approved LCDBO model identifies key drivers and partner groups required for a coordinated industrial programme. These are shown as stakeholder categories and named source references, not fabricated logo endorsements."
+          />
+        </div>
+        <div className="grid gap-4">
+          <article className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#008751]">Key drivers</p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {lcdboKeyDrivers.map((driver) => (
+                <p key={driver} className="rounded-xl border border-slate-200 bg-[#f8fafc] px-4 py-3 text-sm font-black text-[#06172f]">{driver}</p>
+              ))}
+            </div>
+          </article>
+          <article className="rounded-[26px] bg-[#06172f] p-6 text-white shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#efc85d]">Strategic partner groups</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {lcdboStrategicPartnerGroups.map((group) => (
+                <span key={group} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100">{group}</span>
+              ))}
+            </div>
+          </article>
         </div>
       </div>
     </section>

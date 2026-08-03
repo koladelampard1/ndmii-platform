@@ -27,6 +27,7 @@ import {
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_INVESTOR_HREF, LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
+import { lcdboAuthoritativeMeasures, lcdboInvestmentPipelines, lcdboInvestmentSources } from "@/lib/lcdbo/programme-model";
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 
 export const metadata: Metadata = {
@@ -220,6 +221,7 @@ export default async function LcdboOpportunitiesPage({
     <LcdboShell landing>
       <OpportunitiesHero />
       <MarketplacePositioningSection />
+      <InvestmentArchitectureSection />
       <OpportunityTracksSection tracks={tracks} query={query} category={category} />
       <StakeholderSection />
       <ValueChainSection />
@@ -251,6 +253,46 @@ function OpportunitiesHero() {
         </div>
       </div>
     </section>
+  );
+}
+
+function InvestmentArchitectureSection() {
+  const investmentMeasure = lcdboAuthoritativeMeasures.find((measure) => measure.key === "investment-mobilisation-2030");
+  return (
+    <section className="bg-white px-4 py-16 sm:px-6 lg:py-20">
+      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.78fr_1.22fr]">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#008751]">Investment architecture</p>
+          <h2 className="mt-3 text-4xl font-black tracking-tight text-[#06172f] sm:text-5xl">Capital deployment for investable industrial pipelines.</h2>
+          <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">The approved source model frames investment mobilisation through infrastructure, raw materials, human capital, guarantees, feasibility work and public-private partnerships.</p>
+          {investmentMeasure ? (
+            <article className="mt-6 rounded-[26px] bg-[#06172f] p-6 text-white">
+              <p className="text-5xl font-black tracking-tight text-[#efc85d]">{investmentMeasure.value}</p>
+              <h3 className="mt-3 text-2xl font-black">{investmentMeasure.label}</h3>
+              <p className="mt-3 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-200">{investmentMeasure.classification}</p>
+              <p className="mt-4 text-sm leading-6 text-slate-300">{investmentMeasure.note}</p>
+            </article>
+          ) : null}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <OpportunityList title="Pipeline building blocks" items={lcdboInvestmentPipelines} />
+          <OpportunityList title="Capital and financing sources" items={lcdboInvestmentSources} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OpportunityList({ title, items }: { title: string; items: readonly string[] }) {
+  return (
+    <article className="rounded-[26px] border border-slate-200 bg-[#f8fafc] p-6 shadow-sm">
+      <h3 className="text-xl font-black text-[#06172f]">{title}</h3>
+      <ul className="mt-5 grid gap-2 text-sm leading-6 text-slate-600">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2"><ShieldCheck className="mt-1 h-4 w-4 shrink-0 text-[#008751]" />{item}</li>
+        ))}
+      </ul>
+    </article>
   );
 }
 

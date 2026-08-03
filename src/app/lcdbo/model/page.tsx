@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import { FlowDiagram, PillarGrid } from "@/components/lcdbo/lcdbo-cards";
 import { LcdboFinalCta, LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { adcFramework, modelSteps } from "@/lib/lcdbo/content";
+import {
+  lcdboInstitutionalFramework,
+  lcdboMilestoneProgrammes,
+  lcdboProgrammePillars,
+} from "@/lib/lcdbo/programme-model";
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 import { ArrowRight, CheckCircle2, Database, Factory, Landmark } from "lucide-react";
 
@@ -32,6 +37,44 @@ export default function LcdboModelPage() {
       </LcdboSection>
       <LcdboSection title="Business journey" description="Each milestone becomes a visible programme state, giving MSMEs and institutions a shared operating picture.">
         <FlowDiagram items={modelSteps} />
+      </LcdboSection>
+      <LcdboSection title="Source-backed operating components" description="The LCDBO model combines digital identity, research commercialisation, production infrastructure, investment readiness and market access into one pathway.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {lcdboProgrammePillars.map((pillar, index) => (
+            <article key={pillar.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#008751]">Component {String(index + 1).padStart(2, "0")}</p>
+              <h2 className="mt-3 text-base font-black leading-6 text-[#06172f]">{pillar.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{pillar.description}</p>
+            </article>
+          ))}
+        </div>
+      </LcdboSection>
+      <LcdboSection title="Special Quasi-EPCM delivery structure" description="For scale and accountability, the model positions implementation around engineering, procurement, construction and management coordination with institutional partners and host communities.">
+        <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <article className="rounded-[26px] bg-[#06172f] p-6 text-white">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#efc85d]">Delivery accountability</p>
+            <h2 className="mt-3 text-3xl font-black">From project preparation to operational mobilisation.</h2>
+            <p className="mt-4 text-sm leading-7 text-slate-300">The Special Quasi-EPCM model supports engineering coordination, project preparation, procurement planning, construction oversight, operational mobilisation, cluster management and institutional accountability.</p>
+          </article>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {lcdboInstitutionalFramework.map((item) => (
+              <article key={item.actor} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-black text-[#06172f]">{item.actor}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.contribution}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </LcdboSection>
+      <LcdboSection title="Milestone programmes inside the model" description="The operating model is supported by economic, security, infrastructure, transport, social, power and broadband milestone programmes.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+          {lcdboMilestoneProgrammes.map((programme) => (
+            <article key={programme.abbreviation} className="rounded-2xl border border-slate-200 bg-[#f8fafc] p-5">
+              <p className="text-2xl font-black text-[#008751]">{programme.abbreviation}</p>
+              <h2 className="mt-3 text-sm font-black leading-5 text-[#06172f]">{programme.title}</h2>
+            </article>
+          ))}
+        </div>
       </LcdboSection>
       <LcdboSection title="80% MSME / 20% large enterprise ecosystem positioning">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

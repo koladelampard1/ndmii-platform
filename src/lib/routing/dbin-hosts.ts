@@ -12,6 +12,7 @@ export const LCDBO_PUBLIC_PATHS = new Set([
   "/contact",
   "/events",
   "/model",
+  "/programme-and-milestones",
   "/opportunities",
   "/partners",
   "/resources",

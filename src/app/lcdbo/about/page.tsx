@@ -26,6 +26,11 @@ import {
 import { DbinBrandLogo } from "@/components/branding/dbin-brand-logo";
 import { LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { LCDBO_PARTNER_HREF, LCDBO_REGISTER_HREF, lcdboPublicHref } from "@/lib/lcdbo/content";
+import {
+  lcdboInstitutionalFramework,
+  lcdboPolicyAlignment,
+  lcdboStrategicObjectives,
+} from "@/lib/lcdbo/programme-model";
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
 
 export const metadata: Metadata = {
@@ -97,6 +102,7 @@ export default function LcdboAboutPage() {
       <BlueprintHero />
       <WhyLcdboSection />
       <WhatLcdboIsSection />
+      <PolicyAlignmentSection />
       <ModelJourneySection />
       <DbinPositioningSection />
       <OneClusterSection />
@@ -168,12 +174,56 @@ function OneClusterSection() {
   const flow = [
     { value: "774", label: "LGAs", icon: MapPinned },
     { value: "774", label: "Industrial Clusters", icon: Factory },
-    { value: "5,000", label: "MSMEs per Cluster", icon: Users },
+    { value: "5,000", label: "MSMEs per LGA projection baseline", icon: Users },
     { value: "One", label: "Production Network", icon: Network },
     { value: "Growth", label: "Jobs, Exports & Industry", icon: TrendingUp },
   ];
   return (
     <section className="relative overflow-hidden bg-[#0B2E59] px-4 py-16 text-white sm:px-6 lg:py-24"><div className="absolute inset-0 opacity-15 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:30px_30px]" /><div className="relative mx-auto max-w-7xl"><SectionHeading dark eyebrow="The national vision" title="One Cluster. Every Local Government." description="Each Local Government Area can be organised around its strongest economic advantage—cocoa, leather, rubber, seafood, rice, textiles, agro-processing, technology or creative industries." /><div className="mt-10 grid gap-3 lg:grid-cols-5">{flow.map((item, index) => { const Icon = item.icon; return <div key={item.label} className="relative"><article className="group flex min-h-44 flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.055] p-5 transition hover:-translate-y-1 hover:border-[#efc85d]/40 hover:bg-white/[0.08]"><Icon className="h-6 w-6 text-emerald-400" /><div><p className="text-3xl font-black tracking-tight">{item.value}</p><p className="mt-2 text-xs font-bold leading-5 text-slate-300">{item.label}</p></div></article>{index < flow.length - 1 ? <ArrowDown className="mx-auto my-2 h-5 w-5 text-[#efc85d] lg:absolute lg:-right-5 lg:top-1/2 lg:z-10 lg:m-0 lg:-translate-y-1/2 lg:-rotate-90" /> : null}</div>; })}</div></div></section>
+  );
+}
+
+function PolicyAlignmentSection() {
+  return (
+    <section className="bg-white px-4 py-16 sm:px-6 lg:py-20">
+      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr]">
+        <div>
+          <SectionHeading
+            eyebrow="Policy alignment"
+            title="Designed to connect national policy with local production."
+            description="The source model positions LCDBO as a coordination layer across existing industrial, innovation, export, skills, formalisation and infrastructure priorities."
+          />
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-950">
+            Policy references are presented as alignment context from the approved LCDBO source material, not as fabricated endorsements or partner announcements.
+          </div>
+        </div>
+        <div className="grid gap-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {lcdboPolicyAlignment.map((item) => (
+              <article key={item} className="rounded-2xl border border-slate-200 bg-[#f8fafc] p-4 text-sm font-black text-[#06172f]">
+                <Check className="mb-3 h-5 w-5 text-[#008751]" />{item}
+              </article>
+            ))}
+          </div>
+          <div className="rounded-[26px] bg-[#06172f] p-6 text-white">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#efc85d]">Strategic objectives</p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {lcdboStrategicObjectives.map((objective) => (
+                <p key={objective} className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-bold text-slate-100">{objective}</p>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {lcdboInstitutionalFramework.slice(0, 4).map((actor) => (
+              <article key={actor.actor} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-black text-[#06172f]">{actor.actor}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{actor.contribution}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

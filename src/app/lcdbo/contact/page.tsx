@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BadgeCheck, Banknote, Building2, Factory, Handshake, Users } from "lucide-react";
 import { LcdboPageHero, LcdboSection, LcdboShell } from "@/components/lcdbo/lcdbo-shell";
 import { lcdboInstitutionalAttribution } from "@/lib/lcdbo/public-governance";
 import { LCDBO_CANONICAL_ORIGIN } from "@/lib/routing/dbin-hosts";
@@ -13,6 +14,15 @@ export const metadata: Metadata = {
 };
 
 export default function LcdboContactPage() {
+  const pathways = [
+    { title: "MSME participation", detail: "Business registration, DBIN identity and cluster interest.", icon: Users },
+    { title: "State and LGA coordination", detail: "Local product pathways, industrial land and mobilisation.", icon: Building2 },
+    { title: "Investment engagement", detail: "Capital deployment, guarantees and structured industrial pipelines.", icon: Banknote },
+    { title: "Technical partnership", detail: "Engineering, standards, machinery, skills and infrastructure support.", icon: Factory },
+    { title: "Institutional partnership", detail: "Federal, state, development-finance and association coordination.", icon: Handshake },
+    { title: "Programme model enquiries", detail: "Authoritative milestones, KPI governance and implementation phases.", icon: BadgeCheck },
+  ] as const;
+
   return (
     <LcdboShell>
       <LcdboPageHero
@@ -32,6 +42,7 @@ export default function LcdboContactPage() {
                 <option>Investor opportunity</option>
                 <option>State government participation</option>
                 <option>Technical support</option>
+                <option>Programme model and milestones</option>
               </select></label>
             <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600 md:col-span-2">Message<textarea name="message" className="min-h-32 rounded-md border border-slate-200 px-3 py-3 text-sm font-medium normal-case tracking-normal text-slate-900" /></label>
             <button type="button" className="rounded-md bg-[#06172f] px-4 py-3 text-sm font-black text-white md:col-span-2">
@@ -49,6 +60,20 @@ export default function LcdboContactPage() {
               <p className="mt-2 text-xs leading-5 text-slate-300">{lcdboInstitutionalAttribution.publicContactStatus}</p>
             </div>
           </aside>
+        </div>
+      </LcdboSection>
+      <LcdboSection title="Stakeholder enquiry pathways" description="LCDBO enquiries are organised around the participation routes needed for a national industrial transformation programme.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {pathways.map((pathway) => {
+            const Icon = pathway.icon;
+            return (
+              <article key={pathway.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <Icon className="h-6 w-6 text-[#008751]" />
+                <h2 className="mt-4 text-lg font-black text-[#06172f]">{pathway.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{pathway.detail}</p>
+              </article>
+            );
+          })}
         </div>
       </LcdboSection>
     </LcdboShell>

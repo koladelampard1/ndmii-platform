@@ -10,6 +10,7 @@ import {
   safePublicResources,
   type LcdboMeasureClassification,
 } from "@/lib/lcdbo/public-governance";
+import { lcdboAuthoritativeMeasures, lcdboImplementationPhases } from "@/lib/lcdbo/programme-model";
 
 const stakeholders: Array<{ title: string; benefit: string; icon: LucideIcon }> = [
   { title: "MSMEs", benefit: "Grow production capacity and access new markets.", icon: BriefcaseBusiness },
@@ -68,6 +69,7 @@ export function LcdboLanding({ strategicPartnerCount }: { strategicPartnerCount:
     <LandingHero />
     <InstitutionalLeadershipBand />
     <ImpactStrip strategicPartnerCount={strategicPartnerCount} />
+    <AuthoritativeProgrammePathway />
     <WhyIndustrialTransformation />
     <ProgrammeDeliveryModel />
     <RmrdcLeadershipSection />
@@ -195,10 +197,50 @@ function ImpactStrip({ strategicPartnerCount }: { strategicPartnerCount: number 
     "msme-lga-ambition": Users,
     "investment-mobilisation": TrendingUp,
     "one-trillion-economy": Factory,
+    "top-ten-economy-2035": Globe2,
+    "jobs-2030": BriefcaseBusiness,
     "strategic-partner-ecosystem": Network,
   };
 
   return <section id="programme-measures" aria-labelledby="programme-measures-title" className="relative z-10 bg-[#06172f] px-4 pb-10 sm:px-6"><div className="mx-auto -mt-8 max-w-7xl rounded-3xl border border-white/10 bg-[#091f3c]/95 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">{metrics.map((metric) => { const Icon = iconByKey[metric.key] ?? Network; return <article key={metric.key} className="group relative min-h-40 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-white transition duration-300 hover:-translate-y-1 hover:border-[#efc85d]/45 hover:bg-white/[0.075] hover:shadow-xl"><span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#efc85d]/70 to-transparent opacity-0 transition group-hover:opacity-100" /><Icon className="h-5 w-5 text-[#efc85d] transition group-hover:scale-110" /><p className="mt-4 text-3xl font-black tracking-[-0.04em] sm:text-4xl">{metric.value}</p><h2 id={metric.key === "national-design-scope" ? "programme-measures-title" : undefined} className="mt-1 text-sm font-bold leading-5 text-white">{metric.label}</h2><p className="mt-3 inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-200">{metric.classification}</p><p className="mt-3 text-[11px] leading-5 text-slate-300">{metric.note}</p></article>; })}</div><p className="mt-4 rounded-2xl border border-[#efc85d]/20 bg-[#efc85d]/10 px-4 py-3 text-xs font-semibold leading-5 text-[#f7df9b]">{lcdboMeasureDisclosure}</p></div></section>;
+}
+
+function AuthoritativeProgrammePathway() {
+  const featuredMeasures = lcdboAuthoritativeMeasures.filter((measure) =>
+    ["lga-industrial-development", "investment-mobilisation-2030", "jobs-2030", "top-ten-economy-2035"].includes(measure.key),
+  );
+
+  return <section className="bg-[#f3f6f9] px-4 py-14 sm:px-6 lg:py-16">
+    <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#008751]">Authoritative programme pathway</p>
+        <h2 className="mt-3 text-4xl font-black tracking-tight text-[#06172f] sm:text-5xl">From 774-LGA ambition to phased industrial delivery.</h2>
+        <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">The LCDBO source model frames a national pathway across local raw-material intelligence, enterprise formalisation, industrial clusters, infrastructure, investment and market access.</p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <PrimaryLink href={lcdboPublicHref("/programme-and-milestones")}>View Programme and Milestones</PrimaryLink>
+          <Link href={lcdboPublicHref("/opportunities")} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-[#06172f] transition hover:-translate-y-0.5 hover:border-[#008751]/30 hover:text-[#008751]">Investment Pathways</Link>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {featuredMeasures.map((measure) => (
+          <article key={measure.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D4A017]/40 hover:shadow-lg">
+            <p className="text-3xl font-black tracking-tight text-[#06172f]">{measure.value}</p>
+            <h3 className="mt-2 text-sm font-black leading-5 text-[#06172f]">{measure.label}</h3>
+            <p className="mt-3 rounded-full bg-emerald-50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#008751]">{measure.classification}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+    <div className="mx-auto mt-8 grid max-w-7xl gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {lcdboImplementationPhases.map((phase) => (
+        <article key={phase.phase} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#008751]">{phase.phase} · {phase.timeframe}</p>
+          <h3 className="mt-3 text-lg font-black text-[#06172f]">{phase.title}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{phase.focus.slice(0, 3).join(" · ")}</p>
+        </article>
+      ))}
+    </div>
+  </section>;
 }
 
 function WhyIndustrialTransformation() {

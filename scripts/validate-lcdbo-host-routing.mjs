@@ -60,6 +60,7 @@ const publicRoutes = [
   "contact/page",
   "events/page",
   "model/page",
+  "programme-and-milestones/page",
   "opportunities/page",
   "partners/page",
   "resources/page",
@@ -104,7 +105,7 @@ assert(!registry.includes('futureHosts: ["lcdbo.dbin.ng"]'), "LCDBO registry ent
 
 assert(sitemap.includes("LCDBO_CANONICAL_ORIGIN"), "Sitemap must emit LCDBO entries from the canonical subdomain.");
 assert(!sitemap.includes('"/lcdbo"'), "Sitemap PUBLIC_ROUTES must not emit dbin.ng/lcdbo as a competing canonical route.");
-for (const pathName of ["", "/about", "/clusters", "/clusters/map", "/clusters/catalogue", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model"]) {
+for (const pathName of ["", "/about", "/clusters", "/clusters/map", "/clusters/catalogue", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model", "/programme-and-milestones"]) {
   assert(sitemap.includes(`"${pathName}"`) || pathName === "", `Sitemap is missing canonical LCDBO route ${pathName || "/"}.`);
 }
 
@@ -131,6 +132,7 @@ assert.equal(resolveDbinRewritePath("lcdbo", "/"), "/lcdbo");
 assert.equal(resolveDbinRewritePath("lcdbo", "/about"), "/lcdbo/about");
 assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/map"), "/lcdbo/clusters/map");
 assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/catalogue"), "/lcdbo/clusters/catalogue");
+assert.equal(resolveDbinRewritePath("lcdbo", "/programme-and-milestones"), "/lcdbo/programme-and-milestones");
 assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/state/lagos"), "/lcdbo/clusters/state/lagos");
 assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/lga/lga-lagos-mushin"), "/lcdbo/clusters/lga/lga-lagos-mushin");
 assert.equal(resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo/my-work"), null);

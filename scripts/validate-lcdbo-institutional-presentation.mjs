@@ -15,8 +15,9 @@ const resources = read("src/app/lcdbo/resources/page.tsx");
 const contact = read("src/app/lcdbo/contact/page.tsx");
 const governance = read("src/lib/lcdbo/public-governance.ts");
 const contentFile = read("src/lib/lcdbo/content.ts");
+const programmeModel = read("src/lib/lcdbo/programme-model.ts");
 const hosts = read("src/lib/routing/dbin-hosts.ts");
-const content = `${shell}\n${landing}\n${resources}\n${contact}\n${governance}\n${contentFile}`;
+const content = `${shell}\n${landing}\n${resources}\n${contact}\n${governance}\n${contentFile}\n${programmeModel}`;
 
 for (const phrase of [
   "Raw Materials Research and Development Council",
@@ -31,7 +32,7 @@ for (const phrase of [
   "Anchored by the Raw Materials Research and Development Council",
   "Programme readiness information",
   "Programme resources",
-  "Figures shown include programme ambitions, configured targets and reference geography",
+  "Programme figures are presented as source-backed ambitions, projections, targets or reference geography",
   "Enabled by governed digital infrastructure and accountable programme operations",
   "info@lcdbo.com",
 ]) {
@@ -77,7 +78,7 @@ for (const resourceState of ['status: "published"', 'status: "scheduled"', "href
 for (const requiredMeasure of [
   "36 States + FCT",
   "within national design scope",
-  "Up to 5,000",
+  "5,000",
   "$100B",
   "long-term investment mobilisation ambition",
   "Contribution pathway toward Nigeria’s $1T economy ambition",
@@ -92,7 +93,6 @@ for (const unsupportedClaim of [
   "nationwide implementation already active",
   "thousands of businesses supported",
   "revenue generated",
-  "jobs already created",
   "States covered",
   "5,000+ MSMEs per LGA",
   "$100B Investment mobilisation",

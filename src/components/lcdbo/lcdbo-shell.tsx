@@ -16,6 +16,7 @@ import { lcdboInstitutionalAttribution, lcdboStructuredData } from "@/lib/lcdbo/
 const navItems: LcdboNavItem[] = [
   { href: lcdboPublicHref("/about"), label: "About" },
   { href: lcdboPublicHref("/model"), label: "Model" },
+  { href: lcdboPublicHref("/programme-and-milestones"), label: "Milestones" },
   { href: lcdboPublicHref("/clusters"), label: "Clusters" },
   { href: lcdboPublicHref("/partners"), label: "Partners" },
   { href: lcdboPublicHref("/opportunities"), label: "Opportunities" },
