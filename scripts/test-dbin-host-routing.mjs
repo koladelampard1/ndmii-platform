@@ -134,9 +134,12 @@ test("lcdbo.dbin.ng resolves to the LCDBO surface", () => {
 
 test("LCDBO host presents clean public paths while reusing existing /lcdbo routes internally", () => {
   assert.equal(resolveDbinRewritePath("lcdbo", "/"), "/lcdbo");
-  for (const pathName of ["/about", "/clusters", "/contact", "/events", "/model", "/opportunities", "/partners", "/resources"]) {
+  for (const pathName of ["/about", "/clusters", "/clusters/catalogue", "/clusters/map", "/contact", "/events", "/model", "/opportunities", "/partners", "/resources"]) {
     assert.equal(resolveDbinRewritePath("lcdbo", pathName), `/lcdbo${pathName}`);
   }
+  assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/state/lagos"), "/lcdbo/clusters/state/lagos");
+  assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/lga/lga-lagos-mushin"), "/lcdbo/clusters/lga/lga-lagos-mushin");
+  assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/lcdb-o-public-ref"), "/lcdbo/clusters/lcdb-o-public-ref");
   assert.equal(resolveDbinRewritePath("lcdbo", "/reports"), null);
   assert.equal(resolveDbinRewritePath("lcdbo", "/unknown-public-page"), null);
 });

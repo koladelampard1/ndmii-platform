@@ -7,6 +7,8 @@ export const LCDBO_PUBLIC_PATHS = new Set([
   "/",
   "/about",
   "/clusters",
+  "/clusters/catalogue",
+  "/clusters/map",
   "/contact",
   "/events",
   "/model",
@@ -108,7 +110,17 @@ function cleanLcdboPublicPath(pathname: string) {
 }
 
 function isLcdboPublicPath(pathname: string) {
-  return LCDBO_PUBLIC_PATHS.has(cleanLcdboPublicPath(pathname));
+  const publicPath = cleanLcdboPublicPath(pathname);
+  return (
+    LCDBO_PUBLIC_PATHS.has(publicPath)
+    || publicPath.startsWith("/clusters/state/")
+    || publicPath.startsWith("/clusters/lga/")
+    || (
+      publicPath.startsWith("/clusters/")
+      && publicPath !== "/clusters/reports"
+      && publicPath !== "/clusters/admin"
+    )
+  );
 }
 
 export function getLcdboCanonicalPath(pathname: string) {

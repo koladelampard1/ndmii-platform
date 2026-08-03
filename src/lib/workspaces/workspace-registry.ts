@@ -377,6 +377,7 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
       { label: "Reports", href: "/dashboard/lcdbo/reports" },
       { label: "Geography", href: "/dashboard/lcdbo/geography" },
       { label: "Data Quality", href: "/dashboard/lcdbo/data-quality" },
+      { label: "Source Intelligence", href: "/dashboard/lcdbo/source-intelligence" },
       { label: "Briefings", href: "/dashboard/lcdbo/briefings" },
     ],
     navigationSections: [
@@ -404,6 +405,7 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
         { label: "Evidence", href: "/dashboard/lcdbo/evidence" },
         { label: "Reports", href: "/dashboard/lcdbo/reports" },
         { label: "Data Quality", href: "/dashboard/lcdbo/data-quality" },
+        { label: "Source Intelligence", href: "/dashboard/lcdbo/source-intelligence" },
         { label: "Briefings", href: "/dashboard/lcdbo/briefings" },
       ] },
     ],

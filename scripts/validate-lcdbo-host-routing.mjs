@@ -48,7 +48,22 @@ const lcdboContent = read("src/lib/lcdbo/content.ts");
 const lcdboShell = read("src/components/lcdbo/lcdbo-shell.tsx");
 const authSessionRoute = read("src/app/api/auth/session/route.ts");
 
-const publicRoutes = ["page", "about/page", "clusters/page", "contact/page", "events/page", "model/page", "opportunities/page", "partners/page", "resources/page"];
+const publicRoutes = [
+  "page",
+  "about/page",
+  "clusters/page",
+  "clusters/map/page",
+  "clusters/catalogue/page",
+  "clusters/state/[stateSlug]/page",
+  "clusters/lga/[lgaPublicReference]/page",
+  "clusters/[publicClusterReference]/page",
+  "contact/page",
+  "events/page",
+  "model/page",
+  "opportunities/page",
+  "partners/page",
+  "resources/page",
+];
 for (const route of publicRoutes) {
   assert(exists(`src/app/lcdbo/${route}.tsx`), `Missing LCDBO public route file: src/app/lcdbo/${route}.tsx`);
 }
@@ -89,7 +104,7 @@ assert(!registry.includes('futureHosts: ["lcdbo.dbin.ng"]'), "LCDBO registry ent
 
 assert(sitemap.includes("LCDBO_CANONICAL_ORIGIN"), "Sitemap must emit LCDBO entries from the canonical subdomain.");
 assert(!sitemap.includes('"/lcdbo"'), "Sitemap PUBLIC_ROUTES must not emit dbin.ng/lcdbo as a competing canonical route.");
-for (const pathName of ["", "/about", "/clusters", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model"]) {
+for (const pathName of ["", "/about", "/clusters", "/clusters/map", "/clusters/catalogue", "/opportunities", "/partners", "/resources", "/contact", "/events", "/model"]) {
   assert(sitemap.includes(`"${pathName}"`) || pathName === "", `Sitemap is missing canonical LCDBO route ${pathName || "/"}.`);
 }
 
@@ -114,6 +129,10 @@ assert.equal(resolveDbinHostSurface("www.lcdbo.com"), "lcdbo");
 assert.equal(resolveDbinHostSurface("lcdbo.localhost:3000"), "lcdbo");
 assert.equal(resolveDbinRewritePath("lcdbo", "/"), "/lcdbo");
 assert.equal(resolveDbinRewritePath("lcdbo", "/about"), "/lcdbo/about");
+assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/map"), "/lcdbo/clusters/map");
+assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/catalogue"), "/lcdbo/clusters/catalogue");
+assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/state/lagos"), "/lcdbo/clusters/state/lagos");
+assert.equal(resolveDbinRewritePath("lcdbo", "/clusters/lga/lga-lagos-mushin"), "/lcdbo/clusters/lga/lga-lagos-mushin");
 assert.equal(resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo/my-work"), null);
 assert.equal(resolveDbinRewritePath("lcdbo", "/api/lcdbo/delivery/export/workstreams"), null);
 assert.equal(resolveDbinRewritePath("lcdbo", "/reports"), null);
