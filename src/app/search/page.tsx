@@ -3,6 +3,7 @@ import { Building2, CheckCircle2, Grid3X3, LayoutList, ListFilter, Map, MapPin, 
 import { Navbar } from "@/components/layout/navbar";
 import { ProviderCard } from "@/components/marketplace/provider-card";
 import { SearchSubmitButton } from "@/components/marketplace/search-submit-button";
+import { DBIN_PUBLIC_MARKETPLACE_INDICATORS } from "@/lib/content/dbin-public-marketplace";
 import { getMarketplaceFilterOptions, searchMarketplaceProviders } from "@/lib/data/marketplace";
 
 const FALLBACK_BUSINESS_TYPES = [
@@ -110,9 +111,9 @@ export default async function SearchPage({
   const safeSpecializations = FALLBACK_SPECIALIZATIONS;
 
   const stats = [
-    { icon: Building2, value: "12,842+", label: "Verified Businesses" },
-    { icon: Users, value: "38+", label: "Associations onboarded" },
-    { icon: MapPin, value: "11", label: "States covered" },
+    { icon: Building2, value: DBIN_PUBLIC_MARKETPLACE_INDICATORS[0].value, label: "Verified Businesses" },
+    { icon: Users, value: DBIN_PUBLIC_MARKETPLACE_INDICATORS[1].value, label: "Associations onboarded" },
+    { icon: MapPin, value: DBIN_PUBLIC_MARKETPLACE_INDICATORS[2].value, label: "States covered" },
     { icon: ShieldCheck, value: "98.7%", label: "Verification accuracy" },
   ];
 
