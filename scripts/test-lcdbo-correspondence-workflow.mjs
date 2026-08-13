@@ -40,6 +40,8 @@ const delegations = loadTsModule("src/lib/lcdbo-correspondence/delegations.ts");
 const evidence = loadTsModule("src/lib/lcdbo-correspondence/evidence.ts");
 const reminders = loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
 const email = loadTsModule("src/lib/lcdbo-correspondence/email.ts");
+const originalMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813120000_lcdbo_correspondence_management.sql"), "utf8");
+const referencePatchMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql"), "utf8");
 
 const fixtureRecord = {
   id: "record-1",
@@ -138,6 +140,85 @@ test("reference format fixtures cover issuer, direction and year semantics", () 
   for (const reference of references) {
     assert.match(reference, /^LCDBO\/(JNT|RMRDC|RFNL)\/\d{4}\/(IN|OUT)\/\d{6}$/);
   }
+});
+
+test("reference generator patch removes ambiguous identifiers and preserves safe upsert", () => {
+  assert.match(referencePatchMigration, /target_reference_year integer/i);
+  assert.doesNotMatch(referencePatchMigration, /declare[\s\S]*\breference_year integer\b/i);
+  assert.match(referencePatchMigration, /from public\.programmes as p/i);
+  assert.match(referencePatchMigration, /insert into public\.lcdbo_correspondence_reference_counters as c/i);
+  assert.match(referencePatchMigration, /on conflict \(programme_id, issuer, direction, reference_year\)/i);
+  assert.match(referencePatchMigration, /last_sequence = c\.last_sequence \+ 1/i);
+  assert.match(referencePatchMigration, /returning c\.last_sequence into next_sequence/i);
+  assert.doesNotMatch(referencePatchMigration, /\bmax\s*\(/i);
+});
+
+test("reference generator validates issuers, directions and output contract", () => {
+  assert.match(referencePatchMigration, /target_issuer not in \('JNT', 'RMRDC', 'RFNL'\)/i);
+  assert.match(referencePatchMigration, /target_direction not in \('IN', 'OUT'\)/i);
+
+  const validCases = [
+    { issuer: "JNT", direction: "OUT", year: 2026, sequence: 1, expected: "LCDBO/JNT/2026/OUT/000001" },
+    { issuer: "RMRDC", direction: "OUT", year: 2026, sequence: 1, expected: "LCDBO/RMRDC/2026/OUT/000001" },
+    { issuer: "RFNL", direction: "IN", year: 2026, sequence: 1, expected: "LCDBO/RFNL/2026/IN/000001" },
+  ];
+
+  for (const item of validCases) {
+    const reference = `LCDBO/${item.issuer}/${item.year}/${item.direction}/${String(item.sequence).padStart(6, "0")}`;
+    assert.equal(reference, item.expected);
+    assert.match(reference, /^LCDBO\/(JNT|RMRDC|RFNL)\/\d{4}\/(IN|OUT)\/\d{6}$/);
+  }
+});
+
+test("reference schema preserves uniqueness, cancelled non-reuse and year partitioning guarantees", () => {
+  assert.match(originalMigration, /constraint lcdbo_correspondence_reference_unique unique \(programme_id, issuer, direction, reference_year\)/i);
+  assert.match(originalMigration, /reference text not null unique/i);
+  assert.match(originalMigration, /constraint lcdbo_correspondence_reference_check check \(reference ~ '\^LCDBO\/\(JNT\|RMRDC\|RFNL\)\/\[0-9\]\{4\}\/\(IN\|OUT\)\/\[0-9\]\{6\}\$'\)/i);
+  assert.match(originalMigration, /status in \(\s*'draft'[\s\S]*'cancelled'/i);
+
+  const counterKey = (issuer, year, direction) => `${issuer}:${year}:${direction}`;
+  const counters = new Map();
+  const nextReference = (issuer, year, direction) => {
+    assert.match(issuer, /^(JNT|RMRDC|RFNL)$/);
+    assert.match(direction, /^(IN|OUT)$/);
+    const key = counterKey(issuer, year, direction);
+    const next = (counters.get(key) ?? 0) + 1;
+    counters.set(key, next);
+    return `LCDBO/${issuer}/${year}/${direction}/${String(next).padStart(6, "0")}`;
+  };
+
+  assert.equal(nextReference("JNT", 2026, "OUT"), "LCDBO/JNT/2026/OUT/000001");
+  assert.equal(nextReference("JNT", 2026, "OUT"), "LCDBO/JNT/2026/OUT/000002");
+  assert.equal(nextReference("JNT", 2027, "OUT"), "LCDBO/JNT/2027/OUT/000001");
+  assert.equal(nextReference("JNT", 2026, "IN"), "LCDBO/JNT/2026/IN/000001");
+  assert.equal(nextReference("RMRDC", 2026, "OUT"), "LCDBO/RMRDC/2026/OUT/000001");
+
+  const cancelledReference = nextReference("RFNL", 2026, "IN");
+  assert.equal(cancelledReference, "LCDBO/RFNL/2026/IN/000001");
+  assert.equal(nextReference("RFNL", 2026, "IN"), "LCDBO/RFNL/2026/IN/000002");
+});
+
+test("reference generation permissions remain restricted to authenticated users", () => {
+  assert.match(referencePatchMigration, /security definer/i);
+  assert.match(referencePatchMigration, /set search_path = public/i);
+  assert.match(referencePatchMigration, /revoke all on function public\.generate_lcdbo_correspondence_reference\(text, text, timestamptz\) from public/i);
+  assert.match(referencePatchMigration, /grant execute on function public\.generate_lcdbo_correspondence_reference\(text, text, timestamptz\) to authenticated/i);
+  assert.doesNotMatch(referencePatchMigration, /grant execute[\s\S]*\bto anon\b/i);
+});
+
+test("reference generation design is safe for concurrent calls", async () => {
+  assert.match(referencePatchMigration, /on conflict \(programme_id, issuer, direction, reference_year\)[\s\S]*do update set[\s\S]*last_sequence = c\.last_sequence \+ 1/i);
+  const issued = new Set();
+  let sequence = 0;
+  const nextReference = async () => {
+    sequence += 1;
+    return `LCDBO/JNT/2026/OUT/${String(sequence).padStart(6, "0")}`;
+  };
+  const references = await Promise.all(Array.from({ length: 25 }, () => nextReference()));
+  for (const reference of references) issued.add(reference);
+  assert.equal(issued.size, references.length);
+  assert.equal(references.at(0), "LCDBO/JNT/2026/OUT/000001");
+  assert.equal(references.at(-1), "LCDBO/JNT/2026/OUT/000025");
 });
 
 test("template placeholder validation blocks incomplete templates", () => {
