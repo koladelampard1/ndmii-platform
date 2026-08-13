@@ -166,6 +166,8 @@ export function isPublicPath(path: string): boolean {
     path.startsWith("/ekirs/") ||
     path === "/lcdbo" ||
     path.startsWith("/lcdbo/") ||
+    path === "/correspondence" ||
+    path.startsWith("/correspondence/") ||
     path === "/sample-id-card" ||
     path.startsWith("/provider/") ||
     path.startsWith("/providers/") ||
@@ -204,7 +206,8 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (role === "public") legacyAllowed = false;
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
-  else if (role === "workspace_user" && routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = true;
+  else if (role === "workspace_user" && (routeMatchesPrefix(path, "/dashboard/lcdbo") || routeMatchesPrefix(path, "/dashboard/correspondence"))) legacyAllowed = true;
+  else if (routeMatchesPrefix(path, "/dashboard/correspondence")) legacyAllowed = canAccessWorkspaceRoute({ role }, "correspondence", path).allowed;
   else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed;
   else if (routeMatchesPrefix(path, "/dashboard/ekirs")) legacyAllowed = canAccessWorkspaceRoute({ role }, "ekirs", path).allowed;
   // Property workspace performs module/scoped permission checks at page level.
@@ -307,6 +310,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
+    { href: "/dashboard/correspondence", label: "LCDBO Correspondence" },
     { href: "/dashboard/property", label: "Property Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
@@ -321,6 +325,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/admin/complaints", label: "Complaints" },
     { href: "/dashboard/impact-intelligence", label: "Impact Intelligence" },
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
+    { href: "/dashboard/correspondence", label: "LCDBO Correspondence" },
     { href: "/dashboard/property", label: "Property Workspace" },
     { href: "/dashboard/admin/public-verification", label: "Public Verification" },
   ],
@@ -338,6 +343,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
   ],
   programme_officer: [
     { href: "/dashboard/lcdbo", label: "LCDBO Workspace" },
+    { href: "/dashboard/correspondence", label: "LCDBO Correspondence" },
     { href: "/dashboard/impact-intelligence", label: "Overview" },
     { href: "/dashboard/impact-intelligence/programmes", label: "Programmes" },
     { href: "/dashboard/impact-intelligence/cohorts", label: "Cohorts" },

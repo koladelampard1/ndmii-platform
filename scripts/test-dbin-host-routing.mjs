@@ -27,6 +27,7 @@ vm.runInNewContext(transpiled, {
 });
 
 const {
+  CORRESPONDENCE_CANONICAL_ORIGIN,
   LCDBO_CANONICAL_ORIGIN,
   resolveDbinCanonicalRedirectUrl,
   resolveDbinHostSurface,
@@ -125,11 +126,24 @@ test("EKIRS host keeps intentional public support routes direct", () => {
 
 test("lcdbo.dbin.ng resolves to the LCDBO surface", () => {
   assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
+  assert.equal(resolveDbinHostSurface("correspondence.dbin.ng"), "correspondence");
+  assert.equal(resolveDbinHostSurface("correspondence.lcdbo.com"), "correspondence");
   assert.equal(resolveDbinHostSurface("lcdbo.com"), "lcdbo");
   assert.equal(resolveDbinHostSurface("www.lcdbo.com"), "lcdbo");
   assert.equal(resolveDbinHostSurface("LCDBO.DBIN.NG:443"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lcdbo.localhost:3000"), "lcdbo");
   assert.equal(resolveDbinHostSurface("lcdbo.dbin.local:3000"), "lcdbo");
+});
+
+test("correspondence host resolves to the LCDBO correspondence surface", () => {
+  assert.equal(resolveDbinHostSurface("correspondence.dbin.ng"), "correspondence");
+  assert.equal(resolveDbinHostSurface("CORRESPONDENCE.DBIN.NG:443"), "correspondence");
+  assert.equal(resolveDbinHostSurface("correspondence.lcdbo.com"), "correspondence");
+  assert.equal(resolveDbinRewritePath("correspondence", "/"), "/correspondence");
+  assert.equal(resolveDbinRewritePath("correspondence", "/verify/abc123"), "/correspondence/verify/abc123");
+  assert.equal(resolveDbinRewritePath("correspondence", "/dashboard/correspondence"), null);
+  assert.equal(resolveDbinCanonicalRedirectUrl("correspondence", new URL("https://correspondence.dbin.ng/dashboard"))?.toString(), `${CORRESPONDENCE_CANONICAL_ORIGIN}/dashboard/correspondence`);
+  assert.equal(resolveDbinCanonicalRedirectUrl("correspondence", new URL("https://correspondence.dbin.ng/login"))?.toString(), `${CORRESPONDENCE_CANONICAL_ORIGIN}/login?workspace=correspondence`);
 });
 
 test("LCDBO host presents clean public paths while reusing existing /lcdbo routes internally", () => {

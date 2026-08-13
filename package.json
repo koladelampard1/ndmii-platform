@@ -25,6 +25,8 @@
     "validate:lcdbo-anchor-product-governance": "node scripts/validate-lcdbo-anchor-product-governance.mjs",
     "validate:lcdbo-public-cluster-catalogue": "node scripts/validate-lcdbo-public-cluster-catalogue.mjs",
     "validate:lcdbo-authoritative-programme-content": "node scripts/validate-lcdbo-authoritative-programme-content.mjs",
+    "validate:lcdbo-correspondence": "node scripts/validate-lcdbo-correspondence.mjs",
+    "test:lcdbo-correspondence": "node --test scripts/test-lcdbo-correspondence-workflow.mjs",
     "validate:state-revenue-framework": "node scripts/validate-state-revenue-framework.mjs",
     "validate:ekirs-sprint0": "node scripts/validate-ekirs-sprint0.mjs",
     "validate:state-revenue-sprint1": "node scripts/validate-state-revenue-sprint1.mjs",

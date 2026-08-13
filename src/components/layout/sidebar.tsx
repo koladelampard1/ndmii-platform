@@ -42,10 +42,14 @@ export async function Sidebar() {
       supabase.from("programmes").select("id").eq("slug", "local-content-development-beyond-oil").maybeSingle(),
     ]);
     const { data: scopedRoles } = programme?.id
-      ? await supabase.from("role_assignments").select("id,expires_at").eq("user_id", context.appUserId).eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "admin", "super_admin", "state_coordinator", "lga_coordinator", "cluster_manager"])
+      ? await supabase.from("role_assignments").select("role,expires_at").eq("user_id", context.appUserId).eq("scope_type", "programme").eq("scope_id", programme.id).eq("status", "active").in("role", ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "admin", "super_admin", "state_coordinator", "lga_coordinator", "cluster_manager", "correspondence_admin", "records_admin", "requester", "drafter", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat", "rmrdc_signatory", "roseate_signatory", "signatory_delegate", "dispatch_officer"])
       : { data: [] };
     const hasActiveScopedRole = (scopedRoles ?? []).some((assignment) => !assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now());
     if ((count ?? 0) > 0 || hasActiveScopedRole) navGroups.push({ label: "Programme Operations", items: [{ href: "/dashboard/lcdbo", label: "LCDBO Programme Operations" }] });
+    const hasCorrespondenceRole = (scopedRoles ?? []).some((assignment) => ["programme_officer", "institution_admin", "data_analyst", "auditor", "observer", "correspondence_admin", "records_admin", "requester", "drafter", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat", "rmrdc_signatory", "roseate_signatory", "signatory_delegate", "dispatch_officer"].includes(assignment.role) && (!assignment.expires_at || new Date(assignment.expires_at).getTime() > Date.now()));
+    if (hasCorrespondenceRole && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/correspondence"))) {
+      navGroups.push({ label: "Correspondence", items: [{ href: "/dashboard/correspondence", label: "LCDBO Correspondence" }] });
+    }
   }
 
   if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/property/register"))) {

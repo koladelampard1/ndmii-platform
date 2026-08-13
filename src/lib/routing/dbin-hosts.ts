@@ -1,7 +1,9 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lcdbo" | "lands" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lcdbo" | "correspondence" | "lands" | "unknown";
 
 export const LCDBO_CANONICAL_HOST = "lcdbo.dbin.ng";
 export const LCDBO_CANONICAL_ORIGIN = `https://${LCDBO_CANONICAL_HOST}`;
+export const CORRESPONDENCE_CANONICAL_HOST = "correspondence.dbin.ng";
+export const CORRESPONDENCE_CANONICAL_ORIGIN = `https://${CORRESPONDENCE_CANONICAL_HOST}`;
 export const LCDBO_INTERNAL_PUBLIC_ROOT = "/lcdbo";
 export const LCDBO_PUBLIC_PATHS = new Set([
   "/",
@@ -27,6 +29,7 @@ type HostRoutingConfig = {
   nrsHosts: Set<string>;
   ekirsHosts: Set<string>;
   lcdboHosts: Set<string>;
+  correspondenceHosts: Set<string>;
   landsHosts: Set<string>;
   localAppHosts: Set<string>;
 };
@@ -62,6 +65,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     nrsHosts: hostSet(process.env.DBIN_NRS_HOSTS, ["nrs.dbin.ng", "nrs.localhost", "nrs.dbin.local"]),
     ekirsHosts: hostSet(process.env.DBIN_EKIRS_HOSTS, ["ekirs.dbin.ng", "ekirs.localhost", "ekirs.dbin.local"]),
     lcdboHosts: hostSet(process.env.DBIN_LCDBO_HOSTS, [LCDBO_CANONICAL_HOST, "lcdbo.com", "www.lcdbo.com", "lcdbo.localhost", "lcdbo.dbin.local"]),
+    correspondenceHosts: hostSet(process.env.DBIN_CORRESPONDENCE_HOSTS, [CORRESPONDENCE_CANONICAL_HOST, "correspondence.lcdbo.com", "correspondence.localhost", "correspondence.dbin.local"]),
     landsHosts: hostSet(process.env.DBIN_LANDS_HOSTS, ["lands.dbin.ng"]),
     localAppHosts: hostSet(process.env.DBIN_LOCAL_APP_HOSTS, ["localhost", "127.0.0.1", "::1"]),
   };
@@ -79,6 +83,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.nrsHosts.has(hostname)) return "nrs";
   if (config.ekirsHosts.has(hostname)) return "ekirs";
   if (config.lcdboHosts.has(hostname)) return "lcdbo";
+  if (config.correspondenceHosts.has(hostname)) return "correspondence";
   if (config.landsHosts.has(hostname)) return "lands";
   return "unknown";
 }
@@ -160,6 +165,26 @@ export function resolveDbinCanonicalRedirectUrl(surface: DbinHostSurface, url: U
     }
   }
 
+  if (surface === "correspondence") {
+    if (pathname === "/dashboard") {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = "/dashboard/correspondence";
+      return redirectUrl;
+    }
+
+    if (pathname === "/login" && url.searchParams.get("workspace") !== "correspondence") {
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set("workspace", "correspondence");
+      return redirectUrl;
+    }
+
+    if (pathname === "/correspondence" || pathname.startsWith("/correspondence/")) {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = pathname === "/correspondence" ? "/" : pathname.slice("/correspondence".length);
+      return redirectUrl;
+    }
+  }
+
   return null;
 }
 
@@ -206,6 +231,15 @@ export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: strin
     if (pathname === "/register" || pathname.startsWith("/register/")) return null;
     if (pathname === "/contact" || pathname.startsWith("/contact/")) return null;
     return null;
+  }
+
+  if (surface === "correspondence") {
+    if (isDirectApplicationPath(pathname)) return null;
+    if (pathname === "/") return "/correspondence";
+    if (pathname === "/verify" || pathname.startsWith("/verify/")) return `/correspondence${pathname}`;
+    if (pathname === "/correspondence" || pathname.startsWith("/correspondence/")) return null;
+    if (pathname === "/register" || pathname.startsWith("/register/")) return null;
+    return "/correspondence";
   }
 
   if (surface === "admin") {

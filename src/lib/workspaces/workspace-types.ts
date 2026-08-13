@@ -6,6 +6,7 @@ export type WorkspaceId =
   | "admin"
   | "association"
   | "boi"
+  | "correspondence"
   | "fccpc"
   | "impact-intelligence"
   | "ekirs"
