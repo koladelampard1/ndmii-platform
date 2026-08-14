@@ -49,6 +49,7 @@ const workspaceAccessPolicy = loadTsModule("src/lib/workspaces/workspace-access-
 const originalMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813120000_lcdbo_correspondence_management.sql"), "utf8");
 const referencePatchMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql"), "utf8");
 const representativeMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260814120000_lcdbo_correspondence_representative_workflow.sql"), "utf8");
+const dataService = fs.readFileSync(path.join(process.cwd(), "src/lib/data/lcdbo-correspondence.ts"), "utf8");
 
 const fixtureRecord = {
   id: "record-1",
@@ -222,6 +223,11 @@ test("correspondence workspace admits only active LCDBO representative assignmen
     expires_at: null,
   }], { scopeId: programmeId, institutionId: "ekirs-institution" });
   assert.equal(unrelatedWorkspaceDecision.allowed, false, "representative cannot access unrelated institutional workspaces");
+});
+
+test("record detail loader disambiguates current, issued and historical versions", () => {
+  assert.match(dataService, /versions:lcdbo_correspondence_document_versions!lcdbo_correspondence_document_versions_record_id_fkey\(\*\)/);
+  assert.doesNotMatch(dataService, /versions:lcdbo_correspondence_document_versions\(\*\)/);
 });
 
 test("PDF generator creates draft watermark and final signature furniture", () => {

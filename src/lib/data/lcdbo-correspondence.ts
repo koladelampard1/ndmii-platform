@@ -314,7 +314,7 @@ export async function getCorrespondenceRecord(id: string, client?: Client) {
     .from("lcdbo_correspondence_records")
     .select(`
       ${RECORD_SELECT},
-      versions:lcdbo_correspondence_document_versions(*),
+      versions:lcdbo_correspondence_document_versions!lcdbo_correspondence_document_versions_record_id_fkey(*),
       actions:lcdbo_correspondence_workflow_actions(*),
       approvals:lcdbo_correspondence_approvals(*),
       signatures:lcdbo_correspondence_signature_events(id,record_id,document_version_id,signatory_id,signature_role,document_hash,signed_pdf_path,signed_at,signature_mode),

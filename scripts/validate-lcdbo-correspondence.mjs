@@ -165,6 +165,8 @@ assert.match(representativeWorkflow, /counterpartyStatusForRepresentative/, "cou
 assert.match(representativeWorkflow, /representativeBuckets/, "representative bucket helper missing");
 
 assert.match(data, /requireLcdboCorrespondenceAccess/, "access helper missing");
+assert.match(data, /versions:lcdbo_correspondence_document_versions!lcdbo_correspondence_document_versions_record_id_fkey\(\*\)/, "record detail loader must disambiguate document-version relationship");
+assert.doesNotMatch(data, /versions:lcdbo_correspondence_document_versions\(\*\)/, "record detail loader must not use ambiguous document-version embed");
 assert.match(data, /createCorrespondenceRecord/, "create workflow missing");
 assert.match(data, /recordCorrespondenceApproval/, "approval workflow missing");
 assert.match(data, /recordCorrespondenceSignature/, "signature workflow missing");
