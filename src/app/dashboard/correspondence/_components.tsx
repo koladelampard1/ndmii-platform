@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { LcdboCorrespondenceRecord } from "@/lib/lcdbo-correspondence/types";
+import { simplifiedStatusForRecord, simplifiedStatusLabel } from "@/lib/lcdbo-correspondence/representative-workflow";
 
 export function WorkspaceCard({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -17,6 +18,12 @@ export function WorkspaceCard({ title, description, children }: { title: string;
 export function StatusBadge({ status }: { status: string }) {
   const tone = status.includes("awaiting") ? "bg-amber-50 text-amber-800 ring-amber-200" : status === "sent" || status === "closed" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : status === "rejected" || status === "revoked" || status === "cancelled" ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-slate-100 text-slate-700 ring-slate-200";
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ring-1 ${tone}`}>{status.replaceAll("_", " ")}</span>;
+}
+
+export function RepresentativeStatusBadge({ record }: { record: LcdboCorrespondenceRecord }) {
+  const status = simplifiedStatusForRecord(record);
+  const tone = status.includes("awaiting") ? "bg-amber-50 text-amber-800 ring-amber-200" : status === "ready_to_send" || status === "sent" || status === "closed" || status === "response_received" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : status === "rejected" || status === "revoked" || status === "cancelled" ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-slate-100 text-slate-700 ring-slate-200";
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ring-1 ${tone}`}>{simplifiedStatusLabel(status)}</span>;
 }
 
 export function CorrespondenceTable({ records }: { records: LcdboCorrespondenceRecord[] }) {
@@ -38,8 +45,8 @@ export function CorrespondenceTable({ records }: { records: LcdboCorrespondenceR
               <th className="px-4 py-3">Reference</th>
               <th className="px-4 py-3">Subject</th>
               <th className="px-4 py-3">Issuer</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Owner</th>
+              <th className="px-4 py-3">Next step</th>
+              <th className="px-4 py-3">Responsible</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
@@ -50,7 +57,7 @@ export function CorrespondenceTable({ records }: { records: LcdboCorrespondenceR
                 </td>
                 <td className="min-w-[18rem] px-4 py-3 font-semibold text-slate-900">{record.subject}</td>
                 <td className="px-4 py-3 text-slate-600">{record.issuer}/{record.direction}</td>
-                <td className="px-4 py-3"><StatusBadge status={record.status} /></td>
+                <td className="px-4 py-3"><RepresentativeStatusBadge record={record} /></td>
                 <td className="px-4 py-3 text-slate-600">{record.owner?.full_name ?? record.owner?.email ?? "Unassigned"}</td>
               </tr>
             ))}

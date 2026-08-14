@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  createRepresentativeCorrespondenceLetter,
   createCorrespondenceRelationship,
   createCorrespondenceRecord,
+  decideRepresentativeCounterpartyLetter,
   generateCorrespondenceNotificationJobs,
   recordCorrespondenceApproval,
   recordCorrespondenceDeliveryEvidence,
@@ -12,7 +14,9 @@ import {
   recordCorrespondenceResponse,
   recordCorrespondenceSignature,
   requireLcdboCorrespondenceAccess,
+  saveRepresentativeDraftVersion,
   sendCorrespondenceEmailDispatch,
+  submitRepresentativeLetterToCounterparty,
   transitionCorrespondenceContactStatus,
   transitionCorrespondenceDeliveryEvidence,
   transitionCorrespondenceDelegation,
@@ -50,6 +54,80 @@ export async function createCorrespondenceAction(formData: FormData) {
   } catch (error) {
     console.warn("[lcdbo-correspondence] create failed", error instanceof Error ? error.message : String(error));
     failure(redirectTo, "correspondence_create_failed");
+  }
+}
+
+export async function createRepresentativeLetterAction(formData: FormData) {
+  const redirectTo = String(formData.get("redirect_to") ?? "/dashboard/correspondence/create");
+  try {
+    const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("create");
+    const record = await createRepresentativeCorrespondenceLetter({
+      formData,
+      actorUserId: ctx.appUserId!,
+      programmeId: programme.id,
+      client: supabase,
+    });
+    success(`/dashboard/correspondence/${record.id}`, "representative_letter_created");
+  } catch (error) {
+    console.warn("[lcdbo-correspondence] representative create failed", error instanceof Error ? error.message : String(error));
+    failure(redirectTo, "representative_letter_create_failed");
+  }
+}
+
+export async function submitRepresentativeLetterAction(formData: FormData) {
+  const recordId = String(formData.get("record_id") ?? "");
+  const redirectTo = String(formData.get("redirect_to") ?? `/dashboard/correspondence/${recordId}`);
+  try {
+    const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("sign");
+    await submitRepresentativeLetterToCounterparty({
+      recordId,
+      actorUserId: ctx.appUserId!,
+      programmeId: programme.id,
+      client: supabase,
+    });
+    success(redirectTo, "representative_letter_sent_to_counterparty");
+  } catch (error) {
+    console.warn("[lcdbo-correspondence] representative submit failed", error instanceof Error ? error.message : String(error));
+    failure(redirectTo, "representative_letter_submit_failed");
+  }
+}
+
+export async function saveRepresentativeDraftAction(formData: FormData) {
+  const recordId = String(formData.get("record_id") ?? "");
+  const redirectTo = String(formData.get("redirect_to") ?? `/dashboard/correspondence/${recordId}`);
+  try {
+    const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("draft");
+    await saveRepresentativeDraftVersion({
+      recordId,
+      formData,
+      actorUserId: ctx.appUserId!,
+      programmeId: programme.id,
+      client: supabase,
+    });
+    success(redirectTo, "representative_draft_saved");
+  } catch (error) {
+    console.warn("[lcdbo-correspondence] representative draft save failed", error instanceof Error ? error.message : String(error));
+    failure(redirectTo, "representative_draft_save_failed");
+  }
+}
+
+export async function decideRepresentativeLetterAction(formData: FormData) {
+  const recordId = String(formData.get("record_id") ?? "");
+  const redirectTo = String(formData.get("redirect_to") ?? `/dashboard/correspondence/${recordId}`);
+  try {
+    const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("approve");
+    await decideRepresentativeCounterpartyLetter({
+      recordId,
+      actorUserId: ctx.appUserId!,
+      programmeId: programme.id,
+      decision: String(formData.get("decision") ?? "approved") as "approved" | "revision_requested" | "rejected",
+      note: String(formData.get("note") ?? "").trim() || null,
+      client: supabase,
+    });
+    success(redirectTo, "representative_decision_recorded");
+  } catch (error) {
+    console.warn("[lcdbo-correspondence] representative decision failed", error instanceof Error ? error.message : String(error));
+    failure(redirectTo, "representative_decision_failed");
   }
 }
 

@@ -5,7 +5,7 @@ export const CORRESPONDENCE_ALLOWED_TRANSITIONS: Record<CorrespondenceStatus, Co
   in_review: ["revision_requested", "awaiting_approval", "rejected", "cancelled"],
   revision_requested: ["in_review", "cancelled"],
   awaiting_approval: ["awaiting_signature", "revision_requested", "rejected", "cancelled"],
-  awaiting_signature: ["signed", "revision_requested", "cancelled"],
+  awaiting_signature: ["signed", "revision_requested", "rejected", "cancelled"],
   signed: ["ready_for_dispatch", "revoked", "superseded"],
   ready_for_dispatch: ["sent", "dispatch_failed", "revoked", "superseded"],
   dispatch_failed: ["ready_for_dispatch", "cancelled"],

@@ -50,13 +50,15 @@ export const CORRESPONDENCE_ROLE_GROUPS = {
     "data_analyst",
     "auditor",
     "observer",
+    "rmrdc_representative",
+    "roseate_representative",
   ],
-  create: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin", "requester", "drafter", "joint_secretariat"],
-  draft: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin", "drafter", "requester", "joint_secretariat"],
-  review: ["programme_officer", "institution_admin", "correspondence_admin", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat"],
-  approve: ["programme_officer", "institution_admin", "correspondence_admin", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat"],
-  sign: ["rmrdc_signatory", "roseate_signatory", "signatory_delegate", "correspondence_admin"],
-  dispatch: ["dispatch_officer", "records_admin", "correspondence_admin", "programme_officer", "institution_admin"],
+  create: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin", "requester", "drafter", "joint_secretariat", "rmrdc_representative", "roseate_representative"],
+  draft: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin", "drafter", "requester", "joint_secretariat", "rmrdc_representative", "roseate_representative"],
+  review: ["programme_officer", "institution_admin", "correspondence_admin", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat", "rmrdc_representative", "roseate_representative"],
+  approve: ["programme_officer", "institution_admin", "correspondence_admin", "rmrdc_reviewer", "roseate_reviewer", "joint_secretariat", "rmrdc_representative", "roseate_representative"],
+  sign: ["rmrdc_signatory", "roseate_signatory", "signatory_delegate", "correspondence_admin", "rmrdc_representative", "roseate_representative"],
+  dispatch: ["dispatch_officer", "records_admin", "correspondence_admin", "programme_officer", "institution_admin", "rmrdc_representative", "roseate_representative"],
   administer: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin"],
   export: ["programme_officer", "institution_admin", "correspondence_admin", "records_admin", "data_analyst", "auditor"],
 } as const;
@@ -66,6 +68,24 @@ export type CorrespondenceDirection = typeof CORRESPONDENCE_DIRECTIONS[number];
 export type CorrespondenceSensitivity = typeof CORRESPONDENCE_SENSITIVITIES[number];
 export type CorrespondenceStatus = typeof CORRESPONDENCE_STATUSES[number];
 export type CorrespondenceAccessMode = keyof typeof CORRESPONDENCE_ROLE_GROUPS;
+export type CorrespondenceRepresentativeRole = "rmrdc_representative" | "roseate_representative";
+
+export type LcdboCorrespondenceRepresentativeAuthority = {
+  id: string;
+  user_id: string;
+  programme_id: string;
+  institution_id: string;
+  representative_role: CorrespondenceRepresentativeRole;
+  authority_status: "active" | "inactive" | "revoked" | "expired";
+  authority_starts_at: string;
+  authority_ends_at: string | null;
+  can_apply_signature: boolean;
+  can_dispatch: boolean;
+  is_primary: boolean;
+  signature_asset_ref: string | null;
+  metadata: JsonRecord;
+  institution?: { id: string; name: string | null; slug: string | null } | null;
+};
 
 export type LcdboCorrespondenceUser = {
   id: string;
@@ -143,6 +163,9 @@ export type LcdboCorrespondenceRecord = {
   requester_id: string | null;
   drafter_id: string | null;
   current_assignee_id: string | null;
+  initiating_institution_id?: string | null;
+  action_institution_id?: string | null;
+  simplified_status?: string | null;
   due_at: string | null;
   response_required: boolean;
   response_due_at: string | null;
@@ -154,6 +177,9 @@ export type LcdboCorrespondenceRecord = {
   current_version_id: string | null;
   issued_version_id: string | null;
   verification_record_id: string | null;
+  final_pdf_path?: string | null;
+  final_pdf_hash?: string | null;
+  final_pdf_generated_at?: string | null;
   metadata: JsonRecord;
   created_by: string | null;
   updated_by: string | null;

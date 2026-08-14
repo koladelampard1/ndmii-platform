@@ -11,9 +11,11 @@ const migration = read("supabase/migrations/20260813120000_lcdbo_correspondence_
 const referencePatch = read("supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql");
 const functionGrantPatch = read("supabase/migrations/20260814100000_lcdbo_correspondence_function_anon_revoke.sql");
 const workflowRlsPatch = read("supabase/migrations/20260814103000_lcdbo_correspondence_workflow_rls_uat_remediation.sql");
+const representativeWorkflowPatch = read("supabase/migrations/20260814120000_lcdbo_correspondence_representative_workflow.sql");
 const data = read("src/lib/data/lcdbo-correspondence.ts");
 const types = read("src/lib/lcdbo-correspondence/types.ts");
 const state = read("src/lib/lcdbo-correspondence/state-machine.ts");
+const representativeWorkflow = read("src/lib/lcdbo-correspondence/representative-workflow.ts");
 const pdf = read("src/lib/lcdbo-correspondence/pdf.ts");
 const routing = read("src/lib/routing/dbin-hosts.ts");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
@@ -110,6 +112,22 @@ assert.match(workflowRlsPatch, /lcdbo_correspondence_signature_events/i, "signat
 assert.match(workflowRlsPatch, /LCDBO correspondence operators can update delivery evidence/i, "delivery-evidence update policy missing");
 assert.doesNotMatch(workflowRlsPatch, /grant execute[\s\S]*\bto anon\b/i, "workflow RLS patch must not grant anonymous execute");
 assert.doesNotMatch(workflowRlsPatch, /truncate|drop table|delete from public\./i, "workflow RLS patch must not contain destructive SQL");
+assert.match(representativeWorkflowPatch, /create table if not exists public\.lcdbo_correspondence_representative_authorities/i, "representative authority table missing");
+assert.match(representativeWorkflowPatch, /representative_role in \('rmrdc_representative', 'roseate_representative'\)/i, "representative role constraint missing");
+assert.match(representativeWorkflowPatch, /authority_status in \('active', 'inactive', 'revoked', 'expired'\)/i, "representative authority status constraint missing");
+assert.match(representativeWorkflowPatch, /can_apply_signature boolean not null default false/i, "representative signature authority flag missing");
+assert.match(representativeWorkflowPatch, /can_dispatch boolean not null default false/i, "representative dispatch authority flag missing");
+assert.match(representativeWorkflowPatch, /create or replace function public\.lcdbo_correspondence_current_representative_authority/i, "current representative helper missing");
+assert.match(representativeWorkflowPatch, /create or replace function public\.lcdbo_correspondence_is_representative_for_record/i, "representative record helper missing");
+assert.match(representativeWorkflowPatch, /revoke all on function public\.lcdbo_correspondence_current_representative_authority\(uuid, uuid\) from anon/i, "representative helper anon revoke missing");
+assert.match(representativeWorkflowPatch, /grant execute on function public\.lcdbo_correspondence_current_representative_authority\(uuid, uuid\) to authenticated/i, "representative helper authenticated grant missing");
+assert.match(representativeWorkflowPatch, /LCDBO correspondence representatives can create verification records/i, "representative verification insert policy missing");
+assert.match(representativeWorkflowPatch, /LCDBO correspondence representatives can queue notifications/i, "representative notification policy missing");
+assert.match(representativeWorkflowPatch, /LCDBO correspondence representatives can maintain queued notifications/i, "representative notification update policy missing");
+assert.match(representativeWorkflowPatch, /revoke all on table public\.lcdbo_correspondence_representative_authorities from anon/i, "representative authority anon revoke missing");
+assert.match(representativeWorkflowPatch, /grant select, insert, update on table public\.lcdbo_correspondence_representative_authorities to authenticated/i, "representative authority authenticated grants missing");
+assert.doesNotMatch(representativeWorkflowPatch, /grant execute[\s\S]*\bto anon\b/i, "representative workflow patch must not grant anonymous execute");
+assert.doesNotMatch(representativeWorkflowPatch, /truncate|drop table|delete from public\./i, "representative workflow patch must not contain destructive SQL");
 assert.match(migration, /status in \(\s*'draft'[\s\S]*'cancelled'/i, "status machine check missing");
 assert.match(migration, /signature_mode in \('test_adapter', 'protected_asset', 'external_provider'\)/i, "signature adapter check missing");
 assert.match(migration, /pending_approval[\s\S]*rejected/i, "template lifecycle statuses missing");
@@ -124,11 +142,17 @@ assert.doesNotMatch(migration, /truncate|drop table|delete from public\./i, "mig
 assert.doesNotMatch(migration, /password|service[_ -]?role[_ -]?key|supabase_service_role/i, "migration must not contain credentials or service-role keys");
 
 assert.match(types, /CORRESPONDENCE_ROLE_GROUPS/, "role groups missing");
+assert.match(types, /rmrdc_representative/, "RMRDC representative role missing from type role groups");
+assert.match(types, /roseate_representative/, "Roseate representative role missing from type role groups");
 assert.match(types, /LCDBO_CORRESPONDENCE_CANONICAL_HOST = "correspondence\.dbin\.ng"/, "canonical host constant missing");
 assert.match(types, /LCDBO_CORRESPONDENCE_BRANDED_HOST = "correspondence\.lcdbo\.com"/, "branded host constant missing");
 assert.match(state, /draft: \["in_review", "cancelled"\]/, "draft transition missing");
-assert.match(state, /awaiting_signature: \["signed"/, "signature transition missing");
+assert.match(state, /awaiting_signature: \["signed", "revision_requested", "rejected", "cancelled"\]/, "signature/counterparty rejection transition missing");
 assert.match(state, /closed: \[\]/, "terminal closed status missing");
+assert.match(representativeWorkflow, /REPRESENTATIVE_ROLES = \["rmrdc_representative", "roseate_representative"\]/, "representative role helper missing");
+assert.match(representativeWorkflow, /SIMPLIFIED_CORRESPONDENCE_STATUSES/, "simplified statuses helper missing");
+assert.match(representativeWorkflow, /counterpartyStatusForRepresentative/, "counterparty status helper missing");
+assert.match(representativeWorkflow, /representativeBuckets/, "representative bucket helper missing");
 
 assert.match(data, /requireLcdboCorrespondenceAccess/, "access helper missing");
 assert.match(data, /createCorrespondenceRecord/, "create workflow missing");
@@ -150,6 +174,13 @@ assert.match(data, /recordCorrespondenceResponse/, "response workflow missing");
 assert.match(data, /createCorrespondenceRelationship/, "relationship workflow missing");
 assert.match(data, /generateCorrespondenceNotificationJobs/, "reminder generation workflow missing");
 assert.match(data, /sendCorrespondenceEmailDispatch/, "email dispatch adapter workflow missing");
+assert.match(data, /getCorrespondenceRepresentativeAuthority/, "representative authority resolver missing");
+assert.match(data, /createRepresentativeCorrespondenceLetter/, "representative create workflow missing");
+assert.match(data, /saveRepresentativeDraftVersion/, "representative draft correction workflow missing");
+assert.match(data, /submitRepresentativeLetterToCounterparty/, "representative submit workflow missing");
+assert.match(data, /decideRepresentativeCounterpartyLetter/, "representative counterparty decision workflow missing");
+assert.match(data, /generateRepresentativeFinalDocument/, "representative final document generation missing");
+assert.match(data, /enqueueRepresentativeNotification/, "representative notification workflow missing");
 assert.match(data, /dispatchReference = providerTracking \|\| record\.reference/, "LCDBO reference fallback tracking missing");
 assert.match(data, /Provider or courier tracking identifier is required for this dispatch channel/, "provider tracking channel rule missing");
 assert.match(data, /Required protected signature event is required before dispatch/, "signature-before-dispatch enforcement missing");
@@ -176,6 +207,9 @@ const requiredRoutes = [
   "src/app/dashboard/correspondence/create/incoming/page.tsx",
   "src/app/dashboard/correspondence/[id]/page.tsx",
   "src/app/dashboard/correspondence/my-work/page.tsx",
+  "src/app/dashboard/correspondence/waiting/page.tsx",
+  "src/app/dashboard/correspondence/ready-to-send/page.tsx",
+  "src/app/dashboard/correspondence/sent/page.tsx",
   "src/app/dashboard/correspondence/templates/page.tsx",
   "src/app/dashboard/correspondence/templates/[id]/page.tsx",
   "src/app/dashboard/correspondence/contacts/page.tsx",
@@ -202,7 +236,13 @@ const requiredRoutes = [
 for (const route of requiredRoutes) assert.equal(exists(route), true, `${route} missing`);
 
 assert.match(workspaceRegistry, /id: "correspondence"/, "correspondence workspace missing");
-assert.match(workspaceRegistry, /href: "\/dashboard\/correspondence\/register"/, "register nav missing");
+assert.match(workspaceRegistry, /rmrdc_representative/, "RMRDC representative scoped role missing from workspace registry");
+assert.match(workspaceRegistry, /roseate_representative/, "Roseate representative scoped role missing from workspace registry");
+assert.match(workspaceRegistry, /label: "Needs My Action", href: "\/dashboard\/correspondence\/my-work"/, "representative action nav missing");
+assert.match(workspaceRegistry, /label: "Waiting for Other Party", href: "\/dashboard\/correspondence\/waiting"/, "representative waiting nav missing");
+assert.match(workspaceRegistry, /label: "Ready to Send", href: "\/dashboard\/correspondence\/ready-to-send"/, "representative ready-to-send nav missing");
+assert.match(workspaceRegistry, /label: "Sent Letters", href: "\/dashboard\/correspondence\/sent"/, "representative sent nav missing");
+assert.doesNotMatch(workspaceRegistry, /label: "Signature Queue"/, "legacy signature queue should not appear in primary correspondence navigation");
 assert.match(workspaceRegistry, /href: "\/dashboard\/correspondence\/administration"/, "admin nav missing");
 assert.match(routing, /correspondenceHosts/, "correspondence host config missing");
 assert.match(routing, /CORRESPONDENCE_CANONICAL_HOST = "correspondence\.dbin\.ng"/, "host constant missing");

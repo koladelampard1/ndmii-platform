@@ -21,6 +21,7 @@ function loadTsModule(file, extra = {}) {
       if (id === "node:crypto") return { ...crypto, default: crypto };
       if (id === "@/lib/lcdbo-correspondence/security") return loadTsModule("src/lib/lcdbo-correspondence/security.ts");
       if (id === "@/lib/lcdbo-correspondence/types") return loadTsModule("src/lib/lcdbo-correspondence/types.ts");
+      if (id === "@/lib/lcdbo-correspondence/representative-workflow") return loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
       if (id === "@/lib/lcdbo-correspondence/reminders") return loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
       throw new Error(`Unsupported test import: ${id}`);
     },
@@ -40,8 +41,10 @@ const delegations = loadTsModule("src/lib/lcdbo-correspondence/delegations.ts");
 const evidence = loadTsModule("src/lib/lcdbo-correspondence/evidence.ts");
 const reminders = loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
 const email = loadTsModule("src/lib/lcdbo-correspondence/email.ts");
+const representative = loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
 const originalMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813120000_lcdbo_correspondence_management.sql"), "utf8");
 const referencePatchMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql"), "utf8");
+const representativeMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260814120000_lcdbo_correspondence_representative_workflow.sql"), "utf8");
 
 const fixtureRecord = {
   id: "record-1",
@@ -77,6 +80,12 @@ const fixtureRecord = {
   updated_by: "drafter-1",
   created_at: "2026-08-13T08:00:00.000Z",
   updated_at: "2026-08-13T08:30:00.000Z",
+  initiating_institution_id: "rmrdc-institution",
+  action_institution_id: "roseate-institution",
+  simplified_status: "awaiting_roseate",
+  final_pdf_path: null,
+  final_pdf_hash: null,
+  final_pdf_generated_at: null,
   versions: [{
     id: "version-1",
     record_id: "record-1",
@@ -99,8 +108,63 @@ const fixtureRecord = {
 test("state machine enforces lifecycle gates", () => {
   assert.equal(state.canTransitionCorrespondence("draft", "in_review"), true);
   assert.equal(state.canTransitionCorrespondence("awaiting_signature", "signed"), true);
+  assert.equal(state.canTransitionCorrespondence("awaiting_signature", "rejected"), true);
   assert.equal(state.canTransitionCorrespondence("draft", "sent"), false);
   assert.throws(() => state.assertCorrespondenceTransition("closed", "in_review"), /Invalid LCDBO correspondence transition/);
+});
+
+test("representative workflow maps institution roles and simplified statuses", () => {
+  assert.equal(representative.representativeInstitutionFromRole("rmrdc_representative"), "rmrdc");
+  assert.equal(representative.representativeInstitutionFromRole("roseate_representative"), "roseate");
+  assert.equal(representative.issuerForRepresentativeInstitution("rmrdc"), "RMRDC");
+  assert.equal(representative.issuerForRepresentativeInstitution("roseate"), "RFNL");
+  assert.equal(representative.signatureRoleForRepresentative("rmrdc_representative"), "rmrdc_signatory");
+  assert.equal(representative.signatureRoleForRepresentative("roseate_representative"), "roseate_signatory");
+  assert.equal(representative.counterpartyRoleForRepresentative("rmrdc_representative"), "roseate_representative");
+  assert.equal(representative.counterpartyStatusForRepresentative("roseate_representative"), "awaiting_rmrdc");
+  assert.equal(representative.simplifiedStatusForRecord(fixtureRecord), "awaiting_roseate");
+  assert.equal(representative.simplifiedStatusForRecord({ status: "ready_for_dispatch", metadata: {} }), "ready_to_send");
+});
+
+test("representative buckets respect initiating and action institutions", () => {
+  const rmrdcAuthority = {
+    id: "authority-1",
+    user_id: "rmrdc-user",
+    programme_id: "programme-1",
+    institution_id: "rmrdc-institution",
+    representative_role: "rmrdc_representative",
+    authority_status: "active",
+    authority_starts_at: "2026-08-13T00:00:00.000Z",
+    authority_ends_at: null,
+    can_apply_signature: true,
+    can_dispatch: true,
+    is_primary: true,
+    signature_asset_ref: "private/rmrdc.svg",
+  };
+  const roseateAuthority = { ...rmrdcAuthority, id: "authority-2", user_id: "roseate-user", institution_id: "roseate-institution", representative_role: "roseate_representative" };
+  const readyRecord = { ...fixtureRecord, id: "record-2", action_institution_id: "rmrdc-institution", simplified_status: "ready_to_send", status: "ready_for_dispatch" };
+  const bucketsForRmrdc = representative.representativeBuckets([fixtureRecord, readyRecord], rmrdcAuthority);
+  const bucketsForRoseate = representative.representativeBuckets([fixtureRecord, readyRecord], roseateAuthority);
+
+  assert.equal(bucketsForRmrdc.waitingForOtherParty.length, 1);
+  assert.equal(bucketsForRmrdc.readyToSend.length, 1);
+  assert.equal(bucketsForRoseate.needsMyAction.length, 1);
+  assert.equal(bucketsForRoseate.readyToSend.length, 0);
+});
+
+test("representative migration is additive and enforces institution-bound authority", () => {
+  assert.match(representativeMigration, /create table if not exists public\.lcdbo_correspondence_representative_authorities/i);
+  assert.match(representativeMigration, /representative_role in \('rmrdc_representative', 'roseate_representative'\)/i);
+  assert.match(representativeMigration, /authority_status in \('active', 'inactive', 'revoked', 'expired'\)/i);
+  assert.match(representativeMigration, /lcdbo_correspondence_current_representative_authority/i);
+  assert.match(representativeMigration, /lcdbo_correspondence_is_representative_for_record/i);
+  assert.match(representativeMigration, /record\.|correspondence_record\./i);
+  assert.match(representativeMigration, /require_signature = false or authority\.can_apply_signature = true/i);
+  assert.match(representativeMigration, /require_dispatch = false[\s\S]*authority\.can_dispatch = true[\s\S]*initiating_institution_id = authority\.institution_id/i);
+  assert.match(representativeMigration, /revoke all on table public\.lcdbo_correspondence_representative_authorities from anon/i);
+  assert.match(representativeMigration, /LCDBO correspondence representatives can create verification records/i);
+  assert.match(representativeMigration, /LCDBO correspondence representatives can queue notifications/i);
+  assert.doesNotMatch(representativeMigration, /truncate|drop table|delete from public\./i);
 });
 
 test("PDF generator creates draft watermark and final signature furniture", () => {

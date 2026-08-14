@@ -1,8 +1,13 @@
-import { getCorrespondenceWorkspaceSnapshot, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
+import { getCorrespondenceRepresentativeAuthority, getCorrespondenceWorkspaceSnapshot, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
 import { CorrespondenceTable, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
+import { representativeBuckets } from "@/lib/lcdbo-correspondence/representative-workflow";
 
 export default async function CorrespondenceDraftsPage() {
-  const { supabase } = await requireLcdboCorrespondenceAccess("draft");
+  const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("draft");
   const snapshot = await getCorrespondenceWorkspaceSnapshot(supabase);
-  return <WorkspaceCard title="Draft workspace" description="Draft and revision-requested correspondence records that can still be edited before review."><CorrespondenceTable records={snapshot.records.filter((record) => ["draft", "revision_requested"].includes(record.status))} /></WorkspaceCard>;
+  const authority = ctx.appUserId ? await getCorrespondenceRepresentativeAuthority({ actorUserId: ctx.appUserId, programmeId: programme.id, client: supabase }) : null;
+  const records = authority
+    ? representativeBuckets(snapshot.records, authority).drafts
+    : snapshot.records.filter((record) => ["draft", "revision_requested"].includes(record.status));
+  return <WorkspaceCard title="Drafts" description="Letters your institution can still complete before sending to the other party."><CorrespondenceTable records={records} /></WorkspaceCard>;
 }
