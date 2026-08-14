@@ -42,6 +42,10 @@ const evidence = loadTsModule("src/lib/lcdbo-correspondence/evidence.ts");
 const reminders = loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
 const email = loadTsModule("src/lib/lcdbo-correspondence/email.ts");
 const representative = loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
+const workspaceRegistry = loadTsModule("src/lib/workspaces/workspace-registry.ts");
+const workspaceAccessPolicy = loadTsModule("src/lib/workspaces/workspace-access-policy.ts", {
+  "@/lib/workspaces/workspace-registry": workspaceRegistry,
+});
 const originalMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813120000_lcdbo_correspondence_management.sql"), "utf8");
 const referencePatchMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql"), "utf8");
 const representativeMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260814120000_lcdbo_correspondence_representative_workflow.sql"), "utf8");
@@ -165,6 +169,59 @@ test("representative migration is additive and enforces institution-bound author
   assert.match(representativeMigration, /LCDBO correspondence representatives can create verification records/i);
   assert.match(representativeMigration, /LCDBO correspondence representatives can queue notifications/i);
   assert.doesNotMatch(representativeMigration, /truncate|drop table|delete from public\./i);
+});
+
+test("correspondence workspace admits only active LCDBO representative assignments", () => {
+  const programmeId = "lcdb-o-programme";
+  const roseateInstitutionId = "roseate-institution";
+  const rmrdcInstitutionId = "rmrdc-institution";
+  const route = "/dashboard/correspondence";
+  const ctx = { role: "workspace_user", appUserId: "user-1" };
+
+  const rmrdcDecision = workspaceAccessPolicy.canAccessWorkspaceRouteWithAssignments(ctx, "correspondence", route, [{
+    role: "rmrdc_representative",
+    scope_type: "programme",
+    scope_id: programmeId,
+    institution_id: rmrdcInstitutionId,
+    status: "active",
+    expires_at: null,
+  }], { scopeId: programmeId, institutionId: roseateInstitutionId });
+  assert.equal(rmrdcDecision.allowed, true, "RMRDC representative allowed");
+  assert.equal(rmrdcDecision.reason, "scoped_role");
+
+  const roseateDecision = workspaceAccessPolicy.canAccessWorkspaceRouteWithAssignments(ctx, "correspondence", route, [{
+    role: "roseate_representative",
+    scope_type: "programme",
+    scope_id: programmeId,
+    institution_id: roseateInstitutionId,
+    status: "active",
+    expires_at: null,
+  }], { scopeId: programmeId, institutionId: roseateInstitutionId });
+  assert.equal(roseateDecision.allowed, true, "Roseate representative allowed");
+  assert.equal(roseateDecision.reason, "scoped_role");
+
+  const unrelatedWorkspaceUserDecision = workspaceAccessPolicy.canAccessWorkspaceRouteWithAssignments(ctx, "correspondence", route, [], { scopeId: programmeId, institutionId: roseateInstitutionId });
+  assert.equal(unrelatedWorkspaceUserDecision.allowed, false, "unrelated workspace_user denied");
+
+  const inactiveRepresentativeDecision = workspaceAccessPolicy.canAccessWorkspaceRouteWithAssignments(ctx, "correspondence", route, [{
+    role: "rmrdc_representative",
+    scope_type: "programme",
+    scope_id: programmeId,
+    institution_id: rmrdcInstitutionId,
+    status: "inactive",
+    expires_at: null,
+  }], { scopeId: programmeId, institutionId: roseateInstitutionId });
+  assert.equal(inactiveRepresentativeDecision.allowed, false, "inactive representative assignment denied");
+
+  const unrelatedWorkspaceDecision = workspaceAccessPolicy.canAccessWorkspaceRouteWithAssignments(ctx, "ekirs", "/dashboard/ekirs", [{
+    role: "rmrdc_representative",
+    scope_type: "programme",
+    scope_id: programmeId,
+    institution_id: rmrdcInstitutionId,
+    status: "active",
+    expires_at: null,
+  }], { scopeId: programmeId, institutionId: "ekirs-institution" });
+  assert.equal(unrelatedWorkspaceDecision.allowed, false, "representative cannot access unrelated institutional workspaces");
 });
 
 test("PDF generator creates draft watermark and final signature furniture", () => {

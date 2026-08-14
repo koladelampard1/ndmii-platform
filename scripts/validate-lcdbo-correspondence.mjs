@@ -20,6 +20,16 @@ const pdf = read("src/lib/lcdbo-correspondence/pdf.ts");
 const routing = read("src/lib/routing/dbin-hosts.ts");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const tests = read("scripts/test-dbin-host-routing.mjs");
+const correspondenceTests = read("scripts/test-lcdbo-correspondence-workflow.mjs");
+
+function workspaceBlock(id) {
+  const marker = `${id}: defineWorkspace({`;
+  const start = workspaceRegistry.indexOf(marker);
+  assert.notEqual(start, -1, `${id} workspace block missing`);
+  const next = workspaceRegistry.indexOf("  }),", start);
+  assert.notEqual(next, -1, `${id} workspace block is not closed`);
+  return workspaceRegistry.slice(start, next);
+}
 
 const requiredTables = [
   "lcdbo_correspondence_reference_counters",
@@ -235,15 +245,24 @@ const requiredRoutes = [
 ];
 for (const route of requiredRoutes) assert.equal(exists(route), true, `${route} missing`);
 
-assert.match(workspaceRegistry, /id: "correspondence"/, "correspondence workspace missing");
-assert.match(workspaceRegistry, /rmrdc_representative/, "RMRDC representative scoped role missing from workspace registry");
-assert.match(workspaceRegistry, /roseate_representative/, "Roseate representative scoped role missing from workspace registry");
-assert.match(workspaceRegistry, /label: "Needs My Action", href: "\/dashboard\/correspondence\/my-work"/, "representative action nav missing");
-assert.match(workspaceRegistry, /label: "Waiting for Other Party", href: "\/dashboard\/correspondence\/waiting"/, "representative waiting nav missing");
-assert.match(workspaceRegistry, /label: "Ready to Send", href: "\/dashboard\/correspondence\/ready-to-send"/, "representative ready-to-send nav missing");
-assert.match(workspaceRegistry, /label: "Sent Letters", href: "\/dashboard\/correspondence\/sent"/, "representative sent nav missing");
+const correspondenceWorkspace = workspaceBlock("correspondence");
+const ekirsWorkspace = workspaceBlock("ekirs");
+assert.match(correspondenceWorkspace, /id: "correspondence"/, "correspondence workspace missing");
+assert.match(correspondenceWorkspace, /baseRoles: \["workspace_user"\]/, "representatives must enter via workspace_user scoped access");
+assert.match(correspondenceWorkspace, /"rmrdc_representative"/, "RMRDC representative scoped role missing from correspondence workspace registry");
+assert.match(correspondenceWorkspace, /"roseate_representative"/, "Roseate representative scoped role missing from correspondence workspace registry");
+assert.doesNotMatch(ekirsWorkspace, /rmrdc_representative|roseate_representative/, "correspondence representatives must not be registered for EKIRS workspace access");
+assert.match(correspondenceWorkspace, /label: "Needs My Action", href: "\/dashboard\/correspondence\/my-work"/, "representative action nav missing");
+assert.match(correspondenceWorkspace, /label: "Waiting for Other Party", href: "\/dashboard\/correspondence\/waiting"/, "representative waiting nav missing");
+assert.match(correspondenceWorkspace, /label: "Ready to Send", href: "\/dashboard\/correspondence\/ready-to-send"/, "representative ready-to-send nav missing");
+assert.match(correspondenceWorkspace, /label: "Sent Letters", href: "\/dashboard\/correspondence\/sent"/, "representative sent nav missing");
 assert.doesNotMatch(workspaceRegistry, /label: "Signature Queue"/, "legacy signature queue should not appear in primary correspondence navigation");
-assert.match(workspaceRegistry, /href: "\/dashboard\/correspondence\/administration"/, "admin nav missing");
+assert.match(correspondenceWorkspace, /href: "\/dashboard\/correspondence\/administration"/, "admin nav missing");
+assert.match(correspondenceTests, /RMRDC representative allowed/i, "RMRDC representative route access regression test missing");
+assert.match(correspondenceTests, /Roseate representative allowed/i, "Roseate representative route access regression test missing");
+assert.match(correspondenceTests, /unrelated workspace_user denied/i, "unrelated workspace_user denial regression test missing");
+assert.match(correspondenceTests, /inactive representative assignment denied/i, "inactive representative denial regression test missing");
+assert.match(correspondenceTests, /representative cannot access unrelated institutional workspaces/i, "unrelated workspace denial regression test missing");
 assert.match(routing, /correspondenceHosts/, "correspondence host config missing");
 assert.match(routing, /CORRESPONDENCE_CANONICAL_HOST = "correspondence\.dbin\.ng"/, "host constant missing");
 assert.match(tests, /correspondence host resolves to the LCDBO correspondence surface/, "routing test missing");
