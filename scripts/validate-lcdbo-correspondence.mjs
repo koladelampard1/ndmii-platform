@@ -9,6 +9,8 @@ const exists = (file) => fs.existsSync(path.join(root, file));
 
 const migration = read("supabase/migrations/20260813120000_lcdbo_correspondence_management.sql");
 const referencePatch = read("supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql");
+const functionGrantPatch = read("supabase/migrations/20260814100000_lcdbo_correspondence_function_anon_revoke.sql");
+const workflowRlsPatch = read("supabase/migrations/20260814103000_lcdbo_correspondence_workflow_rls_uat_remediation.sql");
 const data = read("src/lib/data/lcdbo-correspondence.ts");
 const types = read("src/lib/lcdbo-correspondence/types.ts");
 const state = read("src/lib/lcdbo-correspondence/state-machine.ts");
@@ -64,6 +66,50 @@ assert.match(referencePatch, /grant execute on function public\.generate_lcdbo_c
 assert.doesNotMatch(referencePatch, /grant execute[\s\S]*\bto anon\b/i, "reference patch must not grant anonymous execute");
 assert.doesNotMatch(referencePatch, /\bmax\s*\(/i, "reference patch must not use MAX()+1 generation");
 assert.doesNotMatch(referencePatch, /truncate|drop table|delete from public\./i, "reference patch must not contain destructive SQL");
+for (const signature of [
+  "public.lcdbo_correspondence_current_app_user_id()",
+  "public.lcdbo_correspondence_has_role(uuid, text[])",
+  "public.generate_lcdbo_correspondence_reference(text, text, timestamptz)",
+  "public.lcdbo_correspondence_record_event(uuid, text, text, text, text, jsonb)",
+]) {
+  assert.match(functionGrantPatch, new RegExp(`revoke all on function ${signature.replace(/[()[\],]/g, "\\$&")} from anon`, "i"), `${signature} anon revoke missing`);
+  assert.match(functionGrantPatch, new RegExp(`revoke all on function ${signature.replace(/[()[\],]/g, "\\$&")} from public`, "i"), `${signature} public revoke missing`);
+  assert.match(functionGrantPatch, new RegExp(`grant execute on function ${signature.replace(/[()[\],]/g, "\\$&")} to authenticated`, "i"), `${signature} authenticated grant missing`);
+}
+assert.doesNotMatch(functionGrantPatch, /grant execute[\s\S]*\bto anon\b/i, "function grant patch must not grant anonymous execute");
+assert.doesNotMatch(functionGrantPatch, /truncate|drop table|delete from public\./i, "function grant patch must not contain destructive SQL");
+for (const fnName of [
+  "lcdbo_correspondence_institution_for_record",
+  "lcdbo_correspondence_has_scoped_role",
+  "lcdbo_correspondence_can_access_record",
+]) {
+  assert.match(workflowRlsPatch, new RegExp(`create or replace function public\\.${fnName}`, "i"), `${fnName} helper missing`);
+  assert.match(workflowRlsPatch, new RegExp(`revoke all on function public\\.${fnName}[\\s\\S]*from anon`, "i"), `${fnName} anon revoke missing`);
+  assert.match(workflowRlsPatch, new RegExp(`grant execute on function public\\.${fnName}[\\s\\S]*to authenticated`, "i"), `${fnName} authenticated grant missing`);
+}
+assert.match(workflowRlsPatch, /metadata->>'institution_scope'/i, "institution-scope metadata boundary missing");
+assert.match(
+  workflowRlsPatch,
+  /ra\.institution_id is null[\s\S]*ra\.role in \([\s\S]*'programme_officer'[\s\S]*'observer'[\s\S]*\)/i,
+  "programme-scoped null-institution fallback must be restricted to privileged/read-only roles",
+);
+assert.doesNotMatch(
+  workflowRlsPatch,
+  /target_institution_id is null\s+or\s+ra\.institution_id is null\s+or\s+ra\.institution_id = target_institution_id/i,
+  "institution-scoped requester/reviewer roles must not receive a blanket null-institution wildcard",
+);
+assert.match(workflowRlsPatch, /drop policy if exists "LCDBO correspondence participants can read records"/i, "record read policy replacement missing");
+assert.match(workflowRlsPatch, /LCDBO correspondence writers can create document versions/i, "document-version insert policy missing");
+assert.match(workflowRlsPatch, /LCDBO correspondence actors can record workflow actions/i, "workflow-action insert policy missing");
+assert.match(workflowRlsPatch, /LCDBO correspondence reviewers can record approvals/i, "approval insert policy missing");
+assert.match(workflowRlsPatch, /array\[approval_role\]/i, "approval role must be matched dynamically");
+assert.match(workflowRlsPatch, /decision = 'approved'[\s\S]*r\.created_by = approver_id/i, "self-approval RLS guard missing");
+assert.match(workflowRlsPatch, /LCDBO correspondence dispatch officers can record dispatch/i, "dispatch insert policy missing");
+assert.match(workflowRlsPatch, /r\.status in \('signed', 'ready_for_dispatch', 'dispatch_failed'\)/i, "dispatch state gate missing");
+assert.match(workflowRlsPatch, /lcdbo_correspondence_signature_events/i, "signature-before-dispatch RLS gate missing");
+assert.match(workflowRlsPatch, /LCDBO correspondence operators can update delivery evidence/i, "delivery-evidence update policy missing");
+assert.doesNotMatch(workflowRlsPatch, /grant execute[\s\S]*\bto anon\b/i, "workflow RLS patch must not grant anonymous execute");
+assert.doesNotMatch(workflowRlsPatch, /truncate|drop table|delete from public\./i, "workflow RLS patch must not contain destructive SQL");
 assert.match(migration, /status in \(\s*'draft'[\s\S]*'cancelled'/i, "status machine check missing");
 assert.match(migration, /signature_mode in \('test_adapter', 'protected_asset', 'external_provider'\)/i, "signature adapter check missing");
 assert.match(migration, /pending_approval[\s\S]*rejected/i, "template lifecycle statuses missing");
