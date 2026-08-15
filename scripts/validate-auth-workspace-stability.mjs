@@ -17,6 +17,7 @@ const workspaceAccessServer = read("src/lib/workspaces/workspace-access-server.t
 const accessDeniedPage = read("src/app/access-denied/page.tsx");
 const loginPage = read("src/app/(auth)/login/page.tsx");
 const serverErrorPage = read("src/app/server-error/page.tsx");
+const dashboardLayout = read("src/app/dashboard/layout.tsx");
 const correspondenceLayout = read("src/app/dashboard/correspondence/layout.tsx");
 const lcdboLayout = read("src/app/dashboard/lcdbo/layout.tsx");
 const ekirsLayout = read("src/app/dashboard/ekirs/layout.tsx");
@@ -35,6 +36,7 @@ assert(routing.includes('export const DBIN_CANONICAL_HOST = "www.dbin.ng"'), "DB
 assert(routing.includes('hostname === DBIN_APEX_HOST'), "Apex dbin.ng must redirect before login/session creation.");
 assert(loginPage.includes("session_required") && loginPage.includes("Please sign in on the secure DBIN host"), "Login page must explain missing cross-host sessions.");
 assert(serverErrorPage.includes("Request reference") && serverErrorPage.includes("Service unavailable"), "Unexpected correspondence failures need a request-referenced server error surface.");
+assert(dashboardLayout.includes("isCorrespondenceWorkspace") && dashboardLayout.includes("workspace=correspondence") && dashboardLayout.includes("reason=session_required"), "Parent dashboard guard must preserve correspondence workspace login/session context.");
 assert(correspondenceLayout.includes("x-dbin-pathname") && correspondenceLayout.includes("requireWorkspaceAccess(\"correspondence\", safePath)"), "Correspondence layout must preserve exact clicked record paths for post-login return.");
 assert(workspaceAccessServer.includes("resolveWorkspaceAccess"), "Workspace access server must expose a central resolver.");
 assert(workspaceAccessServer.includes("AUTH_REQUIRED") && workspaceAccessServer.includes("NO_ACTIVE_ASSIGNMENT") && workspaceAccessServer.includes("MODULE_DENIED"), "Central resolver must return typed denial reasons.");
