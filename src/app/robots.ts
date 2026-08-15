@@ -33,6 +33,6 @@ export default function robots(): MetadataRoute.Robots {
         "/association-onboarding",
       ],
     },
-    sitemap: "https://dbin.ng/sitemap.xml",
+    sitemap: "https://www.dbin.ng/sitemap.xml",
   };
 }

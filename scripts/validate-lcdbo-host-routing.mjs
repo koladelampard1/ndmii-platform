@@ -117,12 +117,18 @@ assert(!authSessionRoute.includes("service_role"), "Auth session route must not 
 assert(!authSessionRoute.includes("Set-Cookie"), "Auth session route must not manually write Set-Cookie headers.");
 
 const {
+  DBIN_CANONICAL_ORIGIN,
   LCDBO_CANONICAL_ORIGIN,
   resolveDbinCanonicalRedirectUrl,
   resolveDbinHostSurface,
   resolveDbinRewritePath,
 } = loadRoutingModule();
 
+assert.equal(DBIN_CANONICAL_ORIGIN, "https://www.dbin.ng");
+assert.equal(
+  resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/login?next=%2Fdashboard%2Fcorrespondence"))?.toString(),
+  "https://www.dbin.ng/login?next=%2Fdashboard%2Fcorrespondence",
+);
 assert.equal(LCDBO_CANONICAL_ORIGIN, "https://lcdbo.dbin.ng");
 assert.equal(resolveDbinHostSurface("lcdbo.dbin.ng"), "lcdbo");
 assert.equal(resolveDbinHostSurface("lcdbo.com"), "lcdbo");
@@ -140,10 +146,10 @@ assert.equal(resolveDbinRewritePath("lcdbo", "/api/lcdbo/delivery/export/workstr
 assert.equal(resolveDbinRewritePath("lcdbo", "/reports"), null);
 
 assert.equal(
-  resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/clusters?utm=site"))?.toString(),
+  resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/clusters?utm=site"))?.toString(),
   "https://lcdbo.dbin.ng/clusters?utm=site",
 );
-assert.equal(resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/reports")), null);
+assert.equal(resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/reports")), null);
 assert.equal(
   resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/lcdbo/about"))?.toString(),
   "https://lcdbo.dbin.ng/about",

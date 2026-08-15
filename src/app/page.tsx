@@ -608,7 +608,7 @@ export default async function LandingPage() {
     "@type": "Organization",
     name: "Digital Business Identity Network",
     alternateName: "DBIN",
-    url: "https://dbin.ng",
+    url: "https://www.dbin.ng",
     description:
       "Create a verified business identity, showcase products and services, manage business records and connect with trusted buyers across Nigeria.",
   };

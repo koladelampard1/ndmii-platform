@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { isPlatformAdmin, type UserContext } from "@/lib/auth/authorization";
 import { canUseWorkspaceModule } from "@/lib/auth/scoped-permissions";
 import { getCurrentUserContext } from "@/lib/auth/session";
@@ -114,6 +116,33 @@ function allowedRolesFor(mode: CorrespondenceAccessMode) {
   return CORRESPONDENCE_ROLE_GROUPS[mode] as readonly string[];
 }
 
+function createRequestId() {
+  return globalThis.crypto?.randomUUID?.() ?? `req_${Date.now().toString(36)}`;
+}
+
+async function getCorrespondenceRequestMeta() {
+  const headerStore = await headers();
+  const requestId = headerStore.get("x-dbin-request-id") ?? createRequestId();
+  const pathname = headerStore.get("x-dbin-pathname") ?? headerStore.get("next-url") ?? "/dashboard/correspondence";
+  const safePath = pathname.startsWith("/") && !pathname.startsWith("//") ? pathname : "/dashboard/correspondence";
+  return { requestId, safePath };
+}
+
+async function redirectToCorrespondenceLogin(): Promise<never> {
+  const { requestId, safePath } = await getCorrespondenceRequestMeta();
+  redirect(`/login?next=${encodeURIComponent(safePath)}&reason=session_required&requestId=${encodeURIComponent(requestId)}`);
+}
+
+async function redirectToCorrespondenceAccessDenied(reason: string): Promise<never> {
+  const { requestId, safePath } = await getCorrespondenceRequestMeta();
+  redirect(`/access-denied?workspace=correspondence&returnTo=${encodeURIComponent(safePath)}&reason=${encodeURIComponent(reason)}&requestId=${encodeURIComponent(requestId)}`);
+}
+
+async function redirectToCorrespondenceServerError(reason: string): Promise<never> {
+  const { requestId } = await getCorrespondenceRequestMeta();
+  redirect(`/server-error?source=correspondence&reason=${encodeURIComponent(reason)}&requestId=${encodeURIComponent(requestId)}`);
+}
+
 function metadataWithGovernance(metadata: Record<string, unknown> = {}) {
   return {
     ...metadata,
@@ -131,9 +160,22 @@ export function isMissingLcdboCorrespondenceSchema(error: unknown) {
 
 export async function requireLcdboCorrespondenceAccess(mode: CorrespondenceAccessMode = "view", client?: Client): Promise<LcdboCorrespondenceAccess> {
   const ctx = await getCurrentUserContext();
+  if (!ctx.appUserId || ctx.role === "public") await redirectToCorrespondenceLogin();
+
   const supabase = await clientOrService(client);
-  const programme = await getLcdboProgramme(supabase);
-  if (!programme || !ctx.appUserId) throw new Error("LCDBO correspondence access is unavailable.");
+  let programme: Programme | null = null;
+  try {
+    programme = await getLcdboProgramme(supabase);
+  } catch (error) {
+    const { requestId } = await getCorrespondenceRequestMeta();
+    console.error("[lcdbo-correspondence-access:error]", {
+      requestId,
+      operation: "get_lcdbo_programme",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return redirectToCorrespondenceServerError("programme_lookup_failed");
+  }
+  if (!programme) return redirectToCorrespondenceServerError("programme_unavailable");
 
   const permission = await canUseWorkspaceModule({
     ctx,
@@ -148,7 +190,7 @@ export async function requireLcdboCorrespondenceAccess(mode: CorrespondenceAcces
   const canAdminister = isPlatformAdmin(ctx.role) || permission.roles.some((role) => (CORRESPONDENCE_ROLE_GROUPS.administer as readonly string[]).includes(role));
   const canExport = canAdminister || permission.roles.some((role) => (CORRESPONDENCE_ROLE_GROUPS.export as readonly string[]).includes(role));
   const allowed = isPlatformAdmin(ctx.role) || permission.allowed;
-  if (!allowed) throw new Error("You do not have permission to use LCDBO correspondence.");
+  if (!allowed) return redirectToCorrespondenceAccessDenied("MODULE_DENIED");
   return { ctx, programme, supabase, roles: permission.roles, canAdminister, canExport };
 }
 

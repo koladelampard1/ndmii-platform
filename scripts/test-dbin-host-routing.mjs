@@ -28,11 +28,24 @@ vm.runInNewContext(transpiled, {
 
 const {
   CORRESPONDENCE_CANONICAL_ORIGIN,
+  DBIN_CANONICAL_ORIGIN,
   LCDBO_CANONICAL_ORIGIN,
   resolveDbinCanonicalRedirectUrl,
   resolveDbinHostSurface,
   resolveDbinRewritePath,
 } = commonJsModule.exports;
+
+test("apex DBIN host canonicalizes to www before authentication or dashboard routing", () => {
+  assert.equal(DBIN_CANONICAL_ORIGIN, "https://www.dbin.ng");
+  assert.equal(
+    resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/login?next=%2Fdashboard%2Fcorrespondence%2Frecord-1"))?.toString(),
+    "https://www.dbin.ng/login?next=%2Fdashboard%2Fcorrespondence%2Frecord-1",
+  );
+  assert.equal(
+    resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/dashboard/correspondence/record-1?tab=activity"))?.toString(),
+    "https://www.dbin.ng/dashboard/correspondence/record-1?tab=activity",
+  );
+});
 
 test("boi.dbin.ng resolves to the BOI surface", () => {
   assert.equal(resolveDbinHostSurface("boi.dbin.ng"), "boi");
@@ -174,13 +187,16 @@ test("LCDBO host keeps authentication, APIs, assets and workspace routes host-re
 });
 
 test("DBIN marketing LCDBO pages redirect permanently to the canonical LCDBO subdomain", () => {
-  const rootRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo?source=nav"));
+  const apexRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo?source=nav"));
+  assert.equal(apexRedirect?.toString(), "https://www.dbin.ng/lcdbo?source=nav");
+
+  const rootRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo?source=nav"));
   assert.equal(rootRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/?source=nav`);
 
   const aboutRedirect = resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/about?utm=partner"));
   assert.equal(aboutRedirect?.toString(), `${LCDBO_CANONICAL_ORIGIN}/about?utm=partner`);
 
-  assert.equal(resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/reports")), null);
+  assert.equal(resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/reports")), null);
 });
 
 test("LCDBO host removes duplicate /lcdbo prefixes and keeps dashboard/login canonical", () => {

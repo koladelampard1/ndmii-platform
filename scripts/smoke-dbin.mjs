@@ -868,7 +868,7 @@ check("institutional workspace framework exposes shared page, state, classificat
 
 check("BOI product routes render native pages backed by proven Impact Intelligence loaders", () => {
   assert(
-    boiPortal.includes("https://app.dbin.ng/dashboard/boi") &&
+    boiPortal.includes('href="/dashboard/boi"') &&
       boiWorkspacePage.includes("getBoiOverview") &&
       boiWorkspaceSectionPage.includes("resolveBoiSection") &&
       !boiWorkspaceSectionPage.includes("redirect(") &&
@@ -1209,7 +1209,8 @@ check("LCDBO dedicated host resolves to canonical programme URLs and workspace r
       resolveDbinRewritePath("lcdbo", "/dashboard/lcdbo") === null &&
       resolveDbinRewritePath("lcdbo", "/api/lcdbo/delivery/export/workstreams") === null &&
       resolveDbinRewritePath("lcdbo", "/reports") === null &&
-      resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/about"))?.toString() === "https://lcdbo.dbin.ng/about" &&
+      resolveDbinCanonicalRedirectUrl("marketing", new URL("https://dbin.ng/lcdbo/about"))?.toString() === "https://www.dbin.ng/lcdbo/about" &&
+      resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/lcdbo/about"))?.toString() === "https://lcdbo.dbin.ng/about" &&
       resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/lcdbo/about"))?.toString() === "https://lcdbo.dbin.ng/about" &&
       resolveDbinCanonicalRedirectUrl("lcdbo", new URL("https://lcdbo.dbin.ng/dashboard"))?.toString() === "https://lcdbo.dbin.ng/dashboard/lcdbo",
     "Expected lcdbo.dbin.ng to present canonical clean programme URLs while preserving authenticated LCDBO workspace and API routes.",

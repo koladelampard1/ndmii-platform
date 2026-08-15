@@ -36,7 +36,7 @@ const PUBLIC_ROUTES = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://dbin.ng";
+  const baseUrl = "https://www.dbin.ng";
   const lastModified = new Date();
 
   const dbinRoutes = PUBLIC_ROUTES.map((route) => ({

@@ -106,7 +106,7 @@ export default async function BoiPortalPage() {
                 readiness, portfolio, and reporting data.
               </p>
               <Link
-                href="https://app.dbin.ng/dashboard/boi"
+                href="/dashboard/boi"
                 className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-emerald-950 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:ring-offset-2 focus:ring-offset-emerald-950"
               >
                 Continue to authorized portal

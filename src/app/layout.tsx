@@ -3,7 +3,7 @@ import { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://dbin.ng"),
+  metadataBase: new URL("https://www.dbin.ng"),
   title: {
     default: "DBIN | Nigeria’s Digital Business Infrastructure",
     template: "%s | DBIN",

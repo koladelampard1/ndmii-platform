@@ -16,12 +16,14 @@ const proxy = read("src/proxy.ts");
 const workspaceAccessServer = read("src/lib/workspaces/workspace-access-server.ts");
 const accessDeniedPage = read("src/app/access-denied/page.tsx");
 const loginPage = read("src/app/(auth)/login/page.tsx");
+const serverErrorPage = read("src/app/server-error/page.tsx");
 const correspondenceLayout = read("src/app/dashboard/correspondence/layout.tsx");
 const lcdboLayout = read("src/app/dashboard/lcdbo/layout.tsx");
 const ekirsLayout = read("src/app/dashboard/ekirs/layout.tsx");
 const boiLayout = read("src/app/dashboard/boi/layout.tsx");
 const nrsLayout = read("src/app/dashboard/nrs/layout.tsx");
 const loginDestination = read("src/lib/auth/login-destination.ts");
+const routing = read("src/lib/routing/dbin-hosts.ts");
 
 assert(!authorization.includes('role === "workspace_user" && (routeMatchesPrefix(path, "/dashboard/lcdbo")'), "workspace_user must not have blanket LCDBO/correspondence route access.");
 assert(authorization.includes('routeMatchesPrefix(path, "/dashboard/correspondence")') && authorization.includes('canAccessWorkspaceRoute({ role }, "correspondence", path).allowed'), "Correspondence route checks must use workspace policy.");
@@ -29,6 +31,10 @@ assert(proxy.includes("loginRedirectForAuthFailure") && proxy.includes("clearSup
 assert(proxy.includes("SESSION_REFRESH_FAILED") && proxy.includes("session_refresh_failed"), "Refresh failure must be observable and redirected as authentication failure.");
 assert(proxy.includes("x-dbin-request-id"), "Middleware must attach a safe request/correlation id.");
 assert(proxy.includes('response.headers.get("x-dbin-canonical-redirect")'), "Canonical host redirects must complete before auth refresh handling.");
+assert(routing.includes('export const DBIN_CANONICAL_HOST = "www.dbin.ng"'), "DBIN production application host must canonicalize to www.dbin.ng.");
+assert(routing.includes('hostname === DBIN_APEX_HOST'), "Apex dbin.ng must redirect before login/session creation.");
+assert(loginPage.includes("session_required") && loginPage.includes("Please sign in on the secure DBIN host"), "Login page must explain missing cross-host sessions.");
+assert(serverErrorPage.includes("Request reference") && serverErrorPage.includes("Service unavailable"), "Unexpected correspondence failures need a request-referenced server error surface.");
 assert(workspaceAccessServer.includes("resolveWorkspaceAccess"), "Workspace access server must expose a central resolver.");
 assert(workspaceAccessServer.includes("AUTH_REQUIRED") && workspaceAccessServer.includes("NO_ACTIVE_ASSIGNMENT") && workspaceAccessServer.includes("MODULE_DENIED"), "Central resolver must return typed denial reasons.");
 assert(workspaceAccessServer.includes("scopedAssignments") && workspaceAccessServer.includes("programmeId") && workspaceAccessServer.includes("institutionId"), "Central resolver must expose safe scoped diagnostic fields.");

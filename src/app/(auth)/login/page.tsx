@@ -28,6 +28,8 @@ function LoginPageContent() {
       ? "Your session expired. Please sign in again."
       : authReason === "session_refresh_failed"
         ? "Your session could not be refreshed securely. Please sign in again."
+        : authReason === "session_required"
+          ? "Please sign in on the secure DBIN host to continue."
         : authReason === "auth_required"
           ? "Please sign in to continue."
           : null);

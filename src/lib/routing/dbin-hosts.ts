@@ -1,5 +1,8 @@
 export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lcdbo" | "correspondence" | "lands" | "unknown";
 
+export const DBIN_APEX_HOST = "dbin.ng";
+export const DBIN_CANONICAL_HOST = "www.dbin.ng";
+export const DBIN_CANONICAL_ORIGIN = `https://${DBIN_CANONICAL_HOST}`;
 export const LCDBO_CANONICAL_HOST = "lcdbo.dbin.ng";
 export const LCDBO_CANONICAL_ORIGIN = `https://${LCDBO_CANONICAL_HOST}`;
 export const CORRESPONDENCE_CANONICAL_HOST = "correspondence.dbin.ng";
@@ -57,7 +60,7 @@ function hostSet(value: string | undefined, fallback: string[]) {
 
 function getHostRoutingConfig(): HostRoutingConfig {
   return {
-    marketingHosts: hostSet(process.env.DBIN_MARKETING_HOSTS, ["dbin.ng", "www.dbin.ng"]),
+    marketingHosts: hostSet(process.env.DBIN_MARKETING_HOSTS, [DBIN_APEX_HOST, DBIN_CANONICAL_HOST]),
     appHosts: hostSet(process.env.DBIN_APP_HOSTS, ["app.dbin.ng"]),
     adminHosts: hostSet(process.env.DBIN_ADMIN_HOSTS, ["admin.dbin.ng"]),
     verifyHosts: hostSet(process.env.DBIN_VERIFY_HOSTS, ["verify.dbin.ng"]),
@@ -134,7 +137,15 @@ export function getLcdboCanonicalPath(pathname: string) {
 }
 
 export function resolveDbinCanonicalRedirectUrl(surface: DbinHostSurface, url: URL) {
+  const hostname = normalizeHostname(url.host);
   const pathname = url.pathname;
+
+  if (hostname === DBIN_APEX_HOST) {
+    const redirectUrl = new URL(url);
+    redirectUrl.protocol = "https:";
+    redirectUrl.host = DBIN_CANONICAL_HOST;
+    return redirectUrl;
+  }
 
   if (surface === "marketing" && (pathname === LCDBO_INTERNAL_PUBLIC_ROOT || pathname.startsWith(`${LCDBO_INTERNAL_PUBLIC_ROOT}/`))) {
     if (!isLcdboPublicPath(pathname)) return null;
