@@ -22,12 +22,21 @@ function LoginPageContent() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const authReason = searchParams.get("reason");
+  const initialMessage = searchParams.get("message")
+    ?? (authReason === "session_expired"
+      ? "Your session expired. Please sign in again."
+      : authReason === "session_refresh_failed"
+        ? "Your session could not be refreshed securely. Please sign in again."
+        : authReason === "auth_required"
+          ? "Please sign in to continue."
+          : null);
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(searchParams.get("message"));
+  const [message, setMessage] = useState<string | null>(initialMessage);
   const [error, setError] = useState<string | null>(null);
   const signedOut = searchParams.get("signedOut") === "1";
   const requestedWorkspace = searchParams.get("workspace");

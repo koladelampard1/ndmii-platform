@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
-import { redirect } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
-import { canAccessRoute } from "@/lib/auth/authorization";
 import { requireWorkspaceAccess } from "@/lib/workspaces/workspace-access-server";
+
+export const dynamic = "force-dynamic";
 
 export default async function BoiWorkspaceLayout({ children }: { children: ReactNode }) {
   const { ctx, workspace, navigationSections } = await requireWorkspaceAccess("boi", "/dashboard/boi");
-  if (!canAccessRoute(ctx.role, "/dashboard/boi")) redirect("/access-denied");
 
   return (
     <WorkspaceShell
