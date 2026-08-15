@@ -35,6 +35,7 @@ assert(routing.includes('export const DBIN_CANONICAL_HOST = "www.dbin.ng"'), "DB
 assert(routing.includes('hostname === DBIN_APEX_HOST'), "Apex dbin.ng must redirect before login/session creation.");
 assert(loginPage.includes("session_required") && loginPage.includes("Please sign in on the secure DBIN host"), "Login page must explain missing cross-host sessions.");
 assert(serverErrorPage.includes("Request reference") && serverErrorPage.includes("Service unavailable"), "Unexpected correspondence failures need a request-referenced server error surface.");
+assert(correspondenceLayout.includes("x-dbin-pathname") && correspondenceLayout.includes("requireWorkspaceAccess(\"correspondence\", safePath)"), "Correspondence layout must preserve exact clicked record paths for post-login return.");
 assert(workspaceAccessServer.includes("resolveWorkspaceAccess"), "Workspace access server must expose a central resolver.");
 assert(workspaceAccessServer.includes("AUTH_REQUIRED") && workspaceAccessServer.includes("NO_ACTIVE_ASSIGNMENT") && workspaceAccessServer.includes("MODULE_DENIED"), "Central resolver must return typed denial reasons.");
 assert(workspaceAccessServer.includes("scopedAssignments") && workspaceAccessServer.includes("programmeId") && workspaceAccessServer.includes("institutionId"), "Central resolver must expose safe scoped diagnostic fields.");
