@@ -4,6 +4,7 @@ import {
   type LcdboCorrespondenceRecord,
 } from "@/lib/lcdbo-correspondence/types";
 import { sha256Hex } from "@/lib/lcdbo-correspondence/security";
+import { PDFDocument } from "pdf-lib";
 
 const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
@@ -27,6 +28,23 @@ export type CorrespondenceSignatureBlock = {
   organisation: string;
   signedAt?: string | null;
   testOnly?: boolean;
+  assetRef?: string | null;
+};
+
+export type CorrespondenceSignatureAsset = {
+  role: string;
+  bytes: Uint8Array;
+  contentType: "image/png" | "image/jpeg";
+};
+
+type SignaturePlacement = {
+  role: string;
+  assetRef: string;
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 function pdfEscape(value: unknown) {
@@ -125,13 +143,21 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
   lines.push({ text: "Authorised signature", x: MARGIN_X, y, size: 10, bold: true });
   y += 20;
   const joint = signatureBlocks.length > 1;
+  const signaturePlacements: SignaturePlacement[] = [];
   signatureBlocks.forEach((signature, index) => {
     const x = joint ? MARGIN_X + (index % 2) * 255 : MARGIN_X;
     const blockY = y + Math.floor(index / 2) * 70;
-    lines.push({ text: signature.testOnly ? "TEST SIGNATURE - NON-PRODUCTION" : "Protected signature applied", x, y: blockY, size: 10, bold: true, color: signature.testOnly ? "0.65 0.15 0.15" : "0 0.35 0.2" });
-    lines.push({ text: signature.name, x, y: blockY + 18, size: 10, bold: true });
-    lines.push({ text: signature.organisation, x, y: blockY + 33, size: 9 });
-    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: blockY + 48, size: 8, color: "0.35 0.35 0.35" });
+    const hasProtectedAsset = !signature.testOnly && Boolean(signature.assetRef);
+    if (hasProtectedAsset) {
+      const pageIndex = Math.max(0, Math.floor((blockY - 40) / 720));
+      signaturePlacements.push({ role: signature.role, assetRef: signature.assetRef!, pageIndex, x, y: blockY - pageIndex * 720, width: 150, height: 42 });
+    } else {
+      lines.push({ text: signature.testOnly ? "TEST SIGNATURE - NON-PRODUCTION" : "Protected signature unavailable", x, y: blockY, size: 10, bold: true, color: "0.65 0.15 0.15" });
+    }
+    const detailY = hasProtectedAsset ? blockY + 46 : blockY + 18;
+    lines.push({ text: signature.name, x, y: detailY, size: 10, bold: true });
+    lines.push({ text: signature.organisation, x, y: detailY + 15, size: 9 });
+    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: detailY + 30, size: 8, color: "0.35 0.35 0.35" });
   });
   y += joint ? 92 : 74;
   lines.push({ text: `Verification: ${verificationUrl}`, x: MARGIN_X, y, size: 8, color: "0 0.35 0.2" });
@@ -148,7 +174,7 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     while (pages.length <= pageIndex) pages.push([]);
     pages[pageIndex].push({ ...run, y: run.y - pageIndex * 720 });
   }
-  return { pages, watermark: options.mode === "draft" ? "DRAFT" : undefined };
+  return { pages, watermark: options.mode === "draft" ? "DRAFT" : undefined, signaturePlacements };
 }
 
 export function createCorrespondencePdf(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
@@ -178,6 +204,26 @@ export function createCorrespondencePdf(record: LcdboCorrespondenceRecord, optio
   });
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return new TextEncoder().encode(pdf);
+}
+
+export async function createCorrespondencePdfWithSignatureAssets(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions, assets: CorrespondenceSignatureAsset[]) {
+  const basePdf = createCorrespondencePdf(record, options);
+  const model = buildCorrespondencePdfModel(record, options);
+  if (!model.signaturePlacements.length) return basePdf;
+  const pdf = await PDFDocument.load(basePdf);
+  const pages = pdf.getPages();
+  for (const placement of model.signaturePlacements) {
+    const asset = assets.find((candidate) => candidate.role === placement.role);
+    if (!asset) throw new Error(`Protected signature asset is unavailable for ${placement.role}.`);
+    const image = asset.contentType === "image/png" ? await pdf.embedPng(asset.bytes) : await pdf.embedJpg(asset.bytes);
+    const scale = Math.min(placement.width / image.width, placement.height / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    const page = pages[placement.pageIndex];
+    if (!page) throw new Error("Signature placement references a missing PDF page.");
+    page.drawImage(image, { x: placement.x, y: PAGE_HEIGHT - placement.y - height, width, height });
+  }
+  return new Uint8Array(await pdf.save());
 }
 
 export function correspondencePdfHash(bytes: Uint8Array) {

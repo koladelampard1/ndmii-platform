@@ -50,6 +50,7 @@ import { parsePlaceholderSchema, validateTemplatePlaceholders } from "@/lib/lcdb
 import {
   correspondencePdfHash,
   createCorrespondencePdf,
+  createCorrespondencePdfWithSignatureAssets,
   type CorrespondenceSignatureBlock,
 } from "@/lib/lcdbo-correspondence/pdf";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
@@ -163,7 +164,21 @@ function finalSignatureBlocks(record: LcdboCorrespondenceRecord): Correspondence
       organisation: signature.signature_role.includes("rmrdc") ? "RMRDC" : signature.signature_role.includes("roseate") ? "Roseate Forte Nigeria Limited" : "LCDBO Joint Secretariat",
       signedAt: signature.signed_at,
       testOnly: signature.signature_mode === "test_adapter",
+      assetRef: signature.signature_asset_ref,
     }));
+}
+
+async function loadProtectedSignatureAssets(blocks: CorrespondenceSignatureBlock[]) {
+  const storage = await createServiceRoleSupabaseClient();
+  return Promise.all(blocks.filter((block) => !block.testOnly && block.assetRef).map(async (block) => {
+    const path = block.assetRef!;
+    if (!path.startsWith("signature-assets/") || path.includes("..")) throw new Error("Protected signature asset path is invalid.");
+    const download = await storage.storage.from(CORRESPONDENCE_DOCUMENT_BUCKET).download(path);
+    if (download.error || !download.data) throw download.error ?? new Error("Protected signature asset could not be loaded.");
+    const contentType = download.data.type === "image/jpeg" ? "image/jpeg" : download.data.type === "image/png" ? "image/png" : null;
+    if (!contentType) throw new Error("Protected signature asset must be a PNG or JPEG image.");
+    return { role: block.role, bytes: new Uint8Array(await download.data.arrayBuffer()), contentType: contentType as "image/png" | "image/jpeg" };
+  }));
 }
 
 async function storeImmutableFinalPdf(record: LcdboCorrespondenceRecord, bytes: Uint8Array, hash: string) {
@@ -465,7 +480,7 @@ export async function getCorrespondenceRecord(id: string, client?: Client) {
       versions:lcdbo_correspondence_document_versions!lcdbo_correspondence_document_versions_record_id_fkey(*),
       actions:lcdbo_correspondence_workflow_actions(*),
       approvals:lcdbo_correspondence_approvals(*),
-      signatures:lcdbo_correspondence_signature_events(id,record_id,document_version_id,signatory_id,signature_role,document_hash,signed_pdf_path,signed_at,signature_mode),
+      signatures:lcdbo_correspondence_signature_events(id,record_id,document_version_id,signatory_id,signature_role,signature_asset_ref,document_hash,signed_pdf_path,signed_at,signature_mode),
       dispatches:lcdbo_correspondence_dispatch_events(*),
       responses:lcdbo_correspondence_responses(*),
       delivery_evidence:lcdbo_correspondence_delivery_evidence(*),
@@ -797,7 +812,7 @@ async function insertRepresentativeSignature(input: {
       representative_role: input.authority.representative_role,
       institution_id: input.authority.institution_id,
       private_asset_publicly_exposed: false,
-      test_only: true,
+      test_only: !isProductionSignature,
     },
   });
   if (error) throw error;
@@ -818,12 +833,14 @@ async function generateRepresentativeFinalDocument(input: {
   if (!hasRmrdcSignature || !hasRoseateSignature) throw new Error("Both institutional signatures are required before final generation.");
   const token = createVerificationToken(input.record.reference, version.document_hash);
   const canonicalUrl = `${LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN}/verify/${token}`;
-  const finalPdf = createCorrespondencePdf(input.record, {
+  const signatureBlocks = finalSignatureBlocks(input.record);
+  const signatureAssets = await loadProtectedSignatureAssets(signatureBlocks);
+  const finalPdf = await createCorrespondencePdfWithSignatureAssets(input.record, {
     mode: "final",
     verificationToken: token,
     dispatchReference: input.record.reference,
-    signatureBlocks: finalSignatureBlocks(input.record),
-  });
+    signatureBlocks,
+  }, signatureAssets);
   const finalPdfHash = correspondencePdfHash(finalPdf);
   const finalPdfPath = await storeImmutableFinalPdf(input.record, finalPdf, finalPdfHash);
   const verification = await input.client.from("lcdbo_correspondence_verification_records").insert({

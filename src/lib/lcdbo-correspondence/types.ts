@@ -250,6 +250,7 @@ export type LcdboCorrespondenceSignatureEvent = {
   document_version_id: string;
   signatory_id: string;
   signature_role: string;
+  signature_asset_ref: string | null;
   document_hash: string;
   signed_pdf_path: string | null;
   signed_at: string;

@@ -6,6 +6,9 @@ import path from "node:path";
 import ts from "typescript";
 import vm from "node:vm";
 import crypto from "node:crypto";
+import { createRequire } from "node:module";
+
+const nativeRequire = createRequire(import.meta.url);
 
 function loadTsModule(file, extra = {}) {
   const source = fs.readFileSync(path.join(process.cwd(), file), "utf8");
@@ -19,6 +22,7 @@ function loadTsModule(file, extra = {}) {
     require: (id) => {
       if (extra[id]) return extra[id];
       if (id === "node:crypto") return { ...crypto, default: crypto };
+      if (id === "pdf-lib") return nativeRequire("pdf-lib");
       if (id === "@/lib/lcdbo-correspondence/security") return loadTsModule("src/lib/lcdbo-correspondence/security.ts");
       if (id === "@/lib/lcdbo-correspondence/types") return loadTsModule("src/lib/lcdbo-correspondence/types.ts");
       if (id === "@/lib/lcdbo-correspondence/representative-workflow") return loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
@@ -252,6 +256,25 @@ test("PDF generator creates draft watermark and final signature furniture", () =
   assert.ok(draft.length > 1000);
   assert.ok(final.length > 1000);
   assert.match(pdf.correspondencePdfHash(final), /^[a-f0-9]{64}$/);
+});
+
+test("final PDF embeds protected institutional signature images", async () => {
+  const signatureBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X2NDNwAAAABJRU5ErkJggg==", "base64");
+  const options = {
+    mode: "final",
+    verificationToken: "token-123",
+    signatureBlocks: [
+      { role: "rmrdc_signatory", name: "RMRDC Signatory", organisation: "RMRDC", signedAt: "2026-08-13T10:00:00.000Z", assetRef: "signature-assets/rmrdc.png" },
+      { role: "roseate_signatory", name: "Roseate Signatory", organisation: "Roseate Forte Nigeria Limited", signedAt: "2026-08-13T10:10:00.000Z", assetRef: "signature-assets/roseate.png" },
+    ],
+  };
+  const result = await pdf.createCorrespondencePdfWithSignatureAssets(fixtureRecord, options, [
+    { role: "rmrdc_signatory", bytes: signatureBytes, contentType: "image/png" },
+    { role: "roseate_signatory", bytes: signatureBytes, contentType: "image/png" },
+  ]);
+  const resultText = Buffer.from(result).toString("latin1");
+  assert.match(resultText, /\/Subtype\s*\/Image/);
+  assert.doesNotMatch(resultText, /Protected signature unavailable/);
 });
 
 test("CSV and public text helpers harden exported and public data", () => {
