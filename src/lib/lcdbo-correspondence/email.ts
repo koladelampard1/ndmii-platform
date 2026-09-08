@@ -9,6 +9,8 @@ export type CorrespondenceEmailPayload = {
   subject: string;
   body: string;
   senderIdentity?: string | null;
+  attachments?: Array<{ filename: string; content: string }>;
+  idempotencyKey?: string;
 };
 
 export type CorrespondenceEmailResult = {
@@ -24,6 +26,7 @@ export interface CorrespondenceEmailAdapter {
 }
 
 export function correspondenceEmailIdempotencyKey(payload: CorrespondenceEmailPayload) {
+  if (payload.idempotencyKey) return payload.idempotencyKey;
   return sha256Hex([
     payload.recordId,
     payload.reference,
@@ -49,15 +52,38 @@ export class DeterministicCorrespondenceEmailAdapter implements CorrespondenceEm
 }
 
 export class ProductionCorrespondenceEmailAdapter implements CorrespondenceEmailAdapter {
-  readonly provider = "production_email_provider";
+  readonly provider = "resend";
 
-  async send(): Promise<CorrespondenceEmailResult> {
-    throw new Error("LCDBO production email provider is not configured. Set the approved provider credentials before enabling live email dispatch.");
+  async send(payload: CorrespondenceEmailPayload): Promise<CorrespondenceEmailResult> {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    const from = process.env.LCDBO_CORRESPONDENCE_FROM_EMAIL?.trim();
+    if (!apiKey || !from) throw new Error("LCDBO email dispatch is unavailable because RESEND_API_KEY or LCDBO_CORRESPONDENCE_FROM_EMAIL is not configured.");
+    const idempotencyKey = correspondenceEmailIdempotencyKey(payload);
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        from,
+        to: payload.to,
+        cc: payload.cc?.length ? payload.cc : undefined,
+        bcc: payload.bcc?.length ? payload.bcc : undefined,
+        subject: payload.subject,
+        text: payload.body,
+        attachments: payload.attachments,
+      }),
+    });
+    const result = await response.json().catch(() => ({})) as { id?: string; message?: string };
+    if (!response.ok || !result.id) throw new Error(`Email provider rejected the dispatch (${response.status}): ${result.message ?? "unknown provider error"}`);
+    return { provider: this.provider, providerMessageId: result.id, status: "sent_to_provider", idempotencyKey };
   }
 }
 
 export function createCorrespondenceEmailAdapter() {
-  if (process.env.LCDBO_CORRESPONDENCE_EMAIL_ADAPTER === "production") {
+  if (process.env.NODE_ENV === "production" || process.env.LCDBO_CORRESPONDENCE_EMAIL_ADAPTER === "production") {
     return new ProductionCorrespondenceEmailAdapter();
   }
   return new DeterministicCorrespondenceEmailAdapter();

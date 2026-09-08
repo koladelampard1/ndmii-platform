@@ -10,13 +10,13 @@ import {
   transitionDeliveryEvidenceAction,
   transitionCorrespondenceAction,
 } from "@/app/dashboard/correspondence/actions";
-import { StatusBadge, SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
+import { CorrespondenceActionBanner, StatusBadge, SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
 import { getCorrespondenceRecord, getCorrespondenceRepresentativeAuthority, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
 import { LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN, type LcdboCorrespondenceRecord } from "@/lib/lcdbo-correspondence/types";
 import { counterpartyLabelForRepresentative, institutionLabelForRepresentative, isCounterpartyAction, isInitiatorAction, simplifiedStatusForRecord, simplifiedStatusLabel, type RepresentativeAuthority } from "@/lib/lcdbo-correspondence/representative-workflow";
 
-export default async function CorrespondenceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function CorrespondenceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ success?: string; error?: string }> }) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("view");
   const record = await getCorrespondenceRecord(id, supabase);
   if (!record) notFound();
@@ -27,6 +27,7 @@ export default async function CorrespondenceDetailPage({ params }: { params: Pro
 
   return (
     <div className="space-y-6">
+      <CorrespondenceActionBanner success={query.success} error={query.error} />
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -179,7 +180,7 @@ function RepresentativeActionPanel({ record, authority }: { record: LcdboCorresp
     );
   }
 
-  if (isInitiator && simplifiedStatus === "ready_to_send") return <DispatchForm recordId={record.id} />;
+  if (isInitiator && simplifiedStatus === "ready_to_send") return <div className="space-y-3"><Link href="/dashboard/correspondence/dispatch" className="inline-flex rounded-xl bg-emerald-700 px-4 py-2 text-sm font-black text-white">Send official letter by email</Link><DispatchForm recordId={record.id} /></div>;
   return <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-slate-600">No action is required from your institution right now.</p>;
 }
 
@@ -321,7 +322,8 @@ function DispatchForm({ recordId }: { recordId: string }) {
     <form action={dispatchCorrespondenceAction} className="rounded-2xl border border-slate-200 p-3">
       <input type="hidden" name="record_id" value={recordId} />
       <input type="hidden" name="redirect_to" value={`/dashboard/correspondence/${recordId}`} />
-      <label className="text-xs font-bold text-slate-600">Channel<select name="dispatch_channel" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="email">Email</option><option value="courier">Courier</option><option value="hand_delivery">Hand delivery</option><option value="official_portal">Official portal</option></select></label>
+      <p className="text-sm font-black text-slate-900">Record non-email dispatch</p>
+      <label className="text-xs font-bold text-slate-600">Channel<select name="dispatch_channel" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="courier">Courier</option><option value="hand_delivery">Hand delivery</option><option value="official_portal">Official portal</option></select></label>
       <label className="mt-2 block text-xs font-bold text-slate-600">Provider/courier tracking identifier<input name="tracking_number" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
       <p className="mt-1 text-xs leading-5 text-slate-500">The LCDBO reference is the permanent correspondence tracking number. Add a provider or courier identifier only when the channel supplies one.</p>
       <label className="mt-2 block text-xs font-bold text-slate-600">Dispatch note<textarea name="note" rows={2} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>

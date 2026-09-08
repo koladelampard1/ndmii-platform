@@ -2,7 +2,9 @@ import type { JsonRecord } from "@/types/platform";
 
 export const LCDBO_CORRESPONDENCE_CANONICAL_HOST = "correspondence.dbin.ng";
 export const LCDBO_CORRESPONDENCE_BRANDED_HOST = "correspondence.lcdbo.com";
-export const LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN = `https://${LCDBO_CORRESPONDENCE_CANONICAL_HOST}`;
+// Keep issued-document verification on the canonical DBIN host so authentication
+// and public links do not depend on an undeployed subdomain or cross-host cookies.
+export const LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN = "https://www.dbin.ng/correspondence";
 export const LCDBO_CORRESPONDENCE_MODULE_KEY = "lcdb_o_workspace" as const;
 export const LCDBO_PROGRAMME_SLUG = "local-content-development-beyond-oil";
 

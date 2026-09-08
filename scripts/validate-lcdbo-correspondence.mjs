@@ -198,7 +198,11 @@ assert.match(data, /Provider or courier tracking identifier is required for this
 assert.match(data, /Required protected signature event is required before dispatch/, "signature-before-dispatch enforcement missing");
 assert.match(data, /immutable final issued PDF/i, "immutable final PDF issuance rule missing");
 assert.match(data, /Creator cannot approve their own correspondence/, "separation of duties missing");
-assert.match(data, /Test signatures are disabled in production/, "production test-signature guard missing");
+assert.match(data, /Legacy signature entry is disabled in production/, "production legacy-signature guard missing");
+assert.match(data, /stored_immutable/, "immutable final PDF storage contract missing");
+assert.match(data, /Stored final PDF failed its integrity check/, "final PDF download integrity gate missing");
+assert.match(data, /Both institutional approvals are required before dispatch/, "two-party dispatch signature gate missing");
+assert.match(data, /processCorrespondenceNotificationJobs/, "notification processor missing");
 assert.match(data, /Signature replay is not allowed/, "signature replay guard missing");
 assert.match(data, /sanitizePublicCorrespondenceText/, "public text sanitizer missing");
 assert.match(data, /safeCsvValue/, "CSV formula hardening missing");

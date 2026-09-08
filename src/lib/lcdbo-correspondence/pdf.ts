@@ -84,7 +84,8 @@ function pageStream(runs: PdfTextRun[], pageNumber: number, totalPages: number, 
 }
 
 export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
-  const latestVersion = record.versions?.[0];
+  const targetVersionId = options.mode === "final" ? (record.issued_version_id ?? record.current_version_id) : record.current_version_id;
+  const latestVersion = record.versions?.find((version) => version.id === targetVersionId) ?? record.versions?.[0];
   const body = latestVersion?.body || String(record.metadata?.body ?? record.summary ?? "");
   const recipientName = String(record.metadata?.recipient_name ?? "Recipient");
   const recipientOrganisation = String(record.metadata?.recipient_organisation ?? "");

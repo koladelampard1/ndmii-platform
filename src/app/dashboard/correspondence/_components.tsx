@@ -15,6 +15,28 @@ export function WorkspaceCard({ title, description, children }: { title: string;
   );
 }
 
+const ACTION_MESSAGES: Record<string, string> = {
+  representative_letter_created: "Draft letter created successfully.",
+  representative_draft_saved: "The corrected draft was saved as the current version.",
+  representative_letter_sent_to_counterparty: "Your institutional approval was recorded and the letter was sent to the other party.",
+  representative_decision_recorded: "The counterparty decision was recorded.",
+  correspondence_dispatched: "The dispatch was recorded successfully.",
+  email_dispatch_attempt_recorded: "The email provider accepted the official letter and the dispatch was recorded.",
+  representative_letter_create_failed: "The letter could not be created. Check the required fields and your representative authority.",
+  representative_draft_save_failed: "The draft could not be saved. It may no longer be open for editing.",
+  representative_letter_submit_failed: "The letter could not be submitted. Confirm that you have an active signature authority and the letter is still awaiting your action.",
+  representative_decision_failed: "The decision could not be recorded. A reason is required when returning or rejecting a letter.",
+  correspondence_dispatch_failed: "Dispatch could not be recorded. Both institutions must approve the current version and its final PDF must pass the integrity check.",
+  email_dispatch_failed: "The email was not sent. Check the approved sender configuration, recipient address and provider status; the letter has not been marked sent.",
+};
+
+export function CorrespondenceActionBanner({ success, error }: { success?: string; error?: string }) {
+  const code = error ?? success;
+  if (!code) return null;
+  const failed = Boolean(error);
+  return <div role={failed ? "alert" : "status"} className={`rounded-2xl border px-4 py-3 text-sm font-bold ${failed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>{ACTION_MESSAGES[code] ?? code.replaceAll("_", " ")}</div>;
+}
+
 export function StatusBadge({ status }: { status: string }) {
   const tone = status.includes("awaiting") ? "bg-amber-50 text-amber-800 ring-amber-200" : status === "sent" || status === "closed" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : status === "rejected" || status === "revoked" || status === "cancelled" ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-slate-100 text-slate-700 ring-slate-200";
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ring-1 ${tone}`}>{status.replaceAll("_", " ")}</span>;

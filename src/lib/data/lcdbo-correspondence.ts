@@ -150,6 +150,41 @@ function metadataWithGovernance(metadata: Record<string, unknown> = {}) {
   };
 }
 
+const CORRESPONDENCE_DOCUMENT_BUCKET = "lcdbo-correspondence-documents";
+
+function finalSignatureBlocks(record: LcdboCorrespondenceRecord): CorrespondenceSignatureBlock[] {
+  const versionId = record.current_version_id ?? record.issued_version_id;
+  return (record.signatures ?? [])
+    .filter((signature) => !versionId || signature.document_version_id === versionId)
+    .sort((a, b) => a.signature_role.localeCompare(b.signature_role))
+    .map((signature) => ({
+      role: signature.signature_role,
+      name: "Authorised institutional representative",
+      organisation: signature.signature_role.includes("rmrdc") ? "RMRDC" : signature.signature_role.includes("roseate") ? "Roseate Forte Nigeria Limited" : "LCDBO Joint Secretariat",
+      signedAt: signature.signed_at,
+      testOnly: signature.signature_mode === "test_adapter",
+    }));
+}
+
+async function storeImmutableFinalPdf(record: LcdboCorrespondenceRecord, bytes: Uint8Array, hash: string) {
+  if (!record.current_version_id) throw new Error("A current version is required for final document storage.");
+  const storage = await createServiceRoleSupabaseClient();
+  const path = `final/${record.id}/${record.current_version_id}-${hash}.pdf`;
+  const upload = await storage.storage.from(CORRESPONDENCE_DOCUMENT_BUCKET).upload(path, Buffer.from(bytes), {
+    contentType: "application/pdf",
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) throw upload.error;
+  if (upload.error) {
+    const existing = await storage.storage.from(CORRESPONDENCE_DOCUMENT_BUCKET).download(path);
+    if (existing.error || !existing.data) throw existing.error ?? new Error("Stored final PDF could not be verified.");
+    const existingHash = correspondencePdfHash(new Uint8Array(await existing.data.arrayBuffer()));
+    if (existingHash !== hash) throw new Error("Immutable final PDF path already contains different content.");
+  }
+  return path;
+}
+
 export function isMissingLcdboCorrespondenceSchema(error: unknown) {
   const candidate = error as { code?: string; message?: string } | null;
   const code = candidate?.code ?? "";
@@ -247,7 +282,7 @@ async function enqueueRepresentativeNotification(input: {
   metadata: Record<string, unknown>;
   client: Client;
 }) {
-  const { error } = await input.client.from("lcdbo_correspondence_notification_jobs").upsert({
+  const { data, error } = await input.client.from("lcdbo_correspondence_notification_jobs").upsert({
     programme_id: input.programmeId,
     record_id: input.recordId,
     job_type: input.jobType,
@@ -259,8 +294,79 @@ async function enqueueRepresentativeNotification(input: {
       email_status: "pending_configuration",
       protected_signature_assets_attached: false,
     },
-  }, { onConflict: "idempotency_key" });
+  }, { onConflict: "idempotency_key" }).select("id").single();
   if (error) throw error;
+  if (data?.id) await deliverCorrespondenceNotificationJob(data.id).catch((notificationError) => {
+    console.error("[lcdbo-correspondence-notification:error]", { jobId: data.id, error: notificationError instanceof Error ? notificationError.message : String(notificationError) });
+  });
+}
+
+function notificationCopy(jobType: string, metadata: Record<string, unknown>) {
+  const reference = String(metadata.reference ?? "LCDBO correspondence");
+  const subject = String(metadata.subject ?? "Official correspondence");
+  const messages: Record<string, string> = {
+    representative_counterparty_action: "A letter requires your review and institutional approval.",
+    representative_returned_for_correction: "A letter has been returned to you for correction.",
+    representative_rejected: "A letter has been rejected. Open the record to review the reason.",
+    representative_ready_to_send: "Both institutions have approved the letter and it is ready to send.",
+    review_due_soon: "A correspondence review is due soon.",
+    review_overdue: "A correspondence review is overdue.",
+    response_due_three_days: "A correspondence response is due in three days.",
+    response_due_one_day: "A correspondence response is due tomorrow.",
+    response_overdue: "A correspondence response is overdue.",
+  };
+  const path = String(metadata.secure_path ?? "/dashboard/correspondence");
+  return {
+    subject: `[LCDBO] ${reference} — action update`,
+    body: `${messages[jobType] ?? "There is an update on an LCDBO correspondence record."}\n\n${subject}\n\nOpen the secure workspace: https://www.dbin.ng${path.startsWith("/") ? path : "/dashboard/correspondence"}`,
+  };
+}
+
+export async function deliverCorrespondenceNotificationJob(jobId: string) {
+  const service = await createServiceRoleSupabaseClient();
+  const { data: job, error: jobError } = await service.from("lcdbo_correspondence_notification_jobs").select("*").eq("id", jobId).single();
+  if (jobError || !job) throw jobError ?? new Error("Notification job not found.");
+  if (job.status === "sent" || job.status === "skipped") return job;
+  const attempts = Number(job.attempts ?? 0) + 1;
+  if (!job.recipient_user_id) {
+    await service.from("lcdbo_correspondence_notification_jobs").update({ status: "skipped", attempts, processed_at: new Date().toISOString(), last_error: "No recipient was assigned." }).eq("id", job.id);
+    return job;
+  }
+  const { data: recipient, error: recipientError } = await service.from("users").select("email").eq("id", job.recipient_user_id).single();
+  if (recipientError || !recipient?.email) {
+    await service.from("lcdbo_correspondence_notification_jobs").update({ status: "failed", attempts, last_error: "Recipient email is unavailable." }).eq("id", job.id);
+    throw recipientError ?? new Error("Recipient email is unavailable.");
+  }
+  const metadata = (job.metadata ?? {}) as Record<string, unknown>;
+  const copy = notificationCopy(job.job_type, metadata);
+  try {
+    await createCorrespondenceEmailAdapter().send({
+      recordId: String(job.record_id ?? job.id),
+      reference: String(metadata.reference ?? job.id),
+      to: [recipient.email],
+      subject: copy.subject,
+      body: copy.body,
+      senderIdentity: "LCDBO Correspondence",
+      idempotencyKey: job.idempotency_key,
+    });
+    await service.from("lcdbo_correspondence_notification_jobs").update({ status: "sent", attempts, processed_at: new Date().toISOString(), last_error: null }).eq("id", job.id);
+  } catch (error) {
+    await service.from("lcdbo_correspondence_notification_jobs").update({ status: "failed", attempts, last_error: error instanceof Error ? error.message.slice(0, 500) : "Notification delivery failed." }).eq("id", job.id);
+    throw error;
+  }
+  return job;
+}
+
+export async function processCorrespondenceNotificationJobs(limit = 25) {
+  const service = await createServiceRoleSupabaseClient();
+  const { data, error } = await service.from("lcdbo_correspondence_notification_jobs").select("id").in("status", ["pending", "failed"]).lte("scheduled_for", new Date().toISOString()).lt("attempts", 5).order("scheduled_for", { ascending: true }).limit(Math.min(100, Math.max(1, limit)));
+  if (error) throw error;
+  const results = [];
+  for (const job of data ?? []) {
+    try { await deliverCorrespondenceNotificationJob(job.id); results.push({ id: job.id, status: "sent" }); }
+    catch (deliveryError) { results.push({ id: job.id, status: "failed", error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError) }); }
+  }
+  return results;
 }
 
 async function recordCorrespondenceEvent(input: {
@@ -669,9 +775,8 @@ async function insertRepresentativeSignature(input: {
   client: Client;
 }) {
   if (!input.authority.can_apply_signature) throw new Error("This representative is not authorised to apply institutional signatures.");
-  if (process.env.NODE_ENV === "production" && process.env.LCDBO_CORRESPONDENCE_ALLOW_TEST_SIGNATURES !== "true") {
-    throw new Error("Test signatures are disabled in production unless controlled UAT mode is explicitly enabled.");
-  }
+  const isProductionSignature = process.env.NODE_ENV === "production";
+  if (isProductionSignature && !input.authority.signature_asset_ref) throw new Error("A protected institutional signature asset must be assigned before production approval.");
   const version = input.record.versions?.find((candidate) => candidate.id === input.record.current_version_id) ?? input.record.versions?.[0];
   if (!version?.id || !version.document_hash) throw new Error("A hashed document version is required before signature.");
   const signatureRole = signatureRoleForRepresentative(input.authority.representative_role);
@@ -685,7 +790,7 @@ async function insertRepresentativeSignature(input: {
     signature_asset_ref: input.authority.signature_asset_ref,
     document_hash: version.document_hash,
     signed_pdf_path: null,
-    signature_mode: "test_adapter",
+    signature_mode: isProductionSignature ? "protected_asset" : "test_adapter",
     metadata: {
       workflow_model: "two_party_representative",
       representative_authority_id: input.authority.id,
@@ -717,15 +822,10 @@ async function generateRepresentativeFinalDocument(input: {
     mode: "final",
     verificationToken: token,
     dispatchReference: input.record.reference,
-    signatureBlocks: signatures.map((signature) => ({
-      role: signature.signature_role,
-      name: "Protected representative",
-      organisation: signature.signature_role === "rmrdc_signatory" ? "RMRDC" : "Roseate Forte Nigeria Limited",
-      signedAt: signature.signed_at,
-      testOnly: true,
-    })),
+    signatureBlocks: finalSignatureBlocks(input.record),
   });
   const finalPdfHash = correspondencePdfHash(finalPdf);
+  const finalPdfPath = await storeImmutableFinalPdf(input.record, finalPdf, finalPdfHash);
   const verification = await input.client.from("lcdbo_correspondence_verification_records").insert({
     record_id: input.record.id,
     verification_token: token,
@@ -737,17 +837,19 @@ async function generateRepresentativeFinalDocument(input: {
       reference: input.record.reference,
       final_pdf_hash: finalPdfHash,
       byte_length: finalPdf.length,
-      storage_status: "pending_private_storage_write",
+      storage_status: "stored_immutable",
+      final_pdf_path: finalPdfPath,
     },
   }).select("*").single();
   if (verification.error || !verification.data) throw verification.error ?? new Error("Unable to create verification record.");
-  await input.client.from("lcdbo_correspondence_records").update({
+  const finalRecordUpdate = await input.client.from("lcdbo_correspondence_records").update({
     status: "ready_for_dispatch",
     simplified_status: "ready_to_send",
     action_institution_id: input.record.initiating_institution_id,
     issued_version_id: version.id,
     verification_record_id: verification.data.id,
     final_pdf_hash: finalPdfHash,
+    final_pdf_path: finalPdfPath,
     final_pdf_generated_at: new Date().toISOString(),
     metadata: {
       ...(input.record.metadata ?? {}),
@@ -759,6 +861,7 @@ async function generateRepresentativeFinalDocument(input: {
     updated_by: input.actorUserId,
     updated_at: new Date().toISOString(),
   }).eq("id", input.record.id);
+  if (finalRecordUpdate.error) throw finalRecordUpdate.error;
   return { finalPdfHash, token };
 }
 
@@ -1084,9 +1187,7 @@ export async function recordCorrespondenceSignature(input: {
   if (record.status !== "awaiting_signature") throw new Error("Correspondence must be awaiting signature.");
   const version = record.versions?.find((candidate) => candidate.id === record.current_version_id) ?? record.versions?.[0];
   if (!version?.document_hash) throw new Error("Document hash is required before signature.");
-  if (process.env.NODE_ENV === "production" && process.env.LCDBO_CORRESPONDENCE_ALLOW_TEST_SIGNATURES === "true") {
-    throw new Error("Test signatures are disabled in production.");
-  }
+  if (process.env.NODE_ENV === "production") throw new Error("Legacy signature entry is disabled in production. Use an authorised institutional representative approval.");
   const existingSignature = record.signatures?.find((signature) => signature.signature_role === input.signatureRole && signature.document_version_id === version.id);
   if (existingSignature) throw new Error("Signature replay is not allowed for the same document version and role.");
   const approvals = record.approvals ?? [];
@@ -1099,7 +1200,7 @@ export async function recordCorrespondenceSignature(input: {
     signature_role: input.signatureRole,
     document_hash: version.document_hash,
     signed_pdf_path: null,
-    signature_mode: process.env.NODE_ENV === "production" ? "protected_asset" : "test_adapter",
+    signature_mode: "test_adapter",
     metadata: { signature_policy: "server_side_only", private_asset_publicly_exposed: false },
   });
   if (error) throw error;
@@ -1131,12 +1232,20 @@ export async function recordCorrespondenceDispatch(input: {
   channel: string;
   trackingNumber?: string | null;
   note?: string | null;
+  providerAccepted?: boolean;
   client: Client;
 }) {
+  if (input.channel === "email" && !input.providerAccepted) throw new Error("Email dispatch must be accepted by the approved provider before it can be recorded.");
   const record = await getCorrespondenceRecord(input.recordId, input.client);
   if (!record) throw new Error("Correspondence record not found.");
   if (!["signed", "ready_for_dispatch", "dispatch_failed"].includes(record.status)) throw new Error("Correspondence is not ready for dispatch.");
-  if (!record.signatures?.length) throw new Error("Required protected signature event is required before dispatch.");
+  const representativeWorkflow = record.metadata?.workflow_model === "two_party_representative";
+  const currentSignatures = (record.signatures ?? []).filter((signature) => signature.document_version_id === record.current_version_id);
+  if (!currentSignatures.length) throw new Error("Required protected signature event is required before dispatch.");
+  if (representativeWorkflow && (!currentSignatures.some((signature) => signature.signature_role === "rmrdc_signatory") || !currentSignatures.some((signature) => signature.signature_role === "roseate_signatory"))) {
+    throw new Error("Both institutional approvals are required before dispatch.");
+  }
+  if (representativeWorkflow && (!record.final_pdf_path || !record.final_pdf_hash)) throw new Error("The immutable final PDF must be stored before dispatch.");
   const channelRequiresProviderTracking = ["courier", "official_portal"].includes(input.channel);
   const providerTracking = String(input.trackingNumber ?? "").trim();
   if (channelRequiresProviderTracking && !providerTracking) throw new Error("Provider or courier tracking identifier is required for this dispatch channel.");
@@ -1157,15 +1266,8 @@ export async function recordCorrespondenceDispatch(input: {
     ? record.metadata.verification_token
     : createVerificationToken(record.reference, version.document_hash);
   const canonicalUrl = `${LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN}/verify/${token}`;
-  const signatureBlocks: CorrespondenceSignatureBlock[] = (record.signatures ?? []).map((signature) => ({
-    role: signature.signature_role,
-    name: "Protected signatory",
-    organisation: signature.signature_role.includes("rmrdc") ? "RMRDC" : signature.signature_role.includes("roseate") ? "Roseate Forte Nigeria Limited" : "LCDBO Joint Secretariat",
-    signedAt: signature.signed_at,
-    testOnly: process.env.NODE_ENV !== "production",
-  }));
-  const finalPdf = createCorrespondencePdf(record, { mode: "final", verificationToken: token, signatureBlocks, dispatchReference });
-  const finalPdfHash = record.final_pdf_hash ?? (typeof record.metadata?.final_pdf_hash === "string" ? record.metadata.final_pdf_hash : correspondencePdfHash(finalPdf));
+  const finalPdf = await generateCorrespondenceFinalPdf(input.recordId, input.client);
+  const finalPdfHash = correspondencePdfHash(finalPdf);
   let verificationRecordId = record.verification_record_id;
   if (!verificationRecordId) {
     const verification = await input.client.from("lcdbo_correspondence_verification_records").insert({
@@ -1841,6 +1943,9 @@ export async function sendCorrespondenceEmailDispatch(input: {
   if (!record) throw new Error("Correspondence record not found.");
   if (!["signed", "ready_for_dispatch", "dispatch_failed"].includes(record.status)) throw new Error("Only signed correspondence can be emailed through dispatch.");
   const to = requiredText(input.formData.get("to_recipients"), "Recipient email").split(",").map((email) => email.trim()).filter(Boolean);
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!to.length || to.some((email) => !emailPattern.test(email))) throw new Error("Enter valid recipient email addresses.");
+  const finalPdf = await generateCorrespondenceFinalPdf(recordId, input.client);
   const payload = {
     recordId,
     reference: record.reference,
@@ -1849,6 +1954,7 @@ export async function sendCorrespondenceEmailDispatch(input: {
     subject: requiredText(input.formData.get("subject"), "Email subject"),
     body: requiredText(input.formData.get("body"), "Email body"),
     senderIdentity: optionalText(input.formData.get("sender_identity")) ?? "LCDBO Joint Secretariat",
+    attachments: [{ filename: `${record.reference.replaceAll("/", "-")}.pdf`, content: Buffer.from(finalPdf).toString("base64") }],
   };
   const adapter = createCorrespondenceEmailAdapter();
   const result = await adapter.send(payload);
@@ -1867,6 +1973,17 @@ export async function sendCorrespondenceEmailDispatch(input: {
     metadata: metadataWithGovernance({ reference: record.reference }),
   }, { onConflict: "idempotency_key" }).select("*").single();
   if (error || !data) throw error ?? new Error("Unable to record email dispatch attempt.");
+  if (result.status === "sent_to_provider") {
+    await recordCorrespondenceDispatch({
+      recordId,
+      actorUserId: input.actorUserId,
+      channel: "email",
+      trackingNumber: result.providerMessageId ?? record.reference,
+      note: `Accepted by ${result.provider}.`,
+      providerAccepted: true,
+      client: input.client,
+    });
+  }
   return data;
 }
 
@@ -1881,21 +1998,13 @@ export async function generateCorrespondenceFinalPdf(recordId: string, client?: 
   const supabase = await clientOrService(client);
   const record = await getCorrespondenceRecord(recordId, supabase);
   if (!record) throw new Error("Correspondence record not found.");
-  if (!record.issued_version_id || !record.verification_record_id) throw new Error("Final PDF is unavailable until the record is issued.");
-  const signatureBlocks: CorrespondenceSignatureBlock[] = (record.signatures ?? []).map((signature) => ({
-    role: signature.signature_role,
-    name: "Protected signatory",
-    organisation: signature.signature_role.includes("rmrdc") ? "RMRDC" : signature.signature_role.includes("roseate") ? "Roseate Forte Nigeria Limited" : "LCDBO Joint Secretariat",
-    signedAt: signature.signed_at,
-    testOnly: false,
-  }));
-  const token = typeof record.metadata?.verification_token === "string" ? record.metadata.verification_token : null;
-  return createCorrespondencePdf(record, {
-    mode: "final",
-    verificationToken: token,
-    signatureBlocks,
-    dispatchReference: typeof record.metadata?.dispatch_reference === "string" ? record.metadata.dispatch_reference : record.reference,
-  });
+  if (!record.issued_version_id || !record.verification_record_id || !record.final_pdf_path || !record.final_pdf_hash) throw new Error("Final PDF is unavailable until the immutable issued document is stored.");
+  const storage = await createServiceRoleSupabaseClient();
+  const downloaded = await storage.storage.from(CORRESPONDENCE_DOCUMENT_BUCKET).download(record.final_pdf_path);
+  if (downloaded.error || !downloaded.data) throw downloaded.error ?? new Error("Stored final PDF is unavailable.");
+  const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
+  if (correspondencePdfHash(bytes) !== record.final_pdf_hash) throw new Error("Stored final PDF failed its integrity check.");
+  return bytes;
 }
 
 export async function getPublicCorrespondenceVerification(input: string, client?: Client): Promise<PublicCorrespondenceVerification | null> {

@@ -50,6 +50,7 @@ const originalMigration = fs.readFileSync(path.join(process.cwd(), "supabase/mig
 const referencePatchMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260813133000_fix_lcdbo_correspondence_reference_generation.sql"), "utf8");
 const representativeMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260814120000_lcdbo_correspondence_representative_workflow.sql"), "utf8");
 const dataService = fs.readFileSync(path.join(process.cwd(), "src/lib/data/lcdbo-correspondence.ts"), "utf8");
+const emailService = fs.readFileSync(path.join(process.cwd(), "src/lib/lcdbo-correspondence/email.ts"), "utf8");
 
 const fixtureRecord = {
   id: "record-1",
@@ -247,7 +248,7 @@ test("PDF generator creates draft watermark and final signature furniture", () =
   assert.doesNotMatch(finalText, /DRAFT/);
   assert.match(finalText, /RMRDC Signatory/);
   assert.match(finalText, /Roseate Signatory/);
-  assert.match(finalText, /correspondence\.dbin\.ng/);
+  assert.match(finalText, /www\.dbin\.ng\/correspondence/);
   assert.ok(draft.length > 1000);
   assert.ok(final.length > 1000);
   assert.match(pdf.correspondencePdfHash(final), /^[a-f0-9]{64}$/);
@@ -422,4 +423,24 @@ test("email adapter is deterministic and production adapter fails closed", async
   const second = await adapter.send(payload);
   assert.equal(first.providerMessageId, second.providerMessageId);
   await assert.rejects(new email.ProductionCorrespondenceEmailAdapter().send(payload), /not configured/);
+});
+
+test("final documents are stored once and verified before download", () => {
+  assert.match(dataService, /upsert: false/);
+  assert.match(dataService, /final\/[\s\S]*final_pdf_path/);
+  assert.match(dataService, /correspondencePdfHash\(bytes\) !== record\.final_pdf_hash/);
+  assert.doesNotMatch(dataService, /storage_status: "pending_private_storage_write"/);
+});
+
+test("production email uses Resend idempotency and attaches the final PDF", () => {
+  assert.match(emailService, /https:\/\/api\.resend\.com\/emails/);
+  assert.match(emailService, /"idempotency-key": idempotencyKey/);
+  assert.match(dataService, /attachments: \[\{ filename:/);
+  assert.match(dataService, /Accepted by \$\{result\.provider\}/);
+});
+
+test("representative notifications have immediate delivery and retry processing", () => {
+  assert.match(dataService, /deliverCorrespondenceNotificationJob/);
+  assert.match(dataService, /processCorrespondenceNotificationJobs/);
+  assert.match(dataService, /\.lt\("attempts", 5\)/);
 });
