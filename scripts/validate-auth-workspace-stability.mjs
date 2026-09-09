@@ -25,6 +25,10 @@ const boiLayout = read("src/app/dashboard/boi/layout.tsx");
 const nrsLayout = read("src/app/dashboard/nrs/layout.tsx");
 const loginDestination = read("src/lib/auth/login-destination.ts");
 const routing = read("src/lib/routing/dbin-hosts.ts");
+const logoutRoute = read("src/app/logout/route.ts");
+const accountActions = read("src/components/auth/account-actions.tsx");
+const navbar = read("src/components/layout/navbar.tsx");
+const msmeDashboardTopbar = read("src/components/msme/msme-dashboard-topbar.tsx");
 
 assert(!authorization.includes('role === "workspace_user" && (routeMatchesPrefix(path, "/dashboard/lcdbo")'), "workspace_user must not have blanket LCDBO/correspondence route access.");
 assert(authorization.includes('routeMatchesPrefix(path, "/dashboard/correspondence")') && authorization.includes('canAccessWorkspaceRoute({ role }, "correspondence", path).allowed'), "Correspondence route checks must use workspace policy.");
@@ -47,6 +51,13 @@ for (const [name, source] of Object.entries({ correspondenceLayout, lcdboLayout,
   assert(source.includes('export const dynamic = "force-dynamic"'), `${name} must force dynamic rendering for user-specific authorization.`);
 }
 assert(!boiLayout.includes("canAccessRoute") && !nrsLayout.includes("canAccessRoute"), "BOI/NRS layouts must not reapply legacy global-only route guards after shared scoped access.");
+assert(logoutRoute.includes("export async function GET()") && logoutRoute.includes('status: 405') && logoutRoute.includes('Allow: "POST"'), "GET /logout must be side-effect free and reject prefetch/navigation requests.");
+assert(logoutRoute.includes("export async function POST(request: NextRequest)"), "Logout must require an intentional POST request.");
+for (const [name, source] of Object.entries({ accountActions, navbar, accessDeniedPage, msmeDashboardTopbar })) {
+  assert(!source.includes('href="/logout"'), `${name} must not expose a prefetchable logout link.`);
+  assert(source.includes('action="/logout"') && source.includes('method="post"'), `${name} must submit logout intentionally with POST.`);
+}
+assert(!accountActions.includes("href={switchHref}") && accountActions.includes("action={switchHref}"), "Switch account must not be a prefetchable logout link.");
 
 function loadLoginDestinationModule() {
   const { outputText } = ts.transpileModule(loginDestination, {

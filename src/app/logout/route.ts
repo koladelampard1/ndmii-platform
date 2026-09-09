@@ -14,7 +14,17 @@ function getSafeReturnPath(value: string | null) {
   return value;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
+  return new NextResponse("Method Not Allowed", {
+    status: 405,
+    headers: {
+      Allow: "POST",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+export async function POST(request: NextRequest) {
   const accessToken = request.cookies.get(SUPABASE_ACCESS_TOKEN_COOKIE)?.value;
   const refreshToken = request.cookies.get(SUPABASE_REFRESH_TOKEN_COOKIE)?.value;
 

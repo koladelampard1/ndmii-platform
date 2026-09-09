@@ -118,11 +118,11 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
                   {roleLabel}
                 </span>
               ) : null}
-              <Link href="/logout" className="whitespace-nowrap">
-                <Button size="sm" variant="secondary" className="min-w-[5.75rem] whitespace-nowrap px-3.5 leading-none">
+              <form action="/logout" method="post" className="whitespace-nowrap">
+                <Button type="submit" size="sm" variant="secondary" className="min-w-[5.75rem] whitespace-nowrap px-3.5 leading-none">
                   Sign out
                 </Button>
-              </Link>
+              </form>
             </>
           ) : (
             <>
@@ -173,9 +173,11 @@ export function Navbar({ isAuthenticated = false, roleLabel }: NavbarProps) {
             </div>
             <div className="grid gap-2 pt-2 sm:grid-cols-2">
               {isAuthenticated ? (
-                <Link href="/logout" onClick={() => setMobileOpen(false)} className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-md bg-white px-4 text-sm font-semibold text-emerald-950">
-                  Sign out
-                </Link>
+                <form action="/logout" method="post" onSubmit={() => setMobileOpen(false)}>
+                  <button type="submit" className="inline-flex h-11 w-full items-center justify-center whitespace-nowrap rounded-md bg-white px-4 text-sm font-semibold text-emerald-950">
+                    Sign out
+                  </button>
+                </form>
               ) : (
                 <>
                   <Link href="/login" onClick={() => setMobileOpen(false)} className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-md border border-white/30 px-4 text-sm font-semibold text-white">

@@ -61,17 +61,23 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
           {isEkirsWorkspace ? (
             <>
               <Link href="/dashboard/ekirs" className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Open assigned EKIRS workspace</Link>
-              <Link href="/logout" className="rounded border px-4 py-2 text-sm">Sign out</Link>
+              <form action="/logout" method="post">
+                <button type="submit" className="rounded border px-4 py-2 text-sm">Sign out</button>
+              </form>
             </>
           ) : isCorrespondenceWorkspace ? (
             <>
               <Link href="/dashboard/correspondence" className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Open assigned correspondence workspace</Link>
-              <Link href="/logout" className="rounded border px-4 py-2 text-sm">Sign out</Link>
+              <form action="/logout" method="post">
+                <button type="submit" className="rounded border px-4 py-2 text-sm">Sign out</button>
+              </form>
             </>
           ) : isLcdboWorkspace ? (
             <>
               <Link href="/dashboard/lcdbo" className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Open assigned LCDBO workspace</Link>
-              <Link href="/logout" className="rounded border px-4 py-2 text-sm">Sign out</Link>
+              <form action="/logout" method="post">
+                <button type="submit" className="rounded border px-4 py-2 text-sm">Sign out</button>
+              </form>
             </>
           ) : (
             <Link href={safeReturnTo} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Go to my dashboard</Link>

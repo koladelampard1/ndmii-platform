@@ -47,7 +47,6 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
     { href: "/dashboard/msme", label: "My Dashboard", icon: UserCircle2 },
     { href: "/dashboard/msme/settings", label: "Business Profile / Settings", icon: Settings },
     { href: publicProfileHref, label: "View Public Profile", icon: User },
-    { href: "/logout", label: "Logout", icon: LogOut },
   ];
 
   return (
@@ -104,6 +103,16 @@ export function MsmeDashboardTopbar({ ownerName, businessName, publicProfileHref
                   </Link>
                 );
               })}
+              <form action="/logout" method="post" onSubmit={() => setOpen(false)}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  role="menuitem"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Logout</span>
+                </button>
+              </form>
             </div>
           ) : null}
         </div>
