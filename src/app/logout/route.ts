@@ -63,7 +63,9 @@ export async function POST(request: NextRequest) {
   const returnTo = getSafeReturnPath(request.nextUrl.searchParams.get("returnTo"));
   if (returnTo && surface !== "nrs") loginUrl.searchParams.set("returnTo", returnTo);
 
-  const response = NextResponse.redirect(loginUrl);
+  // Logout is submitted with POST. Use 303 so the browser follows the redirect
+  // with GET instead of preserving POST and sending it to the login page.
+  const response = NextResponse.redirect(loginUrl, 303);
   clearSupabaseAuthCookies(response);
   clearDbinAuthCookies(response);
   return response;

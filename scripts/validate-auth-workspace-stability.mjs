@@ -52,6 +52,7 @@ for (const [name, source] of Object.entries({ correspondenceLayout, lcdboLayout,
 }
 assert(!boiLayout.includes("canAccessRoute") && !nrsLayout.includes("canAccessRoute"), "BOI/NRS layouts must not reapply legacy global-only route guards after shared scoped access.");
 assert(logoutRoute.includes("export async function GET()") && logoutRoute.includes('status: 405') && logoutRoute.includes('Allow: "POST"'), "GET /logout must be side-effect free and reject prefetch/navigation requests.");
+assert(logoutRoute.includes("NextResponse.redirect(loginUrl, 303)"), "POST /logout must use a 303 redirect so login is requested with GET.");
 assert(logoutRoute.includes("export async function POST(request: NextRequest)"), "Logout must require an intentional POST request.");
 for (const [name, source] of Object.entries({ accountActions, navbar, accessDeniedPage, msmeDashboardTopbar })) {
   assert(!source.includes('href="/logout"'), `${name} must not expose a prefetchable logout link.`);
