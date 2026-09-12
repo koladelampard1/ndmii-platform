@@ -215,6 +215,9 @@ assert.match(pdf, /page\.drawImage\(background/, "approved LCDBO correspondence 
 assert.match(correspondenceActions, /unstable_rethrow\(error\)/, "server actions must preserve Next.js redirect control flow");
 assert.match(correspondenceActions, /representative_letter_recovered/, "legacy representative recovery action missing");
 assert.match(correspondenceCreatePage, /hasRepresentativeRole[\s\S]*Representative authority unavailable/, "representatives must not fall back to legacy creation when authority is unavailable");
+assert.doesNotMatch(correspondenceCreatePage, /name="response_required"|name="response_due_at"/, "representative letter creation must not expose response deadline controls");
+assert.match(data, /name: signature\.signature_role\.includes\("rmrdc"\)[\s\S]*"DG, RMRDC"[\s\S]*"CEO, Roseate Forte Nigeria Limited"/, "final representative signature labels must use the approved titles");
+assert.match(data, /createRepresentativeCorrespondenceLetter[\s\S]*response_required: false,[\s\S]*response_due_at: null,/, "representative letters must not set response deadlines");
 assert.match(correspondenceOutgoingPage, /roles\.some\(isRepresentativeRole\)[\s\S]*redirect\("\/dashboard\/correspondence\/create"\)/, "representatives must be blocked from the legacy outgoing route");
 assert.match(correspondenceDetailPage, /authority && isLegacyRecord[\s\S]*LegacyRepresentativeRecoveryPanel/, "legacy representative records need a guarded recovery path");
 assert.match(data, /processCorrespondenceNotificationJobs/, "notification processor missing");

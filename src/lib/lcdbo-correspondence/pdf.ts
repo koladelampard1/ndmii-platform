@@ -130,8 +130,9 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     const nameLines = wrapText(signature.name, joint ? 34 : 70).slice(0, 2);
     nameLines.forEach((nameLine, nameIndex) => lines.push({ text: nameLine, x, y: detailY + nameIndex * 12, size: 9.25, bold: true }));
     const organisationY = detailY + nameLines.length * 12 + 3;
-    lines.push({ text: signature.organisation, x, y: organisationY, size: 8.5 });
-    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: organisationY + 14, size: 7.5, color: "0.35 0.35 0.35" });
+    if (signature.organisation) lines.push({ text: signature.organisation, x, y: organisationY, size: 8.5 });
+    const timestampY = signature.organisation ? organisationY + 14 : organisationY;
+    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: timestampY, size: 7.5, color: "0.35 0.35 0.35" });
   });
   y += joint ? 100 : 84;
   if (options.dispatchReference && options.dispatchReference !== record.reference) {

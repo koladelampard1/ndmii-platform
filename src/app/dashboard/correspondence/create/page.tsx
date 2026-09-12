@@ -69,8 +69,6 @@ export default async function CreateCorrespondencePage() {
               <label className="text-sm font-bold text-slate-700 md:col-span-2">Subject<input required name="subject" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
               <label className="text-sm font-bold text-slate-700 md:col-span-2">Summary<textarea name="summary" rows={2} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
               <label className="text-sm font-bold text-slate-700 md:col-span-2">Body<textarea required name="body" rows={10} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" name="response_required" className="h-4 w-4 rounded border-slate-300" /> Response required</label>
-              <label className="text-sm font-bold text-slate-700">Response deadline<input name="response_due_at" type="datetime-local" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
             </div>
           </section>
 
