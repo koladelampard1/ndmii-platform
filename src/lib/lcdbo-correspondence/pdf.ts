@@ -1,5 +1,4 @@
 import {
-  LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN,
   type CorrespondenceIssuer,
   type LcdboCorrespondenceRecord,
 } from "@/lib/lcdbo-correspondence/types";
@@ -85,9 +84,6 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
   const targetVersionId = options.mode === "final" ? (record.issued_version_id ?? record.current_version_id) : record.current_version_id;
   const latestVersion = record.versions?.find((version) => version.id === targetVersionId) ?? record.versions?.[0];
   const body = latestVersion?.body || String(record.metadata?.body ?? record.summary ?? "");
-  const recipientName = String(record.metadata?.recipient_name ?? "Recipient");
-  const recipientOrganisation = String(record.metadata?.recipient_organisation ?? "");
-  const verificationUrl = options.verificationToken ? `${LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN}/verify/${options.verificationToken}` : `${LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN}/verify`;
   const documentDate = record.issued_at ?? record.created_at;
   const signatureBlocks = options.signatureBlocks?.length
     ? options.signatureBlocks
@@ -95,13 +91,6 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
 
   const lines: PdfTextRun[] = [];
   let y = TOP;
-  lines.push({ text: issuerName(record.issuer), x: MARGIN_X, y, size: 11, bold: true, color: "0 0.35 0.2" });
-  y += 22;
-  for (const line of wrapText([recipientName, recipientOrganisation].filter(Boolean).join(", "), 70)) {
-    lines.push({ text: line, x: MARGIN_X, y, size: 10 });
-    y += LINE_HEIGHT;
-  }
-  y += 8;
   for (const line of wrapText(`Subject: ${record.subject}`, 78)) {
     lines.push({ text: line, x: MARGIN_X, y, size: 11, bold: true });
     y += LINE_HEIGHT;
@@ -145,9 +134,6 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: organisationY + 14, size: 7.5, color: "0.35 0.35 0.35" });
   });
   y += joint ? 100 : 84;
-  lines.push({ text: `Verification: ${verificationUrl}`, x: MARGIN_X, y, size: 8, color: "0 0.35 0.2" });
-  y += 13;
-  lines.push({ text: `Document fingerprint: ${latestVersion?.document_hash ?? sha256Hex(`${record.reference}:${record.subject}`)}`, x: MARGIN_X, y, size: 7, color: "0.35 0.35 0.35" });
   if (options.dispatchReference && options.dispatchReference !== record.reference) {
     y += 13;
     lines.push({ text: `Dispatch reference: ${options.dispatchReference}`, x: MARGIN_X, y, size: 8, bold: true });

@@ -224,7 +224,7 @@ assert.match(data, /safeCsvValue/, "CSV formula hardening missing");
 assert.doesNotMatch(data, /raw_signature/i, "raw signature wording must not be exposed in service layer");
 assert.match(pdf, /mode: "draft" \| "final"/, "PDF draft/final modes missing");
 assert.match(pdf, /DRAFT/, "draft watermark missing");
-assert.match(pdf, /Document fingerprint/, "document fingerprint missing");
+assert.doesNotMatch(pdf, /Document fingerprint:/, "document fingerprint must not be printed on the official letter");
 assert.match(pdf, /Page \$\{index \+ 1\} of \$\{model\.pages\.length\}/, "repeated page furniture missing");
 
 const requiredRoutes = [

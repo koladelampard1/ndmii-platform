@@ -731,32 +731,11 @@ export async function createRepresentativeCorrespondenceLetter(input: {
   const body = requiredText(input.formData.get("body"), "Letter body");
   const responseRequired = input.formData.get("response_required") === "on";
   const responseDueAt = optionalText(input.formData.get("response_due_at"));
-  const contactId = optionalText(input.formData.get("contact_id"));
   const templateId = optionalText(input.formData.get("template_id"));
   const selectedTemplate = templateId
     ? await input.client.from("lcdbo_correspondence_templates").select("*").eq("id", templateId).eq("status", "approved").maybeSingle()
     : null;
   if (templateId && !selectedTemplate?.data) throw new Error("Only approved templates can be selected for new correspondence.");
-  const selectedContact = contactId
-    ? await input.client.from("lcdbo_correspondence_contacts").select("*").eq("id", contactId).maybeSingle()
-    : null;
-  if (contactId && !selectedContact?.data) throw new Error("Selected recipient could not be found.");
-
-  const recipientSnapshot = selectedContact?.data ? {
-    contact_id: selectedContact.data.id,
-    name: selectedContact.data.name,
-    organisation: selectedContact.data.organisation,
-    role_title: selectedContact.data.role_title,
-    email: selectedContact.data.email,
-    address: selectedContact.data.address,
-  } : {
-    name: optionalText(input.formData.get("recipient_name")),
-    organisation: optionalText(input.formData.get("recipient_organisation")),
-    role_title: optionalText(input.formData.get("recipient_title")),
-    email: optionalText(input.formData.get("recipient_email")),
-    address: optionalText(input.formData.get("recipient_address")),
-  };
-
   const { data: record, error } = await input.client
     .from("lcdbo_correspondence_records")
     .insert({
@@ -782,7 +761,6 @@ export async function createRepresentativeCorrespondenceLetter(input: {
         workflow_model: "two_party_representative",
         initiating_representative_role: authority.representative_role,
         institution_scope: institution,
-        recipient_snapshot: recipientSnapshot,
         template_snapshot: selectedTemplate?.data ? {
           template_id: selectedTemplate.data.id,
           template_key: selectedTemplate.data.template_key,
@@ -807,7 +785,7 @@ export async function createRepresentativeCorrespondenceLetter(input: {
       version_label: "v1",
       body,
       document_hash: documentHash,
-      content: { subject, body, recipient: recipientSnapshot },
+      content: { subject, body },
       created_by: input.actorUserId,
       metadata: { workflow_model: "two_party_representative", protected_content: true },
     })

@@ -265,7 +265,8 @@ test("PDF generator creates draft watermark and final signature furniture", asyn
   assert.equal(draftDocument.getPage(0).getHeight(), 842, "approved A4 height must be preserved");
   assert.ok(finalRuns.some((run) => run.text === "RMRDC Signatory"));
   assert.ok(finalRuns.some((run) => run.text === "Roseate Signatory"));
-  assert.ok(finalRuns.some((run) => run.text.includes("www.dbin.ng/correspondence")));
+  assert.ok(!finalRuns.some((run) => run.text.startsWith("Verification:")));
+  assert.ok(!finalRuns.some((run) => run.text.startsWith("Document fingerprint:")));
   assert.ok(draft.length > 1000);
   assert.ok(final.length > 1000);
   assert.match(pdf.correspondencePdfHash(final), /^[a-f0-9]{64}$/);
