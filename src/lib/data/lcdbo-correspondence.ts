@@ -47,6 +47,7 @@ import {
   sha256Hex,
 } from "@/lib/lcdbo-correspondence/security";
 import { parsePlaceholderSchema, validateTemplatePlaceholders } from "@/lib/lcdbo-correspondence/templates";
+import { correspondenceRichTextToPlainText, parseCorrespondenceRichText, serializeCorrespondenceRichText } from "@/lib/lcdbo-correspondence/rich-text";
 import {
   correspondencePdfHash,
   createCorrespondencePdf,
@@ -732,7 +733,10 @@ export async function createRepresentativeCorrespondenceLetter(input: {
   if (referenceResult.error || !referenceResult.data) throw referenceResult.error ?? new Error("Unable to generate correspondence reference.");
 
   const subject = requiredText(input.formData.get("subject"), "Subject");
-  const body = requiredText(input.formData.get("body"), "Letter body");
+  const submittedBody = requiredText(input.formData.get("body"), "Letter body");
+  const richBody = parseCorrespondenceRichText(input.formData.get("body_rich_text"), submittedBody);
+  const body = requiredText(correspondenceRichTextToPlainText(richBody), "Letter body");
+  const serializedRichBody = serializeCorrespondenceRichText(richBody);
   const templateId = optionalText(input.formData.get("template_id"));
   const selectedTemplate = templateId
     ? await input.client.from("lcdbo_correspondence_templates").select("*").eq("id", templateId).eq("status", "approved").maybeSingle()
@@ -777,7 +781,7 @@ export async function createRepresentativeCorrespondenceLetter(input: {
     .single();
   if (error || !record) throw error ?? new Error("Unable to create representative correspondence.");
 
-  const documentHash = sha256Hex(`${record.reference}:${subject}:${body}`);
+  const documentHash = sha256Hex(`${record.reference}:${subject}:${serializedRichBody}`);
   const version = await input.client
     .from("lcdbo_correspondence_document_versions")
     .insert({
@@ -787,7 +791,7 @@ export async function createRepresentativeCorrespondenceLetter(input: {
       version_label: "v1",
       body,
       document_hash: documentHash,
-      content: { subject, body },
+      content: { subject, body, rich_body: richBody },
       created_by: input.actorUserId,
       metadata: { workflow_model: "two_party_representative", protected_content: true },
     })
@@ -1072,12 +1076,15 @@ export async function saveRepresentativeDraftVersion(input: {
   if (!["draft", "returned_for_correction"].includes(simplifiedStatusForRecord(record))) throw new Error("This letter is not open for representative revision.");
 
   const subject = requiredText(input.formData.get("subject"), "Subject");
-  const body = requiredText(input.formData.get("body"), "Letter body");
+  const submittedBody = requiredText(input.formData.get("body"), "Letter body");
+  const richBody = parseCorrespondenceRichText(input.formData.get("body_rich_text"), submittedBody);
+  const body = requiredText(correspondenceRichTextToPlainText(richBody), "Letter body");
+  const serializedRichBody = serializeCorrespondenceRichText(richBody);
   const summary = optionalText(input.formData.get("summary"));
   const currentVersion = record.versions?.find((candidate) => candidate.id === record.current_version_id) ?? record.versions?.[0];
   if (!currentVersion) throw new Error("Current document version could not be resolved.");
-  const documentHash = sha256Hex(`${record.reference}:${subject}:${body}`);
-  const content = { subject, body, recipient: currentVersion.content?.recipient ?? (record.metadata?.recipient_snapshot ?? null) };
+  const documentHash = sha256Hex(`${record.reference}:${subject}:${serializedRichBody}`);
+  const content = { subject, body, rich_body: richBody, recipient: currentVersion.content?.recipient ?? (record.metadata?.recipient_snapshot ?? null) };
   let nextVersionId = currentVersion.id;
   let actionType = "draft_updated";
 

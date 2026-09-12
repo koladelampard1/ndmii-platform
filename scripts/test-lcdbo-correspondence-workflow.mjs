@@ -28,6 +28,7 @@ function loadTsModule(file, extra = {}) {
       if (id === "@pdf-lib/fontkit") return { default: nativeRequire("@pdf-lib/fontkit") };
       if (id === "pdf-lib") return nativeRequire("pdf-lib");
       if (id === "@/lib/lcdbo-correspondence/security") return loadTsModule("src/lib/lcdbo-correspondence/security.ts");
+      if (id === "@/lib/lcdbo-correspondence/rich-text") return loadTsModule("src/lib/lcdbo-correspondence/rich-text.ts");
       if (id === "@/lib/lcdbo-correspondence/types") return loadTsModule("src/lib/lcdbo-correspondence/types.ts");
       if (id === "@/lib/lcdbo-correspondence/representative-workflow") return loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
       if (id === "@/lib/lcdbo-correspondence/reminders") return loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
@@ -47,6 +48,7 @@ const evidence = loadTsModule("src/lib/lcdbo-correspondence/evidence.ts");
 const reminders = loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
 const email = loadTsModule("src/lib/lcdbo-correspondence/email.ts");
 const representative = loadTsModule("src/lib/lcdbo-correspondence/representative-workflow.ts");
+const richText = loadTsModule("src/lib/lcdbo-correspondence/rich-text.ts");
 const workspaceRegistry = loadTsModule("src/lib/workspaces/workspace-registry.ts");
 const workspaceAccessPolicy = loadTsModule("src/lib/workspaces/workspace-access-policy.ts", {
   "@/lib/workspaces/workspace-registry": workspaceRegistry,
@@ -270,6 +272,26 @@ test("PDF generator creates draft watermark and final signature furniture", asyn
   assert.ok(draft.length > 1000);
   assert.ok(final.length > 1000);
   assert.match(pdf.correspondencePdfHash(final), /^[a-f0-9]{64}$/);
+});
+
+test("rich text is sanitised, retained in the hashable document model and rendered with formatting", () => {
+  const source = JSON.stringify({
+    version: 1,
+    blocks: [
+      { type: "heading", align: "center", runs: [{ text: "Programme Objectives", bold: true }] },
+      { type: "bullet", align: "left", runs: [{ text: "Verify ", font: "inter" }, { text: "500 MSMEs", bold: true, underline: true, font: "serif" }] },
+      { type: "number", align: "left", runs: [{ text: "Submit the implementation plan", italic: true }] },
+    ],
+  });
+  const parsed = richText.parseCorrespondenceRichText(source, "fallback");
+  assert.equal(richText.correspondenceRichTextToPlainText(parsed), "Programme Objectives\n- Verify 500 MSMEs\n1. Submit the implementation plan");
+  const richRecord = structuredClone(fixtureRecord);
+  richRecord.versions[0].content = { rich_body: parsed };
+  const model = pdf.buildCorrespondencePdfModel(richRecord, { mode: "draft" });
+  const runs = model.pages.flat();
+  assert.ok(runs.some((run) => run.text.includes("Programme") && run.bold));
+  assert.ok(runs.some((run) => run.text.includes("MSMEs") && run.bold && run.underline && run.font === "serif"));
+  assert.ok(runs.some((run) => run.text.includes("Submit") && run.italic));
 });
 
 test("final PDF embeds protected institutional signature images", async () => {

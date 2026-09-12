@@ -23,6 +23,8 @@ const tests = read("scripts/test-dbin-host-routing.mjs");
 const correspondenceTests = read("scripts/test-lcdbo-correspondence-workflow.mjs");
 const correspondenceActions = read("src/app/dashboard/correspondence/actions.ts");
 const correspondenceCreatePage = read("src/app/dashboard/correspondence/create/page.tsx");
+const correspondenceRichTextEditor = read("src/app/dashboard/correspondence/rich-text-editor.tsx");
+const correspondenceRichText = read("src/lib/lcdbo-correspondence/rich-text.ts");
 const correspondenceOutgoingPage = read("src/app/dashboard/correspondence/create/outgoing/page.tsx");
 const correspondenceDetailPage = read("src/app/dashboard/correspondence/[id]/page.tsx");
 
@@ -216,6 +218,10 @@ assert.match(correspondenceActions, /unstable_rethrow\(error\)/, "server actions
 assert.match(correspondenceActions, /representative_letter_recovered/, "legacy representative recovery action missing");
 assert.match(correspondenceCreatePage, /hasRepresentativeRole[\s\S]*Representative authority unavailable/, "representatives must not fall back to legacy creation when authority is unavailable");
 assert.doesNotMatch(correspondenceCreatePage, /name="response_required"|name="response_due_at"/, "representative letter creation must not expose response deadline controls");
+assert.match(correspondenceCreatePage, /CorrespondenceRichTextEditor/, "representative letter creation must use the controlled rich-text editor");
+assert.match(correspondenceRichTextEditor, /insertUnorderedList[\s\S]*insertOrderedList[\s\S]*fontName/, "rich-text editor must provide list and font controls");
+assert.match(correspondenceRichText, /MAX_TEXT_LENGTH[\s\S]*BLOCK_TYPES[\s\S]*FONTS/, "rich-text payload must be constrained by a server-side allowlist");
+assert.match(data, /serializedRichBody[\s\S]*documentHash/, "representative document hashes must bind rich formatting");
 assert.match(data, /name: signature\.signature_role\.includes\("rmrdc"\)[\s\S]*"DG, RMRDC"[\s\S]*"CEO, Roseate Forte Nigeria Limited"/, "final representative signature labels must use the approved titles");
 assert.match(data, /createRepresentativeCorrespondenceLetter[\s\S]*response_required: false,[\s\S]*response_due_at: null,/, "representative letters must not set response deadlines");
 assert.match(correspondenceOutgoingPage, /roles\.some\(isRepresentativeRole\)[\s\S]*redirect\("\/dashboard\/correspondence\/create"\)/, "representatives must be blocked from the legacy outgoing route");

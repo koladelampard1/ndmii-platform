@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createRepresentativeLetterAction } from "@/app/dashboard/correspondence/actions";
 import { SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
+import { CorrespondenceRichTextEditor } from "@/app/dashboard/correspondence/rich-text-editor";
 import { getCorrespondenceRepresentativeAuthority, getCorrespondenceWorkspaceSnapshot, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
 import { counterpartyLabelForRepresentative, institutionLabelForRepresentative, isRepresentativeRole } from "@/lib/lcdbo-correspondence/representative-workflow";
 
@@ -68,7 +69,7 @@ export default async function CreateCorrespondencePage() {
               </label>
               <label className="text-sm font-bold text-slate-700 md:col-span-2">Subject<input required name="subject" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
               <label className="text-sm font-bold text-slate-700 md:col-span-2">Summary<textarea name="summary" rows={2} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
-              <label className="text-sm font-bold text-slate-700 md:col-span-2">Body<textarea required name="body" rows={10} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
+              <CorrespondenceRichTextEditor />
             </div>
           </section>
 

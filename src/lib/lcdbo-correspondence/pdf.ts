@@ -3,10 +3,11 @@ import {
   type LcdboCorrespondenceRecord,
 } from "@/lib/lcdbo-correspondence/types";
 import { sha256Hex } from "@/lib/lcdbo-correspondence/security";
+import { correspondenceRichTextFromContent, type CorrespondenceRichTextBlock, type CorrespondenceRichTextFont, type CorrespondenceRichTextRun } from "@/lib/lcdbo-correspondence/rich-text";
 import fontkit from "@pdf-lib/fontkit";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 
 // Approved LCDBO correspondence letterhead supplied by programme leadership.
 // Embedded so serverless PDF generation does not depend on a public URL or
@@ -22,8 +23,10 @@ const LINE_HEIGHT = 15;
 const BODY_LINE_WIDTH = 88;
 const INTER_REGULAR_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff");
 const INTER_BOLD_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-700-normal.woff");
+const INTER_ITALIC_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-400-italic.woff");
+const INTER_BOLD_ITALIC_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-700-italic.woff");
 
-type PdfTextRun = { text: string; x: number; y: number; size?: number; bold?: boolean; color?: string };
+type PdfTextRun = { text: string; x: number; y: number; size?: number; bold?: boolean; italic?: boolean; underline?: boolean; font?: CorrespondenceRichTextFont; color?: string; flow?: boolean };
 
 export type CorrespondencePdfOptions = {
   mode: "draft" | "final";
@@ -80,10 +83,55 @@ function issuerName(issuer: CorrespondenceIssuer) {
   return "LCDBO Joint Secretariat";
 }
 
+function estimatedTextWidth(text: string, size: number, font: CorrespondenceRichTextFont = "inter") {
+  const factor = font === "mono" ? 0.6 : font === "serif" ? 0.49 : 0.52;
+  return text.length * size * factor;
+}
+
+function layoutRichTextBlock(block: CorrespondenceRichTextBlock, y: number, orderedIndex: number) {
+  const size = block.type === "heading" ? 12 : 10;
+  const lineHeight = block.type === "heading" ? 18 : LINE_HEIGHT;
+  const marker = block.type === "bullet" ? "-  " : block.type === "number" ? `${orderedIndex}.  ` : "";
+  const indent = marker ? 16 : 0;
+  const availableWidth = PAGE_WIDTH - MARGIN_X * 2 - indent;
+  const tokens: Array<CorrespondenceRichTextRun & { width: number }> = [];
+  for (const run of block.runs) {
+    const pieces = run.text.replace(/\s+/g, " ").split(/(?<=\s)/).filter(Boolean);
+    for (const piece of pieces) tokens.push({ ...run, text: piece, width: estimatedTextWidth(piece, size, run.font) });
+  }
+  const lineGroups: Array<typeof tokens> = [];
+  let current: typeof tokens = [];
+  let width = 0;
+  for (const token of tokens) {
+    if (current.length && width + token.width > availableWidth) {
+      lineGroups.push(current);
+      current = [];
+      width = 0;
+    }
+    current.push(token);
+    width += token.width;
+  }
+  lineGroups.push(current);
+  const lines: PdfTextRun[] = [];
+  lineGroups.forEach((group, lineIndex) => {
+    const contentWidth = group.reduce((sum, token) => sum + token.width, 0);
+    let x = MARGIN_X + indent;
+    if (!marker && block.align === "center") x = MARGIN_X + Math.max(0, (PAGE_WIDTH - MARGIN_X * 2 - contentWidth) / 2);
+    if (!marker && block.align === "right") x = PAGE_WIDTH - MARGIN_X - contentWidth;
+    if (lineIndex === 0 && marker) lines.push({ text: marker.trimEnd(), x: MARGIN_X, y, size, bold: block.type === "number" });
+    for (const token of group) {
+      lines.push({ text: token.text, x, y: y + lineIndex * lineHeight, size, bold: block.type === "heading" || token.bold, italic: token.italic, underline: token.underline, font: token.font, flow: true });
+      x += token.width;
+    }
+  });
+  return { lines, nextY: y + Math.max(1, lineGroups.length) * lineHeight + (block.type === "heading" ? 8 : 4) };
+}
+
 export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
   const targetVersionId = options.mode === "final" ? (record.issued_version_id ?? record.current_version_id) : record.current_version_id;
   const latestVersion = record.versions?.find((version) => version.id === targetVersionId) ?? record.versions?.[0];
   const body = latestVersion?.body || String(record.metadata?.body ?? record.summary ?? "");
+  const richBody = correspondenceRichTextFromContent(latestVersion?.content, body);
   const documentDate = record.issued_at ?? record.created_at;
   const signatureBlocks = options.signatureBlocks?.length
     ? options.signatureBlocks
@@ -96,20 +144,17 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     y += LINE_HEIGHT;
   }
   y += 10;
-  for (const paragraph of body.split(/\n/)) {
-    const trimmed = paragraph.trim();
-    if (!trimmed) {
+  let orderedIndex = 0;
+  for (const block of richBody.blocks) {
+    if (block.type === "number") orderedIndex += 1;
+    else orderedIndex = 0;
+    if (!block.runs.some((run) => run.text.trim())) {
       y += 7;
       continue;
     }
-    const bullet = /^[-*•]\s+/.test(trimmed);
-    const content = trimmed.replace(/^[-*•]\s+/, "");
-    const wrapped = wrapText(content, bullet ? BODY_LINE_WIDTH - 5 : BODY_LINE_WIDTH);
-    for (const [index, line] of wrapped.entries()) {
-      lines.push({ text: `${bullet && index === 0 ? "-  " : bullet ? "   " : ""}${line}`, x: MARGIN_X, y, size: 10 });
-      y += LINE_HEIGHT;
-    }
-    y += 5;
+    const laidOut = layoutRichTextBlock(block, y, orderedIndex);
+    lines.push(...laidOut.lines);
+    y = laidOut.nextY;
   }
   y += 10;
   lines.push({ text: "AUTHORISED SIGNATORIES", x: MARGIN_X, y, size: 7.5, bold: true, color: "0.24 0.36 0.32" });
@@ -130,9 +175,8 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     const nameLines = wrapText(signature.name, joint ? 34 : 70).slice(0, 2);
     nameLines.forEach((nameLine, nameIndex) => lines.push({ text: nameLine, x, y: detailY + nameIndex * 12, size: 9.25, bold: true }));
     const organisationY = detailY + nameLines.length * 12 + 3;
-    if (signature.organisation) lines.push({ text: signature.organisation, x, y: organisationY, size: 8.5 });
-    const timestampY = signature.organisation ? organisationY + 14 : organisationY;
-    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: timestampY, size: 7.5, color: "0.35 0.35 0.35" });
+    lines.push({ text: signature.organisation, x, y: organisationY, size: 8.5 });
+    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: organisationY + 14, size: 7.5, color: "0.35 0.35 0.35" });
   });
   y += joint ? 100 : 84;
   if (options.dispatchReference && options.dispatchReference !== record.reference) {
@@ -162,9 +206,15 @@ export async function createCorrespondencePdf(record: LcdboCorrespondenceRecord,
   const model = buildCorrespondencePdfModel(record, options);
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  const [regularBytes, boldBytes] = await Promise.all([readFile(INTER_REGULAR_PATH), readFile(INTER_BOLD_PATH)]);
+  const [regularBytes, boldBytes, italicBytes, boldItalicBytes] = await Promise.all([readFile(INTER_REGULAR_PATH), readFile(INTER_BOLD_PATH), readFile(INTER_ITALIC_PATH), readFile(INTER_BOLD_ITALIC_PATH)]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
+  const italic = await pdf.embedFont(italicBytes, { subset: true });
+  const boldItalic = await pdf.embedFont(boldItalicBytes, { subset: true });
+  const [serif, serifBold, serifItalic, serifBoldItalic, mono, monoBold, monoItalic, monoBoldItalic] = await Promise.all([
+    pdf.embedFont(StandardFonts.TimesRoman), pdf.embedFont(StandardFonts.TimesRomanBold), pdf.embedFont(StandardFonts.TimesRomanItalic), pdf.embedFont(StandardFonts.TimesRomanBoldItalic),
+    pdf.embedFont(StandardFonts.Courier), pdf.embedFont(StandardFonts.CourierBold), pdf.embedFont(StandardFonts.CourierOblique), pdf.embedFont(StandardFonts.CourierBoldOblique),
+  ]);
   const background = await pdf.embedJpg(Buffer.from(APPROVED_LCDBO_LETTERHEAD_JPEG_BASE64, "base64"));
   const ink = rgb(0.03, 0.13, 0.1);
   const green = rgb(0.02, 0.35, 0.24);
@@ -181,8 +231,18 @@ export async function createCorrespondencePdf(record: LcdboCorrespondenceRecord,
     page.drawLine({ start: { x: 286, y: 690 }, end: { x: 286, y: 724 }, thickness: 0.5, color: rgb(0.82, 0.88, 0.85) });
     page.drawLine({ start: { x: 457, y: 690 }, end: { x: 457, y: 724 }, thickness: 0.5, color: rgb(0.82, 0.88, 0.85) });
 
-    const draw = (text: string, x: number, y: number, size: number, isBold = false, color = ink) =>
-      page.drawText(text, { x, y: PAGE_HEIGHT - y, size, font: isBold ? bold : regular, color });
+    const selectFont = (family: CorrespondenceRichTextFont = "inter", isBold = false, isItalic = false): PDFFont => {
+      if (family === "serif") return isBold && isItalic ? serifBoldItalic : isBold ? serifBold : isItalic ? serifItalic : serif;
+      if (family === "mono") return isBold && isItalic ? monoBoldItalic : isBold ? monoBold : isItalic ? monoItalic : mono;
+      return isBold && isItalic ? boldItalic : isBold ? bold : isItalic ? italic : regular;
+    };
+    const draw = (text: string, x: number, y: number, size: number, isBold = false, color = ink, isItalic = false, family: CorrespondenceRichTextFont = "inter", underline = false) => {
+      const selectedFont = selectFont(family, isBold, isItalic);
+      page.drawText(text, { x, y: PAGE_HEIGHT - y, size, font: selectedFont, color });
+      const width = selectedFont.widthOfTextAtSize(text, size);
+      if (underline && text.trim()) page.drawLine({ start: { x, y: PAGE_HEIGHT - y - 1.4 }, end: { x: x + width, y: PAGE_HEIGHT - y - 1.4 }, thickness: 0.55, color });
+      return width;
+    };
     draw("LOCAL CONTENT DEVELOPMENT", 187, 32, 15, true);
     draw("BEYOND OIL (LCDBO)", 218, 51, 15, true);
     draw("A National Industrial Development Initiative", 201, 76, 8, true, green);
@@ -194,7 +254,12 @@ export async function createCorrespondencePdf(record: LcdboCorrespondenceRecord,
     draw(model.metadata.version, 474, 143, 8.5, true, green);
     draw(`Page ${index + 1} of ${model.pages.length}`, 498, 723, 7, false, muted);
     if (model.watermark) draw(model.watermark, 180, 450, 68, true, rgb(0.88, 0.88, 0.88));
-    runs.forEach((run) => draw(run.text, run.x, run.y, run.size ?? 10, run.bold, run.color ? rgb(...run.color.split(" ").map(Number) as [number, number, number]) : ink));
+    const flowCursor = new Map<number, number>();
+    runs.forEach((run) => {
+      const x = run.flow ? (flowCursor.get(run.y) ?? run.x) : run.x;
+      const width = draw(run.text, x, run.y, run.size ?? 10, run.bold, run.color ? rgb(...run.color.split(" ").map(Number) as [number, number, number]) : ink, run.italic, run.font, run.underline);
+      if (run.flow) flowCursor.set(run.y, x + width);
+    });
   });
   return new Uint8Array(await pdf.save());
 }

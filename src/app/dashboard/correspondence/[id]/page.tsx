@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CorrespondenceRichTextEditor } from "@/app/dashboard/correspondence/rich-text-editor";
+import { CorrespondenceRichTextPreview } from "@/app/dashboard/correspondence/rich-text-preview";
 import { notFound } from "next/navigation";
 import {
   adoptLegacyRepresentativeLetterAction,
@@ -65,9 +67,9 @@ export default async function CorrespondenceDetailPage({ params, searchParams }:
                   <Link href={`/api/lcdbo/correspondence/${record.id}/draft-pdf`} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white">Open draft PDF</Link>
                   {record.issued_version_id ? <Link href={`/api/lcdbo/correspondence/${record.id}/final-pdf`} className="rounded-xl bg-emerald-700 px-3 py-2 text-xs font-black text-white">Open final PDF</Link> : null}
                 </div>
-                <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl bg-white p-4 text-sm leading-6 text-slate-700 ring-1 ring-slate-200">{latestVersion.body || "Document body has not been added."}</pre>
+                <CorrespondenceRichTextPreview content={latestVersion.content} fallback={latestVersion.body || "Document body has not been added."} />
                 {authority && isInitiatorAction(record, authority) && ["draft", "returned_for_correction"].includes(simplifiedStatus) ? (
-                  <RepresentativeDraftEditForm record={record} body={latestVersion.body ?? ""} />
+                  <RepresentativeDraftEditForm record={record} body={latestVersion.body ?? ""} richBody={latestVersion.content?.rich_body} />
                 ) : null}
               </div>
             ) : (
@@ -155,7 +157,7 @@ function RepresentativeAuthorityUnavailablePanel() {
   return <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950">Your representative role is active, but the corresponding signature authority could not be resolved. No legacy approval action is available. Ask a correspondence administrator to verify the authority assignment.</p>;
 }
 
-function RepresentativeDraftEditForm({ record, body }: { record: LcdboCorrespondenceRecord; body: string }) {
+function RepresentativeDraftEditForm({ record, body, richBody }: { record: LcdboCorrespondenceRecord; body: string; richBody?: unknown }) {
   return (
     <form action={saveRepresentativeDraftAction} className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
       <input type="hidden" name="record_id" value={record.id} />
@@ -164,7 +166,7 @@ function RepresentativeDraftEditForm({ record, body }: { record: LcdboCorrespond
       <p className="mt-1 text-xs leading-5 text-emerald-900">If a returned letter is based on a frozen signed version, saving creates a new corrected version so signatures cannot be reused.</p>
       <label className="mt-3 block text-xs font-bold text-emerald-950">Subject<input required name="subject" defaultValue={record.subject} className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900" /></label>
       <label className="mt-2 block text-xs font-bold text-emerald-950">Summary<textarea name="summary" rows={2} defaultValue={record.summary ?? ""} className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900" /></label>
-      <label className="mt-2 block text-xs font-bold text-emerald-950">Letter body<textarea required name="body" rows={8} defaultValue={body} className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900" /></label>
+      <div className="mt-2"><CorrespondenceRichTextEditor initialBody={body} initialRichBody={richBody} label="Letter body" /></div>
       <div className="mt-3"><SubmitButton>Save corrected draft</SubmitButton></div>
     </form>
   );
