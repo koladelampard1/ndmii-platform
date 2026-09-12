@@ -210,6 +210,8 @@ assert.match(data, /Legacy signature entry is disabled in production/, "producti
 assert.match(data, /stored_immutable/, "immutable final PDF storage contract missing");
 assert.match(data, /Stored final PDF failed its integrity check/, "final PDF download integrity gate missing");
 assert.match(data, /Both institutional approvals are required before dispatch/, "two-party dispatch signature gate missing");
+assert.match(pdf, /APPROVED_LCDBO_LETTERHEAD_JPEG_BASE64/, "approved LCDBO correspondence letterhead is not embedded");
+assert.match(pdf, /q 595 0 0 842 0 0 cm \/BG Do Q/, "approved LCDBO correspondence letterhead is not painted on each page");
 assert.match(correspondenceActions, /unstable_rethrow\(error\)/, "server actions must preserve Next.js redirect control flow");
 assert.match(correspondenceActions, /representative_letter_recovered/, "legacy representative recovery action missing");
 assert.match(correspondenceCreatePage, /hasRepresentativeRole[\s\S]*Representative authority unavailable/, "representatives must not fall back to legacy creation when authority is unavailable");

@@ -249,6 +249,9 @@ test("PDF generator creates draft watermark and final signature furniture", () =
   const draftText = Buffer.from(draft).toString("latin1");
   const finalText = Buffer.from(final).toString("latin1");
   assert.match(draftText, /DRAFT/);
+  assert.match(draftText, /\/BG Do/, "approved LCDBO letterhead must be painted on every PDF page");
+  assert.match(draftText, /\/Width 595 \/Height 842/, "approved A4 letterhead dimensions must be preserved");
+  assert.match(draftText, /\/Filter \/DCTDecode/, "approved JPEG letterhead must be embedded in the PDF");
   assert.doesNotMatch(finalText, /DRAFT/);
   assert.match(finalText, /RMRDC Signatory/);
   assert.match(finalText, /Roseate Signatory/);
