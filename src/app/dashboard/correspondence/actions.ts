@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import {
   createRepresentativeCorrespondenceLetter,
+  adoptLegacyRepresentativeLetter,
   createCorrespondenceRelationship,
   createCorrespondenceRecord,
   decideRepresentativeCounterpartyLetter,
@@ -40,6 +41,11 @@ function failure(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
 }
 
+function logActionFailure(label: string, error: unknown) {
+  unstable_rethrow(error);
+  console.warn(`[lcdbo-correspondence] ${label} failed`, error instanceof Error ? error.message : String(error));
+}
+
 export async function createCorrespondenceAction(formData: FormData) {
   const redirectTo = String(formData.get("redirect_to") ?? "/dashboard/correspondence/register");
   try {
@@ -52,7 +58,7 @@ export async function createCorrespondenceAction(formData: FormData) {
     });
     success(`/dashboard/correspondence/${record.id}`, "correspondence_created");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] create failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("create", error);
     failure(redirectTo, "correspondence_create_failed");
   }
 }
@@ -69,7 +75,7 @@ export async function createRepresentativeLetterAction(formData: FormData) {
     });
     success(`/dashboard/correspondence/${record.id}`, "representative_letter_created");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] representative create failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("representative create", error);
     failure(redirectTo, "representative_letter_create_failed");
   }
 }
@@ -87,7 +93,7 @@ export async function submitRepresentativeLetterAction(formData: FormData) {
     });
     success(redirectTo, "representative_letter_sent_to_counterparty");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] representative submit failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("representative submit", error);
     failure(redirectTo, "representative_letter_submit_failed");
   }
 }
@@ -106,8 +112,26 @@ export async function saveRepresentativeDraftAction(formData: FormData) {
     });
     success(redirectTo, "representative_draft_saved");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] representative draft save failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("representative draft save", error);
     failure(redirectTo, "representative_draft_save_failed");
+  }
+}
+
+export async function adoptLegacyRepresentativeLetterAction(formData: FormData) {
+  const recordId = String(formData.get("record_id") ?? "");
+  const redirectTo = String(formData.get("redirect_to") ?? `/dashboard/correspondence/${recordId}`);
+  try {
+    const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("draft");
+    await adoptLegacyRepresentativeLetter({
+      recordId,
+      actorUserId: ctx.appUserId!,
+      programmeId: programme.id,
+      client: supabase,
+    });
+    success(redirectTo, "representative_letter_recovered");
+  } catch (error) {
+    logActionFailure("representative legacy recovery", error);
+    failure(redirectTo, "representative_letter_recovery_failed");
   }
 }
 
@@ -126,7 +150,7 @@ export async function decideRepresentativeLetterAction(formData: FormData) {
     });
     success(redirectTo, "representative_decision_recorded");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] representative decision failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("representative decision", error);
     failure(redirectTo, "representative_decision_failed");
   }
 }
@@ -147,7 +171,7 @@ export async function transitionCorrespondenceAction(formData: FormData) {
     });
     success(redirectTo, "correspondence_updated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] transition failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("transition", error);
     failure(redirectTo, "correspondence_update_failed");
   }
 }
@@ -167,7 +191,7 @@ export async function approveCorrespondenceAction(formData: FormData) {
     });
     success(redirectTo, "correspondence_review_recorded");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] approval failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("approval", error);
     failure(redirectTo, "correspondence_review_failed");
   }
 }
@@ -185,7 +209,7 @@ export async function signCorrespondenceAction(formData: FormData) {
     });
     success(redirectTo, "correspondence_signed");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] signature failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("signature", error);
     failure(redirectTo, "correspondence_signature_failed");
   }
 }
@@ -205,7 +229,7 @@ export async function dispatchCorrespondenceAction(formData: FormData) {
     });
     success(redirectTo, "correspondence_dispatched");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] dispatch failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("dispatch", error);
     failure(redirectTo, "correspondence_dispatch_failed");
   }
 }
@@ -217,7 +241,7 @@ export async function saveCorrespondenceContactAction(formData: FormData) {
     await upsertCorrespondenceContact({ formData, actorUserId: ctx.appUserId!, programmeId: programme.id, client: supabase });
     success(redirectTo, "contact_saved");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] contact save failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("contact save", error);
     failure(redirectTo, "contact_save_failed");
   }
 }
@@ -238,7 +262,7 @@ export async function transitionCorrespondenceContactAction(formData: FormData) 
     });
     success(redirectTo, "contact_status_updated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] contact transition failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("contact transition", error);
     failure(redirectTo, "contact_status_update_failed");
   }
 }
@@ -250,7 +274,7 @@ export async function saveCorrespondenceTemplateAction(formData: FormData) {
     await upsertCorrespondenceTemplate({ formData, actorUserId: ctx.appUserId!, programmeId: programme.id, client: supabase });
     success(redirectTo, "template_saved");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] template save failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("template save", error);
     failure(redirectTo, "template_save_failed");
   }
 }
@@ -268,7 +292,7 @@ export async function transitionCorrespondenceTemplateAction(formData: FormData)
     });
     success(redirectTo, "template_updated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] template transition failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("template transition", error);
     failure(redirectTo, "template_update_failed");
   }
 }
@@ -280,7 +304,7 @@ export async function saveCorrespondenceDelegationAction(formData: FormData) {
     await upsertCorrespondenceDelegation({ formData, actorUserId: ctx.appUserId!, programmeId: programme.id, client: supabase });
     success(redirectTo, "delegation_saved");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] delegation save failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("delegation save", error);
     failure(redirectTo, "delegation_save_failed");
   }
 }
@@ -298,7 +322,7 @@ export async function transitionCorrespondenceDelegationAction(formData: FormDat
     });
     success(redirectTo, "delegation_updated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] delegation transition failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("delegation transition", error);
     failure(redirectTo, "delegation_update_failed");
   }
 }
@@ -310,7 +334,7 @@ export async function recordDeliveryEvidenceAction(formData: FormData) {
     await recordCorrespondenceDeliveryEvidence({ formData, actorUserId: ctx.appUserId!, client: supabase });
     success(redirectTo, "delivery_evidence_recorded");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] delivery evidence failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("delivery evidence", error);
     failure(redirectTo, "delivery_evidence_failed");
   }
 }
@@ -328,7 +352,7 @@ export async function transitionDeliveryEvidenceAction(formData: FormData) {
     });
     success(redirectTo, "delivery_evidence_invalidated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] delivery evidence transition failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("delivery evidence transition", error);
     failure(redirectTo, "delivery_evidence_transition_failed");
   }
 }
@@ -340,7 +364,7 @@ export async function recordResponseAction(formData: FormData) {
     await recordCorrespondenceResponse({ formData, actorUserId: ctx.appUserId!, client: supabase });
     success(redirectTo, "response_recorded");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] response failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("response", error);
     failure(redirectTo, "response_record_failed");
   }
 }
@@ -352,7 +376,7 @@ export async function createRelationshipAction(formData: FormData) {
     await createCorrespondenceRelationship({ formData, actorUserId: ctx.appUserId!, client: supabase });
     success(redirectTo, "relationship_created");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] relationship failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("relationship", error);
     failure(redirectTo, "relationship_create_failed");
   }
 }
@@ -364,7 +388,7 @@ export async function updateResponseExpectationAction(formData: FormData) {
     await updateCorrespondenceResponseExpectation({ formData, actorUserId: ctx.appUserId!, client: supabase });
     success(redirectTo, "response_expectation_updated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] response expectation failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("response expectation", error);
     failure(redirectTo, "response_expectation_failed");
   }
 }
@@ -376,7 +400,7 @@ export async function generateReminderJobsAction(formData: FormData) {
     await generateCorrespondenceNotificationJobs({ actorUserId: ctx.appUserId!, programmeId: programme.id, client: supabase });
     success(redirectTo, "reminder_jobs_generated");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] reminder generation failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("reminder generation", error);
     failure(redirectTo, "reminder_jobs_failed");
   }
 }
@@ -388,7 +412,7 @@ export async function sendEmailDispatchAction(formData: FormData) {
     await sendCorrespondenceEmailDispatch({ formData, actorUserId: ctx.appUserId!, client: supabase });
     success(redirectTo, "email_dispatch_attempt_recorded");
   } catch (error) {
-    console.warn("[lcdbo-correspondence] email dispatch failed", error instanceof Error ? error.message : String(error));
+    logActionFailure("email dispatch", error);
     failure(redirectTo, "email_dispatch_failed");
   }
 }

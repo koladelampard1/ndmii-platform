@@ -21,6 +21,10 @@ const routing = read("src/lib/routing/dbin-hosts.ts");
 const workspaceRegistry = read("src/lib/workspaces/workspace-registry.ts");
 const tests = read("scripts/test-dbin-host-routing.mjs");
 const correspondenceTests = read("scripts/test-lcdbo-correspondence-workflow.mjs");
+const correspondenceActions = read("src/app/dashboard/correspondence/actions.ts");
+const correspondenceCreatePage = read("src/app/dashboard/correspondence/create/page.tsx");
+const correspondenceOutgoingPage = read("src/app/dashboard/correspondence/create/outgoing/page.tsx");
+const correspondenceDetailPage = read("src/app/dashboard/correspondence/[id]/page.tsx");
 
 function workspaceBlock(id) {
   const marker = `${id}: defineWorkspace({`;
@@ -188,6 +192,8 @@ assert.match(data, /generateCorrespondenceNotificationJobs/, "reminder generatio
 assert.match(data, /sendCorrespondenceEmailDispatch/, "email dispatch adapter workflow missing");
 assert.match(data, /getCorrespondenceRepresentativeAuthority/, "representative authority resolver missing");
 assert.match(data, /createRepresentativeCorrespondenceLetter/, "representative create workflow missing");
+assert.match(data, /adoptLegacyRepresentativeLetter/, "guarded legacy representative recovery missing");
+assert.match(data, /direct_select_empty_rpc_confirmed/, "authority RLS recovery diagnostic missing");
 assert.match(data, /saveRepresentativeDraftVersion/, "representative draft correction workflow missing");
 assert.match(data, /submitRepresentativeLetterToCounterparty/, "representative submit workflow missing");
 assert.match(data, /decideRepresentativeCounterpartyLetter/, "representative counterparty decision workflow missing");
@@ -202,6 +208,11 @@ assert.match(data, /Legacy signature entry is disabled in production/, "producti
 assert.match(data, /stored_immutable/, "immutable final PDF storage contract missing");
 assert.match(data, /Stored final PDF failed its integrity check/, "final PDF download integrity gate missing");
 assert.match(data, /Both institutional approvals are required before dispatch/, "two-party dispatch signature gate missing");
+assert.match(correspondenceActions, /unstable_rethrow\(error\)/, "server actions must preserve Next.js redirect control flow");
+assert.match(correspondenceActions, /representative_letter_recovered/, "legacy representative recovery action missing");
+assert.match(correspondenceCreatePage, /hasRepresentativeRole[\s\S]*Representative authority unavailable/, "representatives must not fall back to legacy creation when authority is unavailable");
+assert.match(correspondenceOutgoingPage, /roles\.some\(isRepresentativeRole\)[\s\S]*redirect\("\/dashboard\/correspondence\/create"\)/, "representatives must be blocked from the legacy outgoing route");
+assert.match(correspondenceDetailPage, /authority && isLegacyRecord[\s\S]*LegacyRepresentativeRecoveryPanel/, "legacy representative records need a guarded recovery path");
 assert.match(data, /processCorrespondenceNotificationJobs/, "notification processor missing");
 assert.match(data, /Signature replay is not allowed/, "signature replay guard missing");
 assert.match(data, /sanitizePublicCorrespondenceText/, "public text sanitizer missing");

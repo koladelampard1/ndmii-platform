@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  adoptLegacyRepresentativeLetterAction,
   approveCorrespondenceAction,
   decideRepresentativeLetterAction,
   dispatchCorrespondenceAction,
@@ -13,17 +14,19 @@ import {
 import { CorrespondenceActionBanner, StatusBadge, SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
 import { getCorrespondenceRecord, getCorrespondenceRepresentativeAuthority, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
 import { LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN, type LcdboCorrespondenceRecord } from "@/lib/lcdbo-correspondence/types";
-import { counterpartyLabelForRepresentative, institutionLabelForRepresentative, isCounterpartyAction, isInitiatorAction, simplifiedStatusForRecord, simplifiedStatusLabel, type RepresentativeAuthority } from "@/lib/lcdbo-correspondence/representative-workflow";
+import { counterpartyLabelForRepresentative, institutionLabelForRepresentative, isCounterpartyAction, isInitiatorAction, isRepresentativeRole, simplifiedStatusForRecord, simplifiedStatusLabel, type RepresentativeAuthority } from "@/lib/lcdbo-correspondence/representative-workflow";
 
 export default async function CorrespondenceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ success?: string; error?: string }> }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("view");
+  const { ctx, programme, supabase, roles } = await requireLcdboCorrespondenceAccess("view");
   const record = await getCorrespondenceRecord(id, supabase);
   if (!record) notFound();
   const authority = ctx.appUserId ? await getCorrespondenceRepresentativeAuthority({ actorUserId: ctx.appUserId, programmeId: programme.id, client: supabase }) : null;
   const latestVersion = record.versions?.[0];
   const verificationToken = typeof record.metadata?.verification_token === "string" ? record.metadata.verification_token : null;
   const simplifiedStatus = simplifiedStatusForRecord(record);
+  const hasRepresentativeRole = roles.some(isRepresentativeRole);
+  const isLegacyRecord = record.metadata?.workflow_model !== "two_party_representative";
 
   return (
     <div className="space-y-6">
@@ -114,7 +117,10 @@ export default async function CorrespondenceDetailPage({ params, searchParams }:
         <aside className="space-y-6">
           <WorkspaceCard title="Next action" description="Representative actions are limited to your institution and preserve version, signature and audit integrity.">
             <div className="space-y-4">
-              {authority ? <RepresentativeActionPanel record={record} authority={authority} /> : <LegacyActionPanel record={record} />}
+              {authority && isLegacyRecord ? <LegacyRepresentativeRecoveryPanel record={record} /> : null}
+              {authority && !isLegacyRecord ? <RepresentativeActionPanel record={record} authority={authority} /> : null}
+              {!authority && hasRepresentativeRole ? <RepresentativeAuthorityUnavailablePanel /> : null}
+              {!authority && !hasRepresentativeRole ? <LegacyActionPanel record={record} /> : null}
               {verificationToken ? (
                 <Link href={`${LCDBO_CORRESPONDENCE_CANONICAL_ORIGIN}/verify/${verificationToken}`} className="inline-flex text-sm font-black text-emerald-700">Open public verification</Link>
               ) : null}
@@ -124,6 +130,29 @@ export default async function CorrespondenceDetailPage({ params, searchParams }:
       </div>
     </div>
   );
+}
+
+function LegacyRepresentativeRecoveryPanel({ record }: { record: LcdboCorrespondenceRecord }) {
+  const safeToRecover = ["draft", "in_review", "awaiting_approval"].includes(record.status)
+    && !(record.approvals?.length ?? 0)
+    && !(record.signatures?.length ?? 0)
+    && !(record.dispatches?.length ?? 0);
+  if (!safeToRecover) {
+    return <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">This is a legacy correspondence record and cannot be converted automatically because governed activity has already been recorded. Create a new representative letter instead.</p>;
+  }
+  return (
+    <form action={adoptLegacyRepresentativeLetterAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <input type="hidden" name="record_id" value={record.id} />
+      <input type="hidden" name="redirect_to" value={`/dashboard/correspondence/${record.id}`} />
+      <p className="text-sm font-black text-amber-950">Recover this letter</p>
+      <p className="mt-1 text-xs leading-5 text-amber-900">This draft entered the retired internal-approval workflow. Convert it to the two-representative workflow before signing and sending it to the other organisation.</p>
+      <div className="mt-3"><SubmitButton>Convert to representative workflow</SubmitButton></div>
+    </form>
+  );
+}
+
+function RepresentativeAuthorityUnavailablePanel() {
+  return <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950">Your representative role is active, but the corresponding signature authority could not be resolved. No legacy approval action is available. Ask a correspondence administrator to verify the authority assignment.</p>;
 }
 
 function RepresentativeDraftEditForm({ record, body }: { record: LcdboCorrespondenceRecord; body: string }) {

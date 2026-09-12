@@ -1,9 +1,12 @@
+import { redirect } from "next/navigation";
 import { createCorrespondenceAction } from "@/app/dashboard/correspondence/actions";
 import { SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
 import { getCorrespondenceWorkspaceSnapshot, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
+import { isRepresentativeRole } from "@/lib/lcdbo-correspondence/representative-workflow";
 
 export default async function CreateOutgoingCorrespondencePage() {
-  const { supabase } = await requireLcdboCorrespondenceAccess("create");
+  const { supabase, roles } = await requireLcdboCorrespondenceAccess("create");
+  if (roles.some(isRepresentativeRole)) redirect("/dashboard/correspondence/create");
   const snapshot = await getCorrespondenceWorkspaceSnapshot(supabase);
   const approvedTemplates = snapshot.templates.filter((template) => template.status === "approved");
   return (

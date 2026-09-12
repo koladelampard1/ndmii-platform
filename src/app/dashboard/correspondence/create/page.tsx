@@ -2,17 +2,25 @@ import Link from "next/link";
 import { createRepresentativeLetterAction } from "@/app/dashboard/correspondence/actions";
 import { SubmitButton, WorkspaceCard } from "@/app/dashboard/correspondence/_components";
 import { getCorrespondenceRepresentativeAuthority, getCorrespondenceWorkspaceSnapshot, requireLcdboCorrespondenceAccess } from "@/lib/data/lcdbo-correspondence";
-import { counterpartyLabelForRepresentative, institutionLabelForRepresentative } from "@/lib/lcdbo-correspondence/representative-workflow";
+import { counterpartyLabelForRepresentative, institutionLabelForRepresentative, isRepresentativeRole } from "@/lib/lcdbo-correspondence/representative-workflow";
 
 export default async function CreateCorrespondencePage() {
-  const { ctx, programme, supabase } = await requireLcdboCorrespondenceAccess("create");
+  const { ctx, programme, supabase, roles } = await requireLcdboCorrespondenceAccess("create");
   const [snapshot, authority] = await Promise.all([
     getCorrespondenceWorkspaceSnapshot(supabase),
     ctx.appUserId ? getCorrespondenceRepresentativeAuthority({ actorUserId: ctx.appUserId, programmeId: programme.id, client: supabase }) : Promise.resolve(null),
   ]);
   const approvedTemplates = snapshot.templates.filter((template) => template.status === "approved");
+  const hasRepresentativeRole = roles.some(isRepresentativeRole);
 
   if (!authority) {
+    if (hasRepresentativeRole) {
+      return (
+        <WorkspaceCard title="Representative authority unavailable" description="Your correspondence representative role is active, but its institutional signature authority could not be resolved.">
+          <p className="text-sm leading-6 text-slate-600">Creation is paused to prevent this account from entering the retired internal-approval workflow. Ask a correspondence administrator to verify the active authority, institution and protected signature assignment.</p>
+        </WorkspaceCard>
+      );
+    }
     return (
       <div className="grid gap-5 md:grid-cols-2">
         <WorkspaceCard title="Representative authority required" description="New LCDBO letters now use the two-party representative workflow. Ask a correspondence administrator to assign RMRDC or Roseate representative authority to this account.">

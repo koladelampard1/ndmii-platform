@@ -261,10 +261,65 @@ export async function getCorrespondenceRepresentativeAuthority(input: {
     .order("assigned_at", { ascending: false })
     .limit(5);
   if (error) {
-    if (isMissingLcdboCorrespondenceSchema(error)) return null;
+    if (isMissingLcdboCorrespondenceSchema(error)) {
+      const { requestId } = await getCorrespondenceRequestMeta();
+      console.error("[lcdbo-correspondence-authority:error]", {
+        requestId,
+        actorUserId: input.actorUserId,
+        programmeId: input.programmeId,
+        source: "direct_select",
+        code: error.code ?? null,
+        reason: "representative_schema_unavailable",
+      });
+      return null;
+    }
     throw error;
   }
-  return ((data as LcdboCorrespondenceRepresentativeAuthority[] | null) ?? []).find((authority) => !authority.authority_ends_at || authority.authority_ends_at > now) ?? null;
+  const directAuthority = ((data as LcdboCorrespondenceRepresentativeAuthority[] | null) ?? []).find((authority) => !authority.authority_ends_at || authority.authority_ends_at > now) ?? null;
+  if (directAuthority) return directAuthority;
+
+  // The security-definer helper resolves only the currently authenticated user's
+  // authority. It provides a safe recovery path if a stale table policy prevents
+  // the user's own row from being returned by the direct select.
+  const rpcResult = await input.client.rpc("lcdbo_correspondence_current_representative_authority", {
+    target_programme_id: input.programmeId,
+    target_institution_id: null,
+  });
+  const rpcAuthority = Array.isArray(rpcResult.data) ? rpcResult.data[0] : rpcResult.data;
+  if (rpcResult.error || !rpcAuthority?.authority_id) {
+    const { requestId } = await getCorrespondenceRequestMeta();
+    console.warn("[lcdbo-correspondence-authority:unavailable]", {
+      requestId,
+      actorUserId: input.actorUserId,
+      programmeId: input.programmeId,
+      directRows: data?.length ?? 0,
+      rpcCode: rpcResult.error?.code ?? null,
+      reason: rpcResult.error ? "authority_rpc_failed" : "no_active_authority",
+    });
+    return null;
+  }
+
+  const service = await createServiceRoleSupabaseClient();
+  const fallback = await service
+    .from("lcdbo_correspondence_representative_authorities")
+    .select(REPRESENTATIVE_AUTHORITY_SELECT)
+    .eq("id", rpcAuthority.authority_id)
+    .eq("user_id", input.actorUserId)
+    .eq("programme_id", input.programmeId)
+    .eq("authority_status", "active")
+    .maybeSingle();
+  if (fallback.error) throw fallback.error;
+  const resolved = fallback.data as LcdboCorrespondenceRepresentativeAuthority | null;
+  if (!resolved || (resolved.authority_ends_at && resolved.authority_ends_at <= now)) return null;
+  const { requestId } = await getCorrespondenceRequestMeta();
+  console.warn("[lcdbo-correspondence-authority:recovered]", {
+    requestId,
+    actorUserId: input.actorUserId,
+    programmeId: input.programmeId,
+    authorityId: resolved.id,
+    reason: "direct_select_empty_rpc_confirmed",
+  });
+  return resolved;
 }
 
 async function getPrimaryCounterpartyRepresentative(input: {
@@ -781,6 +836,80 @@ export async function createRepresentativeCorrespondenceLetter(input: {
     client: input.client,
   });
   return { ...(record as LcdboCorrespondenceRecord), current_version_id: version.data.id };
+}
+
+export async function adoptLegacyRepresentativeLetter(input: {
+  recordId: string;
+  actorUserId: string;
+  programmeId: string;
+  client: Client;
+}) {
+  const authority = await getCorrespondenceRepresentativeAuthority(input);
+  if (!authority) throw new Error("An active representative authority is required to recover this letter.");
+  const record = await getCorrespondenceRecord(input.recordId, input.client);
+  if (!record?.current_version_id) throw new Error("A document version is required before recovery.");
+  if (record.programme_id !== input.programmeId) throw new Error("This letter belongs to a different programme.");
+  if (record.created_by !== input.actorUserId) throw new Error("Only the representative who created this letter may recover it.");
+  if (record.metadata?.workflow_model === "two_party_representative") throw new Error("This letter already uses the representative workflow.");
+  if (!["draft", "in_review", "awaiting_approval"].includes(record.status)) throw new Error("This legacy letter can no longer be safely recovered.");
+  if ((record.approvals?.length ?? 0) > 0 || (record.signatures?.length ?? 0) > 0 || (record.dispatches?.length ?? 0) > 0) {
+    throw new Error("A letter with approval, signature or dispatch events cannot be converted automatically.");
+  }
+  const version = record.versions?.find((candidate) => candidate.id === record.current_version_id) ?? record.versions?.[0];
+  if (!version || version.is_frozen) throw new Error("A frozen legacy document cannot be converted automatically.");
+  const institution = representativeInstitutionFromRole(authority.representative_role);
+  if (!institution) throw new Error("Unsupported representative role.");
+
+  const update = await input.client.from("lcdbo_correspondence_records").update({
+    issuer: issuerForRepresentativeInstitution(institution),
+    status: "draft",
+    simplified_status: "draft",
+    owner_id: input.actorUserId,
+    requester_id: input.actorUserId,
+    drafter_id: input.actorUserId,
+    current_assignee_id: input.actorUserId,
+    initiating_institution_id: authority.institution_id,
+    action_institution_id: authority.institution_id,
+    metadata: {
+      ...(record.metadata ?? {}),
+      workflow_model: "two_party_representative",
+      simplified_status: "draft",
+      initiating_representative_role: authority.representative_role,
+      institution_scope: institution,
+      recovered_from_legacy_status: record.status,
+    },
+    updated_by: input.actorUserId,
+    updated_at: new Date().toISOString(),
+  }).eq("id", input.recordId);
+  if (update.error) throw update.error;
+
+  const versionUpdate = await input.client.from("lcdbo_correspondence_document_versions").update({
+    metadata: { ...(version.metadata ?? {}), workflow_model: "two_party_representative", protected_content: true },
+  }).eq("id", version.id);
+  if (versionUpdate.error) throw versionUpdate.error;
+
+  const action = await input.client.from("lcdbo_correspondence_workflow_actions").insert({
+    record_id: input.recordId,
+    document_version_id: version.id,
+    action_type: "representative_workflow_recovered",
+    from_status: record.status,
+    to_status: "draft",
+    actor_user_id: input.actorUserId,
+    assigned_to: input.actorUserId,
+    note: "Legacy draft converted to the two-party representative workflow.",
+    metadata: { workflow_model: "two_party_representative", previous_status: record.status },
+  });
+  if (action.error) throw action.error;
+  await recordCorrespondenceEvent({
+    actorUserId: input.actorUserId,
+    programmeId: input.programmeId,
+    recordId: input.recordId,
+    eventType: "representative.workflow_recovered",
+    fromStatus: record.status,
+    toStatus: "draft",
+    metadata: { previous_status: record.status },
+    client: input.client,
+  });
 }
 
 async function insertRepresentativeSignature(input: {
