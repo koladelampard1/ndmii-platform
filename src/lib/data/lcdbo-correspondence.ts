@@ -89,10 +89,10 @@ const DELEGATION_SELECT = `
   delegator:users!lcdbo_correspondence_delegations_delegator_id_fkey(${USER_SELECT}),
   delegate:users!lcdbo_correspondence_delegations_delegate_id_fkey(${USER_SELECT})
 `;
-const REPRESENTATIVE_AUTHORITY_SELECT = `
-  *,
-  institution:institutions!lcdbo_correspondence_representative_authorities_institution_id_fkey(id,name,slug)
-`;
+// The representative workflow uses institution_id directly. Avoid embedding the
+// institution relation here because a stale or differently named PostgREST
+// relationship must not prevent a representative's authority from resolving.
+const REPRESENTATIVE_AUTHORITY_SELECT = "*";
 
 async function clientOrService(client?: Client) {
   return client ?? await createServiceRoleSupabaseClient();
@@ -271,9 +271,9 @@ export async function getCorrespondenceRepresentativeAuthority(input: {
         code: error.code ?? null,
         reason: "representative_schema_unavailable",
       });
-      return null;
+    } else {
+      throw error;
     }
-    throw error;
   }
   const directAuthority = ((data as LcdboCorrespondenceRepresentativeAuthority[] | null) ?? []).find((authority) => !authority.authority_ends_at || authority.authority_ends_at > now) ?? null;
   if (directAuthority) return directAuthority;
