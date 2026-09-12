@@ -4,7 +4,10 @@ import {
   type LcdboCorrespondenceRecord,
 } from "@/lib/lcdbo-correspondence/types";
 import { sha256Hex } from "@/lib/lcdbo-correspondence/security";
-import { PDFDocument } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { PDFDocument, rgb } from "pdf-lib";
 
 // Approved LCDBO correspondence letterhead supplied by programme leadership.
 // Embedded so serverless PDF generation does not depend on a public URL or
@@ -13,11 +16,13 @@ const APPROVED_LCDBO_LETTERHEAD_JPEG_BASE64 = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDA
 
 const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
-const MARGIN_X = 42;
-const TOP = 198;
-const CONTENT_HEIGHT = 510;
+const MARGIN_X = 48;
+const TOP = 190;
+const CONTENT_HEIGHT = 525;
 const LINE_HEIGHT = 15;
-const BODY_LINE_WIDTH = 91;
+const BODY_LINE_WIDTH = 88;
+const INTER_REGULAR_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff");
+const INTER_BOLD_PATH = path.join(process.cwd(), "node_modules/@fontsource/inter/files/inter-latin-700-normal.woff");
 
 type PdfTextRun = { text: string; x: number; y: number; size?: number; bold?: boolean; color?: string };
 
@@ -53,13 +58,6 @@ type SignaturePlacement = {
   height: number;
 };
 
-function pdfEscape(value: unknown) {
-  return String(value ?? "")
-    .replaceAll("\\", "\\\\")
-    .replaceAll("(", "\\(")
-    .replaceAll(")", "\\)");
-}
-
 function wrapText(value: string, width = BODY_LINE_WIDTH) {
   const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   const lines: string[] = [];
@@ -81,38 +79,6 @@ function issuerName(issuer: CorrespondenceIssuer) {
   if (issuer === "RMRDC") return "Raw Materials Research and Development Council";
   if (issuer === "RFNL") return "Roseate Forte Nigeria Limited";
   return "LCDBO Joint Secretariat";
-}
-
-function textLine(run: PdfTextRun) {
-  const color = run.color ?? "0 0 0";
-  return `${color} rg BT /${run.bold ? "F2" : "F1"} ${run.size ?? 10} Tf ${run.x} ${PAGE_HEIGHT - run.y} Td (${pdfEscape(run.text)}) Tj ET`;
-}
-
-function pageStream(
-  runs: PdfTextRun[],
-  pageNumber: number,
-  totalPages: number,
-  metadata: { reference: string; date: string; version: string },
-  watermark?: string,
-) {
-  const furniture: PdfTextRun[] = [
-    { text: metadata.reference, x: 111, y: 139, size: 7, bold: true, color: "0 0.35 0.2" },
-    { text: metadata.date, x: 285, y: 139, size: 7, bold: true, color: "0 0.35 0.2" },
-    { text: metadata.version, x: 476, y: 139, size: 7, bold: true, color: "0 0.35 0.2" },
-    { text: `Page ${pageNumber} of ${totalPages}`, x: 510, y: 724, size: 7, color: "0.35 0.35 0.35" },
-  ];
-  const watermarkRuns = watermark
-    ? [
-        "0.82 0.82 0.82 rg BT /F2 68 Tf 165 435 Td",
-        `(${pdfEscape(watermark)}) Tj ET`,
-      ]
-    : [];
-  return [
-    "q 595 0 0 842 0 0 cm /BG Do Q",
-    ...watermarkRuns,
-    ...furniture.map(textLine),
-    ...runs.map(textLine),
-  ].join("\n");
 }
 
 export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
@@ -141,38 +107,48 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     y += LINE_HEIGHT;
   }
   y += 10;
-  for (const paragraph of body.split(/\n{2,}/)) {
-    for (const line of wrapText(paragraph, BODY_LINE_WIDTH)) {
-      lines.push({ text: line, x: MARGIN_X, y, size: 10 });
+  for (const paragraph of body.split(/\n/)) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) {
+      y += 7;
+      continue;
+    }
+    const bullet = /^[-*•]\s+/.test(trimmed);
+    const content = trimmed.replace(/^[-*•]\s+/, "");
+    const wrapped = wrapText(content, bullet ? BODY_LINE_WIDTH - 5 : BODY_LINE_WIDTH);
+    for (const [index, line] of wrapped.entries()) {
+      lines.push({ text: `${bullet && index === 0 ? "-  " : bullet ? "   " : ""}${line}`, x: MARGIN_X, y, size: 10 });
       y += LINE_HEIGHT;
     }
-    y += 8;
+    y += 5;
   }
-  y += 12;
-  lines.push({ text: "Authorised signature", x: MARGIN_X, y, size: 10, bold: true });
-  y += 20;
+  y += 10;
+  lines.push({ text: "AUTHORISED SIGNATORIES", x: MARGIN_X, y, size: 7.5, bold: true, color: "0.24 0.36 0.32" });
+  y += 18;
   const joint = signatureBlocks.length > 1;
   const signaturePlacements: SignaturePlacement[] = [];
   signatureBlocks.forEach((signature, index) => {
-    const x = joint ? MARGIN_X + (index % 2) * 255 : MARGIN_X;
-    const blockY = y + Math.floor(index / 2) * 70;
+    const x = joint ? MARGIN_X + (index % 2) * 257 : MARGIN_X;
+    const blockY = y + Math.floor(index / 2) * 92;
     const hasProtectedAsset = !signature.testOnly && Boolean(signature.assetRef);
     if (hasProtectedAsset) {
       const pageIndex = Math.max(0, Math.floor((blockY - TOP) / CONTENT_HEIGHT));
-      signaturePlacements.push({ role: signature.role, assetRef: signature.assetRef!, pageIndex, x, y: TOP + ((blockY - TOP) % CONTENT_HEIGHT), width: 150, height: 42 });
+      signaturePlacements.push({ role: signature.role, assetRef: signature.assetRef!, pageIndex, x, y: TOP + ((blockY - TOP) % CONTENT_HEIGHT), width: 128, height: 38 });
     } else {
       lines.push({ text: signature.testOnly ? "TEST SIGNATURE - NON-PRODUCTION" : "Protected signature unavailable", x, y: blockY, size: 10, bold: true, color: "0.65 0.15 0.15" });
     }
-    const detailY = hasProtectedAsset ? blockY + 46 : blockY + 18;
-    lines.push({ text: signature.name, x, y: detailY, size: 10, bold: true });
-    lines.push({ text: signature.organisation, x, y: detailY + 15, size: 9 });
-    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: detailY + 30, size: 8, color: "0.35 0.35 0.35" });
+    const detailY = hasProtectedAsset ? blockY + 46 : blockY + 20;
+    const nameLines = wrapText(signature.name, joint ? 34 : 70).slice(0, 2);
+    nameLines.forEach((nameLine, nameIndex) => lines.push({ text: nameLine, x, y: detailY + nameIndex * 12, size: 9.25, bold: true }));
+    const organisationY = detailY + nameLines.length * 12 + 3;
+    lines.push({ text: signature.organisation, x, y: organisationY, size: 8.5 });
+    lines.push({ text: signature.signedAt ? new Date(signature.signedAt).toLocaleString("en-NG") : "Pending timestamp", x, y: organisationY + 14, size: 7.5, color: "0.35 0.35 0.35" });
   });
-  y += joint ? 92 : 74;
+  y += joint ? 100 : 84;
   lines.push({ text: `Verification: ${verificationUrl}`, x: MARGIN_X, y, size: 8, color: "0 0.35 0.2" });
   y += 13;
   lines.push({ text: `Document fingerprint: ${latestVersion?.document_hash ?? sha256Hex(`${record.reference}:${record.subject}`)}`, x: MARGIN_X, y, size: 7, color: "0.35 0.35 0.35" });
-  if (options.dispatchReference) {
+  if (options.dispatchReference && options.dispatchReference !== record.reference) {
     y += 13;
     lines.push({ text: `Dispatch reference: ${options.dispatchReference}`, x: MARGIN_X, y, size: 8, bold: true });
   }
@@ -189,55 +165,55 @@ export function buildCorrespondencePdfModel(record: LcdboCorrespondenceRecord, o
     signaturePlacements,
     metadata: {
       reference: record.reference,
-      date: new Date(documentDate).toLocaleDateString("en-NG"),
-      version: `v${latestVersion?.version_number ?? 1}`,
+      date: new Date(documentDate).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
+      version: `Version ${latestVersion?.version_number ?? 1}`,
     },
   };
 }
 
-export function createCorrespondencePdf(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
+export async function createCorrespondencePdf(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions) {
   const model = buildCorrespondencePdfModel(record, options);
-  const streams = model.pages.map((page, index) => pageStream(page, index + 1, model.pages.length, model.metadata, model.watermark));
-  const fontRegularId = 3 + streams.length * 2;
-  const fontBoldId = fontRegularId + 1;
-  const backgroundImageId = fontBoldId + 1;
-  const backgroundBytes = Buffer.from(APPROVED_LCDBO_LETTERHEAD_JPEG_BASE64, "base64");
-  const objects: Array<string | Uint8Array> = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    `<< /Type /Pages /Count ${streams.length} /Kids [${streams.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] >>`,
-  ];
-  streams.forEach((stream, index) => {
-    const contentObject = 4 + index * 2;
-    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /BG ${backgroundImageId} 0 R >> >> /Contents ${contentObject} 0 R >>`);
-    objects.push(`<< /Length ${new TextEncoder().encode(stream).length} >>\nstream\n${stream}\nendstream`);
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const [regularBytes, boldBytes] = await Promise.all([readFile(INTER_REGULAR_PATH), readFile(INTER_BOLD_PATH)]);
+  const regular = await pdf.embedFont(regularBytes, { subset: true });
+  const bold = await pdf.embedFont(boldBytes, { subset: true });
+  const background = await pdf.embedJpg(Buffer.from(APPROVED_LCDBO_LETTERHEAD_JPEG_BASE64, "base64"));
+  const ink = rgb(0.03, 0.13, 0.1);
+  const green = rgb(0.02, 0.35, 0.24);
+  const muted = rgb(0.35, 0.39, 0.38);
+
+  model.pages.forEach((runs, index) => {
+    const page = pdf.addPage();
+    page.setSize(PAGE_WIDTH, PAGE_HEIGHT);
+    page.drawImage(background, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT });
+    page.drawRectangle({ x: 115, y: 741, width: 365, height: 91, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: 0, y: 106, width: 595, height: 625, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: 34, y: 682, width: 527, height: 48, color: rgb(0.965, 0.98, 0.972) });
+    page.drawLine({ start: { x: 34, y: 682 }, end: { x: 561, y: 682 }, thickness: 0.8, color: green });
+    page.drawLine({ start: { x: 286, y: 690 }, end: { x: 286, y: 724 }, thickness: 0.5, color: rgb(0.82, 0.88, 0.85) });
+    page.drawLine({ start: { x: 457, y: 690 }, end: { x: 457, y: 724 }, thickness: 0.5, color: rgb(0.82, 0.88, 0.85) });
+
+    const draw = (text: string, x: number, y: number, size: number, isBold = false, color = ink) =>
+      page.drawText(text, { x, y: PAGE_HEIGHT - y, size, font: isBold ? bold : regular, color });
+    draw("LOCAL CONTENT DEVELOPMENT", 187, 32, 15, true);
+    draw("BEYOND OIL (LCDBO)", 218, 51, 15, true);
+    draw("A National Industrial Development Initiative", 201, 76, 8, true, green);
+    draw("DOCUMENT REFERENCE", 49, 126, 6.5, true, muted);
+    draw(model.metadata.reference, 49, 143, 8.5, true, green);
+    draw("DATE", 303, 126, 6.5, true, muted);
+    draw(model.metadata.date, 303, 143, 8.5, true, green);
+    draw("VERSION", 474, 126, 6.5, true, muted);
+    draw(model.metadata.version, 474, 143, 8.5, true, green);
+    draw(`Page ${index + 1} of ${model.pages.length}`, 498, 723, 7, false, muted);
+    if (model.watermark) draw(model.watermark, 180, 450, 68, true, rgb(0.88, 0.88, 0.88));
+    runs.forEach((run) => draw(run.text, run.x, run.y, run.size ?? 10, run.bold, run.color ? rgb(...run.color.split(" ").map(Number) as [number, number, number]) : ink));
   });
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  objects.push(Buffer.concat([
-    Buffer.from(`<< /Type /XObject /Subtype /Image /Width 595 /Height 842 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${backgroundBytes.length} >>\nstream\n`, "latin1"),
-    backgroundBytes,
-    Buffer.from("\nendstream", "latin1"),
-  ]));
-  const chunks: Buffer[] = [Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n", "latin1")];
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    chunks.push(Buffer.from(`${index + 1} 0 obj\n`, "latin1"));
-    chunks.push(typeof object === "string" ? Buffer.from(object, "latin1") : Buffer.from(object));
-    chunks.push(Buffer.from("\nendobj\n", "latin1"));
-  });
-  const xref = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  let trailer = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach((offset) => {
-    trailer += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  });
-  trailer += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  chunks.push(Buffer.from(trailer, "latin1"));
-  return Buffer.concat(chunks);
+  return new Uint8Array(await pdf.save());
 }
 
 export async function createCorrespondencePdfWithSignatureAssets(record: LcdboCorrespondenceRecord, options: CorrespondencePdfOptions, assets: CorrespondenceSignatureAsset[]) {
-  const basePdf = createCorrespondencePdf(record, options);
+  const basePdf = await createCorrespondencePdf(record, options);
   const model = buildCorrespondencePdfModel(record, options);
   if (!model.signaturePlacements.length) return basePdf;
   const pdf = await PDFDocument.load(basePdf);

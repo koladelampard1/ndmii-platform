@@ -16,12 +16,16 @@ function loadTsModule(file, extra = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const commonJsModule = { exports: {} };
-  vm.runInNewContext(transpiled, {
-    module: commonJsModule,
-    exports: commonJsModule.exports,
-    require: (id) => {
+  const execute = vm.runInThisContext(`(function (module, exports, require, process, Buffer, TextEncoder, console) { ${transpiled}\n})`);
+  execute(
+    commonJsModule,
+    commonJsModule.exports,
+    (id) => {
       if (extra[id]) return extra[id];
       if (id === "node:crypto") return { ...crypto, default: crypto };
+      if (id === "node:fs/promises") return nativeRequire("node:fs/promises");
+      if (id === "node:path") return { ...nativeRequire("node:path"), default: nativeRequire("node:path") };
+      if (id === "@pdf-lib/fontkit") return { default: nativeRequire("@pdf-lib/fontkit") };
       if (id === "pdf-lib") return nativeRequire("pdf-lib");
       if (id === "@/lib/lcdbo-correspondence/security") return loadTsModule("src/lib/lcdbo-correspondence/security.ts");
       if (id === "@/lib/lcdbo-correspondence/types") return loadTsModule("src/lib/lcdbo-correspondence/types.ts");
@@ -29,11 +33,8 @@ function loadTsModule(file, extra = {}) {
       if (id === "@/lib/lcdbo-correspondence/reminders") return loadTsModule("src/lib/lcdbo-correspondence/reminders.ts");
       throw new Error(`Unsupported test import: ${id}`);
     },
-    process,
-    Buffer,
-    TextEncoder,
-    console,
-  });
+    process, Buffer, TextEncoder, console,
+  );
   return commonJsModule.exports;
 }
 
@@ -235,9 +236,9 @@ test("record detail loader disambiguates current, issued and historical versions
   assert.doesNotMatch(dataService, /versions:lcdbo_correspondence_document_versions\(\*\)/);
 });
 
-test("PDF generator creates draft watermark and final signature furniture", () => {
-  const draft = pdf.createCorrespondencePdf(fixtureRecord, { mode: "draft" });
-  const final = pdf.createCorrespondencePdf(fixtureRecord, {
+test("PDF generator creates draft watermark and final signature furniture", async () => {
+  const draft = await pdf.createCorrespondencePdf(fixtureRecord, { mode: "draft" });
+  const final = await pdf.createCorrespondencePdf(fixtureRecord, {
     mode: "final",
     verificationToken: "token-123",
     dispatchReference: fixtureRecord.reference,
@@ -246,16 +247,25 @@ test("PDF generator creates draft watermark and final signature furniture", () =
       { role: "roseate_signatory", name: "Roseate Signatory", organisation: "Roseate Forte Nigeria Limited", signedAt: "2026-08-13T10:10:00.000Z", testOnly: true },
     ],
   });
-  const draftText = Buffer.from(draft).toString("latin1");
-  const finalText = Buffer.from(final).toString("latin1");
-  assert.match(draftText, /DRAFT/);
-  assert.match(draftText, /\/BG Do/, "approved LCDBO letterhead must be painted on every PDF page");
-  assert.match(draftText, /\/Width 595 \/Height 842/, "approved A4 letterhead dimensions must be preserved");
-  assert.match(draftText, /\/Filter \/DCTDecode/, "approved JPEG letterhead must be embedded in the PDF");
-  assert.doesNotMatch(finalText, /DRAFT/);
-  assert.match(finalText, /RMRDC Signatory/);
-  assert.match(finalText, /Roseate Signatory/);
-  assert.match(finalText, /www\.dbin\.ng\/correspondence/);
+  const draftModel = pdf.buildCorrespondencePdfModel(fixtureRecord, { mode: "draft" });
+  const finalModel = pdf.buildCorrespondencePdfModel(fixtureRecord, {
+    mode: "final",
+    verificationToken: "token-123",
+    dispatchReference: fixtureRecord.reference,
+    signatureBlocks: [
+      { role: "rmrdc_signatory", name: "RMRDC Signatory", organisation: "RMRDC", signedAt: "2026-08-13T10:00:00.000Z", testOnly: true },
+      { role: "roseate_signatory", name: "Roseate Signatory", organisation: "Roseate Forte Nigeria Limited", signedAt: "2026-08-13T10:10:00.000Z", testOnly: true },
+    ],
+  });
+  const draftDocument = await nativeRequire("pdf-lib").PDFDocument.load(draft);
+  const finalRuns = finalModel.pages.flat();
+  assert.equal(draftModel.watermark, "DRAFT");
+  assert.equal(finalModel.watermark, undefined);
+  assert.equal(draftDocument.getPage(0).getWidth(), 595, "approved A4 width must be preserved");
+  assert.equal(draftDocument.getPage(0).getHeight(), 842, "approved A4 height must be preserved");
+  assert.ok(finalRuns.some((run) => run.text === "RMRDC Signatory"));
+  assert.ok(finalRuns.some((run) => run.text === "Roseate Signatory"));
+  assert.ok(finalRuns.some((run) => run.text.includes("www.dbin.ng/correspondence")));
   assert.ok(draft.length > 1000);
   assert.ok(final.length > 1000);
   assert.match(pdf.correspondencePdfHash(final), /^[a-f0-9]{64}$/);

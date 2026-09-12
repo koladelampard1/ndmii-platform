@@ -2137,7 +2137,7 @@ export async function generateCorrespondenceDraftPdf(recordId: string, client?: 
   const supabase = await clientOrService(client);
   const record = await getCorrespondenceRecord(recordId, supabase);
   if (!record) throw new Error("Correspondence record not found.");
-  return createCorrespondencePdf(record, { mode: "draft" });
+  return await createCorrespondencePdf(record, { mode: "draft" });
 }
 
 export async function generateCorrespondenceFinalPdf(recordId: string, client?: Client) {
