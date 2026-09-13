@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { LcdboCorrespondenceRecord } from "@/lib/lcdbo-correspondence/types";
 import { simplifiedStatusForRecord, simplifiedStatusLabel } from "@/lib/lcdbo-correspondence/representative-workflow";
+import { CorrespondenceSubmitButton } from "./submit-button";
 
 export function WorkspaceCard({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -90,6 +91,6 @@ export function CorrespondenceTable({ records }: { records: LcdboCorrespondenceR
   );
 }
 
-export function SubmitButton({ children }: { children: ReactNode }) {
-  return <button className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-black text-white transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">{children}</button>;
+export function SubmitButton({ children, pendingLabel = "Processing..." }: { children: ReactNode; pendingLabel?: string }) {
+  return <CorrespondenceSubmitButton pendingLabel={pendingLabel}>{children}</CorrespondenceSubmitButton>;
 }

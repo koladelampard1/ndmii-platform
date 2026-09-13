@@ -1,6 +1,7 @@
 import "./globals.css";
-import { ReactNode } from "react";
+import { ReactNode, Suspense } from "react";
 import type { Metadata, Viewport } from "next";
+import { InteractionProgress } from "@/components/ui/interaction-progress";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.dbin.ng"),
@@ -44,7 +45,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-100">{children}</body>
+      <body className="min-h-screen bg-slate-100">
+        {children}
+        <Suspense fallback={null}>
+          <InteractionProgress />
+        </Suspense>
+      </body>
     </html>
   );
 }
