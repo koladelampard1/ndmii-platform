@@ -1086,7 +1086,7 @@ export async function saveRepresentativeDraftVersion(input: {
   const documentHash = sha256Hex(`${record.reference}:${subject}:${serializedRichBody}`);
   const content = { subject, body, rich_body: richBody, recipient: currentVersion.content?.recipient ?? (record.metadata?.recipient_snapshot ?? null) };
   let nextVersionId = currentVersion.id;
-  let actionType = "draft_updated";
+  let changeKind = "draft_updated";
 
   if (currentVersion.is_frozen) {
     const nextVersionNumber = Math.max(0, ...(record.versions ?? []).map((version) => Number(version.version_number) || 0)) + 1;
@@ -1108,7 +1108,7 @@ export async function saveRepresentativeDraftVersion(input: {
       .single();
     if (nextVersionError || !nextVersion) throw nextVersionError ?? new Error("Unable to create corrected document version.");
     nextVersionId = nextVersion.id;
-    actionType = "corrected_version_created";
+    changeKind = "corrected_version_created";
   } else {
     const { error: versionError } = await input.client
       .from("lcdbo_correspondence_document_versions")
@@ -1147,12 +1147,14 @@ export async function saveRepresentativeDraftVersion(input: {
   const { error: actionError } = await input.client.from("lcdbo_correspondence_workflow_actions").insert({
     record_id: input.recordId,
     document_version_id: nextVersionId,
-    action_type: actionType,
+    // `updated` is part of the database-enforced workflow action vocabulary.
+    // Keep the more specific revision event in metadata for audit reporting.
+    action_type: "updated",
     from_status: record.status,
     to_status: record.status === "revision_requested" ? "revision_requested" : "draft",
     actor_user_id: input.actorUserId,
     note: currentVersion.is_frozen ? "Representative created a corrected document version." : "Representative updated the draft document.",
-    metadata: { workflow_model: "two_party_representative", document_hash: documentHash },
+    metadata: { workflow_model: "two_party_representative", change_kind: changeKind, document_hash: documentHash },
   });
   if (actionError) throw actionError;
 }

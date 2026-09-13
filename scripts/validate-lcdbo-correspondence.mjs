@@ -200,6 +200,7 @@ assert.match(data, /direct_select_empty_rpc_confirmed/, "authority RLS recovery 
 assert.match(data, /const REPRESENTATIVE_AUTHORITY_SELECT = "\*"/, "representative authority lookup must not depend on a PostgREST embedded relationship");
 assert.doesNotMatch(data, /institution:institutions!lcdbo_correspondence_representative_authorities_institution_id_fkey/, "representative authority lookup must avoid the production PGRST200 relationship failure");
 assert.match(data, /saveRepresentativeDraftVersion/, "representative draft correction workflow missing");
+assert.match(data, /action_type:\s*"updated"[\s\S]*change_kind:\s*changeKind/, "representative revision audit must use the database-valid updated action while preserving its specific change kind");
 assert.match(data, /submitRepresentativeLetterToCounterparty/, "representative submit workflow missing");
 assert.match(data, /decideRepresentativeCounterpartyLetter/, "representative counterparty decision workflow missing");
 assert.match(data, /generateRepresentativeFinalDocument/, "representative final document generation missing");

@@ -180,6 +180,16 @@ test("representative migration is additive and enforces institution-bound author
   assert.doesNotMatch(representativeMigration, /truncate|drop table|delete from public\./i);
 });
 
+test("returned representative drafts use a database-valid audit action", () => {
+  assert.match(originalMigration, /'created', 'updated', 'submitted_for_review'/i, "workflow action constraint must permit updated");
+  assert.match(
+    dataService,
+    /action_type:\s*"updated"[\s\S]*change_kind:\s*changeKind/,
+    "revision saves must use the permitted updated action and retain the specific change kind in metadata",
+  );
+  assert.doesNotMatch(dataService, /action_type:\s*actionType/, "revision saves must not send an unconstrained action type to the database");
+});
+
 test("correspondence workspace admits only active LCDBO representative assignments", () => {
   const programmeId = "lcdb-o-programme";
   const roseateInstitutionId = "roseate-institution";

@@ -43,7 +43,17 @@ function failure(path: string, message: string): never {
 
 function logActionFailure(label: string, error: unknown) {
   unstable_rethrow(error);
-  console.warn(`[lcdbo-correspondence] ${label} failed`, error instanceof Error ? error.message : String(error));
+  const details = error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : error && typeof error === "object"
+      ? {
+          code: "code" in error ? String(error.code) : null,
+          message: "message" in error ? String(error.message) : null,
+          details: "details" in error ? String(error.details) : null,
+          hint: "hint" in error ? String(error.hint) : null,
+        }
+      : { message: String(error) };
+  console.warn(`[lcdbo-correspondence] ${label} failed`, details);
 }
 
 export async function createCorrespondenceAction(formData: FormData) {
