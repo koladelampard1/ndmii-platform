@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { getRegistrationMode, mapRegistrationErrorMessage } from "@/lib/auth/registration";
+import { getRegistrationCampaign } from "@/lib/auth/registration-campaigns";
 import { getTableColumns } from "@/lib/data/commercial-ops";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
@@ -26,6 +27,7 @@ type RegistrationRequest = {
   association_id?: string;
   programme?: string;
   source?: string;
+  association_slug?: string;
 };
 
 function normalizeString(value: unknown) {
@@ -71,17 +73,15 @@ export async function POST(request: Request) {
     const state = normalizeString(body.state);
     const sector = normalizeString(body.sector);
     const registrationPath = normalizeRegistrationPath(body.registration_path);
-    const associationId = normalizeString(body.association_id);
+    const requestedAssociationId = normalizeString(body.association_id);
+    const associationSlug = normalizeString(body.association_slug).toLowerCase();
     const programme = normalizeString(body.programme).toLowerCase() === "lcdbo" ? "lcdbo" : "";
-    const source = programme === "lcdbo" ? normalizeString(body.source) || "lcdbo_public_site" : "";
+    const source = normalizeString(body.source) || (programme === "lcdbo" ? "lcdbo_public_site" : "");
+    const campaign = getRegistrationCampaign(source);
     const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
 
     if (!email || !password || !businessName || !ownerName || !state || !sector) {
       return NextResponse.json({ error: "Please complete all required fields." }, { status: 400 });
-    }
-
-    if (requiresAssociation && !associationId) {
-      return NextResponse.json({ error: "Please select an MSME association." }, { status: 400 });
     }
 
     if (password.length < 8) {
@@ -90,6 +90,27 @@ export async function POST(request: Request) {
 
     const supabase = await createServiceRoleSupabaseClient();
 
+    let associationId = requestedAssociationId;
+    const resolvedAssociationSlug = campaign?.associationSlug ?? associationSlug;
+    if (requiresAssociation && resolvedAssociationSlug) {
+      const { data: resolvedAssociation, error: associationError } = await supabase
+        .from("associations")
+        .select("id,slug,status,state")
+        .eq("slug", resolvedAssociationSlug)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (associationError || !resolvedAssociation?.id) {
+        return NextResponse.json({ error: "This dedicated association registration link is not active yet." }, { status: 409 });
+      }
+
+      associationId = resolvedAssociation.id;
+    }
+
+    if (requiresAssociation && !associationId) {
+      return NextResponse.json({ error: "Please select an MSME association." }, { status: 400 });
+    }
+
     const { data: authUserData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -97,6 +118,12 @@ export async function POST(request: Request) {
       user_metadata: {
         role: "msme",
         owner_name: ownerName,
+        programme: programme || null,
+        registration_source: source || null,
+        association_slug: resolvedAssociationSlug || null,
+        association_id: associationId || null,
+        registration_path: registrationPath,
+        state,
       },
     });
 
@@ -176,7 +203,12 @@ export async function POST(request: Request) {
       registration_path: registrationPath,
       association_id: requiresAssociation ? associationId : null,
       verification_status: intendedVerificationStatus,
-      registration_context: programme ? { programme, source } : {},
+      registration_context: {
+        ...(programme ? { programme } : {}),
+        ...(source ? { source } : {}),
+        ...(resolvedAssociationSlug ? { association_slug: resolvedAssociationSlug } : {}),
+        ...(campaign ? { campaign: campaign.source, dedicated_registration: true } : {}),
+      },
     };
 
     const msmeColumns = await getTableColumns(supabase, "msmes");
@@ -289,7 +321,7 @@ export async function POST(request: Request) {
         action: "msme_registered",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { msme_id: msme.msme_id, source: source || "demo_admin_register", programme: programme || null },
+        metadata: { msme_id: msme.msme_id, source: source || "demo_admin_register", programme: programme || null, association_slug: resolvedAssociationSlug || null },
       },
       {
         actor_user_id: profile.id,

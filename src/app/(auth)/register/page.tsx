@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { resolveOrCreateUserProfile } from "@/lib/auth/profile";
 import { mapRegistrationErrorMessage } from "@/lib/auth/registration";
+import { getRegistrationCampaign } from "@/lib/auth/registration-campaigns";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -17,6 +18,7 @@ type FieldErrors = Partial<Record<"email" | "password" | "business_name" | "owne
 type AssociationOption = {
   id: string;
   name: string;
+  slug?: string | null;
   state: string | null;
   sector: string | null;
 };
@@ -40,6 +42,7 @@ type RegistrationFormValues = {
   association_id: string;
   programme: string;
   source: string;
+  association_slug: string;
 };
 
 type ExistingUserByEmail = {
@@ -72,7 +75,10 @@ function RegisterPageClient() {
   const searchParams = useSearchParams();
   const registrationPath = normalizeRegistrationPath(searchParams.get("registration_path") ?? searchParams.get("path"));
   const programme = searchParams.get("programme")?.trim().toLowerCase() === "lcdbo" ? "lcdbo" : "";
-  const source = programme === "lcdbo" ? searchParams.get("source")?.trim() || "lcdbo_public_site" : "";
+  const source = searchParams.get("source")?.trim().toLowerCase() || (programme === "lcdbo" ? "lcdbo_public_site" : "");
+  const campaign = getRegistrationCampaign(source);
+  const associationSlug = campaign?.associationSlug ?? searchParams.get("association")?.trim().toLowerCase() ?? "";
+  const isDedicatedAssociationRegistration = Boolean(campaign && associationSlug);
   const requiresAssociation = registrationPath === "existing_association_member" || registrationPath === "new_association_applicant";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +90,9 @@ function RegisterPageClient() {
     let mounted = true;
     if (!requiresAssociation) return;
 
-    fetch("/api/auth/register/associations")
+    const associationParams = new URLSearchParams();
+    if (associationSlug) associationParams.set("slug", associationSlug);
+    fetch(`/api/auth/register/associations${associationParams.size ? `?${associationParams.toString()}` : ""}`)
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to load associations."))))
       .then((result) => {
         if (mounted) setAssociations(result.associations ?? []);
@@ -96,7 +104,7 @@ function RegisterPageClient() {
     return () => {
       mounted = false;
     };
-  }, [requiresAssociation]);
+  }, [associationSlug, requiresAssociation]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +119,7 @@ function RegisterPageClient() {
       password: String(form.get("password") ?? ""),
       business_name: String(form.get("business_name") ?? "").trim(),
       owner_name: String(form.get("owner_name") ?? "").trim(),
-      state: String(form.get("state") ?? "").trim(),
+      state: campaign?.state ?? String(form.get("state") ?? "").trim(),
       sector: String(form.get("sector") ?? "").trim(),
       business_type: String(form.get("business_type") ?? "").trim(),
       contact_phone: String(form.get("contact_phone") ?? "").trim(),
@@ -125,6 +133,7 @@ function RegisterPageClient() {
       association_id: String(form.get("association_id") ?? "").trim(),
       programme: String(form.get("programme") ?? "").trim(),
       source: String(form.get("source") ?? "").trim(),
+      association_slug: String(form.get("association_slug") ?? "").trim(),
     };
 
     const nextFieldErrors: FieldErrors = {};
@@ -173,6 +182,10 @@ function RegisterPageClient() {
           owner_name: values.owner_name,
           programme: values.programme || null,
           registration_source: values.source || null,
+          association_slug: values.association_slug || null,
+          association_id: values.association_id || null,
+          registration_path: values.registration_path,
+          state: values.state,
         },
       },
     });
@@ -304,7 +317,12 @@ function RegisterPageClient() {
       verification_status: requiresAssociation ? "pending_association_approval" : "pending_dbin_verification",
       review_status: "pending_review",
       created_by: userRow.id,
-      registration_context: values.programme === "lcdbo" ? { programme: "lcdbo", source: values.source || "lcdbo_public_site" } : {},
+      registration_context: {
+        ...(values.programme === "lcdbo" ? { programme: "lcdbo" } : {}),
+        ...(values.source ? { source: values.source } : {}),
+        ...(values.association_slug ? { association_slug: values.association_slug } : {}),
+        ...(campaign ? { campaign: campaign.source, dedicated_registration: true } : {}),
+      },
     };
 
     const { data: existingMsmeRaw } = await supabase
@@ -375,7 +393,7 @@ function RegisterPageClient() {
         action: "msme_registered",
         entity_type: "msme",
         entity_id: msme.id,
-        metadata: { msme_id: msme.msme_id, source: values.source || "canonical_register", programme: values.programme || null },
+        metadata: { msme_id: msme.msme_id, source: values.source || "canonical_register", programme: values.programme || null, association_slug: values.association_slug || null },
       },
       {
         actor_user_id: userRow.id,
@@ -397,10 +415,9 @@ function RegisterPageClient() {
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-10 lg:px-8">
       <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
         <aside className="rounded-2xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-xl lg:p-8">
-          <h1 className="text-3xl font-semibold leading-tight">Join the Digital Business Identity Network (DBIN)</h1>
+          <h1 className="text-3xl font-semibold leading-tight">{campaign?.heading ?? "Join the Digital Business Identity Network (DBIN)"}</h1>
           <p className="mt-4 text-sm leading-6 text-emerald-100">
-            Create a verified business identity, unlock marketplace visibility, and become discoverable by partners, buyers,
-            lenders, and associations.
+            {campaign?.description ?? "Create a verified business identity, unlock marketplace visibility, and become discoverable by partners, buyers, lenders, and associations."}
           </p>
 
           <ul className="mt-8 space-y-4 text-sm">
@@ -432,6 +449,11 @@ function RegisterPageClient() {
                 <strong>LCDBO programme registration:</strong> your programme request will be preserved and sent for review when this DBIN profile is created.
               </div>
             )}
+            {campaign && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                <strong>{campaign.badge} dedicated registration:</strong> your completed profile will be automatically attributed to this association in DBIN administration.
+              </div>
+            )}
             <p className="mt-2 text-sm text-slate-600">
               Registration path:{" "}
               <span className="font-semibold text-slate-900">
@@ -452,6 +474,7 @@ function RegisterPageClient() {
             <input type="hidden" name="registration_path" value={registrationPath} />
             <input type="hidden" name="programme" value={programme} />
             <input type="hidden" name="source" value={source} />
+            <input type="hidden" name="association_slug" value={associationSlug} />
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
               <h3 className="mb-4 text-lg font-semibold text-slate-900">1. Account Access</h3>
               <div className="grid gap-4 md:grid-cols-2">
@@ -499,7 +522,7 @@ function RegisterPageClient() {
                   <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="state">
                     State
                   </label>
-                  <input id="state" name="state" required className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter state" />
+                  <input id="state" name="state" required readOnly={Boolean(campaign?.state)} defaultValue={campaign?.state ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 read-only:bg-slate-100 read-only:text-slate-700" placeholder="Enter state" />
                   {fieldErrors.state && <p className="mt-1 text-xs text-rose-600">{fieldErrors.state}</p>}
                 </div>
                 <div>
@@ -519,14 +542,30 @@ function RegisterPageClient() {
                     <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="association_id">
                       MSME association
                     </label>
-                    <select id="association_id" name="association_id" required className="w-full rounded-lg border border-slate-300 px-3 py-2">
-                      <option value="">{associations.length === 0 ? "No associations available yet" : "Select your association"}</option>
-                      {associations.map((association) => (
-                        <option key={association.id} value={association.id}>
-                          {association.name} ({association.state ?? "Nigeria"} · {association.sector ?? "General"})
-                        </option>
-                      ))}
-                    </select>
+                    {isDedicatedAssociationRegistration ? (
+                      <>
+                        <input type="hidden" name="association_id" value={associations[0]?.id ?? ""} />
+                        <div
+                          id="association_id"
+                          className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-slate-700"
+                          aria-live="polite"
+                        >
+                          {associations[0]
+                            ? `${associations[0].name} (${associations[0].state ?? "Nigeria"} · ${associations[0].sector ?? "General"})`
+                            : "Loading the NASSI Anambra association…"}
+                        </div>
+                      </>
+                    ) : (
+                      <select id="association_id" name="association_id" required className="w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <option value="">{associations.length === 0 ? "No associations available yet" : "Select your association"}</option>
+                        {associations.map((association) => (
+                          <option key={association.id} value={association.id}>
+                            {association.name} ({association.state ?? "Nigeria"} · {association.sector ?? "General"})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {isDedicatedAssociationRegistration && <p className="mt-1 text-xs text-slate-500">This association is fixed by the dedicated registration link.</p>}
                     {fieldErrors.association_id && <p className="mt-1 text-xs text-rose-600">{fieldErrors.association_id}</p>}
                   </div>
                 )}
