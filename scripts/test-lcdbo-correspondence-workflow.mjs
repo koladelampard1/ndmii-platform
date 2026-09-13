@@ -188,6 +188,16 @@ test("returned representative drafts use a database-valid audit action", () => {
     "revision saves must use the permitted updated action and retain the specific change kind in metadata",
   );
   assert.doesNotMatch(dataService, /action_type:\s*actionType/, "revision saves must not send an unconstrained action type to the database");
+  assert.match(
+    dataService,
+    /const service = await createServiceRoleSupabaseClient\(\);[\s\S]*\.eq\("current_version_id", currentVersion\.id\)[\s\S]*\.select\("id,current_version_id"\)[\s\S]*\.single\(\)/,
+    "revision saves must verify that the guarded parent-record update succeeds",
+  );
+  assert.match(
+    dataService,
+    /corrected_from_version_id === currentVersion\.id[\s\S]*corrected_version_reconciled/,
+    "revision-save retries must reuse an existing corrected version",
+  );
 });
 
 test("correspondence workspace admits only active LCDBO representative assignments", () => {

@@ -1099,34 +1099,49 @@ export async function saveRepresentativeDraftVersion(input: {
   const summary = optionalText(input.formData.get("summary"));
   const currentVersion = record.versions?.find((candidate) => candidate.id === record.current_version_id) ?? record.versions?.[0];
   if (!currentVersion) throw new Error("Current document version could not be resolved.");
+  // Authority and institution ownership have already been verified with the
+  // authenticated client above. Perform the multi-table mutation with the
+  // service client so a zero-row RLS update cannot masquerade as a successful
+  // revision save and leave a corrected version detached from the record.
+  const service = await createServiceRoleSupabaseClient();
   const documentHash = sha256Hex(`${record.reference}:${subject}:${serializedRichBody}`);
   const content = { subject, body, rich_body: richBody, recipient: currentVersion.content?.recipient ?? (record.metadata?.recipient_snapshot ?? null) };
   let nextVersionId = currentVersion.id;
   let changeKind = "draft_updated";
 
   if (currentVersion.is_frozen) {
-    const nextVersionNumber = Math.max(0, ...(record.versions ?? []).map((version) => Number(version.version_number) || 0)) + 1;
-    const { data: nextVersion, error: nextVersionError } = await input.client
-      .from("lcdbo_correspondence_document_versions")
-      .insert({
-        record_id: input.recordId,
-        template_id: currentVersion.template_id,
-        version_number: nextVersionNumber,
-        version_label: `v${nextVersionNumber}`,
-        body,
-        content,
-        document_hash: documentHash,
-        is_frozen: false,
-        created_by: input.actorUserId,
-        metadata: { workflow_model: "two_party_representative", corrected_from_version_id: currentVersion.id, protected_content: true },
-      })
-      .select("*")
-      .single();
+    const existingCorrection = (record.versions ?? []).find((version) =>
+      !version.is_frozen
+      && version.created_by === input.actorUserId
+      && version.metadata?.corrected_from_version_id === currentVersion.id,
+    );
+    const nextVersionNumber = existingCorrection?.version_number
+      ?? Math.max(0, ...(record.versions ?? []).map((version) => Number(version.version_number) || 0)) + 1;
+    const versionMutation = existingCorrection
+      ? service
+          .from("lcdbo_correspondence_document_versions")
+          .update({ body, content, document_hash: documentHash })
+          .eq("id", existingCorrection.id)
+      : service
+          .from("lcdbo_correspondence_document_versions")
+          .insert({
+            record_id: input.recordId,
+            template_id: currentVersion.template_id,
+            version_number: nextVersionNumber,
+            version_label: `v${nextVersionNumber}`,
+            body,
+            content,
+            document_hash: documentHash,
+            is_frozen: false,
+            created_by: input.actorUserId,
+            metadata: { workflow_model: "two_party_representative", corrected_from_version_id: currentVersion.id, protected_content: true },
+          });
+    const { data: nextVersion, error: nextVersionError } = await versionMutation.select("*").single();
     if (nextVersionError || !nextVersion) throw nextVersionError ?? new Error("Unable to create corrected document version.");
     nextVersionId = nextVersion.id;
-    changeKind = "corrected_version_created";
+    changeKind = existingCorrection ? "corrected_version_reconciled" : "corrected_version_created";
   } else {
-    const { error: versionError } = await input.client
+    const { error: versionError } = await service
       .from("lcdbo_correspondence_document_versions")
       .update({
         body,
@@ -1138,7 +1153,7 @@ export async function saveRepresentativeDraftVersion(input: {
     if (versionError) throw versionError;
   }
 
-  const { error: recordError } = await input.client
+  const { data: updatedRecord, error: recordError } = await service
     .from("lcdbo_correspondence_records")
     .update({
       subject,
@@ -1157,10 +1172,15 @@ export async function saveRepresentativeDraftVersion(input: {
       updated_by: input.actorUserId,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", input.recordId);
-  if (recordError) throw recordError;
+    .eq("id", input.recordId)
+    .eq("current_version_id", currentVersion.id)
+    .select("id,current_version_id")
+    .single();
+  if (recordError || updatedRecord?.current_version_id !== nextVersionId) {
+    throw recordError ?? new Error("The corrected document version could not be made current.");
+  }
 
-  const { error: actionError } = await input.client.from("lcdbo_correspondence_workflow_actions").insert({
+  const { error: actionError } = await service.from("lcdbo_correspondence_workflow_actions").insert({
     record_id: input.recordId,
     document_version_id: nextVersionId,
     // `updated` is part of the database-enforced workflow action vocabulary.
