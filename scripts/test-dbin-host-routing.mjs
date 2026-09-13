@@ -232,6 +232,14 @@ test("existing DBIN production hosts retain their surfaces", () => {
   assert.equal(resolveDbinHostSurface("lands.dbin.ng"), "lands");
 });
 
+test("DBIN marketing host leaves dedicated registration routes untouched", () => {
+  assert.equal(resolveDbinRewritePath("marketing", "/register/nassi-anambra"), null);
+  assert.equal(
+    resolveDbinCanonicalRedirectUrl("marketing", new URL("https://www.dbin.ng/register/nassi-anambra")),
+    null,
+  );
+});
+
 test("super admin landing route remains direct on app, BOI, NRS, EKIRS, LCDBO and admin surfaces", () => {
   for (const host of ["app.dbin.ng", "boi.dbin.ng", "nrs.dbin.ng", "ekirs.dbin.ng", "lcdbo.dbin.ng", "admin.dbin.ng"]) {
     const surface = resolveDbinHostSurface(host);
