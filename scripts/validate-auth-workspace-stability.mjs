@@ -16,6 +16,8 @@ const proxy = read("src/proxy.ts");
 const workspaceAccessServer = read("src/lib/workspaces/workspace-access-server.ts");
 const accessDeniedPage = read("src/app/access-denied/page.tsx");
 const loginPage = read("src/app/(auth)/login/page.tsx");
+const authSessionRoute = read("src/app/api/auth/session/route.ts");
+const supabaseServer = read("src/lib/supabase/server.ts");
 const serverErrorPage = read("src/app/server-error/page.tsx");
 const dashboardLayout = read("src/app/dashboard/layout.tsx");
 const correspondenceLayout = read("src/app/dashboard/correspondence/layout.tsx");
@@ -47,6 +49,10 @@ assert(workspaceAccessServer.includes("AUTH_REQUIRED") && workspaceAccessServer.
 assert(workspaceAccessServer.includes("scopedAssignments") && workspaceAccessServer.includes("programmeId") && workspaceAccessServer.includes("institutionId"), "Central resolver must expose safe scoped diagnostic fields.");
 assert(accessDeniedPage.includes("Request reference") && accessDeniedPage.includes('workspace === "correspondence"'), "Access denied page must show request references and correspondence-aware messaging.");
 assert(loginPage.includes("session_refresh_failed") && loginPage.includes("Your session could not be refreshed securely"), "Login page must distinguish refresh failures from authorization denials.");
+assert(loginPage.includes("sessionResponse.status === 401") && loginPage.includes("supabase.auth.refreshSession()") && loginPage.includes("auth-login:session-sync-retry"), "Login must refresh and retry once when the browser-to-server token handoff is rejected.");
+assert(loginPage.includes('cache: "no-store"'), "Login session handoff must bypass caches.");
+assert(authSessionRoute.includes("auth-session:token-validation-failed") && authSessionRoute.includes("authError?.code"), "Session token validation failures must retain safe Supabase diagnostics.");
+assert(supabaseServer.includes("autoRefreshToken: false") && supabaseServer.includes("persistSession: false"), "The server-side Supabase validator must not maintain or rotate shared session state.");
 for (const [name, source] of Object.entries({ correspondenceLayout, lcdboLayout, ekirsLayout, boiLayout, nrsLayout })) {
   assert(source.includes('export const dynamic = "force-dynamic"'), `${name} must force dynamic rendering for user-specific authorization.`);
 }

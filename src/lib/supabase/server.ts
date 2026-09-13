@@ -40,7 +40,12 @@ export const supabaseAuthCookieOptions = {
 } as const;
 
 export async function createServerSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey);
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 export async function createServiceRoleSupabaseClient() {

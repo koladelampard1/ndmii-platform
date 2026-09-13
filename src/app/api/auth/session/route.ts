@@ -25,6 +25,12 @@ async function resolveSessionMetadata(accessToken: string) {
   const authUser = authData.user;
 
   if (authError || !authUser?.id) {
+    console.warn("[auth-session:token-validation-failed]", {
+      status: authError?.status ?? null,
+      code: authError?.code ?? null,
+      name: authError?.name ?? null,
+      message: authError?.message ?? "Authenticated user was not returned.",
+    });
     return {
       ok: false as const,
       status: 401,

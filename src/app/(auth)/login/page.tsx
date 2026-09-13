@@ -86,29 +86,48 @@ function LoginPageContent() {
       role = inferRoleFromEmail(signInData.user.email ?? email);
     }
 
-    console.info("[auth-login:session-sync-start]");
-    const sessionResponse = await fetch("/api/auth/session", {
+    const createAppSession = (session: typeof signInData.session) => fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
+      cache: "no-store",
       body: JSON.stringify({
         role,
         email: signInData.user.email ?? email,
         userId: signInData.user.id,
         appUserId,
-        accessToken: signInData.session.access_token,
-        refreshToken: signInData.session.refresh_token,
-        expiresAt: signInData.session.expires_at ?? null,
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        expiresAt: session.expires_at ?? null,
         workspace: requestedWorkspace,
         returnTo: requestedReturnPath,
         next: requestedNextPath,
       }),
     });
+
+    console.info("[auth-login:session-sync-start]");
+    let sessionResponse = await createAppSession(signInData.session);
+
+    // Supabase can rotate the browser token between password authentication and
+    // the server handoff. Refresh once on an authentication rejection so the
+    // HTTP-only app cookies are always created from the current token pair.
+    if (sessionResponse.status === 401) {
+      const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshedData.session) {
+        console.info("[auth-login:session-sync-retry]");
+        sessionResponse = await createAppSession(refreshedData.session);
+      }
+    }
+
     const sessionDebug = await sessionResponse.json().catch(() => null);
 
     if (!sessionResponse.ok) {
       setLoading(false);
-      setError("Authentication succeeded, but the app session could not be created. Please try again.");
+      setError(
+        typeof sessionDebug?.error === "string"
+          ? `Authentication succeeded, but the app session could not be created: ${sessionDebug.error}`
+          : "Authentication succeeded, but the app session could not be created. Please try again.",
+      );
       return;
     }
 
