@@ -53,6 +53,7 @@ export function WorkspaceShell({
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const Icon = ICONS[workspace.icon] ?? Building2;
+  const isCorrespondence = workspace.id === "correspondence";
   const sections = navigationSections?.length ? navigationSections : workspace.navigationSections ?? [{ label: "Workspace", items: workspace.navigation }];
   const activeItem = sections.flatMap((section) => section.items).find((item) => isActive(pathname, item.href));
 
@@ -99,7 +100,7 @@ export function WorkspaceShell({
       <a href="#workspace-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-black focus:text-slate-950 focus:shadow-xl">
         Skip to workspace content
       </a>
-      <aside className="z-40 hidden border-r border-slate-200 bg-white text-slate-950 opacity-100 shadow-xl shadow-slate-200/70 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[280px] lg:shrink-0 lg:flex-col">
+      <aside className={`z-40 hidden border-r border-slate-200 bg-white text-slate-950 opacity-100 lg:sticky lg:top-0 lg:flex lg:h-screen lg:shrink-0 lg:flex-col ${isCorrespondence ? "lg:w-[248px]" : "shadow-xl shadow-slate-200/70 lg:w-[280px]"}`}>
         <div className="border-b border-slate-200 px-5 py-6">
           <Link href={workspace.homepage} className="flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
             <span className="grid h-11 w-11 place-items-center rounded-2xl border border-emerald-200 bg-emerald-50">
@@ -112,7 +113,7 @@ export function WorkspaceShell({
           </Link>
         </div>
 
-        <div className="border-b border-slate-200 px-5 py-4">
+        <div className={`border-b border-slate-200 px-5 py-4 ${isCorrespondence ? "sr-only" : ""}`}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{workspace.id.replaceAll("-", " ")} workspace</p>
           <p className="mt-2 text-xs leading-5 text-slate-600">{workspace.subtitle}</p>
         </div>
@@ -144,7 +145,7 @@ export function WorkspaceShell({
 
       <div className="min-w-0 flex-1 lg:p-1.5 lg:pl-0">
         <div className="min-h-screen overflow-hidden bg-[#f8fafc] lg:rounded-l-[24px] lg:border lg:border-slate-200 lg:shadow-xl lg:shadow-slate-300/30">
-          <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-5 sm:py-5 lg:px-7">
+          <header className={`flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-5 lg:px-7 ${isCorrespondence ? "py-3" : "py-4 sm:py-5"}`}>
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -156,12 +157,12 @@ export function WorkspaceShell({
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{workspace.title}</p>
-                <h1 className="mt-1 truncate text-xl font-black tracking-tight text-[#0c1733] sm:text-2xl">{activeItem?.label ?? "Overview"}</h1>
+                {isCorrespondence ? null : <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{workspace.title}</p>}
+                <h1 className={`${isCorrespondence ? "text-base" : "mt-1 text-xl sm:text-2xl"} truncate font-black tracking-tight text-[#0c1733]`}>{activeItem?.label ?? "Overview"}</h1>
               </div>
             </div>
           </header>
-          <main id="workspace-content" className="p-4 sm:p-5 lg:p-7">{children}</main>
+          <main id="workspace-content" className={isCorrespondence ? "p-4 sm:p-6 lg:p-8" : "p-4 sm:p-5 lg:p-7"}>{children}</main>
         </div>
       </div>
 

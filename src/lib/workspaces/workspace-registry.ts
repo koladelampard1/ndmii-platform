@@ -467,36 +467,23 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
       moduleKey: "lcdb_o_workspace",
     },
     navigation: [
-      { label: "Overview", href: "/dashboard/correspondence" },
-      { label: "Create Letter", href: "/dashboard/correspondence/create" },
-      { label: "Needs My Action", href: "/dashboard/correspondence/my-work" },
-      { label: "Ready to Send", href: "/dashboard/correspondence/ready-to-send" },
-      { label: "Templates", href: "/dashboard/correspondence/templates" },
-      { label: "Contacts", href: "/dashboard/correspondence/contacts" },
-      { label: "Reports", href: "/dashboard/correspondence/reports" },
-      { label: "Administration", href: "/dashboard/correspondence/administration" },
+      { label: "Home", href: "/dashboard/correspondence" },
+      { label: "Create a letter", href: "/dashboard/correspondence/create" },
+      { label: "Needs your action", href: "/dashboard/correspondence/my-work" },
+      { label: "Ready to send", href: "/dashboard/correspondence/ready-to-send" },
+      { label: "Sent letters", href: "/dashboard/correspondence/sent" },
+      { label: "All correspondence", href: "/dashboard/correspondence/register" },
     ],
     navigationSections: [
-      { label: "Correspondence", items: [
-        { label: "Overview", href: "/dashboard/correspondence" },
-        { label: "Create Letter", href: "/dashboard/correspondence/create" },
-        { label: "Needs My Action", href: "/dashboard/correspondence/my-work" },
-        { label: "Drafts", href: "/dashboard/correspondence/drafts" },
-        { label: "Waiting for Other Party", href: "/dashboard/correspondence/waiting" },
+      { label: "Your workspace", items: [
+        { label: "Home", href: "/dashboard/correspondence" },
+        { label: "Create a letter", href: "/dashboard/correspondence/create" },
+        { label: "Needs your action", href: "/dashboard/correspondence/my-work" },
+        { label: "Ready to send", href: "/dashboard/correspondence/ready-to-send" },
+        { label: "Sent letters", href: "/dashboard/correspondence/sent" },
       ] },
-      { label: "Issuance", items: [
-        { label: "Ready to Send", href: "/dashboard/correspondence/ready-to-send" },
-        { label: "Sent Letters", href: "/dashboard/correspondence/sent" },
-        { label: "Delivery Evidence", href: "/dashboard/correspondence/delivery-evidence" },
-        { label: "Responses", href: "/dashboard/correspondence/responses" },
-        { label: "Public Verification", href: "/correspondence/verify" },
-      ] },
-      { label: "Administration", items: [
-        { label: "Correspondence Register", href: "/dashboard/correspondence/register" },
-        { label: "Templates", href: "/dashboard/correspondence/templates" },
-        { label: "Contacts", href: "/dashboard/correspondence/contacts" },
-        { label: "Reports", href: "/dashboard/correspondence/reports" },
-        { label: "Administration", href: "/dashboard/correspondence/administration" },
+      { label: "Records", items: [
+        { label: "All correspondence", href: "/dashboard/correspondence/register" },
       ] },
     ],
     terminology: {
@@ -505,11 +492,7 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
       reports: "Correspondence Reports",
       analytics: "Correspondence Intelligence",
     },
-    quickActions: [
-      { label: "Create letter", href: "/dashboard/correspondence/create" },
-      { label: "Needs my action", href: "/dashboard/correspondence/my-work" },
-      { label: "Ready to send", href: "/dashboard/correspondence/ready-to-send" },
-    ],
+    quickActions: [],
     dataClassification: [
       { classification: "operational", label: "Official Correspondence", description: "Governed incoming and outgoing LCDBO correspondence records." },
       { classification: "reference", label: "Templates and Contacts", description: "Programme templates and contact records used for correspondence operations." },
