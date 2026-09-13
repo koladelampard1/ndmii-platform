@@ -355,9 +355,12 @@ async function enqueueRepresentativeNotification(input: {
   jobType: "representative_counterparty_action" | "representative_returned_for_correction" | "representative_rejected" | "representative_ready_to_send";
   idempotencyKey: string;
   metadata: Record<string, unknown>;
-  client: Client;
 }) {
-  const { data, error } = await input.client.from("lcdbo_correspondence_notification_jobs").upsert({
+  // Notification persistence is a system concern, not part of the representative's
+  // RLS-scoped transaction. A slow or unavailable notification channel must never
+  // turn an already-completed signature handoff into a user-visible failure.
+  const service = await createServiceRoleSupabaseClient();
+  const { data, error } = await service.from("lcdbo_correspondence_notification_jobs").upsert({
     programme_id: input.programmeId,
     record_id: input.recordId,
     job_type: input.jobType,
@@ -370,10 +373,18 @@ async function enqueueRepresentativeNotification(input: {
       protected_signature_assets_attached: false,
     },
   }, { onConflict: "idempotency_key" }).select("id").single();
-  if (error) throw error;
+  if (error) {
+    console.error("[lcdbo-correspondence-notification:queue-error]", {
+      recordId: input.recordId,
+      jobType: input.jobType,
+      error: error.message,
+    });
+    return null;
+  }
   if (data?.id) await deliverCorrespondenceNotificationJob(data.id).catch((notificationError) => {
     console.error("[lcdbo-correspondence-notification:error]", { jobId: data.id, error: notificationError instanceof Error ? notificationError.message : String(notificationError) });
   });
+  return data?.id ?? null;
 }
 
 function notificationCopy(jobType: string, metadata: Record<string, unknown>) {
@@ -1006,6 +1017,13 @@ export async function submitRepresentativeLetterToCounterparty(input: {
   const record = await getCorrespondenceRecord(input.recordId, input.client);
   if (!record?.current_version_id) throw new Error("A document version is required before submission.");
   if (record.initiating_institution_id !== authority.institution_id) throw new Error("Only the initiating representative may submit this letter.");
+  const counterpartyRole = counterpartyRoleForRepresentative(authority.representative_role);
+  const toStatus = counterpartyStatusForRepresentative(authority.representative_role);
+  const initiatingSignatureRole = signatureRoleForRepresentative(authority.representative_role);
+  const handoffAlreadyCompleted = record.status === "awaiting_signature"
+    && simplifiedStatusForRecord(record) === toStatus
+    && record.signatures?.some((signature) => signature.signature_role === initiatingSignatureRole && signature.document_version_id === record.current_version_id);
+  if (handoffAlreadyCompleted) return { alreadySubmitted: true };
   if (!["draft", "revision_requested"].includes(record.status)) throw new Error("Only drafts or returned letters can be submitted.");
   if (!["draft", "returned_for_correction"].includes(simplifiedStatusForRecord(record))) throw new Error("This letter is not awaiting initiator action.");
 
@@ -1022,9 +1040,7 @@ export async function submitRepresentativeLetterToCounterparty(input: {
   if (approvalError) throw approvalError;
 
   await insertRepresentativeSignature({ record, authority, actorUserId: input.actorUserId, client: input.client });
-  const counterpartyRole = counterpartyRoleForRepresentative(authority.representative_role);
   const counterpartyAuthority = await getPrimaryCounterpartyRepresentative({ programmeId: input.programmeId, representativeRole: counterpartyRole, client: input.client });
-  const toStatus = counterpartyStatusForRepresentative(authority.representative_role);
   await input.client.from("lcdbo_correspondence_records").update({
     status: "awaiting_signature",
     simplified_status: toStatus,
@@ -1056,8 +1072,8 @@ export async function submitRepresentativeLetterToCounterparty(input: {
     jobType: "representative_counterparty_action",
     idempotencyKey: `representative-counterparty:${input.recordId}:${record.current_version_id}:${counterpartyRole}`,
     metadata: { subject: record.subject, reference: record.reference, action_required: "Review and countersign", secure_path: `/dashboard/correspondence/${input.recordId}` },
-    client: input.client,
   });
+  return { alreadySubmitted: false };
 }
 
 export async function saveRepresentativeDraftVersion(input: {
@@ -1193,7 +1209,7 @@ export async function decideRepresentativeCounterpartyLetter(input: {
   if (input.decision === "rejected") {
     await transitionCorrespondenceRecord({ recordId: input.recordId, toStatus: "rejected", actionType: "rejected", actorUserId: input.actorUserId, note: input.note, client: input.client });
     await input.client.from("lcdbo_correspondence_records").update({ simplified_status: "rejected", updated_by: input.actorUserId }).eq("id", input.recordId);
-    await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: record.created_by, jobType: "representative_rejected", idempotencyKey: `representative-rejected:${input.recordId}:${record.current_version_id}`, metadata: { reference: record.reference, subject: record.subject, reason_required: true }, client: input.client });
+    await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: record.created_by, jobType: "representative_rejected", idempotencyKey: `representative-rejected:${input.recordId}:${record.current_version_id}`, metadata: { reference: record.reference, subject: record.subject, reason_required: true } });
     return;
   }
 
@@ -1206,7 +1222,7 @@ export async function decideRepresentativeCounterpartyLetter(input: {
       metadata: { ...(record.metadata ?? {}), simplified_status: "returned_for_correction", signature_invalidated_by_return: true },
       updated_by: input.actorUserId,
     }).eq("id", input.recordId);
-    await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: record.created_by, jobType: "representative_returned_for_correction", idempotencyKey: `representative-returned:${input.recordId}:${record.current_version_id}`, metadata: { reference: record.reference, subject: record.subject, correction_reason: input.note ?? null }, client: input.client });
+    await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: record.created_by, jobType: "representative_returned_for_correction", idempotencyKey: `representative-returned:${input.recordId}:${record.current_version_id}`, metadata: { reference: record.reference, subject: record.subject, correction_reason: input.note ?? null } });
     return;
   }
 
@@ -1225,7 +1241,7 @@ export async function decideRepresentativeCounterpartyLetter(input: {
     note: "Both representatives signed. Final joint document is ready to send.",
     metadata: { workflow_model: "two_party_representative", simplified_status: "ready_to_send", final_pdf_hash: final.finalPdfHash },
   });
-  await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: refreshed.created_by, jobType: "representative_ready_to_send", idempotencyKey: `representative-ready:${input.recordId}:${refreshed.current_version_id}`, metadata: { reference: refreshed.reference, subject: refreshed.subject, final_pdf_hash: final.finalPdfHash, secure_path: `/dashboard/correspondence/${input.recordId}` }, client: input.client });
+  await enqueueRepresentativeNotification({ programmeId: input.programmeId, recordId: input.recordId, recipientUserId: refreshed.created_by, jobType: "representative_ready_to_send", idempotencyKey: `representative-ready:${input.recordId}:${refreshed.current_version_id}`, metadata: { reference: refreshed.reference, subject: refreshed.subject, final_pdf_hash: final.finalPdfHash, secure_path: `/dashboard/correspondence/${input.recordId}` } });
 }
 
 export async function transitionCorrespondenceRecord(input: {

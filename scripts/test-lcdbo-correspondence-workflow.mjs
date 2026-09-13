@@ -508,8 +508,15 @@ test("production email uses Resend idempotency and attaches the final PDF", () =
   assert.match(dataService, /Accepted by \$\{result\.provider\}/);
 });
 
-test("representative notifications have immediate delivery and retry processing", () => {
+test("representative notifications cannot fail a completed workflow transition", () => {
+  assert.match(dataService, /const service = await createServiceRoleSupabaseClient\(\);[\s\S]*lcdbo_correspondence_notification_jobs/);
+  assert.match(dataService, /lcdbo-correspondence-notification:queue-error/);
   assert.match(dataService, /deliverCorrespondenceNotificationJob/);
   assert.match(dataService, /processCorrespondenceNotificationJobs/);
   assert.match(dataService, /\.lt\("attempts", 5\)/);
+});
+
+test("representative submission retries reconcile an already-completed handoff", () => {
+  assert.match(dataService, /handoffAlreadyCompleted[\s\S]*return \{ alreadySubmitted: true \}/);
+  assert.match(dataService, /signature\.document_version_id === record\.current_version_id/);
 });

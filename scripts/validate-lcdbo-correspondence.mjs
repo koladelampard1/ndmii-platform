@@ -205,6 +205,8 @@ assert.match(data, /submitRepresentativeLetterToCounterparty/, "representative s
 assert.match(data, /decideRepresentativeCounterpartyLetter/, "representative counterparty decision workflow missing");
 assert.match(data, /generateRepresentativeFinalDocument/, "representative final document generation missing");
 assert.match(data, /enqueueRepresentativeNotification/, "representative notification workflow missing");
+assert.match(data, /lcdbo-correspondence-notification:queue-error/, "representative workflow must fail open when notification queueing fails after an authoritative transition");
+assert.match(data, /handoffAlreadyCompleted[\s\S]*alreadySubmitted: true/, "representative handoff retry must reconcile an already-completed signature transition");
 assert.match(data, /dispatchReference = providerTracking \|\| record\.reference/, "LCDBO reference fallback tracking missing");
 assert.match(data, /Provider or courier tracking identifier is required for this dispatch channel/, "provider tracking channel rule missing");
 assert.match(data, /Required protected signature event is required before dispatch/, "signature-before-dispatch enforcement missing");
