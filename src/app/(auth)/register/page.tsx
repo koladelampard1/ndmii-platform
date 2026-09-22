@@ -554,7 +554,7 @@ function RegisterPageClient() {
                         >
                           {associations[0]
                             ? `${associations[0].name} (${associations[0].state ?? "Nigeria"} · ${associations[0].sector ?? "General"})`
-                            : "Loading the NASSI Anambra association…"}
+                            : "Loading the dedicated association…"}
                         </div>
                       </>
                     ) : (
