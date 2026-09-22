@@ -129,11 +129,13 @@ function RegisterPageClient() {
       bvn: String(form.get("bvn") ?? "").trim(),
       cac_number: String(form.get("cac_number") ?? "").trim(),
       tin: String(form.get("tin") ?? "").trim(),
-      registration_path: normalizeRegistrationPath(String(form.get("registration_path") ?? "")),
-      association_id: String(form.get("association_id") ?? "").trim(),
-      programme: String(form.get("programme") ?? "").trim(),
-      source: String(form.get("source") ?? "").trim(),
-      association_slug: String(form.get("association_slug") ?? "").trim(),
+      registration_path: registrationPath,
+      association_id: isDedicatedAssociationRegistration
+        ? associations[0]?.id ?? ""
+        : String(form.get("association_id") ?? "").trim(),
+      programme,
+      source,
+      association_slug: associationSlug,
     };
 
     const nextFieldErrors: FieldErrors = {};
