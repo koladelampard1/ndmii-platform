@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  NASSI_ANAMBRA_ASSOCIATION_RECORD,
-  NASSI_ANAMBRA_ASSOCIATION_SLUG,
-} from "@/lib/auth/registration-campaigns";
+import { getDedicatedAssociationRecord } from "@/lib/auth/registration-campaigns";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -17,11 +14,12 @@ export async function GET(request: Request) {
     if (requestedSlug) query = query.eq("slug", requestedSlug);
 
     let { data, error } = await query;
+    const dedicatedAssociationRecord = getDedicatedAssociationRecord(requestedSlug);
 
-    if (!error && requestedSlug === NASSI_ANAMBRA_ASSOCIATION_SLUG && (data?.length ?? 0) === 0) {
+    if (!error && dedicatedAssociationRecord && (data?.length ?? 0) === 0) {
       const { error: seedError } = await supabase
         .from("associations")
-        .insert(NASSI_ANAMBRA_ASSOCIATION_RECORD);
+        .insert(dedicatedAssociationRecord);
 
       if (seedError && seedError.code !== "23505") {
         console.error("[register:dedicated-association-bootstrap-failed]", {
