@@ -33,7 +33,7 @@ function LoginPageContent() {
         : authReason === "auth_required"
           ? "Please sign in to continue."
           : null);
-  const [email, setEmail] = useState<string>("");
+  const [identifier, setIdentifier] = useState<string>("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -60,7 +60,22 @@ function LoginPageContent() {
     setError(null);
     setMessage(null);
 
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const loginIdentifier = identifier.trim();
+    const digits = loginIdentifier.replace(/\D/g, "");
+    const phone = digits.length === 11 && digits.startsWith("0")
+      ? `+234${digits.slice(1)}`
+      : digits.length === 10
+        ? `+234${digits}`
+        : `+${digits}`;
+    if (!loginIdentifier.includes("@") && !/^\+\d{7,15}$/.test(phone)) {
+      setLoading(false);
+      setError("Enter a valid email address or phone number.");
+      return;
+    }
+    const credentials = loginIdentifier.includes("@")
+      ? { email: loginIdentifier.toLowerCase(), password }
+      : { phone, password };
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword(credentials);
 
     if (signInError || !signInData.user || !signInData.session) {
       setLoading(false);
@@ -74,7 +89,7 @@ function LoginPageContent() {
     try {
       const profile = await resolveOrCreateUserProfile(supabase, {
         authUserId: signInData.user.id,
-        email: signInData.user.email ?? email,
+        email: signInData.user.email ?? "",
       });
       role = normalizeUserRole(profile?.role, "public");
       appUserId = profile?.id ?? null;
@@ -83,7 +98,7 @@ function LoginPageContent() {
     }
 
     if (role === "public") {
-      role = inferRoleFromEmail(signInData.user.email ?? email);
+      role = inferRoleFromEmail(signInData.user.email ?? "");
     }
 
     const createAppSession = (session: typeof signInData.session) => fetch("/api/auth/session", {
@@ -93,7 +108,7 @@ function LoginPageContent() {
       cache: "no-store",
       body: JSON.stringify({
         role,
-        email: signInData.user.email ?? email,
+        email: signInData.user.email ?? "",
         userId: signInData.user.id,
         appUserId,
         accessToken: session.access_token,
@@ -141,7 +156,7 @@ function LoginPageContent() {
       ?? getDefaultDashboardRoute(verifiedRole);
     if (process.env.NODE_ENV !== "production") {
       console.info("[login-role-resolution]", {
-        authenticatedEmail: signInData.user.email ?? email,
+        authenticatedEmail: signInData.user.email ?? "",
         resolvedRole: verifiedRole,
         authUserId: signInData.user.id,
         appUserId,
@@ -240,15 +255,16 @@ function LoginPageContent() {
 
             <form className="mt-8 space-y-5" onSubmit={onSubmit}>
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">Email address</span>
+                <span className="text-sm font-medium text-slate-700">Email address or phone number</span>
                 <span className="flex items-center rounded-md border border-slate-300 bg-white px-3 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-100">
                   <Mail className="h-4 w-4 text-slate-500" />
                   <input
                     className="w-full border-0 bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none"
-                    placeholder="Enter your email address"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email address or phone number"
+                    type="text"
+                    autoComplete="username"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     required
                   />
                 </span>
