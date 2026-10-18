@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Building2, CheckCircle2, CircleAlert, Plus, RefreshCw, ShieldCheck, Users } from "lucide-react";
 
@@ -143,6 +144,8 @@ export function InstitutionAdministrationConsole() {
       {error && <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><CircleAlert className="h-5 w-5 shrink-0" />{error}</div>}
       {notice && <div role="status" className="flex items-start gap-2 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800"><CheckCircle2 className="h-5 w-5 shrink-0" />{notice}</div>}
       {loading ? <p className="text-sm text-slate-600">Loading your institutions…</p> : (
+        <>
+        {selected && !pending && <Link href={`/dashboard/institutions/${selected}/diagnostics`} className="inline-flex items-center gap-2 rounded-xl bg-teal-800 px-5 py-3 text-sm font-bold text-white">Open diagnostics and development plans <ArrowRight size={17}/></Link>}
         <div className="grid gap-6 xl:grid-cols-[19rem_1fr]">
           <div className="space-y-5">
             <section className={card}>
@@ -322,6 +325,7 @@ export function InstitutionAdministrationConsole() {
             </>}
           </div>
         </div>
+        </>
       )}
     </main>
   );
