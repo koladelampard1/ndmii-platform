@@ -146,6 +146,7 @@ export function InstitutionAdministrationConsole() {
       {loading ? <p className="text-sm text-slate-600">Loading your institutions…</p> : (
         <>
         {selected && !pending && <Link href={`/dashboard/institutions/${selected}/diagnostics`} className="inline-flex items-center gap-2 rounded-xl bg-teal-800 px-5 py-3 text-sm font-bold text-white">Open diagnostics and development plans <ArrowRight size={17}/></Link>}
+        {selected && !pending && <Link href={`/dashboard/institutions/${selected}/finance-readiness`} className="ml-2 inline-flex items-center gap-2 rounded-xl border border-teal-800 px-5 py-3 text-sm font-bold text-teal-900">Open finance preparation <ArrowRight size={17}/></Link>}
         <div className="grid gap-6 xl:grid-cols-[19rem_1fr]">
           <div className="space-y-5">
             <section className={card}>
