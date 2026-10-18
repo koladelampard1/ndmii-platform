@@ -1,4 +1,4 @@
-export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "nrs" | "ekirs" | "lcdbo" | "correspondence" | "lands" | "unknown";
+export type DbinHostSurface = "marketing" | "app" | "admin" | "verify" | "boi" | "amaanah" | "nrs" | "ekirs" | "lcdbo" | "correspondence" | "lands" | "unknown";
 
 export const DBIN_APEX_HOST = "dbin.ng";
 export const DBIN_CANONICAL_HOST = "www.dbin.ng";
@@ -29,6 +29,7 @@ type HostRoutingConfig = {
   adminHosts: Set<string>;
   verifyHosts: Set<string>;
   boiHosts: Set<string>;
+  amaanahHosts: Set<string>;
   nrsHosts: Set<string>;
   ekirsHosts: Set<string>;
   lcdboHosts: Set<string>;
@@ -65,6 +66,7 @@ function getHostRoutingConfig(): HostRoutingConfig {
     adminHosts: hostSet(process.env.DBIN_ADMIN_HOSTS, ["admin.dbin.ng"]),
     verifyHosts: hostSet(process.env.DBIN_VERIFY_HOSTS, ["verify.dbin.ng"]),
     boiHosts: hostSet(process.env.DBIN_BOI_HOSTS, ["boi.dbin.ng"]),
+    amaanahHosts: hostSet(process.env.DBIN_AMAANAH_HOSTS, ["amaanah.dbin.ng", "amaanah.localhost", "amaanah.dbin.local"]),
     nrsHosts: hostSet(process.env.DBIN_NRS_HOSTS, ["nrs.dbin.ng", "nrs.localhost", "nrs.dbin.local"]),
     ekirsHosts: hostSet(process.env.DBIN_EKIRS_HOSTS, ["ekirs.dbin.ng", "ekirs.localhost", "ekirs.dbin.local"]),
     lcdboHosts: hostSet(process.env.DBIN_LCDBO_HOSTS, [LCDBO_CANONICAL_HOST, "lcdbo.com", "www.lcdbo.com", "lcdbo.localhost", "lcdbo.dbin.local"]),
@@ -83,6 +85,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
   if (config.adminHosts.has(hostname)) return "admin";
   if (config.verifyHosts.has(hostname)) return "verify";
   if (config.boiHosts.has(hostname)) return "boi";
+  if (config.amaanahHosts.has(hostname)) return "amaanah";
   if (config.nrsHosts.has(hostname)) return "nrs";
   if (config.ekirsHosts.has(hostname)) return "ekirs";
   if (config.lcdboHosts.has(hostname)) return "lcdbo";
@@ -197,10 +200,32 @@ export function resolveDbinCanonicalRedirectUrl(surface: DbinHostSurface, url: U
     }
   }
 
+  if (surface === "amaanah") {
+    if (pathname === "/dashboard") {
+      const redirectUrl = new URL(url);
+      redirectUrl.pathname = "/dashboard/amaanah";
+      return redirectUrl;
+    }
+
+    if (pathname === "/login" && url.searchParams.get("workspace") !== "amaanah") {
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set("workspace", "amaanah");
+      return redirectUrl;
+    }
+  }
+
   return null;
 }
 
 export function resolveDbinRewritePath(surface: DbinHostSurface, pathname: string) {
+  if (surface === "amaanah") {
+    if (isDirectApplicationPath(pathname) || pathname === "/admin" || pathname.startsWith("/admin/")) {
+      return null;
+    }
+    if (pathname === "/amaanah" || pathname.startsWith("/amaanah/")) return null;
+    return "/amaanah";
+  }
+
   if (surface === "boi") {
     if (isDirectApplicationPath(pathname) || pathname === "/admin" || pathname.startsWith("/admin/")) {
       return null;

@@ -36,6 +36,8 @@ export type LoginDestinationResult = {
     | "lcdbo_scoped_default"
     | "lcdbo_applicant_default"
     | "lcdbo_denied"
+    | "amaanah_scoped_default"
+    | "amaanah_denied"
     | "ekirs_scoped_default"
     | "ekirs_applicant_default"
     | "ekirs_denied"
@@ -308,6 +310,42 @@ async function resolveLcdboDefault(
     : { targetRoute: "/access-denied?workspace=lcdbo&returnTo=/lcdbo", reason: "lcdbo_denied" };
 }
 
+async function resolveAmaanahDefault(
+  client: MinimalSupabaseClient,
+  input: LoginDestinationInput,
+): Promise<LoginDestinationResult> {
+  const { data: institution, error: institutionError } = await client
+    .from("institutions")
+    .select("id")
+    .eq("slug", "amaanah-finance")
+    .maybeSingle();
+
+  if (institutionError || !institution?.id) {
+    return { targetRoute: "/access-denied?workspace=amaanah&returnTo=/", reason: "amaanah_denied" };
+  }
+
+  const targetRoute = `/dashboard/institutions/${institution.id}/overview`;
+  if (input.role === "admin" || input.role === "super_admin") {
+    return { targetRoute, reason: "amaanah_scoped_default" };
+  }
+
+  if (input.role !== "workspace_user" || !input.appUserId) {
+    return { targetRoute: "/access-denied?workspace=amaanah&returnTo=/", reason: "amaanah_denied" };
+  }
+
+  const { data: membership, error: membershipError } = await client
+    .from("institution_members")
+    .select("id")
+    .eq("institution_id", institution.id)
+    .eq("user_id", input.appUserId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  return !membershipError && membership?.id
+    ? { targetRoute, reason: "amaanah_scoped_default" }
+    : { targetRoute: "/access-denied?workspace=amaanah&returnTo=/", reason: "amaanah_denied" };
+}
+
 export async function resolveLoginDestination(
   client: MinimalSupabaseClient,
   input: LoginDestinationInput,
@@ -330,6 +368,10 @@ export async function resolveLoginDestination(
 
   if (surface === "lcdbo" || input.requestedWorkspace === "lcdbo") {
     return resolveLcdboDefault(client, input);
+  }
+
+  if (surface === "amaanah" || input.requestedWorkspace === "amaanah") {
+    return resolveAmaanahDefault(client, input);
   }
 
   if (input.requestedWorkspace === "nrs") {

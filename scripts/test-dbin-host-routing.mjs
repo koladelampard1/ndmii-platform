@@ -65,6 +65,35 @@ test("BOI authentication routes remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/brands/amaanah-finance-logo.svg"), null);
 });
 
+test("amaanah.dbin.ng resolves to the dedicated Amaanah surface", () => {
+  assert.equal(resolveDbinHostSurface("amaanah.dbin.ng"), "amaanah");
+  assert.equal(resolveDbinHostSurface("AMAANAH.DBIN.NG:443"), "amaanah");
+  assert.equal(resolveDbinHostSurface("amaanah.localhost:3000"), "amaanah");
+});
+
+test("Amaanah public requests use its own landing page", () => {
+  assert.equal(resolveDbinRewritePath("amaanah", "/"), "/amaanah");
+  assert.equal(resolveDbinRewritePath("amaanah", "/about"), "/amaanah");
+  assert.equal(resolveDbinRewritePath("amaanah", "/amaanah"), null);
+  assert.notEqual(resolveDbinRewritePath("amaanah", "/"), "/boi");
+});
+
+test("Amaanah application routes remain direct and canonical", () => {
+  assert.equal(resolveDbinRewritePath("amaanah", "/login"), null);
+  assert.equal(resolveDbinRewritePath("amaanah", "/logout"), null);
+  assert.equal(resolveDbinRewritePath("amaanah", "/api/auth/session"), null);
+  assert.equal(resolveDbinRewritePath("amaanah", "/dashboard/amaanah"), null);
+  assert.equal(resolveDbinRewritePath("amaanah", "/brands/amaanah-finance-logo.svg"), null);
+  assert.equal(
+    resolveDbinCanonicalRedirectUrl("amaanah", new URL("https://amaanah.dbin.ng/dashboard"))?.toString(),
+    "https://amaanah.dbin.ng/dashboard/amaanah",
+  );
+  assert.equal(
+    resolveDbinCanonicalRedirectUrl("amaanah", new URL("https://amaanah.dbin.ng/login?next=%2Fdashboard"))?.toString(),
+    "https://amaanah.dbin.ng/login?next=%2Fdashboard&workspace=amaanah",
+  );
+});
+
 test("nrs.dbin.ng resolves to the NRS surface", () => {
   assert.equal(resolveDbinHostSurface("nrs.dbin.ng"), "nrs");
   assert.equal(resolveDbinHostSurface("NRS.DBIN.NG:443"), "nrs");
