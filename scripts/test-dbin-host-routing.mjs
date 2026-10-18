@@ -62,6 +62,7 @@ test("BOI authentication routes remain directly accessible", () => {
   assert.equal(resolveDbinRewritePath("boi", "/logout"), null);
   assert.equal(resolveDbinRewritePath("boi", "/api/auth/session"), null);
   assert.equal(resolveDbinRewritePath("boi", "/_next/static/chunk.js"), null);
+  assert.equal(resolveDbinRewritePath("boi", "/brands/amaanah-finance-logo.svg"), null);
 });
 
 test("nrs.dbin.ng resolves to the NRS surface", () => {
