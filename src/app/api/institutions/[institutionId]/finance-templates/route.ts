@@ -6,7 +6,7 @@ type Context = { params: Promise<{ institutionId: string }> };
 export async function GET(_request: Request, context: Context) {
   try {
     const actor = await requireInstitutionActor((await context.params).institutionId);
-    const { data, error } = await actor.db.from("institution_finance_templates").select("id,name,version,requirements,active,created_at")
+    const { data, error } = await actor.db.from("institution_finance_templates").select("id,name,version,requirements,active,created_at,product_code,product_category,finance_structures,source_url,configuration_status")
       .eq("institution_id", actor.institution.id).eq("active", true).order("created_at", { ascending: false }).limit(100);
     if (error) throw error;
     return NextResponse.json({ templates: data ?? [] }, { headers: { "Cache-Control": "private, no-store" } });
