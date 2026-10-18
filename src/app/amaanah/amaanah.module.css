@@ -1,0 +1,123 @@
+.page {
+  --amaanah-green: #033531;
+  --amaanah-ink: #17372f;
+  --amaanah-gold: #ccaf84;
+  background: #f3efe5;
+}
+
+.display {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+}
+
+.navLink {
+  position: relative;
+  padding: 0.75rem 0;
+  color: #425b54;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.navLink::after {
+  position: absolute;
+  right: 0;
+  bottom: 0.4rem;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: #9d7541;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 220ms ease;
+}
+
+.navLink:hover::after,
+.navLink:focus-visible::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.heroGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(rgba(23, 55, 47, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 55, 47, 0.14) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to right, black 0%, transparent 58%);
+}
+
+.heroArc {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(78vw, 720px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(204, 175, 132, 0.2);
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+}
+
+.heroArc::before,
+.heroArc::after {
+  position: absolute;
+  inset: 12%;
+  content: "";
+  border: 1px solid rgba(204, 175, 132, 0.12);
+  border-radius: inherit;
+}
+
+.heroArc::after {
+  inset: 27%;
+}
+
+.casePanel {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: #f5f0e6;
+  box-shadow: 0 32px 90px rgba(0, 18, 15, 0.3);
+  transform: rotate(-1deg);
+  transition: transform 360ms ease, box-shadow 360ms ease;
+}
+
+.casePanel:hover {
+  box-shadow: 0 38px 100px rgba(0, 18, 15, 0.38);
+  transform: rotate(0deg) translateY(-4px);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #876b43;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  width: 2.25rem;
+  height: 1px;
+  content: "";
+  background: #a88c61;
+}
+
+@media (max-width: 639px) {
+  .casePanel {
+    transform: none;
+  }
+
+  .heroGrid {
+    background-size: 42px 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navLink::after,
+  .casePanel {
+    transition: none;
+  }
+}
