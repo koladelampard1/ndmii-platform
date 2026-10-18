@@ -1,0 +1,41 @@
+name: Institution engagement checks
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/institution-engagement.yml'
+      - 'src/lib/institutional/**'
+      - 'src/app/api/institutions/**'
+      - 'src/types/platform.ts'
+      - 'supabase/migrations/*institution_engagement*'
+      - 'scripts/test-institution-engagement-access.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/institution-engagement.yml'
+      - 'src/lib/institutional/**'
+      - 'src/app/api/institutions/**'
+      - 'src/types/platform.ts'
+      - 'supabase/migrations/*institution_engagement*'
+      - 'scripts/test-institution-engagement-access.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:institution-access
+      - run: npm run validate:auth-workspace-stability
+      - run: npm run test:routing
+      - run: npx eslint src/lib/institutional src/app/api/institutions scripts/test-institution-engagement-access.mjs
+      - run: npm run build
