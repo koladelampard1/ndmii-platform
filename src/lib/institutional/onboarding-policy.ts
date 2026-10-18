@@ -5,20 +5,40 @@ export const ONBOARDING_STATUSES = ["configuration", "data_setup", "uat", "ready
 export const CHECK_STATUSES = ["not_started", "passed", "failed", "not_applicable"] as const;
 export const IMPORT_TYPES = ["bdsp_organisations", "agents"] as const;
 export type ImportType = (typeof IMPORT_TYPES)[number];
+export const VOLUME_BASES = ["pending_confirmation", "planning_assumption", "institution_confirmed"] as const;
+export const OWNER_STATUSES = ["pending_nomination", "nominated", "confirmed"] as const;
 
 const text = (value: unknown, max: number) => typeof value === "string" && value.trim().length <= max;
 const integer = (value: unknown, max: number) => Number.isInteger(value) && Number(value) >= 0 && Number(value) <= max;
 
 export function validOnboardingSetup(value: unknown): value is {
   operatingModel: OnboardingOperatingModel; targetGoLiveDate: string | null; expectedAgents: number;
-  expectedBusinesses: number; programmeOwner: string; technicalOwner: string;
+  expectedBusinesses: number; expectedInternalOfficers: number; expectedExternalAgents: number;
+  volumeBasis: (typeof VOLUME_BASES)[number]; programmeOwner: string; technicalOwner: string;
 } {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
   return ONBOARDING_OPERATING_MODELS.includes(item.operatingModel as OnboardingOperatingModel) &&
     (item.targetGoLiveDate === null || /^\d{4}-\d{2}-\d{2}$/.test(String(item.targetGoLiveDate))) &&
     integer(item.expectedAgents, 100000) && integer(item.expectedBusinesses, 10000000) &&
+    integer(item.expectedInternalOfficers, 100000) && integer(item.expectedExternalAgents, 100000) &&
+    Number(item.expectedAgents) === Number(item.expectedInternalOfficers) + Number(item.expectedExternalAgents) &&
+    VOLUME_BASES.includes(item.volumeBasis as (typeof VOLUME_BASES)[number]) &&
     text(item.programmeOwner, 160) && text(item.technicalOwner, 160);
+}
+
+export function validOwnerUpdate(value: unknown): value is {
+  ownerId: string; namedOwner: string; ownerEmail: string; status: (typeof OWNER_STATUSES)[number];
+} {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  const status = item.status as (typeof OWNER_STATUSES)[number];
+  const namedOwner = String(item.namedOwner ?? "").trim();
+  const email = String(item.ownerEmail ?? "").trim();
+  return typeof item.ownerId === "string" && /^[0-9a-f-]{36}$/i.test(item.ownerId) &&
+    OWNER_STATUSES.includes(status) && text(namedOwner, 160) && text(email, 254) &&
+    (status === "pending_nomination" ? !namedOwner && !email : namedOwner.length >= 2) &&
+    (!email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
 }
 export function validCheckUpdate(value: unknown): value is {
   checkId: string; status: (typeof CHECK_STATUSES)[number]; evidenceNote: string; evidenceUrl: string | null;
@@ -48,10 +68,14 @@ export function parseImportRows(value: unknown, type: ImportType) {
     }
     const email = String(item.email ?? "").trim().toLowerCase();
     const bdspName = String(item.bdspName ?? "").trim();
+    const deliveryType = String(item.deliveryType ?? "external_agent").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) errors.push("Enter a valid email.");
     if (bdspName.length > 160) errors.push("BDSP name is too long.");
+    if (!["internal_officer", "external_agent"].includes(deliveryType)) errors.push("Delivery type must be internal_officer or external_agent.");
+    if (deliveryType === "internal_officer" && bdspName) errors.push("Internal officers cannot have a partner organisation.");
+    if (deliveryType === "external_agent" && !bdspName) errors.push("External agents require a partner organisation.");
     if (email && seen.has(email)) errors.push("Duplicate email in this import."); seen.add(email);
-    return { rowNumber: index + 1, rowData: { email, bdspName, serviceStates }, errors };
+    return { rowNumber: index + 1, rowData: { email, bdspName, deliveryType, serviceStates }, errors };
   });
 }
 
