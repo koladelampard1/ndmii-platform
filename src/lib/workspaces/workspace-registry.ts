@@ -565,6 +565,8 @@ export const WORKSPACE_REGISTRY: Record<WorkspaceId, WorkspaceDefinition> = {
       { label: "Business Identity", href: "/dashboard/msme/id-card" },
       { label: "Compliance", href: "/dashboard/msme/compliance" },
       { label: "Finance Readiness", href: "/dashboard/msme/finance-readiness" },
+      { label: "Finance Preparation", href: "/dashboard/msme/finance-preparation" },
+      { label: "Continuing Support", href: "/dashboard/msme/continuing-support" },
     ],
     terminology: { assessment: "Readiness Check", reports: "Business Reports" },
     quickActions: [{ label: "Open business identity", href: "/dashboard/msme/id-card" }],
