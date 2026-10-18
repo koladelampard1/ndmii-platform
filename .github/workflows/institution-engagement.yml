@@ -26,11 +26,14 @@ on:
       - 'supabase/migrations/*institution_support*'
       - 'supabase/migrations/*institution_views_configuration*'
       - 'supabase/migrations/*institution_configuration*'
+      - 'supabase/migrations/*institution_onboarding*'
+      - 'supabase/migrations/*institution_import*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'scripts/test-institution-finance-readiness.mjs'
       - 'scripts/test-institution-continuing-support.mjs'
       - 'scripts/test-institution-views-configuration.mjs'
+      - 'scripts/test-institution-onboarding-go-live.mjs'
       - 'package.json'
       - 'package-lock.json'
   push:
@@ -59,11 +62,14 @@ on:
       - 'supabase/migrations/*institution_support*'
       - 'supabase/migrations/*institution_views_configuration*'
       - 'supabase/migrations/*institution_configuration*'
+      - 'supabase/migrations/*institution_onboarding*'
+      - 'supabase/migrations/*institution_import*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'scripts/test-institution-finance-readiness.mjs'
       - 'scripts/test-institution-continuing-support.mjs'
       - 'scripts/test-institution-views-configuration.mjs'
+      - 'scripts/test-institution-onboarding-go-live.mjs'
       - 'package.json'
       - 'package-lock.json'
 
@@ -83,7 +89,8 @@ jobs:
       - run: npm run test:institution-finance
       - run: npm run test:institution-support
       - run: npm run test:institution-insights
+      - run: npm run test:institution-onboarding
       - run: npm run validate:auth-workspace-stability
       - run: npm run test:routing
-      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/api/msme/institution-sharing src/app/api/msme/diagnostic-plans src/app/api/msme/finance-readiness src/app/api/msme/continuing-support src/app/dashboard/institutions src/app/dashboard/msme/institution-sharing src/app/dashboard/msme/diagnostic-plans src/app/dashboard/msme/finance-preparation src/app/dashboard/msme/continuing-support src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs scripts/test-institution-finance-readiness.mjs scripts/test-institution-continuing-support.mjs scripts/test-institution-views-configuration.mjs
+      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/api/msme/institution-sharing src/app/api/msme/diagnostic-plans src/app/api/msme/finance-readiness src/app/api/msme/continuing-support src/app/dashboard/institutions src/app/dashboard/msme/institution-sharing src/app/dashboard/msme/diagnostic-plans src/app/dashboard/msme/finance-preparation src/app/dashboard/msme/continuing-support src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs scripts/test-institution-finance-readiness.mjs scripts/test-institution-continuing-support.mjs scripts/test-institution-views-configuration.mjs scripts/test-institution-onboarding-go-live.mjs
       - run: npm run build
