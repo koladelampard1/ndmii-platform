@@ -1,0 +1,2 @@
+import { redirect } from "next/navigation";import { requireVerifiedActor } from "@/lib/institutional/administration-server";import { BusinessFinancePreparation } from "@/components/institutional/business-finance-preparation";
+export const dynamic="force-dynamic";export default async function Page(){const actor=await requireVerifiedActor().catch(()=>null);if(!actor)redirect("/login?next=/dashboard/msme/finance-preparation");if(actor.role!=="msme")redirect("/access-denied");return <BusinessFinancePreparation/>;}
