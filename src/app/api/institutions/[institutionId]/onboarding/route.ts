@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AdministrationError, administrationErrorResponse, recordInstitutionAudit, requireInstitutionActor, requireManager } from "@/lib/institutional/administration-server";
 import { loadOnboarding, requirePlatformOnboardingManager } from "@/lib/institutional/onboarding-server";
-import { validCheckUpdate, validOnboardingSetup } from "@/lib/institutional/onboarding-policy";
+import { validCheckUpdate, validOnboardingSetup, validOwnerUpdate } from "@/lib/institutional/onboarding-policy";
 
 type Context = { params: Promise<{ institutionId: string }> };
 export const dynamic = "force-dynamic";
@@ -24,7 +24,9 @@ export async function POST(request: Request, context: Context) {
     if (error) throw error;
     const { error: projectError } = await actor.db.from("institution_onboarding_projects").update({
       target_go_live_date: setup.targetGoLiveDate || null, expected_agents: setup.expectedAgents,
-      expected_businesses: setup.expectedBusinesses, programme_owner: setup.programmeOwner.trim() || null,
+      expected_businesses: setup.expectedBusinesses, expected_internal_officers: setup.expectedInternalOfficers,
+      expected_external_agents: setup.expectedExternalAgents, volume_basis: setup.volumeBasis,
+      programme_owner: setup.programmeOwner.trim() || null,
       technical_owner: setup.technicalOwner.trim() || null, updated_by_user_id: actor.userId,
     }).eq("institution_id", actor.institution.id);
     if (projectError) throw projectError;
@@ -38,6 +40,38 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const actor = await requireInstitutionActor((await context.params).institutionId); requireManager(actor);
     const body = await request.json().catch(() => null);
+    if (body?.action === "update_operating_plan") {
+      if (!validOnboardingSetup(body?.setup)) throw new AdministrationError(400, "Check the operating-plan configuration.");
+      const setup = body.setup;
+      const { error } = await actor.db.from("institution_onboarding_projects").update({
+        target_go_live_date: setup.targetGoLiveDate || null,
+        expected_agents: setup.expectedAgents,
+        expected_businesses: setup.expectedBusinesses,
+        expected_internal_officers: setup.expectedInternalOfficers,
+        expected_external_agents: setup.expectedExternalAgents,
+        volume_basis: setup.volumeBasis,
+        programme_owner: setup.programmeOwner.trim() || null,
+        technical_owner: setup.technicalOwner.trim() || null,
+        updated_by_user_id: actor.userId,
+      }).eq("institution_id", actor.institution.id);
+      if (error) throw error;
+      await recordInstitutionAudit(actor.db, { actorId: actor.userId, institutionId: actor.institution.id,
+        eventType: "institution.onboarding.operating_plan_updated", entityType: "institution_onboarding_projects", entityId: actor.institution.id,
+        metadata: { volumeBasis: setup.volumeBasis, expectedBusinesses: setup.expectedBusinesses } });
+      return NextResponse.json(await loadOnboarding(actor), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (body?.action === "update_owner") {
+      if (!validOwnerUpdate(body)) throw new AdministrationError(400, "Check the implementation-owner entry.");
+      const { data, error } = await actor.db.from("institution_implementation_owners").update({
+        named_owner: body.namedOwner.trim() || null, owner_email: body.ownerEmail.trim().toLowerCase() || null,
+        status: body.status, updated_by_user_id: actor.userId,
+      }).eq("id", body.ownerId).eq("institution_id", actor.institution.id).select("id,owner_key,status").maybeSingle();
+      if (error) throw error; if (!data) throw new AdministrationError(404, "Implementation owner not found.");
+      await recordInstitutionAudit(actor.db, { actorId: actor.userId, institutionId: actor.institution.id,
+        eventType: "institution.onboarding.owner_updated", entityType: "institution_implementation_owners", entityId: data.id,
+        metadata: { ownerKey: data.owner_key, status: data.status } });
+      return NextResponse.json(await loadOnboarding(actor), { headers: { "Cache-Control": "no-store" } });
+    }
     if (body?.action === "update_check") {
       if (!validCheckUpdate(body)) throw new AdministrationError(400, "Check the UAT evidence entry.");
       const { data: currentCheck, error: currentCheckError } = await actor.db.from("institution_onboarding_checks").select("id,required")

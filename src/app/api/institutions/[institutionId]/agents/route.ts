@@ -10,7 +10,7 @@ export async function GET(_request: Request, context: Context) {
     const actor = await requireInstitutionActor((await context.params).institutionId);
     requireManager(actor);
     const { data, error } = await actor.db.from("institution_agent_profiles")
-      .select("id,member_id,bdsp_organisation_id,service_states")
+      .select("id,member_id,bdsp_organisation_id,delivery_type,service_states")
       .eq("institution_id", actor.institution.id).limit(200);
     if (error) throw error;
     const memberIds = (data ?? []).map((row) => row.member_id);
@@ -32,8 +32,12 @@ export async function POST(request: Request, context: Context) {
     const body = await request.json().catch(() => null);
     const serviceStates = parseServiceStates(body?.serviceStates ?? []);
     if (!serviceStates) throw new AdministrationError(400, "Invalid agent service areas.");
+    const deliveryType = body?.deliveryType;
+    if (!["internal_officer", "external_agent"].includes(deliveryType)) throw new AdministrationError(400, "Choose an internal officer or external agent.");
     const bdspId = body?.bdspOrganisationId || null;
     if (bdspId && !isUuid(bdspId)) throw new AdministrationError(400, "Invalid BDSP.");
+    if (deliveryType === "internal_officer" && bdspId) throw new AdministrationError(400, "An internal officer cannot be attached to an external partner.");
+    if (deliveryType === "external_agent" && !bdspId) throw new AdministrationError(400, "Select the external partner organisation for this agent.");
     if (bdspId) {
       const { data: bdsp } = await actor.db.from("institution_bdsp_organisations")
         .select("id,service_states").eq("id", bdspId).eq("institution_id", actor.institution.id).eq("status", "active").maybeSingle();
@@ -60,15 +64,15 @@ export async function POST(request: Request, context: Context) {
     if (memberError || !member) throw memberError ?? new Error("Agent invitation failed.");
     const { data: profile, error: profileError } = await actor.db.from("institution_agent_profiles")
       .insert({ institution_id: actor.institution.id, member_id: member.id,
-        bdsp_organisation_id: bdspId, service_states: serviceStates })
-      .select("id,member_id,bdsp_organisation_id,service_states").single();
+        bdsp_organisation_id: bdspId, delivery_type: deliveryType, service_states: serviceStates })
+      .select("id,member_id,bdsp_organisation_id,delivery_type,service_states").single();
     if (profileError || !profile) {
       await actor.db.from("institution_members").update({ status: "revoked" }).eq("id", member.id).eq("status", "invited");
       throw profileError ?? new Error("Agent profile failed.");
     }
     await recordInstitutionAudit(actor.db, { actorId: actor.userId, institutionId: actor.institution.id,
       eventType: "institution.agent.invited", entityType: "institution_agent_profiles", entityId: profile.id,
-      metadata: { bdspOrganisationId: bdspId } });
+      metadata: { bdspOrganisationId: bdspId, deliveryType } });
     return NextResponse.json({ agent: profile, member }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return administrationErrorResponse(error); }
 }

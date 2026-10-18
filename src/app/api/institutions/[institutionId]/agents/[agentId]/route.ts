@@ -12,14 +12,19 @@ export async function PATCH(request: Request, context: Context) {
     const body = await request.json().catch(() => null);
     const states = body?.serviceStates === undefined ? undefined : parseServiceStates(body.serviceStates);
     const bdspId = body?.bdspOrganisationId === undefined ? undefined : body.bdspOrganisationId || null;
+    const deliveryType = body?.deliveryType === undefined ? undefined : body.deliveryType;
     if (states === null || (bdspId !== undefined && bdspId !== null && !isUuid(bdspId)) ||
-        (states === undefined && bdspId === undefined)) throw new AdministrationError(400, "Invalid agent update.");
+        (deliveryType !== undefined && !["internal_officer", "external_agent"].includes(deliveryType)) ||
+        (states === undefined && bdspId === undefined && deliveryType === undefined)) throw new AdministrationError(400, "Invalid agent update.");
     const { data: current, error: currentError } = await actor.db.from("institution_agent_profiles")
-      .select("id,bdsp_organisation_id,service_states").eq("id", agentId).eq("institution_id", institutionId).maybeSingle();
+      .select("id,bdsp_organisation_id,delivery_type,service_states").eq("id", agentId).eq("institution_id", institutionId).maybeSingle();
     if (currentError) throw currentError;
     if (!current) throw new AdministrationError(404, "Agent not found.");
     const effectiveBdspId = bdspId === undefined ? current.bdsp_organisation_id : bdspId;
+    const effectiveDeliveryType = deliveryType === undefined ? current.delivery_type : deliveryType;
     const effectiveStates = states === undefined ? current.service_states : states;
+    if (effectiveDeliveryType === "internal_officer" && effectiveBdspId) throw new AdministrationError(400, "An internal officer cannot be attached to an external partner.");
+    if (effectiveDeliveryType === "external_agent" && !effectiveBdspId) throw new AdministrationError(400, "Select the external partner organisation for this agent.");
     if (effectiveBdspId) {
       const { data: bdsp } = await actor.db.from("institution_bdsp_organisations")
         .select("id,service_states").eq("id", effectiveBdspId).eq("institution_id", institutionId).eq("status", "active").maybeSingle();
@@ -32,9 +37,10 @@ export async function PATCH(request: Request, context: Context) {
     const { data, error } = await actor.db.from("institution_agent_profiles")
       .update({ ...(states ? { service_states: states } : {}),
         ...(bdspId !== undefined ? { bdsp_organisation_id: bdspId } : {}),
+        ...(deliveryType !== undefined ? { delivery_type: deliveryType } : {}),
         updated_at: new Date().toISOString() })
       .eq("id", agentId).eq("institution_id", institutionId)
-      .select("id,member_id,bdsp_organisation_id,service_states").maybeSingle();
+      .select("id,member_id,bdsp_organisation_id,delivery_type,service_states").maybeSingle();
     if (error) throw error;
     if (!data) throw new AdministrationError(404, "Agent not found.");
     await recordInstitutionAudit(actor.db, { actorId: actor.userId, institutionId,

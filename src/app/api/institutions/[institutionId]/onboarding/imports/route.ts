@@ -41,7 +41,7 @@ export async function POST(request: Request, context: Context) {
             if (error) throw error;
             if (data?.id) { createdEntityId = data.id; status = "imported"; imported++; } else status = "skipped";
           } else {
-            const item = row.rowData as { email: string; bdspName: string; serviceStates: string[] };
+            const item = row.rowData as { email: string; bdspName: string; deliveryType: string; serviceStates: string[] };
             const user = await findVerifiedExistingUser(actor.db, item.email);
             if (!canManageMember({ platformAdmin: actor.platformAdmin, actorRole: actor.membership?.role ?? null, targetRole: "institution_agent",
               actorUserId: actor.userId, targetUserId: user.id, action: "invite" })) throw new AdministrationError(403, "Agent invitation is not permitted.");
@@ -58,7 +58,7 @@ export async function POST(request: Request, context: Context) {
                 user_id: user.id, role: "institution_agent", status: "invited", invited_by: actor.userId }).select("id").single();
               if (memberError || !member) throw memberError ?? new Error("Agent membership failed.");
               const { data: profile, error: profileError } = await actor.db.from("institution_agent_profiles").insert({ institution_id: actor.institution.id,
-                member_id: member.id, bdsp_organisation_id: bdspId, service_states: item.serviceStates }).select("id").single();
+                member_id: member.id, bdsp_organisation_id: bdspId, delivery_type: item.deliveryType, service_states: item.serviceStates }).select("id").single();
               if (profileError || !profile) { await actor.db.from("institution_members").update({ status: "revoked" }).eq("id", member.id); throw profileError ?? new Error("Agent profile failed."); }
               createdEntityId = profile.id; status = "imported"; imported++;
             }
