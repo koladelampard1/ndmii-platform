@@ -7,10 +7,13 @@ on:
       - 'src/lib/institutional/**'
       - 'src/app/api/institutions/**'
       - 'src/app/dashboard/institutions/**'
+      - 'src/app/dashboard/msme/institution-sharing/**'
+      - 'src/app/api/msme/institution-sharing/**'
       - 'src/components/institutional/**'
       - 'src/types/platform.ts'
       - 'supabase/migrations/*institution_engagement*'
       - 'supabase/migrations/*institution_agent_administration*'
+      - 'supabase/migrations/*institution_business_enrolment_consent*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'package.json'
@@ -22,10 +25,13 @@ on:
       - 'src/lib/institutional/**'
       - 'src/app/api/institutions/**'
       - 'src/app/dashboard/institutions/**'
+      - 'src/app/dashboard/msme/institution-sharing/**'
+      - 'src/app/api/msme/institution-sharing/**'
       - 'src/components/institutional/**'
       - 'src/types/platform.ts'
       - 'supabase/migrations/*institution_engagement*'
       - 'supabase/migrations/*institution_agent_administration*'
+      - 'supabase/migrations/*institution_business_enrolment_consent*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'package.json'
@@ -46,5 +52,5 @@ jobs:
       - run: npm run test:institution-administration
       - run: npm run validate:auth-workspace-stability
       - run: npm run test:routing
-      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/dashboard/institutions src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs
+      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/api/msme/institution-sharing src/app/dashboard/institutions src/app/dashboard/msme/institution-sharing src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs
       - run: npm run build

@@ -67,7 +67,7 @@ export async function findVerifiedExistingUser(
     throw new AdministrationError(400, "Enter a valid account email.");
   }
   const { data: appUser, error } = await db.from("users")
-    .select("id,auth_user_id,email,full_name").eq("email", email).maybeSingle();
+    .select("id,auth_user_id,email,full_name,role").eq("email", email).maybeSingle();
   if (error) throw new AdministrationError(503, "Account could not be checked.");
   if (!appUser?.auth_user_id) throw new AdministrationError(404, "No verified DBIN account was found for that email.");
   const { data: auth, error: authError } = await db.auth.admin.getUserById(appUser.auth_user_id);

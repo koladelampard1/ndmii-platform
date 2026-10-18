@@ -10,6 +10,8 @@ type Bdsp = { id: string; name: string; status: string; service_states: string[]
 type Agent = { id: string; member_id: string; bdsp_organisation_id: string | null; service_states: string[]; member?: Member | null };
 type Assignment = { id: string; engagement_id: string; agent_member_id: string; assigned_at: string };
 type Engagement = { id: string; relationship_status: string };
+type BusinessEngagement = Engagement & { passport_access_status: string };
+type Passport = { msme_id: string; business_name: string; state: string; sector: string; verification_status: string };
 type Setting = { setting_key: string; setting_value: { value?: unknown } };
 type JsonResult = Record<string, unknown> & { error?: string };
 
@@ -45,6 +47,8 @@ export function InstitutionAdministrationConsole() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
+  const [businessEngagements, setBusinessEngagements] = useState<BusinessEngagement[]>([]);
+  const [passport, setPassport] = useState<Passport | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +66,11 @@ export function InstitutionAdministrationConsole() {
   const [engagementId, setEngagementId] = useState("");
   const [assignmentAgent, setAssignmentAgent] = useState("");
   const [supportEmail, setSupportEmail] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [businessState, setBusinessState] = useState("");
+  const [sector, setSector] = useState("");
   const selectionGeneration = useRef(0);
 
   const loadInstitutions = useCallback(async (preferred?: string) => {
@@ -79,7 +88,7 @@ export function InstitutionAdministrationConsole() {
   const loadSelected = useCallback(async (id: string, isAdmin: boolean, membershipsForUser: Membership[]) => {
     if (!id) return;
     const generation = ++selectionGeneration.current;
-    setMembers([]); setBdsps([]); setAgents([]); setAssignments([]); setEngagements([]);
+    setMembers([]); setBdsps([]); setAgents([]); setAssignments([]); setEngagements([]); setBusinessEngagements([]); setPassport(null);
     const pending = !isAdmin && !membershipsForUser.some((row) => row.institution_id === id && row.status === "active");
     if (pending) return;
     const manager = isAdmin || membershipsForUser.some((row) => row.institution_id === id && row.status === "active" && row.role === "institution_admin");
@@ -89,6 +98,7 @@ export function InstitutionAdministrationConsole() {
       manager ? api(`${base}/members`) : Promise.resolve({ members: [] }),
       manager ? api(`${base}/bdsps`) : Promise.resolve({ bdsps: [] }),
       manager ? api(`${base}/agents`) : Promise.resolve({ agents: [] }),
+      api(`${base}/engagements`),
     ]);
     if (generation !== selectionGeneration.current) return;
     setAssignments((results[1].assignments ?? []) as Assignment[]);
@@ -96,6 +106,7 @@ export function InstitutionAdministrationConsole() {
     setMembers((results[2].members ?? []) as Member[]);
     setBdsps((results[3].bdsps ?? []) as Bdsp[]);
     setAgents((results[4].agents ?? []) as Agent[]);
+    setBusinessEngagements((results[5].engagements ?? []) as BusinessEngagement[]);
     const support = ((results[0].settings ?? []) as Setting[]).find((row) => row.setting_key === "support_email");
     setSupportEmail(typeof support?.setting_value?.value === "string" ? support.setting_value.value : "");
   }, []);
@@ -120,6 +131,7 @@ export function InstitutionAdministrationConsole() {
   const activeMembership = memberships.find((row) => row.institution_id === selected && row.status === "active");
   const pending = !platformAdmin && !activeMembership;
   const manager = platformAdmin || activeMembership?.role === "institution_admin";
+  const canEnrol = manager || ["institution_officer", "institution_agent"].includes(activeMembership?.role ?? "");
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-slate-900 sm:px-6">
@@ -141,7 +153,7 @@ export function InstitutionAdministrationConsole() {
                   const membership = memberships.find((row) => row.institution_id === institution.id);
                   return <button key={institution.id} type="button" onClick={() => {
                     selectionGeneration.current++;
-                    setMembers([]); setBdsps([]); setAgents([]); setAssignments([]); setEngagements([]); setSupportEmail("");
+                    setMembers([]); setBdsps([]); setAgents([]); setAssignments([]); setEngagements([]); setBusinessEngagements([]); setPassport(null); setSupportEmail("");
                     setSelected(institution.id);
                   }}
                     className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left text-sm transition ${selected === institution.id ? "border-teal-700 bg-teal-50 text-teal-950" : "border-slate-200 hover:bg-slate-50"}`}>
@@ -248,6 +260,34 @@ export function InstitutionAdministrationConsole() {
                   }, "Agent access revoked immediately.")}>Revoke</button>}
                 </div>)}</div>
               </section>}
+              <section className={card}>
+                <h3 className="text-lg font-bold">Business enrolment and passport access</h3>
+                <p className="mt-1 text-sm text-slate-600">Enrol a new business with a verified DBIN owner account. Its passport stays private until that account expressly shares the identity summary.</p>
+                {canEnrol && <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void act(async () => {
+                  await api(`/api/institutions/${selected}/engagements`, "POST", { businessName, ownerName, ownerEmail, state: businessState, sector });
+                  setBusinessName(""); setOwnerName(""); setOwnerEmail(""); setBusinessState(""); setSector("");
+                  await loadSelected(selected, platformAdmin, memberships);
+                }, "Business enrolled. The owner can review and share its passport in their DBIN account."); }}>
+                  <label><span className={label}>Business name</span><input className={field} required value={businessName} onChange={(e) => setBusinessName(e.target.value)} /></label>
+                  <label><span className={label}>Owner name</span><input className={field} required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>
+                  <label><span className={label}>Verified owner account email</span><input type="email" className={field} required value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} /></label>
+                  <label><span className={label}>State</span><input className={field} required value={businessState} onChange={(e) => setBusinessState(e.target.value)} placeholder="Lagos" /></label>
+                  <label><span className={label}>Sector</span><input className={field} required value={sector} onChange={(e) => setSector(e.target.value)} /></label>
+                  <div className="flex items-end"><button className={button} disabled={working}>Enrol business</button></div>
+                </form>}
+                <div className="mt-5 space-y-2">{businessEngagements.map((row) => <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm">
+                  <div><p className="font-semibold">Engagement {row.id.slice(0, 8)}…</p><p className="text-xs text-slate-500">{row.relationship_status} · Passport {row.passport_access_status}</p></div>
+                  {row.passport_access_status === "granted" && <button className={secondary} disabled={working} onClick={() => {
+                    const generation = selectionGeneration.current;
+                    setWorking(true); setError(""); setPassport(null);
+                    void api(`/api/institutions/${selected}/engagements/${row.id}/passport`)
+                      .then((result) => { if (generation === selectionGeneration.current) setPassport(result.passport as Passport); })
+                      .catch((cause) => setError(cause.message)).finally(() => setWorking(false));
+                  }}>View shared summary</button>}
+                </div>)}</div>
+                {passport && <div className="mt-4 rounded-2xl bg-teal-50 p-5 text-sm"><p className="font-bold">{passport.business_name} · {passport.msme_id}</p><p className="mt-1 text-slate-700">{passport.state} · {passport.sector} · Verification: {passport.verification_status}</p></div>}
+                {!businessEngagements.length && <p className="mt-4 text-sm text-slate-500">No business engagements in your current view yet.</p>}
+              </section>
               <section className={card}>
                 <h3 className="text-lg font-bold">Business assignment queue</h3>
                 <p className="mt-1 text-sm text-slate-600">{manager ? "Assign an existing institution engagement to an active agent. Engagement onboarding arrives in Sprint 3." : "Only your own assignments for this institution appear here."}</p>
