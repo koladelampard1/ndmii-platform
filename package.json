@@ -13,6 +13,7 @@
     "test:institution-administration": "node --test scripts/test-institution-administration.mjs",
     "test:institution-finance": "node --test scripts/test-institution-finance-readiness.mjs",
     "test:institution-support": "node --test scripts/test-institution-continuing-support.mjs",
+    "test:institution-insights": "node --test scripts/test-institution-views-configuration.mjs",
     "validate:association-upload": "node scripts/validate-association-member-upload.cjs",
     "smoke:dbin": "node scripts/smoke-dbin.mjs",
     "validate:nrs-snapshot": "node scripts/validate-nrs-snapshot-stability.mjs",
