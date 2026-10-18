@@ -49,7 +49,8 @@ export async function POST(request: Request, context: Context) {
     if (!diagnostic || diagnostic.status !== "approved") throw new AdministrationError(409, "An approved diagnostic is required.");
     const agentId = await requireDiagnosticAgent(actor, diagnostic.engagement_id);
     const { data: template, error: templateError } = await actor.db.from("institution_finance_templates").select("id,requirements")
-      .eq("institution_id", actor.institution.id).eq("id", body.templateId).eq("active", true).maybeSingle();
+      .eq("institution_id", actor.institution.id).eq("id", body.templateId).eq("active", true)
+      .eq("configuration_status", "institution_confirmed").maybeSingle();
     if (templateError) throw templateError; if (!template) throw new AdministrationError(404, "Checklist unavailable.");
     const { data: record, error } = await actor.db.from("institution_finance_cases").insert({ institution_id: actor.institution.id,
       engagement_id: diagnostic.engagement_id, diagnostic_case_id: diagnostic.id, template_id: template.id,
