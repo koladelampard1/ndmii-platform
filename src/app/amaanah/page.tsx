@@ -28,6 +28,11 @@ export const metadata: Metadata = {
     siteName: "Amaanah Finance Company",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Amaanah MSME Growth Platform",
+    description: "Business support that continues before, through and beyond financing.",
+  },
 };
 
 const signInHref = "/login?workspace=amaanah&next=/dashboard/amaanah";
@@ -53,7 +58,7 @@ export default function AmaanahPortalPage() {
       <header className="relative z-30 border-b border-[#17372f]/15 bg-[#f3efe5]">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
           <Link href="/amaanah" aria-label="Amaanah Finance Company home">
-            <Image src="/brands/amaanah-finance-logo.svg" alt="Amaanah Finance Company" width={1013} height={266} priority className="h-10 w-auto sm:h-12" />
+            <Image src="/brands/amaanah-finance-logo.svg" alt="Amaanah Finance Company" width={1013} height={266} priority className="h-8 w-auto sm:h-12" />
           </Link>
           <nav aria-label="Primary navigation" className="hidden items-center gap-8 lg:flex">
             <a href="#journey" className={styles.navLink}>How it works</a>
@@ -62,7 +67,7 @@ export default function AmaanahPortalPage() {
             <a href="#governance" className={styles.navLink}>Governance</a>
           </nav>
           <Link href={signInHref} className="inline-flex min-h-11 items-center gap-2 border border-[#17372f] px-4 text-sm font-bold transition-colors hover:bg-[#17372f] hover:text-white sm:px-5">
-            Secure sign in <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            <span><span className="hidden sm:inline">Secure </span>sign in</span> <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
       </header>
