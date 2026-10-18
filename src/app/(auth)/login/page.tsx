@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, ShieldUser, Building2, BadgeCheck } from "lucide-react";
@@ -45,7 +46,8 @@ function LoginPageContent() {
   const isNrsLogin = requestedWorkspace === "nrs";
   const isEkirsLogin = requestedWorkspace === "ekirs";
   const isLcdboLogin = requestedWorkspace === "lcdbo";
-  const isInstitutionLogin = isEkirsLogin || isLcdboLogin;
+  const isAmaanahLogin = requestedWorkspace === "amaanah";
+  const isInstitutionLogin = isEkirsLogin || isLcdboLogin || isAmaanahLogin;
   const requestedReturnPath = getSafeRelativePath(searchParams.get("returnTo"));
   const requestedNextPath = getSafeRelativePath(searchParams.get("next"));
 
@@ -199,9 +201,22 @@ function LoginPageContent() {
         <aside className="overflow-hidden rounded-2xl bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 p-6 text-emerald-50 shadow-lg lg:col-span-4 lg:rounded-r-none lg:p-10">
           <div className="space-y-6">
             <div>
-              <DbinBrandLogo showText={false} iconClassName="h-9 w-14 rounded-lg" />
+              {isAmaanahLogin ? (
+                <span className="inline-flex rounded-xl bg-white px-3 py-2 shadow-sm">
+                  <Image
+                    src="/brands/amaanah-finance-logo.svg"
+                    alt="Amaanah Finance Company"
+                    width={190}
+                    height={50}
+                    className="h-9 w-auto"
+                    priority
+                  />
+                </span>
+              ) : (
+                <DbinBrandLogo showText={false} iconClassName="h-9 w-14 rounded-lg" />
+              )}
               <h1 className="mt-2 text-2xl font-semibold leading-tight sm:text-3xl">
-                {isEkirsLogin ? "EKIRS secure access" : isLcdboLogin ? "LCDBO secure access" : isNrsLogin ? "NRS Formalisation Workspace" : "Welcome to "}
+                {isEkirsLogin ? "EKIRS secure access" : isLcdboLogin ? "LCDBO secure access" : isAmaanahLogin ? "Amaanah secure access" : isNrsLogin ? "NRS Formalisation Workspace" : "Welcome to "}
                 {!isNrsLogin && !isInstitutionLogin ? <span className="text-emerald-300">Digital Business Identity Network (DBIN)</span> : null}
               </h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-emerald-100/90 sm:text-base">
@@ -209,6 +224,8 @@ function LoginPageContent() {
                   ? "Sign in to continue an EKIRS application or open your authorised institutional operations workspace."
                   : isLcdboLogin
                   ? "Sign in to open your authorised LCDBO programme workspace, delivery portfolio or executive view."
+                  : isAmaanahLogin
+                  ? "Sign in to open your authorised Amaanah enterprise-growth, financing-readiness and portfolio workspace."
                   : isNrsLogin
                   ? "Sign in to access business formalisation, Revenue Guide operations, readiness intelligence and institutional reports."
                   : "Your trusted platform for business identity verification, secure participation, and compliance-ready growth across Nigeria."}
@@ -227,14 +244,14 @@ function LoginPageContent() {
                 <span className="mt-0.5 rounded-full bg-emerald-500/20 p-2"><ShieldUser className="h-4 w-4 text-emerald-200" /></span>
                 <div>
                   <p className="font-semibold text-white">Role-based institutional access</p>
-                  <p className="text-emerald-100/80">{isLcdboLogin ? "Programme officers, scoped managers, analysts, auditors and observers are routed to the right LCDBO workspace." : "Applicants, reviewers, field officers and observers are routed to the right EKIRS experience."}</p>
+                  <p className="text-emerald-100/80">{isLcdboLogin ? "Programme officers, scoped managers, analysts, auditors and observers are routed to the right LCDBO workspace." : isAmaanahLogin ? "Amaanah officers, partner managers and authorised agents are routed to their assigned institutional workspace." : "Applicants, reviewers, field officers and observers are routed to the right EKIRS experience."}</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-emerald-500/20 p-2"><Building2 className="h-4 w-4 text-emerald-200" /></span>
                 <div>
-                  <p className="font-semibold text-white">{isEkirsLogin ? "Private evidence" : isLcdboLogin ? "Programme records" : "Trusted Network"}</p>
-                  <p className="text-emerald-100/80">{isEkirsLogin ? "Application evidence remains inside authorised review and applicant-owned flows." : isLcdboLogin ? "Delivery records, cluster operations and executive intelligence remain permission-bound." : "Connect with verified businesses, institutions, and associations."}</p>
+                  <p className="font-semibold text-white">{isEkirsLogin ? "Private evidence" : isLcdboLogin ? "Programme records" : isAmaanahLogin ? "Enterprise records" : "Trusted Network"}</p>
+                  <p className="text-emerald-100/80">{isEkirsLogin ? "Application evidence remains inside authorised review and applicant-owned flows." : isLcdboLogin ? "Delivery records, cluster operations and executive intelligence remain permission-bound." : isAmaanahLogin ? "MSME evidence, advisory actions and financing-readiness records remain permission-bound." : "Connect with verified businesses, institutions, and associations."}</p>
                 </div>
               </li>
               <li className="flex items-start gap-3">
@@ -250,8 +267,8 @@ function LoginPageContent() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 lg:col-span-8 lg:rounded-l-none lg:p-12">
           <div className="mx-auto w-full max-w-2xl">
-            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{isEkirsLogin ? "Sign in to EKIRS" : isLcdboLogin ? "Sign in to LCDBO" : "Sign in to your account"}</h2>
-            <p className="mt-2 text-slate-600">{isEkirsLogin ? "Secure access for Ekiti business applicants and authorised EKIRS institutional users." : isLcdboLogin ? "Secure access for authorised LCDBO programme, delivery and reporting users." : "Access your dashboard and manage your business identity."}</p>
+            <h2 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{isEkirsLogin ? "Sign in to EKIRS" : isLcdboLogin ? "Sign in to LCDBO" : isAmaanahLogin ? "Sign in to Amaanah" : "Sign in to your account"}</h2>
+            <p className="mt-2 text-slate-600">{isEkirsLogin ? "Secure access for Ekiti business applicants and authorised EKIRS institutional users." : isLcdboLogin ? "Secure access for authorised LCDBO programme, delivery and reporting users." : isAmaanahLogin ? "Secure access for authorised Amaanah officers, partner managers and business-support agents." : "Access your dashboard and manage your business identity."}</p>
 
             <form className="mt-8 space-y-5" onSubmit={onSubmit}>
               <label className="block space-y-2">
@@ -313,9 +330,9 @@ function LoginPageContent() {
             </form>
 
             <p className="mt-6 text-center text-sm text-slate-600">
-              {isEkirsLogin ? "Starting an EKIRS application?" : isLcdboLogin ? "Looking for the public LCDBO programme?" : "New to DBIN?"}
+              {isEkirsLogin ? "Starting an EKIRS application?" : isLcdboLogin ? "Looking for the public LCDBO programme?" : isAmaanahLogin ? "Looking for the Amaanah platform?" : "New to DBIN?"}
               {" "}
-              <Link href={isEkirsLogin ? "/ekirs/apply" : isLcdboLogin ? "/lcdbo" : "/register"} className="font-semibold text-emerald-700 hover:underline">{isEkirsLogin ? "Choose an application pathway" : isLcdboLogin ? "Open LCDBO home" : "Create your business profile"}</Link>
+              <Link href={isEkirsLogin ? "/ekirs/apply" : isLcdboLogin ? "/lcdbo" : isAmaanahLogin ? "/" : "/register"} className="font-semibold text-emerald-700 hover:underline">{isEkirsLogin ? "Choose an application pathway" : isLcdboLogin ? "Open LCDBO home" : isAmaanahLogin ? "Return to Amaanah home" : "Create your business profile"}</Link>
             </p>
           </div>
         </div>
