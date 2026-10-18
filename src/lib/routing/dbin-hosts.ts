@@ -93,6 +93,7 @@ export function resolveDbinHostSurface(hostHeader: string | null | undefined): D
 
 function isDirectApplicationPath(pathname: string) {
   return (
+    pathname.includes(".") ||
     pathname === "/login" ||
     pathname.startsWith("/login?") ||
     pathname === "/logout" ||
