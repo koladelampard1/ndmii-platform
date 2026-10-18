@@ -16,11 +16,13 @@
 - The new tables have RLS enabled and no `anon` or `authenticated` grants or policies. Server access uses the service role after the access checks. This is deliberately fail-closed until agent assignment and business consent policies are implemented.
 - The existing impact and BOI workspace functions have broader legacy access patterns. Do not reuse them for bank engagements or expose them through the new workspace. Their own institution scoping needs a separate compatibility review before bank users receive those routes.
 
-## Repository-to-live checks before applying the migration
+## Repository-to-live verification
 
-Run `scripts/sql/audit-institution-engagement-foundation.sql` against the actual DBIN Supabase project. Confirm table/column shapes, the `institutions_type_check` constraint, existing grants and policies, and migration history. Then apply the new migration in staging, run the bank A/bank B isolation checks and repeat in a production-like environment.
+The DBIN Supabase connection reaches project `tjowaqgyuehmkovfyvqx`. On 18 October 2026, the pre-deployment audit confirmed that the new engagement tables were absent, the existing `institutions_type_check` had exactly the expected ten types, and the referenced identity, institution and member columns had compatible types. At that time the database held seven institutions, 265 MSMEs and no institution members.
 
-The currently connected Supabase account cannot access the DBIN project (`tjowaqgyuehmkovfyvqx`); the connector returns a permission error. This audit and migration therefore remain **unapplied and unverified against the live database**. No production data or permissions were changed in Sprint 1 development.
+Supabase rejected creation of a development branch because this project does not have branching on its current plan. The additive migration was applied to the live DBIN project while the code route was still undeployed. Supabase recorded it as version `20261018093800`, so the repository file bears that version. The bank A/bank B fixture ran in a single transaction ending with `ROLLBACK`: separate engagements were allowed, a falsely scoped event was rejected, direct client table privileges were denied, and follow-up counts confirmed that no test banks, users or engagements remained. Both new tables have RLS enabled, no client grants, and service-role access. The linter's `rls_enabled_no_policy` notices for these two tables are expected because they deliberately have no direct client policies.
+
+The audit also revealed an existing security issue outside this migration: `public.users` has RLS disabled and client SELECT grants. Several legacy client flows query it directly. Treat remediation as a separate compatibility migration with its own regression tests; changing it blindly during this engagement rollout would disrupt sign-in and dashboards.
 
 ## Acceptance matrix
 

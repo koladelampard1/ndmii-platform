@@ -1,4 +1,4 @@
--- Staging-only integration check after the migration is applied. Changes roll back.
+-- Transactional integration check after the migration is applied. Changes roll back.
 begin;
 
 do $$
