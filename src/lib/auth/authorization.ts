@@ -403,6 +403,7 @@ export const ROLE_NAV_ITEMS: Record<Exclude<UserRole, "public">, NavigationItem[
     { href: "/dashboard/msme/lcdbo", label: "LCDBO Programme" },
     { href: "/dashboard/msme/profile", label: "Profile Overview" },
     { href: "/dashboard/msme/institution-sharing", label: "Institution Sharing" },
+    { href: "/dashboard/msme/diagnostic-plans", label: "Development Plans" },
     { href: "/dashboard/msme/public-profile", label: "Public Profile Preview" },
     { href: "/dashboard/msme/services", label: "Service Catalog" },
     { href: "/dashboard/msme/portfolio", label: "Portfolio Gallery" },
