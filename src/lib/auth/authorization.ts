@@ -206,6 +206,8 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
   else if (role === "public") legacyAllowed = false;
   else if (isPlatformAdmin(role)) legacyAllowed = routeMatchesPrefix(path, "/dashboard") || routeMatchesPrefix(path, "/admin");
   else if (path === "/dashboard") legacyAllowed = true;
+  // Institution pages enforce verified Supabase identity and tenant membership themselves.
+  else if (routeMatchesPrefix(path, "/dashboard/institutions")) legacyAllowed = true;
   else if (routeMatchesPrefix(path, "/dashboard/correspondence")) legacyAllowed = canAccessWorkspaceRoute({ role }, "correspondence", path).allowed;
   else if (routeMatchesPrefix(path, "/dashboard/lcdbo")) legacyAllowed = canAccessWorkspaceRoute({ role }, "lcdbo", path).allowed;
   else if (routeMatchesPrefix(path, "/dashboard/ekirs")) legacyAllowed = canAccessWorkspaceRoute({ role }, "ekirs", path).allowed;

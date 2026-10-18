@@ -35,6 +35,10 @@ export async function Sidebar() {
         ? [{ label: "Public", items: [{ href: "/verify", label: "Public Verification" }] }]
         : ROLE_NAV_GROUPS[role] ?? [{ label: "Operational Modules", items: ROLE_NAV_ITEMS[role] }];
 
+  if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/institutions"))) {
+    navGroups.push({ label: "Institution Operations", items: [{ href: "/dashboard/institutions", label: "Institutions & Agents" }] });
+  }
+
   if (context.appUserId && !navGroups.some((group) => group.items.some((item) => item.href === "/dashboard/lcdbo"))) {
     const supabase = await createServiceRoleSupabaseClient();
     const [{ count }, { data: programme }] = await Promise.all([
