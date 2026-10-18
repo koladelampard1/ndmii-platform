@@ -8,7 +8,7 @@ type Institution = { id: string; name: string; institution_type: string; status:
 type Membership = { id: string; institution_id: string; role: string; status: string; expires_at: string | null };
 type Member = { id: string; user_id: string; role: string; status: string; users?: { email?: string; full_name?: string } | null };
 type Bdsp = { id: string; name: string; status: string; service_states: string[] };
-type Agent = { id: string; member_id: string; bdsp_organisation_id: string | null; service_states: string[]; member?: Member | null };
+type Agent = { id: string; member_id: string; bdsp_organisation_id: string | null; delivery_type: string; service_states: string[]; member?: Member | null };
 type Assignment = { id: string; engagement_id: string; agent_member_id: string; assigned_at: string };
 type Engagement = { id: string; relationship_status: string };
 type BusinessEngagement = Engagement & { passport_access_status: string };
@@ -63,6 +63,7 @@ export function InstitutionAdministrationConsole() {
   const [bdspName, setBdspName] = useState("");
   const [bdspStates, setBdspStates] = useState("");
   const [agentEmail, setAgentEmail] = useState("");
+  const [agentDeliveryType, setAgentDeliveryType] = useState("external_agent");
   const [agentBdsp, setAgentBdsp] = useState("");
   const [agentStates, setAgentStates] = useState("");
   const [engagementId, setEngagementId] = useState("");
@@ -243,21 +244,22 @@ export function InstitutionAdministrationConsole() {
                 </div>)}</div>
               </section>}
               {manager && <section className={card}>
-                <h3 className="text-lg font-bold">Individual agents</h3>
-                <p className="mt-1 text-sm text-slate-600">An agent can work with multiple banks, but sees only the assignments for the selected bank.</p>
+                <h3 className="text-lg font-bold">Delivery officers and external agents</h3>
+                <p className="mt-1 text-sm text-slate-600">Internal officers belong to the institution; external agents must be attached to an approved partner organisation. Both see only assignments for the selected institution.</p>
                 <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void act(async () => {
                   await api(`/api/institutions/${selected}/agents`, "POST", {
-                    email: agentEmail, bdspOrganisationId: agentBdsp || null, serviceStates: statesFrom(agentStates),
+                    email: agentEmail, deliveryType: agentDeliveryType, bdspOrganisationId: agentDeliveryType === "external_agent" ? agentBdsp || null : null, serviceStates: statesFrom(agentStates),
                   });
                   setAgentEmail(""); setAgentStates(""); await loadSelected(selected, platformAdmin, memberships);
                 }, "Agent invitation created."); }}>
                   <label><span className={label}>Verified DBIN account email</span><input type="email" className={field} required value={agentEmail} onChange={(e) => setAgentEmail(e.target.value)} /></label>
-                  <label><span className={label}>BDSP organisation</span><select className={field} value={agentBdsp} onChange={(e) => setAgentBdsp(e.target.value)}><option value="">Independent agent</option>{bdsps.filter((row) => row.status === "active").map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+                  <label><span className={label}>Delivery relationship</span><select className={field} value={agentDeliveryType} onChange={(e) => { setAgentDeliveryType(e.target.value); if (e.target.value === "internal_officer") setAgentBdsp(""); }}><option value="internal_officer">Internal delivery officer</option><option value="external_agent">External partner agent</option></select></label>
+                  {agentDeliveryType === "external_agent" && <label><span className={label}>Partner organisation</span><select className={field} required value={agentBdsp} onChange={(e) => setAgentBdsp(e.target.value)}><option value="">Choose approved partner</option>{bdsps.filter((row) => row.status === "active").map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>}
                   <label><span className={label}>Service states</span><input className={field} value={agentStates} onChange={(e) => setAgentStates(e.target.value)} placeholder="Lagos, Ogun" /></label>
                   <div className="flex items-end"><button className={button} disabled={working}>Invite agent</button></div>
                 </form>
                 <div className="mt-5 divide-y divide-slate-100">{agents.map((agent) => <div key={agent.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div><p className="font-semibold">{agent.member?.users?.full_name || agent.member?.users?.email || "Agent"}</p><p className="text-xs text-slate-500">{agent.member?.status} · {bdsps.find((row) => row.id === agent.bdsp_organisation_id)?.name || "Independent"} · {agent.service_states.join(", ") || "All areas"}</p></div>
+                  <div><p className="font-semibold">{agent.member?.users?.full_name || agent.member?.users?.email || "Agent"}</p><p className="text-xs text-slate-500">{agent.member?.status} · {agent.delivery_type === "internal_officer" ? "Internal delivery officer" : bdsps.find((row) => row.id === agent.bdsp_organisation_id)?.name || "External partner"} · {agent.service_states.join(", ") || "All areas"}</p></div>
                   {["active", "invited"].includes(agent.member?.status || "") && <button className={secondary} disabled={working} onClick={() => void act(async () => {
                     await api(`/api/institutions/${selected}/members/${agent.member_id}`, "PATCH", { action: "revoke" });
                     await loadSelected(selected, platformAdmin, memberships);
