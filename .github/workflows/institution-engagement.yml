@@ -10,9 +10,11 @@ on:
       - 'src/app/dashboard/msme/institution-sharing/**'
       - 'src/app/dashboard/msme/diagnostic-plans/**'
       - 'src/app/dashboard/msme/finance-preparation/**'
+      - 'src/app/dashboard/msme/continuing-support/**'
       - 'src/app/api/msme/institution-sharing/**'
       - 'src/app/api/msme/diagnostic-plans/**'
       - 'src/app/api/msme/finance-readiness/**'
+      - 'src/app/api/msme/continuing-support/**'
       - 'src/components/institutional/**'
       - 'src/types/platform.ts'
       - 'supabase/migrations/*institution_engagement*'
@@ -20,9 +22,12 @@ on:
       - 'supabase/migrations/*institution_business_enrolment_consent*'
       - 'supabase/migrations/*institution_diagnostic*'
       - 'supabase/migrations/*institution_finance*'
+      - 'supabase/migrations/*institution_continuing_support*'
+      - 'supabase/migrations/*institution_support*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'scripts/test-institution-finance-readiness.mjs'
+      - 'scripts/test-institution-continuing-support.mjs'
       - 'package.json'
       - 'package-lock.json'
   push:
@@ -35,9 +40,11 @@ on:
       - 'src/app/dashboard/msme/institution-sharing/**'
       - 'src/app/dashboard/msme/diagnostic-plans/**'
       - 'src/app/dashboard/msme/finance-preparation/**'
+      - 'src/app/dashboard/msme/continuing-support/**'
       - 'src/app/api/msme/institution-sharing/**'
       - 'src/app/api/msme/diagnostic-plans/**'
       - 'src/app/api/msme/finance-readiness/**'
+      - 'src/app/api/msme/continuing-support/**'
       - 'src/components/institutional/**'
       - 'src/types/platform.ts'
       - 'supabase/migrations/*institution_engagement*'
@@ -45,9 +52,12 @@ on:
       - 'supabase/migrations/*institution_business_enrolment_consent*'
       - 'supabase/migrations/*institution_diagnostic*'
       - 'supabase/migrations/*institution_finance*'
+      - 'supabase/migrations/*institution_continuing_support*'
+      - 'supabase/migrations/*institution_support*'
       - 'scripts/test-institution-engagement-access.mjs'
       - 'scripts/test-institution-administration.mjs'
       - 'scripts/test-institution-finance-readiness.mjs'
+      - 'scripts/test-institution-continuing-support.mjs'
       - 'package.json'
       - 'package-lock.json'
 
@@ -65,7 +75,8 @@ jobs:
       - run: npm run test:institution-access
       - run: npm run test:institution-administration
       - run: npm run test:institution-finance
+      - run: npm run test:institution-support
       - run: npm run validate:auth-workspace-stability
       - run: npm run test:routing
-      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/api/msme/institution-sharing src/app/api/msme/diagnostic-plans src/app/api/msme/finance-readiness src/app/dashboard/institutions src/app/dashboard/msme/institution-sharing src/app/dashboard/msme/diagnostic-plans src/app/dashboard/msme/finance-preparation src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs scripts/test-institution-finance-readiness.mjs
+      - run: npx eslint src/lib/institutional src/app/api/institutions src/app/api/msme/institution-sharing src/app/api/msme/diagnostic-plans src/app/api/msme/finance-readiness src/app/api/msme/continuing-support src/app/dashboard/institutions src/app/dashboard/msme/institution-sharing src/app/dashboard/msme/diagnostic-plans src/app/dashboard/msme/finance-preparation src/app/dashboard/msme/continuing-support src/components/institutional scripts/test-institution-engagement-access.mjs scripts/test-institution-administration.mjs scripts/test-institution-finance-readiness.mjs scripts/test-institution-continuing-support.mjs
       - run: npm run build

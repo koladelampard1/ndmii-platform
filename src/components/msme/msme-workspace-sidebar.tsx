@@ -18,6 +18,8 @@ import {
   Wrench,
   Star,
   Landmark,
+  HeartHandshake,
+  Building2,
   Factory,
   type LucideIcon,
   Menu,
@@ -58,6 +60,15 @@ const WORKSPACE_SECTIONS: WorkspaceSection[] = [
     title: "Programmes",
     links: [
       { href: "/dashboard/msme/lcdbo", label: "LCDBO Programme", icon: Factory },
+    ],
+  },
+  {
+    title: "Institution Support",
+    links: [
+      { href: "/dashboard/msme/institution-sharing", label: "Institution Sharing", icon: Building2 },
+      { href: "/dashboard/msme/diagnostic-plans", label: "Development Plans", icon: ClipboardList },
+      { href: "/dashboard/msme/finance-preparation", label: "Finance Preparation", icon: Landmark },
+      { href: "/dashboard/msme/continuing-support", label: "Continuing Support", icon: HeartHandshake },
     ],
   },
   {
