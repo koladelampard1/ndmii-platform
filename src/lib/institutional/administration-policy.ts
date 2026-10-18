@@ -7,7 +7,7 @@ export const INSTITUTION_MEMBER_ROLES = [
 export type InstitutionMemberRole = (typeof INSTITUTION_MEMBER_ROLES)[number];
 export const INSTITUTION_TYPES = [
   "federal_agency", "state_government", "lga", "association", "private_company",
-  "development_finance_institution", "microfinance_bank", "investor",
+  "development_finance_institution", "microfinance_bank", "finance_company", "investor",
   "technical_partner", "programme_secretariat", "regulator",
 ] as const;
 export type InstitutionType = (typeof INSTITUTION_TYPES)[number];

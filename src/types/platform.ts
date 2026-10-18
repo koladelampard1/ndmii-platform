@@ -8,6 +8,7 @@ export type InstitutionType =
   | "private_company"
   | "development_finance_institution"
   | "microfinance_bank"
+  | "finance_company"
   | "investor"
   | "technical_partner"
   | "programme_secretariat"
