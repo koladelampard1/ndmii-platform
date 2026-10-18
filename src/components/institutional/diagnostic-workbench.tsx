@@ -11,6 +11,7 @@ type Case = { id: string; engagement_id: string; agent_member_id: string; questi
 type Activity = { id: string; kind: string; summary: string; occurred_at: string };
 type Evidence = { id: string; file_name: string; activity_id: string | null };
 type Assignment = { engagement_id: string; agent_member_id: string };
+type Available = { engagementId: string; businessName: string };
 const input = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-700 focus:outline-none";
 const primary = "rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50";
 const secondary = "rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 disabled:opacity-50";
@@ -27,6 +28,7 @@ export function DiagnosticWorkbench({ institutionId, institutionName, manager }:
   const base = `/api/institutions/${institutionId}`;
   const [templates, setTemplates] = useState<Template[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [available, setAvailable] = useState<Available[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [record, setRecord] = useState<Case | null>(null);
@@ -48,7 +50,7 @@ export function DiagnosticWorkbench({ institutionId, institutionName, manager }:
   const [notice, setNotice] = useState("");
   const load = useCallback(async () => {
     const [t, a, c] = await Promise.all([api(`${base}/diagnostic-templates`), api(`${base}/assignments`), api(`${base}/diagnostics`)]);
-    setTemplates(t.templates ?? []); setAssignments(a.assignments ?? []); setCases(c.cases ?? []);
+    setTemplates(t.templates ?? []); setAssignments(a.assignments ?? []); setCases(c.cases ?? []); setAvailable(c.available ?? []);
   }, [base]);
   const loadCase = useCallback(async (id: string) => {
     const detail = await api(`${base}/diagnostics/${id}`);
@@ -89,16 +91,16 @@ export function DiagnosticWorkbench({ institutionId, institutionName, manager }:
           <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void act(async () => {
             const result = await api(`${base}/diagnostics`, "POST", { engagementId, templateId }); setSelectedId(result.case.id);
           }, "Diagnostic started."); }}>
-            <select required className={input} value={engagementId} onChange={e => setEngagementId(e.target.value)}><option value="">Assigned business</option>{assignments.filter(a => !cases.some(c => c.engagement_id === a.engagement_id)).map(a => <option key={a.engagement_id} value={a.engagement_id}>{a.engagement_id}</option>)}</select>
+            <select required className={input} value={engagementId} onChange={e => setEngagementId(e.target.value)}><option value="">Assigned business</option>{assignments.filter(a => !cases.some(c => c.engagement_id === a.engagement_id) && available.some(b => b.engagementId === a.engagement_id)).map(a => <option key={a.engagement_id} value={a.engagement_id}>{available.find(b => b.engagementId === a.engagement_id)?.businessName}</option>)}</select>
             <select required className={input} value={templateId} onChange={e => setTemplateId(e.target.value)}><option value="">Diagnostic template</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name} · v{t.version}</option>)}</select>
             <button disabled={busy} className={primary}>Open case</button></form></section>}
         <section className="rounded-3xl border bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h2 className="font-bold">Daily work queue</h2><button aria-label="Refresh work queue" onClick={() => void load().catch(e => setError(e.message))}><RefreshCw size={16}/></button></div>
           <p className="mt-1 text-xs text-slate-600">Returned plans appear here with the next action.</p>
-          <div className="mt-4 space-y-2">{cases.map(c => <button key={c.id} onClick={() => setSelectedId(c.id)} className={`w-full rounded-xl border p-3 text-left text-sm ${selectedId === c.id ? "border-teal-700 bg-teal-50" : "border-slate-200"}`}><span className="block font-bold">Business {c.engagement_id.slice(0,8)}</span><span className="text-xs capitalize text-slate-600">{c.status.replaceAll("_", " ")}</span>{c.status === "returned" && <span className="mt-1 block text-xs text-amber-800">{c.next_action}</span>}</button>)}
+          <div className="mt-4 space-y-2">{cases.map(c => <button key={c.id} onClick={() => setSelectedId(c.id)} className={`w-full rounded-xl border p-3 text-left text-sm ${selectedId === c.id ? "border-teal-700 bg-teal-50" : "border-slate-200"}`}><span className="block font-bold">{available.find(b => b.engagementId === c.engagement_id)?.businessName ?? "Business"}</span><span className="text-xs capitalize text-slate-600">{c.status.replaceAll("_", " ")}</span>{c.status === "returned" && <span className="mt-1 block text-xs text-amber-800">{c.next_action}</span>}</button>)}
             {!cases.length && <p className="text-sm text-slate-500">No diagnostic cases yet.</p>}</div></section>
       </aside>
       <section className="space-y-5">{!record ? <div className="rounded-3xl border bg-white p-8 text-sm text-slate-600">Choose a case to see the assessment and development plan.</div> : <>
-        <div className="rounded-3xl border bg-white p-6 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">{record.status.replaceAll("_", " ")}</p><h2 className="mt-1 text-xl font-bold">Assessment and action plan</h2><p className="text-xs text-slate-500">Engagement {record.engagement_id}</p></div>{record.status === "approved" && <CheckCircle2 className="text-teal-700"/>}</div>
+        <div className="rounded-3xl border bg-white p-6 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">{record.status.replaceAll("_", " ")}</p><h2 className="mt-1 text-xl font-bold">{available.find(b => b.engagementId === record.engagement_id)?.businessName ?? "Business"} · assessment and action plan</h2></div>{record.status === "approved" && <CheckCircle2 className="text-teal-700"/>}</div>
           {record.review_reason && <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Returned:</strong> {record.review_reason}<br/><strong>Next:</strong> {record.next_action}</div>}
           <div className="mt-6 space-y-4">{record.questions.map(q => <label key={q.id} className="block text-sm font-semibold">{q.label}<textarea disabled={!editable} rows={2} className={`${input} mt-1`} value={answers[q.id] ?? ""} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })}/></label>)}
             <label className="block text-sm font-semibold">Findings<textarea disabled={!editable} rows={4} className={`${input} mt-1`} value={findings} onChange={e => setFindings(e.target.value)}/></label>
