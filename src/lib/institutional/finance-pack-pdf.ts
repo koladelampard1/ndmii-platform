@@ -9,7 +9,7 @@ export async function financePreparationPack(input:{institutionName:string;busin
  line("DBIN FINANCE PREPARATION PACK",16,true,rgb(0,.35,.32));line(input.institutionName,12,true);y-=6;
  line(`Business: ${input.businessName}`,11,true);line(`DBIN ID: ${input.businessId}`);line(`Preparation status: ${input.status.replaceAll("_"," ")}`);
  if(input.applicationReference)line(`Institution application reference: ${input.applicationReference}`);if(input.applicationStatus)line(`Institution workflow status: ${input.applicationStatus}`);
- y-=10;wrap("IMPORTANT: This pack records preparation work and documents supplied. It is not a credit score, offer, approval or commitment to finance. Only a separately recorded institution outcome represents the bank's decision.",10,true);y-=10;
+ y-=10;wrap("IMPORTANT: This pack records preparation work and documents supplied. It is not a credit score, offer, approval or commitment to finance. Only a separately recorded institution outcome represents the institution's financing decision.",10,true);y-=10;
  line("READINESS SUMMARY",12,true);wrap(input.readinessNote||"No readiness note recorded.");y-=6;line("IDENTIFIED GAPS",12,true);wrap(input.gapSummary||"No gap summary recorded.");y-=10;
  line("CHECKLIST",12,true);for(const item of input.items){wrap(`${item.required?"Required":"Optional"} · ${item.status.toUpperCase()} · ${item.label}`,10,true);if(item.gap_note)wrap(`Gap: ${item.gap_note}`,9);if(item.request_message)wrap(`Request: ${item.request_message}`,9);y-=4;}
  y-=10;line(`Generated ${new Date().toISOString().slice(0,10)} from the DBIN institution workspace.`,8,false,rgb(.35,.4,.46));

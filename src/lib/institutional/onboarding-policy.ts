@@ -1,4 +1,4 @@
-export const ONBOARDING_OPERATING_MODELS = ["development_finance", "relationship_mfb", "agent_network_mfb"] as const;
+export const ONBOARDING_OPERATING_MODELS = ["development_finance", "relationship_mfb", "agent_network_mfb", "non_interest_finance"] as const;
 export type OnboardingOperatingModel = (typeof ONBOARDING_OPERATING_MODELS)[number];
 
 export const ONBOARDING_STATUSES = ["configuration", "data_setup", "uat", "ready", "live", "blocked"] as const;

@@ -1,4 +1,4 @@
-export const OPERATING_MODELS = ["development_finance", "relationship_mfb", "agent_network_mfb"] as const;
+export const OPERATING_MODELS = ["development_finance", "relationship_mfb", "agent_network_mfb", "non_interest_finance"] as const;
 export type OperatingModel = (typeof OPERATING_MODELS)[number];
 export const EXPORT_DATASETS = ["portfolio", "agent_delivery", "support_activity"] as const;
 export type ExportDataset = (typeof EXPORT_DATASETS)[number];
@@ -35,6 +35,12 @@ export const OPERATING_PRESETS: Record<OperatingModel, InstitutionProfileInput> 
     financeLabel: "Credit preparation", supportLabel: "Business follow-up", followUpWarningDays: 2,
     criticalIssueSlaDays: 1, postFinanceDays: 60, developmentReturnDays: 30, additionalInformationDays: 7,
     defaultFollowUpDays: 2, exportFormats: ["csv", "json"] }),
+  non_interest_finance: profile({ operatingModel: "non_interest_finance", shortName: "Finance Co.", logoUrl: null,
+    primaryColor: "#176B3A", accentColor: "#C7A53B", agentLabelSingular: "Business Support Officer", agentLabelPlural: "Business Support Officers",
+    businessLabelSingular: "MSME", businessLabelPlural: "MSMEs", diagnosticLabel: "Business and financing assessment",
+    financeLabel: "Ethical financing readiness", supportLabel: "Enterprise partnership support", followUpWarningDays: 3,
+    criticalIssueSlaDays: 2, postFinanceDays: 120, developmentReturnDays: 60, additionalInformationDays: 14,
+    defaultFollowUpDays: 3, exportFormats: ["csv", "json"] }),
 };
 
 const text = (value: unknown, min: number, max: number) => typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
@@ -62,7 +68,8 @@ export function validSupportTemplate(value: unknown) {
 }
 
 export function defaultProfile(institutionType: string, name: string): InstitutionProfileInput {
-  const base = institutionType === "development_finance_institution" ? OPERATING_PRESETS.development_finance : OPERATING_PRESETS.relationship_mfb;
+  const base = institutionType === "development_finance_institution" ? OPERATING_PRESETS.development_finance
+    : institutionType === "finance_company" ? OPERATING_PRESETS.non_interest_finance : OPERATING_PRESETS.relationship_mfb;
   return { ...base, shortName: name.length <= 40 ? name : base.shortName, exportFormats: [...base.exportFormats] };
 }
 

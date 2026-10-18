@@ -27,6 +27,7 @@ async function api(path: string, method = "GET", body?: Record<string, unknown>)
 
 const institutionTypes = [
   ["microfinance_bank", "Microfinance bank"], ["development_finance_institution", "Development finance institution"],
+  ["finance_company", "Finance company"],
   ["association", "Association"], ["private_company", "Private organisation"],
   ["federal_agency", "Federal agency"], ["state_government", "State government"],
   ["technical_partner", "Technical partner"],
