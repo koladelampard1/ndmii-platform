@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 async function updateAssociationAction(formData: FormData) {
   "use server";
@@ -11,7 +11,7 @@ async function updateAssociationAction(formData: FormData) {
   if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
   const associationId = String(formData.get("association_id") ?? "");
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   await supabase
     .from("associations")
@@ -38,7 +38,7 @@ export default async function AdminAssociationDetailPage({
   const ctx = await getCurrentUserContext();
   if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   const [{ data: association }, { data: members }] = await Promise.all([
     supabase

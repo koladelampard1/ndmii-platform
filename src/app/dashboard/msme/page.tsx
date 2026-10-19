@@ -26,7 +26,7 @@ import { fetchProviderQuoteInboxCount } from "@/lib/data/provider-quote-queries"
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { getWorkspaceProfileCompletion, trackProfileCompletionAnalytics } from "@/lib/data/msme-profile-completion";
 import { getProfileFeatureGate } from "@/lib/profile-completion";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 type ActivityItem = {
   id: string;
@@ -52,7 +52,7 @@ function activityDateLabel(value: string | null) {
 
 export default async function MsmePage() {
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   const quoteCountPromise = fetchProviderQuoteInboxCount(supabase, workspace.provider.id);
 

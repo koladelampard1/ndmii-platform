@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 function parseCsvRows(csv: string) {
   return csv
@@ -16,7 +16,7 @@ async function bulkImportAction(formData: FormData) {
   const ctx = await getCurrentUserContext();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const associationId = String(formData.get("association_id") ?? "");
   const csvContent = String(formData.get("csv_content") ?? "").trim();
   const fileName = String(formData.get("file_name") ?? "association-members.csv");
@@ -99,7 +99,7 @@ export default async function AssociationBulkUploadPage({
   const ctx = await getCurrentUserContext();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   let associationQuery = supabase.from("associations").select("id,name,state,sector").order("name");
   if (ctx.role === "association_officer") {

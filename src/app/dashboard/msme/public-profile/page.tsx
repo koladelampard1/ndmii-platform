@@ -5,11 +5,11 @@ import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { getWorkspaceProfileCompletion } from "@/lib/data/msme-profile-completion";
 import { getProfileFeatureGate } from "@/lib/profile-completion";
 import { ProfileFeatureGateNotice } from "@/components/msme/profile-feature-gate";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MsmePublicProfilePreviewPage() {
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const gate = getProfileFeatureGate("marketplace", await getWorkspaceProfileCompletion(supabase, workspace));
   if (!gate.unlocked) return <ProfileFeatureGateNotice gate={gate} />;
   const [{ data: services }, gallerySnapshot] = await Promise.all([

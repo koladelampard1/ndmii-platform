@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatDateTime, formatNaira, invoicePaymentStatusClasses } from "@/lib/data/invoicing";
 import { loadRevenueSnapshot } from "@/lib/data/commercial-ops";
 
@@ -11,7 +11,7 @@ function monthKey(value: string) {
 
 export default async function MsmeRevenuePage() {
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
 
   const { invoices: rows, payments } = await loadRevenueSnapshot(supabase, workspace.provider.id);
 

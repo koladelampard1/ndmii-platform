@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Bell, CircleDollarSign, CircleHelp, FileSearch, Filter, Receipt, ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { canAccessNrsWorkspace } from "@/lib/nrs/access";
 
@@ -37,7 +37,7 @@ type PageParams = { receipt?: string; q?: string; status?: string; compliance?: 
 
 async function recordPayment(formData: FormData) {
   "use server";
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const ctx = await getCurrentUserContext();
   const msmeId = String(formData.get("msme_id"));
   const amount = Number(formData.get("amount") ?? 0);
@@ -103,7 +103,7 @@ function statusLabel(status: string | null) {
 
 export async function TaxVatCompliancePage({ searchParams, msmeOnly = false }: { searchParams: PageParams; msmeOnly?: boolean }) {
   const params = searchParams;
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const ctx = await getCurrentUserContext();
 
   if (!ctx || (ctx.role !== "msme" && !canAccessNrsWorkspace(ctx))) redirect("/access-denied");

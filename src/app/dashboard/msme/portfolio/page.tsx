@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { MsmePortfolioGalleryDashboard } from "./portfolio-gallery-dashboard";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { readProviderGalleryItems } from "@/lib/data/provider-gallery";
-import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 const PORTFOLIO_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_PORTFOLIO_BUCKET || "provider-gallery";
 
@@ -154,7 +154,7 @@ async function galleryAction(formData: FormData) {
 export default async function MsmePortfolioPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const params = await searchParams;
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const { items: gallery } = await readProviderGalleryItems({
     supabase,
     providerProfileId: workspace.provider.id,
