@@ -1788,7 +1788,7 @@ export async function listMsmePickerOptions(options: ImpactQueryOptions = {}): P
 }
 
 export async function listUserPickerOptions(role?: UserRole): Promise<UserPickerOption[]> {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createPrivilegedImpactReadClient();
   let query = supabase.from("users").select("id,full_name,email,role").order("full_name", { ascending: true }).limit(100);
   if (role) query = query.eq("role", role);
   const { data, error } = await query;

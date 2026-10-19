@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { OnboardingWizard } from "@/components/msme/onboarding-wizard";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { ensureWorkflowRecords } from "@/lib/data/msme-workflow";
-import { createServerSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { createLcdboEnrolment } from "@/lib/data/lcdbo-enrolment";
 
@@ -247,7 +247,7 @@ async function saveOnboarding(formData: FormData) {
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ success?: string; error?: string; programme?: string; source?: string }> }) {
   const params = await searchParams;
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [{ data: associations }, { data: authData }] = await Promise.all([
     supabase.from("associations").select("id,name").order("name"),
     supabase.auth.getUser(),

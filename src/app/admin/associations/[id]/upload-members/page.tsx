@@ -5,7 +5,7 @@ import { UploadMembersClient } from "./upload-members-client";
 import { isPlatformAdmin } from "@/lib/auth/authorization";
 import { getCurrentUserContext } from "@/lib/auth/session";
 import { processAssociationBulkRows } from "@/lib/associations/onboarding";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 export default async function AdminAssociationUploadMembersPage({
   params,
@@ -19,7 +19,7 @@ export default async function AdminAssociationUploadMembersPage({
   const ctx = await getCurrentUserContext();
   if (!isPlatformAdmin(ctx.role)) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [{ data: association }, { data: categories }, { data: locations }] = await Promise.all([
     supabase.from("associations").select("id,name").eq("id", id).maybeSingle(),
     supabase.from("msmes").select("sector"),
@@ -45,7 +45,7 @@ export default async function AdminAssociationUploadMembersPage({
       redirect(`/admin/associations/${id}/upload-members?error=invalid_payload`);
     }
 
-    const actionSupabase = await createServerSupabaseClient();
+    const actionSupabase = await createServiceRoleSupabaseClient();
 
     const result = await processAssociationBulkRows({
       associationId: id,

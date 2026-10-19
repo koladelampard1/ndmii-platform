@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormWrapper } from "@/components/dashboard/form-wrapper";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function UpdatePasswordPage() {
+function UpdatePasswordPageContent() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const firstLogin = searchParams.get("firstLogin") === "1";
+  const requestedWorkspace = searchParams.get("workspace");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,7 +36,16 @@ export default function UpdatePasswordPage() {
 
     setLoading(true);
 
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    const { data: currentUserData } = await supabase.auth.getUser();
+    const existingMetadata = currentUserData.user?.user_metadata ?? {};
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+      data: {
+        ...existingMetadata,
+        must_change_password: false,
+        password_changed_at: new Date().toISOString(),
+      },
+    });
 
     if (updateError) {
       setLoading(false);
@@ -50,7 +62,13 @@ export default function UpdatePasswordPage() {
     setSuccess("Password updated successfully. You can now sign in with your new password.");
 
     setTimeout(() => {
-      router.replace("/login?message=Password%20updated.%20Please%20sign%20in.");
+      const loginParams = new URLSearchParams({ message: "Password updated. Please sign in." });
+      if (requestedWorkspace) loginParams.set("workspace", requestedWorkspace);
+      const returnTo = searchParams.get("returnTo");
+      const next = searchParams.get("next");
+      if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) loginParams.set("returnTo", returnTo);
+      if (next?.startsWith("/") && !next.startsWith("//")) loginParams.set("next", next);
+      router.replace(`/login?${loginParams.toString()}`);
       router.refresh();
     }, 1200);
   }
@@ -59,7 +77,9 @@ export default function UpdatePasswordPage() {
     <main className="mx-auto max-w-md space-y-4 px-6 py-16">
       <FormWrapper title="Create your new password">
         <p className="text-sm text-slate-600">
-          This page is opened from your secure email link. Set a strong password to activate account access.
+          {firstLogin
+            ? "For security, replace your temporary UAT password before entering the workspace."
+            : "This page is opened from your secure email link. Set a strong password to activate account access."}
         </p>
 
         <form className="space-y-3" onSubmit={onSubmit}>
@@ -95,5 +115,13 @@ export default function UpdatePasswordPage() {
         </p>
       </FormWrapper>
     </main>
+  );
+}
+
+export default function UpdatePasswordPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-md px-6 py-16 text-sm text-slate-600">Preparing secure password setup…</main>}>
+      <UpdatePasswordPageContent />
+    </Suspense>
   );
 }

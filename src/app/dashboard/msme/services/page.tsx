@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProviderWorkspaceContext } from "@/lib/data/provider-operations";
 import { getMsmeServicesData } from "@/lib/data/msme-services";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { MsmeServicesDashboard, type ServiceRecord } from "./services-dashboard";
 
 function serviceErrorRedirect(message: string): never {
@@ -12,7 +12,7 @@ function serviceErrorRedirect(message: string): never {
 async function serviceAction(formData: FormData) {
   "use server";
   const workspace = await getProviderWorkspaceContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const providerId = workspace.provider.id;
 
   const kind = String(formData.get("kind") ?? "create");

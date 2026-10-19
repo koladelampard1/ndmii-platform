@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 async function overrideAction(formData: FormData) {
@@ -9,7 +9,7 @@ async function overrideAction(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("override"));
   const notes = String(formData.get("notes") ?? "");
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const ctx = await getCurrentUserContext();
 
   if (!["admin", "reviewer"].includes(ctx.role)) {
@@ -51,7 +51,7 @@ type ComplianceRecord = {
 
 export default async function CompliancePage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const params = await searchParams;
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const ctx = await getCurrentUserContext();
 
   if (ctx.role === "msme") {

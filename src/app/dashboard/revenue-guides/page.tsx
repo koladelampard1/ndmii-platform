@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, BadgeCheck, BookOpenCheck, CalendarClock, ClipboardList, FileWarning, ReceiptText, Target } from "lucide-react";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { formatNaira } from "@/lib/data/invoicing";
 import { formatNrsStatus, nrsWorkspaceDisclosure, requireNrsWorkspace } from "@/lib/nrs/access";
 
@@ -60,7 +60,7 @@ export default async function RevenueGuidesPage() {
   const ctx = await getCurrentUserContext();
   requireNrsWorkspace(ctx);
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [{ data: msmes }, { data: taxProfiles }, { data: complianceProfiles }, { data: invoices }] = await Promise.all([
     supabase
       .from("msmes")

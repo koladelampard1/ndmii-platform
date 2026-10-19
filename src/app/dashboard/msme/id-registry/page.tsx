@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentUserContext } from "@/lib/auth/session";
 
 export default async function DigitalIdRegistryPage({
@@ -12,7 +12,7 @@ export default async function DigitalIdRegistryPage({
   const ctx = await getCurrentUserContext();
   if (ctx.role !== "admin") redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   let query = supabase
     .from("digital_identity_credentials")
     .select("id,ndmii_id,issued_at,status,qr_code_ref,msmes(id,business_name,passport_photo_url,state,sector,verification_status,msme_id)")

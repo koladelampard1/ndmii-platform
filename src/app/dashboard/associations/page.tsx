@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 async function associationAction(formData: FormData) {
   "use server";
   const ctx = await getCurrentUserContext();
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
   const kind = String(formData.get("kind"));
@@ -54,7 +54,7 @@ export default async function AssociationsPage({
   const ctx = await getCurrentUserContext();
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   let query = supabase
     .from("associations")
     .select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone")

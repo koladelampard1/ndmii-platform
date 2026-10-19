@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUserContext } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 
 async function associationDetailAction(formData: FormData) {
   "use server";
@@ -11,7 +11,7 @@ async function associationDetailAction(formData: FormData) {
   const id = String(formData.get("association_id"));
   if (ctx.role === "association_officer" && id !== ctx.linkedAssociationId) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   await supabase.from("associations").update({
     name: String(formData.get("name")),
     sector: String(formData.get("sector_focus") ?? "General"),
@@ -38,7 +38,7 @@ async function membershipApprovalAction(formData: FormData) {
   if (ctx.role === "association_officer" && associationId !== ctx.linkedAssociationId) redirect("/access-denied");
   if (!["approve", "reject"].includes(action)) redirect(`/dashboard/associations/${associationId}`);
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const { data: membership } = await supabase
     .from("association_memberships")
     .select("id,msme_id,association_id")
@@ -92,7 +92,7 @@ export default async function AssociationDetailPage({ params, searchParams }: { 
   if (!["association_officer", "admin"].includes(ctx.role)) redirect("/access-denied");
   if (ctx.role === "association_officer" && id !== ctx.linkedAssociationId) redirect("/access-denied");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const [{ data: association }, { data: members }, { data: pendingMemberships }] = await Promise.all([
     supabase.from("associations").select("id,name,state,sector,lga_coverage,profile,status,contact_email,contact_phone").eq("id", id).maybeSingle(),
     supabase

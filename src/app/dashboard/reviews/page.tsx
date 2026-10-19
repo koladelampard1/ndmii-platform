@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabaseClient } from "@/lib/supabase/server";
 import { generateMsmeId, runKycSimulation } from "@/lib/data/ndmii";
 import { approveCredential, recordCredentialEvent } from "@/lib/data/credential-trust";
 import { assertMsmeAction, requireRole } from "@/lib/data/authorization-scope";
@@ -18,7 +18,7 @@ async function reviewAction(formData: FormData) {
   const action = String(formData.get("action"));
   const note = String(formData.get("note") ?? "");
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   const { ctx } = await assertMsmeAction(id, action);
   const { data: msme } = await supabase.from("msmes").select("state,msme_id,nin,bvn,cac_number,tin").eq("id", id).single();
   const validation = await runKycSimulation({
@@ -152,7 +152,7 @@ export default async function ReviewsPage({
 }) {
   await requireRole(["reviewer", "admin"]);
   const params = await searchParams;
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServiceRoleSupabaseClient();
   let query = supabase
     .from("msmes")
     .select("id,msme_id,business_name,state,sector,verification_status,review_status,created_at,validation_results(nin_status,bvn_status,cac_status,tin_status,validated_at,validation_summary,confidence_score)")

@@ -85,6 +85,17 @@ function LoginPageContent() {
       return;
     }
 
+    if (signInData.user.user_metadata?.must_change_password === true) {
+      const passwordParams = new URLSearchParams({ firstLogin: "1" });
+      if (requestedWorkspace) passwordParams.set("workspace", requestedWorkspace);
+      if (requestedReturnPath) passwordParams.set("returnTo", requestedReturnPath);
+      if (requestedNextPath) passwordParams.set("next", requestedNextPath);
+      setLoading(false);
+      router.replace(`/update-password?${passwordParams.toString()}`);
+      router.refresh();
+      return;
+    }
+
     let role: UserRole = "public";
     let appUserId: string | null = null;
 
